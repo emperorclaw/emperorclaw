@@ -8,16 +8,32 @@ export function OpenClawChat() {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [history, setHistory] = useState<any[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+    const [initialized, setInitialized] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const baseTitleRef = useRef<string | null>(null);
 
-    // Fetch initial history
+    // Fetch history and poll
     useEffect(() => {
-        if (!isOpen) return;
         const fetchHistory = async () => {
             try {
-                const res = await fetch('/api/chat');
+                const url = lastSeenAt ? `/api/chat?since=${encodeURIComponent(lastSeenAt)}` : '/api/chat';
+                const res = await fetch(url);
+                if (!res.ok) return;
                 const data = await res.json();
-                if (data.messages) setHistory(data.messages);
+                if (data.messages && data.messages.length > 0) {
+                    setHistory((prev) => (lastSeenAt ? [...prev, ...data.messages] : data.messages));
+                    const latest = data.messages[data.messages.length - 1];
+                    setLastSeenAt(latest.createdAt);
+                    if (initialized && !isOpen) {
+                        const newAgentMessages = data.messages.filter((m: any) => m.senderType === 'agent').length;
+                        if (newAgentMessages > 0) {
+                            setUnreadCount((c) => c + newAgentMessages);
+                        }
+                    }
+                }
+                if (!initialized) setInitialized(true);
             } catch (err) {
                 console.error("Failed to load chat history", err);
             }
@@ -26,13 +42,29 @@ export function OpenClawChat() {
 
         const interval = setInterval(fetchHistory, 5000); // Poll every 5 seconds
         return () => clearInterval(interval);
-    }, [isOpen]);
+    }, [isOpen, lastSeenAt, initialized]);
 
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [history, isOpen]);
+
+    useEffect(() => {
+        if (typeof document === "undefined") return;
+        if (!baseTitleRef.current) baseTitleRef.current = document.title;
+        if (unreadCount > 0) {
+            document.title = `(${unreadCount}) ${baseTitleRef.current}`;
+        } else if (baseTitleRef.current) {
+            document.title = baseTitleRef.current;
+        }
+    }, [unreadCount]);
+
+    useEffect(() => {
+        if (isOpen) {
+            setUnreadCount(0);
+        }
+    }, [isOpen]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -65,6 +97,11 @@ export function OpenClawChat() {
                 )}
             >
                 <MessageSquare className="w-6 h-6" />
+                {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-[10px] text-white flex items-center justify-center font-semibold shadow">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                )}
             </button>
 
             {isOpen && (

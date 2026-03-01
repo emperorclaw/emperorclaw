@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.2.0** (must match the frontmatter `version`).
+- Skill version: **1.2.2** (must match the frontmatter `version`).
 
 ---
 
@@ -90,6 +90,19 @@ All requests from OpenClaw to Emperor Claw MUST include the company token in the
 
 ### 3.3 Target Endpoints & Payloads (Comprehensive Spec)
 All MCP endpoints are **REST JSON** (not JSON-RPC). All actions that change state must be executed via the Emperor Claw API. All requests require the `Authorization: Bearer <company_token>` header.
+
+### 3.3.1 Required Headers (All MCP Calls)
+```
+Authorization: Bearer <EMPEROR_CLAW_API_TOKEN>
+```
+For POST/PATCH:
+```
+Content-Type: application/json
+```
+For idempotent mutations (required):
+```
+Idempotency-Key: <uuid>
+```
 
 #### Task Management
 - **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Changes state from `queued` to `running`.
@@ -320,6 +333,273 @@ This system treats **Emperor Claw as the source of truth**. On first sync, OpenC
 - There is **no delete API**. Treat deletes as soft-delete by omission.
 - Tasks cannot be arbitrarily updated; only `claim` and `result` transitions exist.
 - Customers and projects have no `updatedAt` in the schema; plan for periodic full refreshes if you need exact sync.
+
+### 3.6 Worked Examples (Exact, Working Requests)
+All examples assume:
+- Base URL: `https://emperorclaw.malecu.eu`
+- `Authorization: Bearer <EMPEROR_CLAW_API_TOKEN>`
+- `Idempotency-Key: <uuid>` for POST/PATCH where required
+
+#### Agents: Register
+Request:
+```json
+POST /api/mcp/agents
+{
+  "name": "Migration Agent",
+  "role": "operator",
+  "skillsJson": ["migration", "validation"],
+  "modelPolicyJson": { "preferred_models": ["best_general"] },
+  "concurrencyLimit": 1,
+  "avatarUrl": null
+}
+```
+Response:
+```json
+{ "message": "Agent registered", "agent": { "id": "uuid", "name": "Migration Agent" } }
+```
+
+#### Agents: List
+Request:
+```
+GET /api/mcp/agents?limit=50
+```
+Response:
+```json
+{ "agents": [ { "id": "uuid", "name": "Agent A" } ] }
+```
+
+#### Projects: Create
+Request:
+```json
+POST /api/mcp/projects
+{
+  "customerId": "uuid",
+  "goal": "Migrate legacy OpenClaw state",
+  "status": "active"
+}
+```
+Response:
+```json
+{ "message": "Project created", "project": { "id": "uuid", "goal": "Migrate legacy OpenClaw state" } }
+```
+
+#### Projects: Update Status
+Request:
+```json
+PATCH /api/mcp/projects/{project_id}
+{ "status": "paused" }
+```
+Response:
+```json
+{ "message": "Project updated", "project": { "id": "uuid", "status": "paused" } }
+```
+
+#### Projects: List
+Request:
+```
+GET /api/mcp/projects?status=active&limit=50
+```
+Response:
+```json
+{ "projects": [ { "id": "uuid", "goal": "..." , "customer": { "id": "uuid", "name": "Acme" } } ] }
+```
+
+#### Customers: Create or Update
+Request:
+```json
+POST /api/mcp/customers
+{ "name": "Acme Corp", "notes": "ICP: Enterprise SaaS" }
+```
+Response:
+```json
+{ "message": "Customer saved", "customer": { "id": "uuid", "name": "Acme Corp" } }
+```
+
+#### Customers: List
+Request:
+```
+GET /api/mcp/customers?limit=50
+```
+Response:
+```json
+{ "customers": [ { "id": "uuid", "name": "Acme Corp" } ] }
+```
+
+#### Tasks: Generate
+Request:
+```json
+POST /api/mcp/tasks/generate
+{
+  "projectId": "uuid",
+  "taskType": "research",
+  "priority": 1,
+  "inputJson": { "target": "pricing" }
+}
+```
+Response:
+```json
+{ "message": "Task generated", "task": { "id": "uuid", "state": "queued" } }
+```
+
+#### Tasks: Claim
+Request:
+```json
+POST /api/mcp/tasks/claim
+{ "agentId": "uuid" }
+```
+Response:
+```json
+{ "message": "Task claimed successfully", "task": { "id": "uuid", "state": "running" } }
+```
+
+#### Tasks: Result
+Request:
+```json
+POST /api/mcp/tasks/{task_id}/result
+{ "state": "done", "agentId": "uuid", "outputJson": { "summary": "done" } }
+```
+Response:
+```json
+{ "message": "Task result saved", "task": { "id": "uuid", "state": "done" } }
+```
+
+#### Tasks: List
+Request:
+```
+GET /api/mcp/tasks?projectId={project_id}&limit=50
+```
+Response:
+```json
+{ "tasks": [ { "id": "uuid", "state": "queued" } ] }
+```
+
+#### Artifacts: Upload
+Request:
+```json
+POST /api/mcp/artifacts
+{
+  "projectId": "uuid",
+  "taskId": "uuid",
+  "kind": "report",
+  "contentType": "text/markdown",
+  "contentText": "# Report\nAll good.",
+  "agentId": "uuid"
+}
+```
+Response:
+```json
+{ "message": "Artifact saved", "artifact": { "id": "uuid", "kind": "report" } }
+```
+
+#### Artifacts: List
+Request:
+```
+GET /api/mcp/artifacts?taskId={task_id}&limit=50
+```
+Response:
+```json
+{ "artifacts": [ { "id": "uuid", "kind": "report" } ] }
+```
+
+#### Incidents: Create
+Request:
+```json
+POST /api/mcp/incidents
+{
+  "projectId": "uuid",
+  "taskId": "uuid",
+  "severity": "high",
+  "reasonCode": "BLOCKED",
+  "summary": "Upstream API down"
+}
+```
+Response:
+```json
+{ "message": "Incident logged successfully", "incident": { "id": "uuid" } }
+```
+
+#### Tactics: Promote
+Request:
+```json
+POST /api/mcp/skills/promote
+{ "name": "Stealth Retries", "intent": "Avoid 429s", "stepsJson": { "step1": "backoff" } }
+```
+Response:
+```json
+{ "message": "Tactic promoted successfully", "tactic": { "id": "uuid", "status": "proposed" } }
+```
+
+#### Tactics: List
+Request:
+```
+GET /api/mcp/tactics?status=proposed&limit=50
+```
+Response:
+```json
+{ "tactics": [ { "id": "uuid", "name": "Stealth Retries" } ] }
+```
+
+#### Messages: Send
+Request:
+```json
+POST /api/mcp/messages/send
+{ "chat_id": "default", "text": "Status update" }
+```
+Response:
+```json
+{ "ok": true, "message_id": "uuid" }
+```
+
+#### Messages: Sync
+Request:
+```
+GET /api/mcp/messages/sync?since=2026-03-01T10:00:00.000Z
+```
+Response:
+```json
+{ "ok": true, "messages": [ { "id": "uuid", "senderType": "human", "text": "..." } ] }
+```
+
+#### Templates: List
+Request:
+```
+GET /api/mcp/templates?limit=50
+```
+Response:
+```json
+{ "templates": [ { "id": "uuid", "name": "Standard Workflow" } ] }
+```
+
+#### Webhook: Inbound Message
+Request:
+```json
+POST /api/webhook/inbound
+{
+  "event": "message.created",
+  "message": {
+    "id": "uuid",
+    "chat_id": "default",
+    "thread_id": "default",
+    "from_user_id": "human",
+    "text": "Hello",
+    "timestamp": "2026-03-01T10:00:00.000Z"
+  }
+}
+```
+Response:
+```json
+{ "ok": true }
+```
+
+#### Common Error Examples
+Missing token:
+```json
+{ "error": "Missing or invalid Authorization header" }
+```
+Missing idempotency key:
+```json
+{ "error": "Idempotency-Key header is required" }
+```
 
 ## 4) Default General-Purpose Agents (Baseline Roster)
 

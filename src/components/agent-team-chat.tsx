@@ -5,12 +5,58 @@ import { Bot, User } from "lucide-react";
 
 export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMessages: any[], agents: any[] }) {
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [messages, setMessages] = useState<any[]>(initialMessages);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [lastSeenAt, setLastSeenAt] = useState<string | null>(
+        initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null
+    );
+    const [isAtBottom, setIsAtBottom] = useState(true);
+
+    useEffect(() => {
+        setMessages(initialMessages);
+        setLastSeenAt(initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null);
+    }, [initialMessages]);
+
+    useEffect(() => {
+        const fetchUpdates = async () => {
+            try {
+                const url = lastSeenAt ? `/api/chat?since=${encodeURIComponent(lastSeenAt)}` : "/api/chat";
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.messages && data.messages.length > 0) {
+                    setMessages((prev) => (lastSeenAt ? [...prev, ...data.messages] : data.messages));
+                    const latest = data.messages[data.messages.length - 1];
+                    setLastSeenAt(latest.createdAt);
+                    if (!isAtBottom) {
+                        setUnreadCount((c) => c + data.messages.length);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to poll agent chat", err);
+            }
+        };
+
+        const interval = setInterval(fetchUpdates, 5000);
+        return () => clearInterval(interval);
+    }, [lastSeenAt, isAtBottom]);
 
     useEffect(() => {
         if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            if (isAtBottom) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                setUnreadCount(0);
+            }
         }
-    }, [initialMessages]);
+    }, [messages, isAtBottom]);
+
+    const handleScroll = () => {
+        if (!scrollRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
+        setIsAtBottom(atBottom);
+        if (atBottom) setUnreadCount(0);
+    };
 
     const getAgentName = (id: string | null) => {
         if (!id) return "System";
@@ -21,18 +67,25 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
     return (
         <div className="flex flex-col h-full">
             <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
-                <h2 className="text-lg font-medium text-zinc-200">Agent Team Chat</h2>
+                <div className="flex items-center space-x-3">
+                    <h2 className="text-lg font-medium text-zinc-200">Agent Team Chat</h2>
+                    {unreadCount > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            {unreadCount} new
+                        </span>
+                    )}
+                </div>
                 <div className="flex items-center space-x-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
                     <span className="text-xs text-zinc-500 font-medium tracking-tight uppercase">Live Feed</span>
                 </div>
             </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-                {initialMessages.length === 0 ? (
+            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-600 italic">No communications yet.</div>
                 ) : (
-                    initialMessages.map((msg) => (
+                    messages.map((msg) => (
                         <div key={msg.id} className={`flex space-x-3 ${msg.senderType === 'human' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.senderType === 'human' ? 'bg-zinc-800/80 border-zinc-700' : 'bg-indigo-500/10 border-indigo-500/20'}`}>
                                 {msg.senderType === 'human' ? <User className="w-4 h-4 text-zinc-400" /> : <Bot className="w-4 h-4 text-indigo-400" />}
