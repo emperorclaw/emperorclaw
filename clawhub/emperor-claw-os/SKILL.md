@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.0.0
+version: 1.1.0
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.0.0** (must match the frontmatter `version`).
+- Skill version: **1.1.0** (must match the frontmatter `version`).
 
 ---
 
@@ -89,7 +89,7 @@ All requests from OpenClaw to Emperor Claw MUST include the company token in the
 - `EMPEROR_CLAW_API_TOKEN`: Company API token used for MCP authentication (Authorization: Bearer <token>).
 
 ### 3.3 Target Endpoints & Payloads (Comprehensive Spec)
-All actions that change state must be executed via the Emperor Claw API. All requests require the `Authorization: Bearer <company_token>` header.
+All MCP endpoints are **REST JSON** (not JSON-RPC). All actions that change state must be executed via the Emperor Claw API. All requests require the `Authorization: Bearer <company_token>` header.
 
 #### Task Management
 - **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Changes state from `queued` to `running`.
@@ -100,7 +100,10 @@ All actions that change state must be executed via the Emperor Claw API. All req
   - **Response**: `{ "message": "Task result saved", "task": { ... } }`
 
 #### Workforce Management
-- **`POST /api/mcp/agents`**: Register a newly spawned OpenClaw agent into the Emperor Claw Control Plane (**Endpoint implementation pending**).
+- **`POST /api/mcp/agents`**: Register a newly spawned OpenClaw agent into the Emperor Claw Control Plane.
+  - **Payload**: `{ "name": "string", "role": "string (optional)", "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "avatarUrl": "string" (optional) }`
+  - **Response**: `{ "message": "Agent registered", "agent": { ... } }`
+- **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
 - **`POST /api/mcp/agents/heartbeat`**: Update agent load and keep alive status.
   - **Payload**: `{ "agentId": "string", "currentLoad": number }`
   - **Response**: `{ "message": "Heartbeat acknowledged", "lastSeenAt": "string" }`
@@ -141,13 +144,17 @@ All actions that change state must be executed via the Emperor Claw API. All req
 - **`POST /api/mcp/skills/promote`**: Promote a newly learned generalizing tactic to the shared company library.
   - **Payload**: `{ "name": "string", "intent": "string", "stepsJson": { ... }, "requiredInputsJson": { ... } }`
   - **Response**: `{ "message": "Tactic promoted successfully", "tactic": { ... } }`
+- **`GET /api/mcp/tactics`**: List tactics in the library (optional query params: `status`, `limit`).
 
 #### System Alerts
-- **`POST /api/webhook/inbound`**: Receive asynchronous OOB events directly into the UI layer. (**Endpoint implementation pending**)
+- **`POST /api/webhook/inbound`**: Receive asynchronous OOB events directly into the UI layer.
 
 #### Data & Context Retrieval
-- **`GET /api/mcp/projects`**: Fetch active projects and Customer Context. (**Endpoint implementation pending**)
-- **`GET /api/mcp/templates`**: Fetch workflow templates. (**Endpoint implementation pending**)
+- **`GET /api/mcp/projects`**: Fetch active projects and Customer Context (returns `project` plus `customer` when available).
+- **`GET /api/mcp/templates`**: Fetch workflow templates.
+- **`GET /api/mcp/customers`**: Fetch customers and their notes.
+- **`GET /api/mcp/tasks`**: Fetch tasks (optional query params: `state`, `projectId`, `limit`).
+- **`GET /api/mcp/tactics`**: Fetch tactics (optional query params: `status`, `limit`).
 
 #### Operations & Management (CRUD via OpenClaw)
 - **`POST /api/mcp/customers`**: Create or update a human-defined client/ICP record.

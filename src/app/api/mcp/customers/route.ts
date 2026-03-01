@@ -3,7 +3,31 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { randomUUID } from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, isNull } from "drizzle-orm";
+
+export async function GET(req: NextRequest) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+
+    try {
+        const rows = await db.select()
+            .from(customers)
+            .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+            .orderBy(desc(customers.createdAt))
+            .limit(limit);
+
+        return NextResponse.json({ customers: rows });
+    } catch (err) {
+        console.error("Error fetching customers:", err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
