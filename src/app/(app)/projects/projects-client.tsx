@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send } from "lucide-react";
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers }: any) {
+export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts }: any) {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
@@ -58,6 +58,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         return customers.find((c: any) => c.id === project.customerId)?.name || "Unknown Customer";
     };
     const getAgentName = (id: string) => agents.find((a: any) => a.id === id)?.name || "Unassigned";
+
+    const artifactsForTask = (taskId: string) => (artifacts || []).filter((a: any) => a.taskId === taskId);
 
     return (
         <div className="h-full flex flex-col space-y-6 animate-in fade-in duration-500 relative">
@@ -159,9 +161,31 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         </div>
 
                         <div className="space-y-3">
-                            <h3 className="text-sm font-medium text-zinc-300">Artifacts & Proof</h3>
-                            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 font-mono text-xs text-zinc-400 whitespace-pre-wrap">
-                                {selectedTask.proofSummary || "No proof submitted yet."}
+                            <h3 className="text-sm font-medium text-zinc-300">Artifacts & Reports</h3>
+                            <div className="space-y-3">
+                                {artifactsForTask(selectedTask.id).length === 0 && (
+                                    <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 font-mono text-xs text-zinc-400 whitespace-pre-wrap">
+                                        No artifacts submitted yet.
+                                    </div>
+                                )}
+                                {artifactsForTask(selectedTask.id).map((a: any) => (
+                                    <div key={a.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+                                        <div className="flex items-center justify-between text-xs text-zinc-500 mb-2">
+                                            <span className="font-mono">{a.kind}</span>
+                                            <span>{a.contentType}</span>
+                                        </div>
+                                        {a.contentText && (
+                                            <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap">
+                                                {a.contentText}
+                                            </div>
+                                        )}
+                                        {!a.contentText && a.storageUrl && (
+                                            <div className="text-xs text-indigo-400 truncate">
+                                                {a.storageUrl}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
                         </div>
 

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal, LogOut } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
+import { signOut } from "next-auth/react";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -55,7 +56,7 @@ export function AppSidebar() {
                 })}
             </nav>
 
-            <div className="p-4 border-t border-zinc-800/80">
+            <div className="p-4 border-t border-zinc-800/80 space-y-2">
                 <div className="flex items-center space-x-3 px-3 py-2 rounded-md bg-zinc-900/50 border border-zinc-800/50 cursor-pointer hover:bg-zinc-800/80 transition-colors">
                     <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-300">
                         A
@@ -65,6 +66,13 @@ export function AppSidebar() {
                         <span className="text-xs text-zinc-500">owner</span>
                     </div>
                 </div>
+                <button
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800/80 transition-colors text-sm text-zinc-300"
+                >
+                    <span>Logout</span>
+                    <LogOut className="w-4 h-4 text-zinc-400" />
+                </button>
             </div>
         </div>
     );

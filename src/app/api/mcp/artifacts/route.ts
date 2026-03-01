@@ -2,8 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { artifacts, projects, tasks } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { createHash } from "crypto";
+
+export async function GET(req: NextRequest) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+    const projectId = searchParams.get("projectId");
+    const taskId = searchParams.get("taskId");
+
+    try {
+        const conditions = [
+            eq(artifacts.companyId, companyId),
+            isNull(artifacts.deletedAt),
+        ];
+        if (projectId) {
+            conditions.push(eq(artifacts.projectId, projectId));
+        }
+        if (taskId) {
+            conditions.push(eq(artifacts.taskId, taskId));
+        }
+
+        const rows = await db.select()
+            .from(artifacts)
+            .where(and(...conditions))
+            .orderBy(desc(artifacts.createdAt))
+            .limit(limit);
+
+        return NextResponse.json({ artifacts: rows });
+    } catch (e: any) {
+        console.error("MCP Artifacts GET Error:", e);
+        return NextResponse.json({ error: "Internal server error", details: e.message }, { status: 500 });
+    }
+}
 
 export async function POST(req: NextRequest) {
     const authResult = await verifyMcpToken(req);

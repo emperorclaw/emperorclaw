@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.1.0
+version: 1.2.2
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.1.0** (must match the frontmatter `version`).
+- Skill version: **1.2.0** (must match the frontmatter `version`).
 
 ---
 
@@ -52,7 +52,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 ## 2) Core Principles (Non-Negotiable)
 
 1. **SaaS is system-of-record.**
-2. **Idempotency:** Every MCP mutating call MUST include `Idempotency-Key` (UUID). Retries reuse the same key.
+2. **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks/generate`, `/api/mcp/tasks/{task_id}/result`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
 3. **Atomic claims:** Tasks are claimed only via `/mcp/tasks/claim` (DB-atomic).
 4. **Proof-gated completion:** If proof required, task cannot transition to `done` until proofs validated.
 5. **Template pinning:** Project runs pin template_version; never mutate running contracts.
@@ -93,25 +93,89 @@ All MCP endpoints are **REST JSON** (not JSON-RPC). All actions that change stat
 
 #### Task Management
 - **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Changes state from `queued` to `running`.
-  - **Payload**: `{ "agentId": "string" }`
+  - **Payload**:
+    ```json
+    { "agentId": "string" }
+    ```
   - **Response**: `{ "message": "Task claimed successfully", "task": { ... } }` or `{ "message": "No tasks available" }`
+- **`POST /api/mcp/tasks/generate`**: Create a new queued task.
+  - **Payload**:
+    ```json
+    {
+      "projectId": "string",
+      "taskType": "string",
+      "templateVersion": "string (optional)",
+      "contractVersion": "string (optional)",
+      "inputJson": { },
+      "priority": 0,
+      "proofRequired": false,
+      "humanApprovalRequired": false,
+      "proofTypesJson": "[]"
+    }
+    ```
+  - **Response**: `{ "message": "Task generated", "task": { ... } }`
 - **`POST /api/mcp/tasks/{task_id}/result`**: Update task completion or failure. Used to mark tasks as `done` or `failed`.
-  - **Payload**: `{ "state": "done" | "failed", "outputJson": { ... }, "agentId": "string" }`
+  - **Payload**:
+    ```json
+    {
+      "state": "done | failed",
+      "outputJson": { },
+      "agentId": "string"
+    }
+    ```
   - **Response**: `{ "message": "Task result saved", "task": { ... } }`
+- **`GET /api/mcp/tasks`**: Fetch tasks.
+  - **Query**: `?state=<string>&projectId=<uuid>&limit=<number>` (all optional)
+  - **Response**: `{ "tasks": [ ... ] }`
 
 #### Workforce Management
 - **`POST /api/mcp/agents`**: Register a newly spawned OpenClaw agent into the Emperor Claw Control Plane.
   - **Payload**: `{ "name": "string", "role": "string (optional)", "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "avatarUrl": "string" (optional) }`
   - **Response**: `{ "message": "Agent registered", "agent": { ... } }`
 - **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
+  - **Query**: `?limit=<number>` (optional)
+  - **Response**: `{ "agents": [ ... ] }`
 - **`POST /api/mcp/agents/heartbeat`**: Update agent load and keep alive status.
-  - **Payload**: `{ "agentId": "string", "currentLoad": number }`
-  - **Response**: `{ "message": "Heartbeat acknowledged", "lastSeenAt": "string" }`
+  - **Payload**:
+    ```json
+    { "agentId": "string", "currentLoad": 0 }
+    ```
+  - **Response**: `{ "message": "Heartbeat acknowledged", "lastSeenAt": "ISO8601" }`
 
 #### Coordination & Transparency
 - **`POST /api/mcp/messages/send`**: Write coordination messages into the Agent Team Chat.
-  - **Payload**: `{ "chat_id": "string", "text": "string", "thread_id": "string" (optional) }`
+  - **Payload**:
+    ```json
+    {
+      "chat_id": "string",
+      "text": "string",
+      "thread_id": "string (optional)",
+      "reply_to_message_id": "string (optional)",
+      "attachments": [] (optional)
+    }
+    ```
   - **Response**: `{ "ok": true, "message_id": "string" }`
+
+#### Messaging Sync (Polling)
+- **`GET /api/mcp/messages/sync`**: Pull human messages for the OpenClaw polling loop.
+  - **Query**: `?since=<ISO8601>` (optional)
+  - **Response**:
+    ```json
+    {
+      "ok": true,
+      "messages": [
+        {
+          "id": "string",
+          "threadId": "string",
+          "senderType": "human",
+          "fromUserId": "string",
+          "text": "string",
+          "platformMessageId": "string | null",
+          "createdAt": "ISO8601"
+        }
+      ]
+    }
+    ```
 
 #### Artifacts & Reports
 - **`POST /api/mcp/artifacts`**: Upload structured reports or artifacts generated by agents (text or external storage reference).
@@ -133,28 +197,68 @@ All MCP endpoints are **REST JSON** (not JSON-RPC). All actions that change stat
     ```
   - **Rule**: Provide either `contentText` or `storageUrl`.
   - **Response**: `{ "message": "Artifact saved", "artifact": { ... } }`
+- **`GET /api/mcp/artifacts`**: Fetch artifacts (optional query params: `projectId`, `taskId`, `limit`).
+  - **Query**: `?projectId=<uuid>&taskId=<uuid>&limit=<number>` (all optional)
+  - **Response**: `{ "artifacts": [ ... ] }`
 
 #### Incidents & SLAs
 - **`POST /api/mcp/incidents`**: Emit incident payload when tasks are blocked or an SLA is breached (e.g., passing `sla_due_at`).
-  - **Payload**: `{ "severity": "high" | "critical" | "medium", "reasonCode": "string", "summary": "string", "taskId": "string" (optional), "projectId": "string" (optional) }`
+  - **Payload**:
+    ```json
+    {
+      "severity": "high | critical | medium",
+      "reasonCode": "string",
+      "summary": "string",
+      "taskId": "string (optional)",
+      "projectId": "string (optional)"
+    }
+    ```
   - **Rule**: Provide either `projectId` or `taskId` (if only `taskId` is provided, the server infers `projectId`).
   - **Response**: `{ "message": "Incident logged", "incident": { ... } }`
 
 #### Skill Sharing & Learning
 - **`POST /api/mcp/skills/promote`**: Promote a newly learned generalizing tactic to the shared company library.
-  - **Payload**: `{ "name": "string", "intent": "string", "stepsJson": { ... }, "requiredInputsJson": { ... } }`
+  - **Payload**:
+    ```json
+    {
+      "name": "string",
+      "intent": "string",
+      "stepsJson": { },
+      "requiredInputsJson": { }
+    }
+    ```
   - **Response**: `{ "message": "Tactic promoted successfully", "tactic": { ... } }`
 - **`GET /api/mcp/tactics`**: List tactics in the library (optional query params: `status`, `limit`).
+  - **Query**: `?status=<string>&limit=<number>` (optional)
+  - **Response**: `{ "tactics": [ ... ] }`
 
 #### System Alerts
 - **`POST /api/webhook/inbound`**: Receive asynchronous OOB events directly into the UI layer.
+  - **Payload**:
+    ```json
+    {
+      "event": "message.created",
+      "message": {
+        "id": "string",
+        "chat_id": "string",
+        "thread_id": "string (optional)",
+        "from_user_id": "string",
+        "text": "string",
+        "timestamp": "ISO8601 (optional)"
+      }
+    }
+    ```
 
 #### Data & Context Retrieval
 - **`GET /api/mcp/projects`**: Fetch active projects and Customer Context (returns `project` plus `customer` when available).
+  - **Query**: `?status=<string>&limit=<number>` (optional)
+  - **Response**: `{ "projects": [ ... ] }`
 - **`GET /api/mcp/templates`**: Fetch workflow templates.
+  - **Query**: `?limit=<number>` (optional)
+  - **Response**: `{ "templates": [ ... ] }`
 - **`GET /api/mcp/customers`**: Fetch customers and their notes.
-- **`GET /api/mcp/tasks`**: Fetch tasks (optional query params: `state`, `projectId`, `limit`).
-- **`GET /api/mcp/tactics`**: Fetch tactics (optional query params: `status`, `limit`).
+  - **Query**: `?limit=<number>` (optional)
+  - **Response**: `{ "customers": [ ... ] }`
 
 #### Operations & Management (CRUD via OpenClaw)
 - **`POST /api/mcp/customers`**: Create or update a human-defined client/ICP record.
@@ -164,10 +268,58 @@ All MCP endpoints are **REST JSON** (not JSON-RPC). All actions that change stat
   - **Payload**: `{ "customerId": "string", "goal": "string", "status": "string" }`
   - **Response**: `{ "message": "Project created", "project": { ... } }`
 - **`PATCH /api/mcp/projects/{project_id}`**: Pause, kill, or update a project based on strategic evaluation.
-  - **Payload**: `{ "status": "active" | "paused" | "killed" }`
+  - **Payload**: `{ "status": "active" | "paused" | "killed" | "completed" }`
   - **Response**: `{ "message": "Project updated", "project": { ... } }`
 
 ---
+
+### 3.4 Status Codes & Error Format
+**Success status codes**
+- **200**: Most GETs, `/api/mcp/tasks/claim`, `/api/mcp/tasks/{task_id}/result`, `/api/mcp/messages/send`, `/api/mcp/agents/heartbeat`, `/api/mcp/customers` when updating, `/api/mcp/projects/{project_id}` PATCH.
+- **201**: `/api/mcp/projects` (create), `/api/mcp/tasks/generate`, `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/agents` (register), `/api/mcp/artifacts`, `/api/mcp/customers` when creating.
+
+**Error response format**
+```json
+{ "error": "string", "details": "string (optional)" }
+```
+
+**Common error codes**
+- **400**: Missing/invalid required fields, missing `Idempotency-Key` where required, invalid status value.
+- **401**: Missing or invalid `Authorization: Bearer <token>`.
+- **404**: Resource not found or unauthorized.
+- **405**: Method not allowed (wrong HTTP verb).
+- **500**: Internal server error.
+
+**Task state values**
+`queued`, `running`, `needs_review`, `failed`, `done`
+
+### 3.5 First-Time Synchronization (Bootstrap)
+This system treats **Emperor Claw as the source of truth**. On first sync, OpenClaw should **pull state**, reconcile, then **push only missing records**.
+
+**Recommended bootstrap steps**
+1. Set `EMPEROR_CLAW_API_TOKEN` and use base URL `https://emperorclaw.malecu.eu`.
+2. Verify auth with `GET /api/mcp/projects?limit=1`. If 401, token is wrong.
+3. Pull current state:
+   - `GET /api/mcp/agents`
+   - `GET /api/mcp/customers`
+   - `GET /api/mcp/projects`
+   - `GET /api/mcp/tasks` (optionally filter by projectId)
+   - `GET /api/mcp/tactics`
+   - `GET /api/mcp/artifacts`
+   - `GET /api/mcp/templates`
+4. Reconcile local vs remote:
+   - If a local **agent** is missing remotely, call `POST /api/mcp/agents` to register it.
+   - If a local **customer** is missing remotely, call `POST /api/mcp/customers`.
+   - If a local **project** is missing remotely, call `POST /api/mcp/projects`.
+   - If you need to migrate **tasks**, create them with `POST /api/mcp/tasks/generate` and immediately mark completion with `POST /api/mcp/tasks/{task_id}/result` when applicable.
+   - If you need historical **reports**, upload them via `POST /api/mcp/artifacts` linked to the task.
+5. Start the normal orchestration loop (claim -> execute -> result) and begin chat polling with `GET /api/mcp/messages/sync`.
+
+**Important constraints**
+- There is **no bulk import** endpoint. Use idempotent per-entity calls.
+- There is **no delete API**. Treat deletes as soft-delete by omission.
+- Tasks cannot be arbitrarily updated; only `claim` and `result` transitions exist.
+- Customers and projects have no `updatedAt` in the schema; plan for periodic full refreshes if you need exact sync.
 
 ## 4) Default General-Purpose Agents (Baseline Roster)
 
