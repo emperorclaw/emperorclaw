@@ -14,28 +14,45 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const since = searchParams.get('since'); // ISO Date string
 
-    try {
-        let conditions: any[] = [
-            eq(chatMessages.companyId, companyId),
-            eq(chatMessages.senderType, 'human') // OpenClaw only needs to pull human directives
-        ];
+    const sinceDate = since ? new Date(since) : null;
+    const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
 
-        if (since) {
-            const sinceDate = new Date(since);
-            if (!isNaN(sinceDate.getTime())) {
+    const MAX_POLL_TIME_MS = 25000;
+    const POLL_INTERVAL_MS = 1000;
+    const startTime = Date.now();
+
+    try {
+        while (Date.now() - startTime < MAX_POLL_TIME_MS) {
+            if (req.signal.aborted) break;
+
+            let conditions: any[] = [
+                eq(chatMessages.companyId, companyId),
+                eq(chatMessages.senderType, 'human') // OpenClaw only needs to pull human directives
+            ];
+
+            if (isValidSince) {
                 conditions.push(gt(chatMessages.createdAt, sinceDate));
             }
-        }
 
-        const messages = await db.select()
-            .from(chatMessages)
-            .where(and(...conditions))
-            .orderBy(desc(chatMessages.createdAt))
-            .limit(100);
+            const messages = await db.select()
+                .from(chatMessages)
+                .where(and(...conditions))
+                .orderBy(desc(chatMessages.createdAt))
+                .limit(100);
+
+            if (messages.length > 0) {
+                return NextResponse.json({
+                    ok: true,
+                    messages: messages.reverse() // Return chronological order
+                });
+            }
+
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+        }
 
         return NextResponse.json({
             ok: true,
-            messages: messages.reverse() // Return chronological order
+            messages: []
         });
     } catch (error) {
         console.error("Failed to sync messages:", error);

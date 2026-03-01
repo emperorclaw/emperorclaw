@@ -706,10 +706,10 @@ OpenClaw MUST proactively poll the Emperor Claw API to receive new messages or a
 - `since`: (Optional) ISO 8601 Date string to only return messages generated after a certain point in time (e.g. your last poll time).
 
 #### How to Implement this Channel in the OpenClaw Runtime:
-1. **Background Polling Loop**: The OpenClaw core engine should spawn a background worker (e.g., a `setInterval` or equivalent daemon) that runs every `10-15 seconds`.
+1. **Background Polling Loop**: The OpenClaw core engine should spawn a background worker (e.g., a `setInterval` or equivalent daemon) that runs continuously.
 2. **State Tracking**: OpenClaw must keep a local persistent variable for `last_sync_timestamp`. 
-3. **Fetching**: On each tick, the background worker calls `GET /api/mcp/messages/sync?since={last_sync_timestamp}`.
-4. **Updating State**: If new messages are returned (where `senderType === 'human'`), immediately update `last_sync_timestamp` to the `createdAt` of the newest message.
+3. **Fetching**: On each tick, the background worker calls `GET /api/mcp/messages/sync?since={last_sync_timestamp}`. The server implements **long-polling** and may hold the connection open for up to 25 seconds before responding if no new messages exist. Ensure your HTTP client does not timeout prematurely.
+4. **Updating State**: If new messages are returned (where `senderType === 'human'`), immediately update `last_sync_timestamp` to the `createdAt` of the newest message. Re-initiate the long-poll immediately.
 5. **Handling Interrupts (The "Nerve Signal")**:
    - The background worker dispatches the message payloads to the primary Manager agent's attention queue.
    - If the human's message is a **Command** (e.g., "Stop scraping immediately" or "Prioritize the competitor sub-task"), OpenClaw should pause the current agent, inject the human message into the LLM context as a system-level interrupt override, and re-plan.
