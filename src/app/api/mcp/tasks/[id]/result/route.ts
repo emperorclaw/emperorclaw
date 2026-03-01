@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { tasks, taskEvents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -25,6 +25,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!state || !agentId) {
         return NextResponse.json({ error: "state and agentId are required" }, { status: 400 });
     }
+
+    const internalAgentId = await resolveAgentId(companyId, agentId);
 
     const [existingTask] = await db.select().from(tasks).where(
         and(eq(tasks.id, taskId), eq(tasks.companyId, companyId))
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         taskId,
         eventType: `task_${nextState}`,
         actorType: 'agent',
-        actorId: agentId,
+        actorId: internalAgentId,
         payloadJson: { output: outputJson },
     });
 

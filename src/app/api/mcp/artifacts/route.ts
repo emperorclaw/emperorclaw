@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { artifacts, projects, tasks } from "@/db/schema";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit, resolveAgentId } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { createHash } from "crypto";
 
@@ -75,6 +75,11 @@ export async function POST(req: NextRequest) {
             agentId,
         } = body;
 
+        let internalAgentId = null;
+        if (agentId) {
+            internalAgentId = await resolveAgentId(companyId, agentId);
+        }
+
         if (!projectId || !taskId || !kind || !contentType) {
             return NextResponse.json({ error: "Missing required fields (projectId, taskId, kind, contentType)" }, { status: 400 });
         }
@@ -119,12 +124,12 @@ export async function POST(req: NextRequest) {
             sha256: computedSha256,
             sizeBytes: computedSizeBytes,
             createdByType: "agent",
-            createdById: agentId || null,
+            createdById: internalAgentId || null,
             visibility: visibility || "private",
             retentionPolicy: retentionPolicy || null,
         }).returning();
 
-        await logAudit(companyId, "agent", agentId || null, "create_artifact", "artifact", artifact.id, {
+        await logAudit(companyId, "agent", internalAgentId || null, "create_artifact", "artifact", artifact.id, {
             kind,
             contentType,
             taskId,
