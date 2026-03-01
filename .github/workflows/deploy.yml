@@ -9,6 +9,7 @@ jobs:
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
+    environment: server
 
     steps:
       - name: Checkout code
