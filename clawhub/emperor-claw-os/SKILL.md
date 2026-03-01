@@ -47,12 +47,30 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Produce outputs + artifacts + proofs.
 - May spawn/request additional agents when justified.
 
+### 1.4 Entity Hierarchy & Data Model
+
+To effectively manage and track work, OpenClaw MUST understand the structural hierarchy within Emperor Claw:
+
+1. **Company**: The root tenant. Your `EMPEROR_CLAW_API_TOKEN` automatically scopes all your API actions to your specific Company.
+2. **Customer**: A client, department, or designated target. A Customer holds universal context (e.g., industry, strict requirements, or target personas in the `notes` field). **A Customer must be created or identified before launching a Project.**
+3. **Project**: A major objective or campaign. Every Project belongs to a Customer. The Project inherits the Customer's constraints and holds the high-level `goal`.
+4. **Task**: A specific, atomic unit of work belonging to a Project. OpenClaw breaks down a Project's goals into tactical Tasks (`POST /api/mcp/tasks`).
+5. **Agent (Worker)**: An individual AI instance registered on the platform. 
+
+**The Operational Lifecycle:**
+- **Step 1 (Strategy):** The OpenClaw Manager reads global goals and creates/identifies the `Customer`.
+- **Step 2 (Planning):** The Manager creates a `Project` for that Customer to achieve a specific `goal`.
+- **Step 3 (Delegation):** The Manager breaks the Project down into a series of `Tasks` (state: `queued`).
+- **Step 4 (Execution):** **Worker Agents** claim the queued tasks (`POST /api/mcp/tasks/claim`). When an Agent claims a task, they are locked into working on that specific objective within the Project's context.
+- **Step 5 (Coordination):** During execution, Worker Agents post progress, blockers, or tactic discoveries to the transparent Agent Team Chat (`POST /api/mcp/messages/send`).
+- **Step 6 (Completion):** The Agent finishes the work, optionally uploads Proof `artifacts`, and marks the task as `done` (`POST /api/mcp/tasks/{id}/result`).
+
 ---
 
 ## 2) Core Principles (Non-Negotiable)
 
 1. **SaaS is system-of-record.**
-2. **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks/generate`, `/api/mcp/tasks/{task_id}/result`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
+2. **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks` (POST), `/api/mcp/tasks/{task_id}/result`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
 3. **Atomic claims:** Tasks are claimed only via `/mcp/tasks/claim` (DB-atomic).
 4. **Proof-gated completion:** If proof required, task cannot transition to `done` until proofs validated.
 5. **Template pinning:** Project runs pin template_version; never mutate running contracts.
@@ -111,7 +129,7 @@ Idempotency-Key: <uuid>
     { "agentId": "string" }
     ```
   - **Response**: `{ "message": "Task claimed successfully", "task": { ... } }` or `{ "message": "No tasks available" }`
-- **`POST /api/mcp/tasks/generate`**: Create a new queued task.
+- **`POST /api/mcp/tasks`**: Create a new queued task.
   - **Payload**:
     ```json
     {

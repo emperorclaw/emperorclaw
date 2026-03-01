@@ -75,11 +75,11 @@ async function run() {
 
         // 3. Generate Tasks
         console.log("📋 Generating sub-tasks...");
-        const task1Res = await mcpRequest('/api/mcp/tasks/generate', {
+        const task1Res = await mcpRequest('/api/mcp/tasks', {
             projectId,
             taskType: 'research', priority: 1, inputJson: { target: 'competitor_list' }
         });
-        const task2Res = await mcpRequest('/api/mcp/tasks/generate', {
+        const task2Res = await mcpRequest('/api/mcp/tasks', {
             projectId,
             taskType: 'scraping', priority: 0, inputJson: { target: 'pricing' }
         });
