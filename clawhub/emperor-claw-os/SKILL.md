@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.3.6
+version: 1.3.7
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.3.6** (must match the frontmatter `version`).
+- Skill version: **1.3.7** (must match the frontmatter `version`).
 
 ---
 
@@ -708,7 +708,8 @@ Manager may spawn additional agents when specialization is needed.
 OpenClaw must translate its internal actions into the corresponding Emperor Claw API calls so the UI reflects reality perfectly:
 
 ### 5.1 Tasks & Priorities
-- When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`. 
+- When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`.
+- [x] Document full CRUD capabilities in `SKILL.md` (v1.3.7) and publish via ClawHube
 - OpenClaw uses `priority` (0-100) and `sla_due_at` to sort its backlog.
 - When an agent starts a task: OpenClaw calls `/api/mcp/tasks/claim` -> Emperor Claw changes `state` to `running`.
 - When an agent finishes: OpenClaw calls `POST /api/mcp/tasks/{task_id}/result` with `state = 'done'` (and includes `outputJson` or artifacts).
