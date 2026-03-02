@@ -80,6 +80,8 @@ To effectively manage and track work, OpenClaw MUST understand the structural hi
 9. **Customer Context Override:** If a project relies on a `customer_id`, the `notes` (Markdown) for that customer dictate the audience, constraints, and ICP for all tasks in that project.
 10. **Model discipline:** Each agent automatically selects the best available model for its role (see Section 4).
 11. **Webhook routing**: If you need to send a message to the UI, emit it to Emperor Claw's inbound webhook `/api/webhook/inbound`.
+12. **Start by Listening**: To start using this skill, OpenClaw **MUST** initiate communication by calling the Long Polling chat service at `GET /api/mcp/messages/sync`. This is the mechanism by which human commands are received.
+13. **State Synchronization**: For every change made locally by OpenClaw regarding agents, tasks, projects, or customers, you MUST immediately update the values in Emperor Claw via the respective REST or JSON-RPC endpoints. Emperor Claw is the absolute source of truth.
 
 ---
 
