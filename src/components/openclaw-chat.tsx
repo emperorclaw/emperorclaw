@@ -23,15 +23,25 @@ export function OpenClawChat() {
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.messages && data.messages.length > 0) {
-                    setHistory((prev) => (lastSeenAt ? [...prev, ...data.messages] : data.messages));
-                    const latest = data.messages[data.messages.length - 1];
-                    setLastSeenAt(latest.createdAt);
-                    if (initialized && !isOpen) {
-                        const newAgentMessages = data.messages.filter((m: any) => m.senderType === 'agent').length;
-                        if (newAgentMessages > 0) {
-                            setUnreadCount((c) => c + newAgentMessages);
+                    setHistory((prev) => {
+                        const existingIds = new Set(prev.map(m => m.id));
+                        const newMessages = data.messages.filter((m: any) => !existingIds.has(m.id));
+
+                        if (newMessages.length > 0 && initialized && !isOpen) {
+                            const newAgentMessages = newMessages.filter((m: any) => m.senderType === 'agent').length;
+                            if (newAgentMessages > 0) {
+                                setUnreadCount((c) => c + newAgentMessages);
+                            }
                         }
-                    }
+
+                        return newMessages.length > 0 ? [...prev, ...newMessages] : prev;
+                    });
+
+                    const latest = data.messages[data.messages.length - 1];
+                    setLastSeenAt((prevLast) => {
+                        return new Date(latest.createdAt).getTime() > new Date(prevLast || 0).getTime()
+                            ? latest.createdAt : prevLast;
+                    });
                 }
                 if (!initialized) setInitialized(true);
             } catch (err) {
@@ -70,18 +80,26 @@ export function OpenClawChat() {
         e.preventDefault();
         if (!message.trim()) return;
 
-        const optimisticMsg = { id: Date.now(), senderType: 'human', text: message };
-        setHistory(prev => [...prev, optimisticMsg]);
         const textToSend = message;
         setMessage("");
 
         try {
-            await fetch('/api/chat', {
+            const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: textToSend })
             });
-            // The polling interval will grab the real message from DB shortly.
+            if (res.ok) {
+                const data = await res.json();
+                setHistory(prev => {
+                    if (prev.some(p => p.id === data.message.id)) return prev;
+                    return [...prev, data.message];
+                });
+                setLastSeenAt((prevLast) => {
+                    return new Date(data.message.createdAt).getTime() > new Date(prevLast || 0).getTime()
+                        ? data.message.createdAt : prevLast;
+                });
+            }
         } catch (e) {
             console.error("Failed to send message", e);
         }
