@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { CreateAgentDialog } from "./create-agent-dialog";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { tasks } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -12,13 +12,13 @@ export default async function AgentsPage() {
     const companyId = await getCompanyId();
     if (!companyId) redirect("/login");
 
-    const allAgents = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 
     // Calculate tasks completed per agent (mock logic with DB counts could be complex, we will just use a simple query)
     const tasksCompletedByAgent = await db.select({
         agentId: tasks.assignedAgentId,
         count: sql<number>`count(*)`
-    }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'done'))).groupBy(tasks.assignedAgentId);
+    }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'done'), isNull(tasks.deletedAt))).groupBy(tasks.assignedAgentId);
 
     const completedMap = tasksCompletedByAgent.reduce((acc, curr) => {
         if (curr.agentId) acc[curr.agentId] = curr.count;
