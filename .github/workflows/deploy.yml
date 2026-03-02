@@ -16,14 +16,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Sync source to VPS
-        uses: burnett01/rsync-deployments@7.0.1
-        with:
-          switches: -avz --delete --exclude='.env' --exclude='.git' --exclude='node_modules' --exclude='.next'
-          path: .
-          remote_path: /var/www/emperorclaw
-          remote_host: ${{ secrets.VPS_HOST }}
-          remote_user: root
-          remote_key: ${{ secrets.VPS_SSH_KEY }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $VPS_HOST >> ~/.ssh/known_hosts
+          rsync -avz --delete --exclude='.env' --exclude='.git' --exclude='node_modules' --exclude='.next' ./ root@$VPS_HOST:/var/www/emperorclaw
 
       - name: Build and restart on VPS
         uses: appleboy/ssh-action@v1.0.3
@@ -35,6 +36,7 @@ jobs:
           script: |
             cd /var/www/emperorclaw
             npm install --production=false
+            npm run db:push
             npm run build
             pm2 restart emperorclaw
             echo "✅ Deployed and restarted!"
