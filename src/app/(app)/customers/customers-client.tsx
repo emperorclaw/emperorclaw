@@ -5,8 +5,7 @@ import { Building2, Save, ExternalLink, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-export default function CustomersClient({ initialData }: { initialData: any[] }) {
-    const [customerData, setCustomerData] = useState(initialData);
+export default function CustomersClient({ initialData: customerData }: { initialData: any[] }) {
     const [isAddClientOpen, setIsAddClientOpen] = useState(false);
     const [newClientInstruction, setNewClientInstruction] = useState("");
     const [sending, setSending] = useState(false);

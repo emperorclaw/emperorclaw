@@ -8,16 +8,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
     const [comment, setComment] = useState("");
-    const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-    const [tasks, setTasks] = useState(initialTasks);
 
-    // Data auto-refresh polling (mock implementation)
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setLastRefreshed(new Date());
-        }, 15000); // Polling every 15s to emulate real-time sync
-        return () => clearInterval(interval);
-    }, []);
+    // Data auto-refresh is now handled globally
 
     const handleSendComment = async () => {
         if (!comment.trim() || !selectedTask) return;
@@ -37,7 +29,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
-    const filteredTasks = tasks.filter((t: any) => {
+    const filteredTasks = initialTasks.filter((t: any) => {
         if (projectFilter !== "All Projects" && t.projectId !== projectFilter) return false;
         if (agentFilter !== "All Agents" && t.assignedAgentId !== agentFilter) return false;
         return true;
@@ -100,11 +92,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 </div>
             </div>
 
-            <div className="text-xs text-zinc-600 flex justify-end px-2">
-                Auto-refreshed at {lastRefreshed.toLocaleTimeString()}
-            </div>
-
-            <div className="flex-1 overflow-x-auto pb-4">
+            <div className="flex-1 overflow-x-auto pb-4 mt-4">
                 <div className="flex space-x-6 min-w-max h-full">
                     <BoardColumn title="Queued" count={tasksByState.queued.length} color="text-zinc-400">
                         {tasksByState.queued.map((t: any) => (
