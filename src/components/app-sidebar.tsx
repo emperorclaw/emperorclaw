@@ -29,7 +29,7 @@ export function AppSidebar() {
         { name: "Customers", href: "/customers", icon: ShieldCheck },
         { name: "Incidents", href: "/incidents", icon: AlertTriangle },
         { name: "Artifacts", href: "/artifacts", icon: FileBox },
-        { name: "API Access", href: "/settings", icon: KeyRound },
+        { name: "Settings", href: "/settings", icon: KeyRound },
         { name: "Setup Guide", href: "/setup", icon: Terminal },
     ];
 
