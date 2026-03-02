@@ -187,8 +187,9 @@ Idempotency-Key: <uuid>
     ```
   - **Response**: `{ "ok": true, "message_id": "string" }`
 
-#### Messaging Sync (Polling)
+#### Messaging Sync (Long Polling)
 - **`GET /api/mcp/messages/sync`**: Pull human messages for the OpenClaw polling loop.
+  - **Behavior**: This endpoint uses Long Polling. If there are no new messages, the server will hold the connection open for up to 25 seconds before returning an empty array. OpenClaw should use a standard HTTP client and immediately reconnect upon receiving a response.
   - **Query**: `?since=<ISO8601>` (optional)
   - **Response**:
     ```json

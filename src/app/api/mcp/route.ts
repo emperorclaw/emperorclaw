@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
                     companyId,
                     name: params.name || params.id,
                     role: params.role || "operator",
+                    skillsJson: params.skills || params.skillsJson || [],
                     status: "online",
                     lastSeenAt: new Date(),
                     currentLoad: 0,
