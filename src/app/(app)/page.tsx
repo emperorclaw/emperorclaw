@@ -17,10 +17,10 @@ export default async function DashboardPage() {
   const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
   const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'queued'), isNull(tasks.deletedAt)));
   const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'review'), isNull(tasks.deletedAt)));
-  const [{ count: slaBreaches }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open')));
+  const [{ count: slaBreaches }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
 
   // 2. Incident List
-  const recentIncidents = await db.select().from(incidents).where(eq(incidents.companyId, companyId)).orderBy(incidents.createdAt).limit(3);
+  const recentIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(incidents.createdAt).limit(3);
 
   // 3. Workforce Health / Agent Load
   const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));

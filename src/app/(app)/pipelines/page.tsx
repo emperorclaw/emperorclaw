@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { playbooks, schedules, companyMembers, projects } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import PipelinesClient from "./pipelines-client";
 
@@ -35,7 +35,7 @@ export default async function PipelinesPage() {
         .orderBy(desc(schedules.createdAt));
 
     // Fetch Projects map for the human-readable table (just id to Name)
-    const projectList = await db.select({ id: projects.id, goal: projects.goal }).from(projects).where(eq(projects.companyId, companyId));
+    const projectList = await db.select({ id: projects.id, goal: projects.goal }).from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
 
     // Convert to dictionary
     const projectsMap: Record<string, string> = {};
