@@ -217,14 +217,14 @@ export default function PipelinesClient({
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-zinc-400">Draft JSON Instructions</label>
-                                <p className="text-xs text-zinc-500 mb-1">OpenClaw will formalize this into a structured schema upon receiving your command.</p>
+                                <label className="text-sm font-medium text-zinc-400">Instructions</label>
+                                <p className="text-xs text-zinc-500 mb-1">Describe the steps in natural language. OpenClaw will formalize this into a structured playbook schema automatically.</p>
                                 <textarea
                                     required
                                     value={pbInstructions}
                                     onChange={(e) => setPbInstructions(e.target.value)}
-                                    placeholder={'[{ "step": 1, "action": "search" }]'}
-                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-md p-2.5 text-sm font-mono text-zinc-300 focus:outline-none focus:ring-1 focus:ring-amber-500 min-h-[140px] resize-y"
+                                    placeholder={'1. Go to this URL\n2. Extract the emails\n3. Save to a CSV'}
+                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-md p-2.5 text-sm font-sans text-zinc-300 focus:outline-none focus:ring-1 focus:ring-amber-500 min-h-[140px] resize-y"
                                 />
                             </div>
 
