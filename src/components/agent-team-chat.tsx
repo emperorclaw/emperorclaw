@@ -25,9 +25,19 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.messages && data.messages.length > 0) {
-                    setMessages((prev) => (lastSeenAt ? [...prev, ...data.messages] : data.messages));
+                    setMessages((prev) => {
+                        const existingIds = new Set(prev.map(m => m.id));
+                        const newMessages = data.messages.filter((m: any) => !existingIds.has(m.id));
+                        if (newMessages.length === 0) return prev;
+                        return [...prev, ...newMessages];
+                    });
                     const latest = data.messages[data.messages.length - 1];
-                    setLastSeenAt(latest.createdAt);
+                    setLastSeenAt((prevLast) => {
+                        // only update lastSeenAt if it's newer to avoid backwards drift
+                        return new Date(latest.createdAt).getTime() > new Date(prevLast || 0).getTime()
+                            ? latest.createdAt
+                            : prevLast;
+                    });
                     if (!isAtBottom) {
                         setUnreadCount((c) => c + data.messages.length);
                     }
