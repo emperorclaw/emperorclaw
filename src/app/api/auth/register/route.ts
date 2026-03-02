@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { users, companies, companyMembers } from "@/db/schema";
 import { hash } from "argon2";
 import { eq } from "drizzle-orm";
+import { sendEmail, getWelcomeEmailHtml } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
     try {
@@ -44,6 +45,13 @@ export async function POST(req: NextRequest) {
 
             return { user: { id: newUser.id, email: newUser.email }, company: newCompany };
         });
+
+        // Fire-and-forget the welcome email
+        sendEmail({
+            to: email,
+            subject: "Welcome to Emperor Claw",
+            html: getWelcomeEmailHtml(email)
+        }).catch(err => console.error("Failed to send welcome email in background", err));
 
         return NextResponse.json({ message: "Account created successfully", data: result }, { status: 201 });
 
