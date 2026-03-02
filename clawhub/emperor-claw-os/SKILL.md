@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.3.4
+version: 1.3.5
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.3.4** (must match the frontmatter `version`).
+- Skill version: **1.3.5** (must match the frontmatter `version`).
 
 ---
 
@@ -162,6 +162,8 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/tasks`**: Fetch tasks.
   - **Query**: `?state=<string>&projectId=<uuid>&limit=<number>` (all optional)
   - **Response**: `{ "tasks": [ ... ] }`
+- **`DELETE /api/mcp/tasks/{task_id}`**: Soft-delete a task so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Task archived successfully", "task": { ... } }`
 
 #### Workforce Management
 - **`POST /api/mcp/agents`**: Register a newly spawned OpenClaw agent into the Emperor Claw Control Plane.
@@ -315,6 +317,8 @@ Idempotency-Key: <uuid>
 - **`PATCH /api/mcp/projects/{project_id}`**: Pause, kill, or update a project based on strategic evaluation.
   - **Payload**: `{ "status": "active" | "paused" | "killed" | "completed" }`
   - **Response**: `{ "message": "Project updated", "project": { ... } }`
+- **`DELETE /api/mcp/projects/{project_id}`**: Soft-delete a project so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Project soft-deleted successfully", "project": { ... } }`
 
 ---
 
@@ -362,7 +366,7 @@ This system treats **Emperor Claw as the source of truth**. On first sync, OpenC
 
 **Important constraints**
 - There is **no bulk import** endpoint. Use idempotent per-entity calls.
-- There is **no delete API**. Treat deletes as soft-delete by omission.
+- Use **DELETE** endpoints to soft-delete tasks and projects to hide them from the UI.
 - Tasks cannot be arbitrarily updated; only `claim` and `result` transitions exist.
 - Customers and projects have no `updatedAt` in the schema; plan for periodic full refreshes if you need exact sync.
 

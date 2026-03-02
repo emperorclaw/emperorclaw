@@ -57,3 +57,43 @@ export async function PATCH(
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+
+export async function DELETE(
+    req: NextRequest,
+    { params }: { params: Promise<{ projectId: string }> }
+) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { projectId } = await params;
+    const endpoint = `/mcp/projects/${projectId}`;
+
+    const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
+    if (error) return NextResponse.json({ error }, { status });
+    if (cachedResponse) return NextResponse.json(cachedResponse);
+
+    try {
+        const [existing] = await db.select().from(projects).where(
+            and(eq(projects.id, projectId), eq(projects.companyId, companyId), isNull(projects.deletedAt))
+        ).limit(1);
+
+        if (!existing) {
+            return NextResponse.json({ error: "Project not found or already deleted." }, { status: 404 });
+        }
+
+        const [deleted] = await db.update(projects).set({
+            deletedAt: new Date(),
+        }).where(eq(projects.id, projectId)).returning();
+
+        const res = { message: `Project ${projectId} soft-deleted successfully`, project: deleted };
+        await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
+        return NextResponse.json(res, { status: 200 });
+
+    } catch (err) {
+        console.error(`Error deleting project ${projectId}:`, err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
