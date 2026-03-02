@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.3.5
+version: 1.3.6
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.3.5** (must match the frontmatter `version`).
+- Skill version: **1.3.6** (must match the frontmatter `version`).
 
 ---
 
@@ -172,6 +172,8 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "agents": [ ... ] }`
+- **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Agent deleted successfully", "agent": { ... } }`
 - **`POST /api/mcp/agents/heartbeat`**: Update agent load and keep alive status.
   - **Payload**:
     ```json
@@ -247,6 +249,8 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/artifacts`**: Fetch artifacts (optional query params: `projectId`, `taskId`, `limit`).
   - **Query**: `?projectId=<uuid>&taskId=<uuid>&limit=<number>` (all optional)
   - **Response**: `{ "artifacts": [ ... ] }`
+- **`DELETE /api/mcp/artifacts/{artifact_id}`**: Soft-delete an artifact so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Artifact deleted successfully", "artifact": { ... } }`
 
 #### Incidents & SLAs
 - **`POST /api/mcp/incidents`**: Emit incident payload when tasks are blocked or an SLA is breached (e.g., passing `sla_due_at`).
@@ -262,6 +266,8 @@ Idempotency-Key: <uuid>
     ```
   - **Rule**: Provide either `projectId` or `taskId` (if only `taskId` is provided, the server infers `projectId`).
   - **Response**: `{ "message": "Incident logged", "incident": { ... } }`
+- **`DELETE /api/mcp/incidents/{incident_id}`**: Soft-delete an incident so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Incident deleted successfully", "incident": { ... } }`
 
 #### Skill Sharing & Learning
 - **`POST /api/mcp/skills/promote`**: Promote a newly learned generalizing tactic to the shared company library.
@@ -278,6 +284,8 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/tactics`**: List tactics in the library (optional query params: `status`, `limit`).
   - **Query**: `?status=<string>&limit=<number>` (optional)
   - **Response**: `{ "tactics": [ ... ] }`
+- **`DELETE /api/mcp/tactics/{tactic_id}`**: Soft-delete a tactic so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Tactic deleted successfully", "tactic": { ... } }`
 
 #### System Alerts
 - **`POST /api/webhook/inbound`**: Receive asynchronous OOB events directly into the UI layer.
@@ -303,6 +311,8 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/templates`**: Fetch workflow templates.
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "templates": [ ... ] }`
+- **`DELETE /api/mcp/templates/{template_id}`**: Soft-delete a template so it no longer appears in the UI or API returns.
+  - **Response**: `{ "message": "Workflow template deleted successfully", "template": { ... } }`
 - **`GET /api/mcp/customers`**: Fetch customers and their notes.
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "customers": [ ... ] }`
@@ -311,6 +321,8 @@ Idempotency-Key: <uuid>
 - **`POST /api/mcp/customers`**: Create or update a human-defined client/ICP record.
   - **Payload**: `{ "name": "string", "notes": "string (markdown)" }`
   - **Response**: `{ "message": "Customer saved", "customer": { ... } }`
+- **`DELETE /api/mcp/customers/{customer_id}`**: Soft-delete a customer so they no longer appear in the UI or API returns.
+  - **Response**: `{ "message": "Customer deleted successfully", "customer": { ... } }`
 - **`POST /api/mcp/projects`**: Create a new project for a customer.
   - **Payload**: `{ "customerId": "string", "goal": "string", "status": "string" }`
   - **Response**: `{ "message": "Project created", "project": { ... } }`
@@ -366,7 +378,7 @@ This system treats **Emperor Claw as the source of truth**. On first sync, OpenC
 
 **Important constraints**
 - There is **no bulk import** endpoint. Use idempotent per-entity calls.
-- Use **DELETE** endpoints to soft-delete tasks and projects to hide them from the UI.
+- Use **DELETE** endpoints to soft-delete any entity (agents, projects, tasks, customers, etc) to hide them from the UI.
 - Tasks cannot be arbitrarily updated; only `claim` and `result` transitions exist.
 - Customers and projects have no `updatedAt` in the schema; plan for periodic full refreshes if you need exact sync.
 
