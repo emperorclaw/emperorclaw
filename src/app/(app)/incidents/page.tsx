@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { incidents } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { IncidentRow } from "./incident-row";
@@ -12,7 +12,7 @@ export default async function IncidentsPage() {
     if (!companyId) redirect("/login");
 
     const allIncidents = await db.select().from(incidents)
-        .where(eq(incidents.companyId, companyId))
+        .where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt)))
         .orderBy(desc(incidents.createdAt));
 
     return (

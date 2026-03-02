@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { artifacts, projects, tasks, companyMembers } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import ArtifactsClient from "./artifacts-client";
 
@@ -37,7 +37,7 @@ export default async function ArtifactsPage() {
     }).from(artifacts)
         .leftJoin(projects, eq(artifacts.projectId, projects.id))
         .leftJoin(tasks, eq(artifacts.taskId, tasks.id))
-        .where(eq(artifacts.companyId, companyId))
+        .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)))
         .orderBy(desc(artifacts.createdAt));
 
     return <ArtifactsClient initialArtifacts={initialArtifacts} />;
