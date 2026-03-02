@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { companyMembers, companyTokens } from "@/db/schema";
+import { companyMembers, companyTokens, companies } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import SettingsClient from "./settings-client";
@@ -22,9 +22,14 @@ export default async function SettingsPage() {
         return <div className="p-8 text-zinc-400">Company not found.</div>;
     }
 
+    const [companyParams] = await db.select({ contextNotes: companies.contextNotes })
+        .from(companies)
+        .where(eq(companies.id, membership.companyId))
+        .limit(1);
+
     const tokens = await db.select().from(companyTokens)
         .where(eq(companyTokens.companyId, membership.companyId))
         .orderBy(desc(companyTokens.createdAt));
 
-    return <SettingsClient initialTokens={tokens} />;
+    return <SettingsClient initialTokens={tokens} initialContextNotes={companyParams?.contextNotes || ""} />;
 }
