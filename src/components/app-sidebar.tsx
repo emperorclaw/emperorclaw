@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal, LogOut, User, Repeat } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal, LogOut, User, Repeat, FileBox } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -28,6 +28,7 @@ export function AppSidebar() {
         { name: "Agents", href: "/agents", icon: Bot },
         { name: "Customers", href: "/customers", icon: ShieldCheck },
         { name: "Incidents", href: "/incidents", icon: AlertTriangle },
+        { name: "Artifacts", href: "/artifacts", icon: FileBox },
         { name: "API Access", href: "/settings", icon: KeyRound },
         { name: "Setup Guide", href: "/setup", icon: Terminal },
     ];

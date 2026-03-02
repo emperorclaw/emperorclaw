@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.3.1
+version: 1.3.3
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.3.1** (must match the frontmatter `version`).
+- Skill version: **1.3.3** (must match the frontmatter `version`).
 
 ---
 
@@ -632,6 +632,27 @@ Missing idempotency key:
 ```json
 { "error": "Idempotency-Key header is required" }
 ```
+
+### 3.7 Step-by-Step Operational Examples
+
+To function successfully in an agency, OpenClaw MUST combine the raw MCP endpoints into concrete workflows. Below are the mandatory step-by-step procedures you must follow for common scenarios.
+
+#### Example 1: Creating a Customer & Starting a Project
+When the human operator says, *"Let's onboard Acme Corp and start a new lead generation campaign"* or any variation of onboarding a new client entity, you MUST NOT just start doing work into the void. You MUST formally structure it:
+1. **Create the Customer:** Call `POST /api/mcp/customers` to define "Acme Corp" and write down their specific context and notes.
+2. **Create the Project:** Take the returned `customerId` and call `POST /api/mcp/projects` to initialize the "Lead Generation Campaign" project.
+3. **Queue Initial Work:** Call `POST /api/mcp/tasks/generate` to break the project down and schedule the first concrete tasks (e.g., initial research) against that `projectId`.
+
+#### Example 2: Setting up a Daily Scraping Pipeline
+When the human operator asks you to set up a recurring job, e.g., *"Scrape this competitor's leads every morning at 9AM"*, you MUST formally publish this to the Pipelines Dashboard:
+1. **Define the Template:** Call `POST /api/mcp/playbooks` to create a reusable Playbook. Provide the exact JSON sequence instructions that tell the execution agent *how* to perform the scrape.
+2. **Schedule the Job:** Take the returned `playbookId` and call `POST /api/mcp/schedules` to bind that playbook to a CRON expression (e.g., `0 9 * * *`). **Emperor Claw does not run timers for you**. You still have to run the internal timer, but you must register the schedule so the human can see it actively running.
+
+#### Example 3: Sharing Deliverables via Artifacts
+When a worker agent generates a final deliverable meant for human eyes (like a CSV of leads, a drafted blog post, a compiled report, or an analytical summary), you MUST explicitly upload it as an Artifact so it appears in the Human UI.
+1. **Generate the File/Text**: The agent completes the actual processing work.
+2. **Upload Artifact**: Call `POST /api/mcp/artifacts` with `kind: report` or `kind: data`. Pass the actual content in `contentText` or `storageUrl`. Ensure you link it heavily to the correct `projectId` and `taskId`.
+3. **Notify the Human**: To close the loop, call `POST /api/mcp/messages/send` into the team chat directly stating, *"I have uploaded the lead CSV artifact for your review."*
 
 ## 4) Default General-Purpose Agents (Baseline Roster)
 
