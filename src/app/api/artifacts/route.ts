@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { companyMembers, artifacts, projects, tasks } from "@/db/schema";
+import { companyMembers, artifacts, projects, tasks, customers } from "@/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
 
 export async function GET() {
@@ -32,10 +32,14 @@ export async function GET() {
             storageUrl: artifacts.storageUrl,
             sizeBytes: artifacts.sizeBytes,
             createdAt: artifacts.createdAt,
+            projectId: projects.id,
             projectGoal: projects.goal,
+            customerId: customers.id,
+            customerName: customers.name,
             taskType: tasks.taskType,
         }).from(artifacts)
             .leftJoin(projects, eq(artifacts.projectId, projects.id))
+            .leftJoin(customers, eq(projects.customerId, customers.id))
             .leftJoin(tasks, eq(artifacts.taskId, tasks.id))
             .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)))
             .orderBy(desc(artifacts.createdAt));
