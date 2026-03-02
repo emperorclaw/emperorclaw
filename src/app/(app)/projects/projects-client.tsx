@@ -160,6 +160,15 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <span className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-400">Assigned: {getAgentName(selectedTask.assignedAgentId)}</span>
                         </div>
 
+                        {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && (
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-medium text-zinc-300">Task Instructions</h3>
+                                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 font-mono text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed shadow-inner">
+                                    {selectedTask.inputJson.description || selectedTask.inputJson.prompt || JSON.stringify(selectedTask.inputJson, null, 2)}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-3">
                             <h3 className="text-sm font-medium text-zinc-300">Artifacts & Reports</h3>
                             <div className="space-y-3">

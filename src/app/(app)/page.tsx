@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { db } from "@/db";
 import { agents, tasks, incidents, chatMessages } from "@/db/schema";
-import { eq, inArray, and, sql, desc } from "drizzle-orm";
+import { eq, inArray, and, sql, desc, isNull } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -14,17 +14,17 @@ export default async function DashboardPage() {
   if (!companyId) redirect("/login");
 
   // 1. Top Level KPIs
-  const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(eq(agents.companyId, companyId));
-  const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'queued')));
-  const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'review')));
+  const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+  const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'queued'), isNull(tasks.deletedAt)));
+  const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, 'review'), isNull(tasks.deletedAt)));
   const [{ count: slaBreaches }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open')));
 
   // 2. Incident List
   const recentIncidents = await db.select().from(incidents).where(eq(incidents.companyId, companyId)).orderBy(incidents.createdAt).limit(3);
 
   // 3. Workforce Health / Agent Load
-  const allAgents = await db.select().from(agents).where(eq(agents.companyId, companyId));
-  const activeTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, ['in_progress', 'review'])));
+  const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+  const activeTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, ['in_progress', 'review']), isNull(tasks.deletedAt)));
 
   const agentWorkload = allAgents.map(agent => {
     const assignedTasks = activeTasks.filter(t => t.assignedAgentId === agent.id && t.state === 'in_progress');

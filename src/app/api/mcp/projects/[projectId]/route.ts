@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 export async function PATCH(
     req: NextRequest,
@@ -35,7 +35,7 @@ export async function PATCH(
         }
 
         const [existing] = await db.select().from(projects).where(
-            and(eq(projects.id, projectId), eq(projects.companyId, companyId))
+            and(eq(projects.id, projectId), eq(projects.companyId, companyId), isNull(projects.deletedAt))
         ).limit(1);
 
         if (!existing) {
