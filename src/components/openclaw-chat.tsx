@@ -8,6 +8,7 @@ export function OpenClawChat() {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [history, setHistory] = useState<any[]>([]);
+    const [agents, setAgents] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
     const [initialized, setInitialized] = useState(false);
@@ -16,7 +17,35 @@ export function OpenClawChat() {
 
     // Fetch history and poll
     useEffect(() => {
-        const fetchHistory = async () => {
+        const initFetch = async () => {
+            try {
+                // Fetch chat history
+                const res = await fetch('/api/chat');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.messages && data.messages.length > 0) {
+                        setHistory(data.messages);
+                        setLastSeenAt(data.messages[data.messages.length - 1].createdAt);
+                    }
+                }
+
+                // Fetch agents map for mapping IDs to names
+                const agentRes = await fetch('/api/agents');
+                if (agentRes.ok) {
+                    const agentData = await agentRes.json();
+                    if (agentData.agents) {
+                        setAgents(agentData.agents);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch initial data", err);
+            } finally {
+                setInitialized(true);
+            }
+        };
+
+        const pollHistory = async () => {
+            if (!initialized) return; // Only poll after initial fetch
             try {
                 const url = lastSeenAt ? `/api/chat?since=${encodeURIComponent(lastSeenAt)}` : '/api/chat';
                 const res = await fetch(url);
@@ -27,7 +56,7 @@ export function OpenClawChat() {
                         const existingIds = new Set(prev.map(m => m.id));
                         const newMessages = data.messages.filter((m: any) => !existingIds.has(m.id));
 
-                        if (newMessages.length > 0 && initialized && !isOpen) {
+                        if (newMessages.length > 0 && !isOpen) {
                             const newAgentMessages = newMessages.filter((m: any) => m.senderType === 'agent').length;
                             if (newAgentMessages > 0) {
                                 setUnreadCount((c) => c + newAgentMessages);
@@ -43,14 +72,16 @@ export function OpenClawChat() {
                             ? latest.createdAt : prevLast;
                     });
                 }
-                if (!initialized) setInitialized(true);
             } catch (err) {
                 console.error("Failed to load chat history", err);
             }
         };
-        fetchHistory();
 
-        const interval = setInterval(fetchHistory, 5000); // Poll every 5 seconds
+        if (!initialized) {
+            initFetch();
+        }
+
+        const interval = setInterval(pollHistory, 5000); // Poll every 5 seconds
         return () => clearInterval(interval);
     }, [isOpen, lastSeenAt, initialized]);
 
@@ -100,9 +131,15 @@ export function OpenClawChat() {
                         ? data.message.createdAt : prevLast;
                 });
             }
-        } catch (e) {
-            console.error("Failed to send message", e);
+        } catch (err) {
+            console.error("Failed to send message", err);
         }
+    };
+
+    const getAgentName = (id: string | null) => {
+        if (!id) return "OpenClaw System";
+        const agent = agents.find(a => a.id === id);
+        return agent ? agent.name : "Unknown Agent";
     };
 
     return (
@@ -158,7 +195,13 @@ export function OpenClawChat() {
                                             : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
                                     )}
                                 >
-                                    {msg.text}
+                                    <div className={cn(
+                                        "text-[10px] font-medium mb-1 uppercase tracking-wider",
+                                        msg.senderType === 'human' ? "text-indigo-200" : "text-zinc-500"
+                                    )}>
+                                        {msg.senderType === 'human' ? 'You' : getAgentName(msg.fromUserId)}
+                                    </div>
+                                    <div className="whitespace-pre-wrap">{msg.text}</div>
                                 </div>
                             </div>
                         ))}
