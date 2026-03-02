@@ -84,6 +84,7 @@ export const playbooks = pgTable("playbooks", {
     instructionsJson: jsonb("instructions_json").default('[]'),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
 });
 
 export const schedules = pgTable("schedules", {
@@ -99,6 +100,7 @@ export const schedules = pgTable("schedules", {
     status: text("status").default('active').notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
 });
 
 export const projects = pgTable("projects", {

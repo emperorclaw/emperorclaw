@@ -25,11 +25,11 @@ export async function GET() {
         const companyId = membership.companyId;
 
         const playbookList = await db.select().from(playbooks)
-            .where(eq(playbooks.companyId, companyId))
+            .where(and(eq(playbooks.companyId, companyId), isNull(playbooks.deletedAt)))
             .orderBy(desc(playbooks.createdAt));
 
         const scheduleList = await db.select().from(schedules)
-            .where(eq(schedules.companyId, companyId))
+            .where(and(eq(schedules.companyId, companyId), isNull(schedules.deletedAt)))
             .orderBy(desc(schedules.createdAt));
 
         return NextResponse.json({
