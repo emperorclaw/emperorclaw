@@ -708,8 +708,7 @@ Manager may spawn additional agents when specialization is needed.
 OpenClaw must translate its internal actions into the corresponding Emperor Claw API calls so the UI reflects reality perfectly:
 
 ### 5.1 Tasks & Priorities
-- When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`.
-- [x] Document full CRUD capabilities in `SKILL.md` (v1.3.7) and publish via ClawHube
+- When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`. 
 - OpenClaw uses `priority` (0-100) and `sla_due_at` to sort its backlog.
 - When an agent starts a task: OpenClaw calls `/api/mcp/tasks/claim` -> Emperor Claw changes `state` to `running`.
 - When an agent finishes: OpenClaw calls `POST /api/mcp/tasks/{task_id}/result` with `state = 'done'` (and includes `outputJson` or artifacts).
