@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Determine actual next state based on needs_review rules
     let nextState = state;
     if (state === 'done' && existingTask.proofRequired && existingTask.humanApprovalRequired) {
-        nextState = 'needs_review';
+        nextState = 'review';
     }
 
     const [updatedTask] = await db.update(tasks).set({

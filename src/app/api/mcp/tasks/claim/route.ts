@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const result = await db.execute(sql`
     UPDATE tasks
     SET 
-      state = 'running', 
+      state = 'in_progress', 
       assigned_agent_id = ${internalAgentId},
       lease_owner = ${agentId},
       lease_until = NOW() + INTERVAL '2 minutes',
