@@ -15,17 +15,19 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         // Adhering to OpenClaw Custom Channel Adapter Spec v1
-        const { chat_id, text, thread_id, reply_to_message_id, attachments } = body;
+        const { chat_id, text, thread_id, reply_to_message_id, attachments, from_user_id, agentId } = body;
 
         if (!chat_id || !text) {
             return NextResponse.json({ error: "chat_id and text required" }, { status: 400 });
         }
 
+        const senderId = from_user_id || agentId || 'openclaw';
+
         const [newMessage] = await db.insert(chatMessages).values({
             companyId,
             threadId: thread_id || chat_id,
             senderType: 'agent',
-            fromUserId: 'openclaw', // Agent sending the message
+            fromUserId: senderId, // Actual Agent ID
             text,
         }).returning();
 

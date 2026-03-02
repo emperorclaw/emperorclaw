@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.3.3
+version: 1.3.4
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.3.3** (must match the frontmatter `version`).
+- Skill version: **1.3.4** (must match the frontmatter `version`).
 
 ---
 
@@ -575,7 +575,7 @@ Response:
 Request:
 ```json
 POST /api/mcp/messages/send
-{ "chat_id": "default", "text": "Status update" }
+{ "chat_id": "default", "text": "Status update", "from_user_id": "your-agent-id-uuid" }
 ```
 Response:
 ```json
