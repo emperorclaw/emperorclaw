@@ -22,6 +22,7 @@ export const companies = pgTable("companies", {
     name: text("name").notNull(),
     createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
     retentionPolicyJson: jsonb("retention_policy_json").default('{}'),
+    contextNotes: text("context_notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
@@ -64,6 +65,32 @@ export const workflowTemplates = pgTable("workflow_templates", {
     defaultsJson: jsonb("defaults_json"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
+});
+
+export const playbooks = pgTable("playbooks", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    name: text("name").notNull(),
+    description: text("description"),
+    requiredSkillsJson: jsonb("required_skills_json").default('[]'),
+    instructionsJson: jsonb("instructions_json").default('[]'),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const schedules = pgTable("schedules", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    name: text("name").notNull(),
+    playbookId: uuid("playbook_id").references(() => playbooks.id, { onDelete: 'set null' }),
+    cronExpression: text("cron_expression").notNull(),
+    targetProjectId: uuid("target_project_id").references(() => projects.id, { onDelete: 'set null' }),
+    targetCustomerId: uuid("target_customer_id").references(() => customers.id, { onDelete: 'set null' }),
+    nextRunAt: timestamp("next_run_at"),
+    agentPattern: text("agent_pattern"),
+    status: text("status").default('active').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const projects = pgTable("projects", {

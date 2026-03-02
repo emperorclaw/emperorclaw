@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
-import { chatMessages } from "@/db/schema";
+import { chatMessages, companies } from "@/db/schema";
 import { eq, and, gt, desc } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
@@ -41,8 +41,11 @@ export async function GET(req: NextRequest) {
                 .limit(100);
 
             if (messages.length > 0) {
+                const [comp] = await db.select({ contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId));
+
                 return NextResponse.json({
                     ok: true,
+                    contextNotes: comp?.contextNotes || null,
                     messages: messages.reverse() // Return chronological order
                 });
             }

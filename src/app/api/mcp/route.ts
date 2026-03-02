@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
-import { agents, projects, tasks, customers } from "@/db/schema";
+import { agents, projects, tasks, customers, companies } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
                 const [projectsCount] = await db.select({ value: count() }).from(projects).where(eq(projects.companyId, companyId));
                 const [tasksCount] = await db.select({ value: count() }).from(tasks).where(eq(tasks.companyId, companyId));
 
+                const [comp] = await db.select({ contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId));
+
                 return NextResponse.json({
                     jsonrpc: "2.0",
                     id,
@@ -30,7 +32,8 @@ export async function POST(req: NextRequest) {
                         agents: agentsCount.value,
                         projects: projectsCount.value,
                         tasks: tasksCount.value,
-                        status: "online"
+                        status: "online",
+                        contextNotes: comp?.contextNotes || null
                     }
                 });
             }

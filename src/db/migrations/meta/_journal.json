@@ -15,6 +15,13 @@
       "when": 1772320618157,
       "tag": "0001_fancy_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772445656824,
+      "tag": "0002_dazzling_sumo",
+      "breakpoints": true
     }
   ]
 }

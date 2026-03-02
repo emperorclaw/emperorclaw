@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { tasks, taskEvents } from "@/db/schema";
+import { tasks, taskEvents, projects } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -60,6 +60,15 @@ export async function POST(req: NextRequest) {
 
     if (!projectId || !taskType) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
+    }
+
+    // Integrity Guard: Verify Project exists
+    const [existingProject] = await db.select()
+        .from(projects)
+        .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)));
+
+    if (!existingProject) {
+        return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
     }
 
     try {
