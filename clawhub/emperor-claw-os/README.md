@@ -31,8 +31,7 @@ https://emperorclaw.malecu.eu
 
 ## Publish To ClawHub (CLI)
 ```bash
-npm i -g clawhub
-clawhub publish . --slug emperor-claw-os --name "Emperor Claw OS" --version 1.0.0 --tags latest
+npx clawhub publish . --slug emperor-claw-os --name "Emperor Claw OS" --version 1.4.0 --tags latest
 ```
 
 ## Notes

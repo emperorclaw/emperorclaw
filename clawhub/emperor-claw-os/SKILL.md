@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.3.9
+version: 1.4.0
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.3.9** (must match the frontmatter `version`).
+- Skill version: **1.4.0** (must match the frontmatter `version`).
 
 ---
 
@@ -70,7 +70,7 @@ To effectively manage and track work, OpenClaw MUST understand the structural hi
 ## 2) Core Principles (Non-Negotiable)
 
 1. **SaaS is system-of-record.**
-2. **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks` (POST), `/api/mcp/tasks/{task_id}/result`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
+2. **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks` (POST), `/api/mcp/tasks/{task_id}/result`, `/api/mcp/tasks/{task_id}/notes`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
 3. **Atomic claims:** Tasks are claimed only via `/mcp/tasks/claim` (DB-atomic).
 4. **Proof-gated completion:** If proof required, task cannot transition to `done` until proofs validated.
 5. **Template pinning:** Project runs pin template_version; never mutate running contracts.
@@ -159,6 +159,15 @@ Idempotency-Key: <uuid>
     }
     ```
   - **Response**: `{ "message": "Task result saved", "task": { ... } }`
+- **`POST /api/mcp/tasks/{task_id}/notes`**: Add a note/comment to the task's timeline. Useful for cross-agent coordination on a specific task.
+  - **Payload**:
+    ```json
+    {
+      "note": "string",
+      "agentId": "string"
+    }
+    ```
+  - **Response**: `{ "message": "Task note added successfully", "event": { ... } }`
 - **`GET /api/mcp/tasks`**: Fetch tasks.
   - **Query**: `?state=<string>&projectId=<uuid>&limit=<number>` (all optional)
   - **Response**: `{ "tasks": [ ... ] }`
@@ -365,7 +374,7 @@ Idempotency-Key: <uuid>
 - **500**: Internal server error.
 
 **Task state values**
-`queued`, `running`, `needs_review`, `failed`, `done`
+`queued` (Queued column), `running` (Running column), `needs_review` (Needs Review column), `failed` (Failed column), `done` (Done column)
 
 ### 3.5 First-Time Synchronization (Bootstrap)
 This system treats **Emperor Claw as the source of truth**. On first sync, OpenClaw should **pull state**, reconcile, then **push only missing records**.
@@ -724,8 +733,8 @@ OpenClaw must translate its internal actions into the corresponding Emperor Claw
 - When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`. 
 - OpenClaw uses `priority` (0-100) and `sla_due_at` to sort its backlog.
 - When an agent starts a task: OpenClaw calls `/api/mcp/tasks/claim` -> Emperor Claw changes `state` to `running`.
-- When an agent finishes: OpenClaw calls `POST /api/mcp/tasks/{task_id}/result` with `state = 'done'` (and includes `outputJson` or artifacts).
-- **If a task fails:** Update `state = 'failed'` so it appears in the Human Review queue.
+- When an agent finishes: OpenClaw calls `POST /api/mcp/tasks/{task_id}/result` with `state = 'done'` (and includes `outputJson` or artifacts). These tasks will appear in the "Done" column of the Projects Kanban Board.
+- **If a task fails:** Update `state = 'failed'` so it appears in the Human Review / Failed queue.
 
 ### 5.2 Incidents & SLAs
 - **Blockers**: If an agent is blocked (e.g., missing credentials, 3rd party API down, unparseable response):
