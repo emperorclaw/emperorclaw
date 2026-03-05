@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
     const since = searchParams.get('since'); // ISO Date string
+    const mode = (searchParams.get('mode') || 'human_only').toLowerCase(); // human_only | all
+    const senderTypeFilter = searchParams.get('senderType'); // optional explicit sender type
 
     const sinceDate = since ? new Date(since) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
@@ -27,8 +29,14 @@ export async function GET(req: NextRequest) {
 
             let conditions: any[] = [
                 eq(chatMessages.companyId, companyId),
-                eq(chatMessages.senderType, 'human') // OpenClaw only needs to pull human directives
             ];
+
+            if (senderTypeFilter) {
+                conditions.push(eq(chatMessages.senderType, senderTypeFilter));
+            } else if (mode === 'human_only') {
+                // Default behavior keeps existing OpenClaw directive semantics.
+                conditions.push(eq(chatMessages.senderType, 'human'));
+            }
 
             if (isValidSince) {
                 conditions.push(gt(chatMessages.createdAt, sinceDate));
@@ -45,6 +53,7 @@ export async function GET(req: NextRequest) {
 
                 return NextResponse.json({
                     ok: true,
+                    mode,
                     contextNotes: comp?.contextNotes || null,
                     messages: messages.reverse() // Return chronological order
                 });
@@ -55,6 +64,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             ok: true,
+            mode,
             messages: []
         });
     } catch (error) {
