@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
-    const endpoint = "/mcp/playbooks";
+    const endpoint = "/api/mcp/playbooks";
 
     const { requestHash, cachedResponse, error: idempError, status } = await checkIdempotency(req, companyId, endpoint);
     if (idempError) return NextResponse.json({ error: idempError }, { status });

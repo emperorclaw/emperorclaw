@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     }
 
     const companyId = auth.companyToken!.companyId;
-    const endpoint = "/mcp/tasks/generate";
+    const endpoint = "/api/mcp/tasks/generate";
 
     const { requestHash, cachedResponse, error: idempError, status } = await checkIdempotency(req, companyId, endpoint);
     if (idempError) return NextResponse.json({ error: idempError }, { status });

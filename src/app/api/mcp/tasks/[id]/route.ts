@@ -15,7 +15,7 @@ export async function DELETE(
 
     const companyId = auth.companyToken!.companyId;
     const { id: taskId } = await params;
-    const endpoint = `/mcp/tasks/${taskId}`;
+    const endpoint = `/api/mcp/tasks/${taskId}`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });
