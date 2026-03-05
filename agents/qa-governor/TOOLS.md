@@ -17,3 +17,7 @@
 - action summary
 - output proof / artifact refs
 - next step owner (if handoff)
+
+
+## Skill Binding
+- Default skill: `emperor-claw-os`

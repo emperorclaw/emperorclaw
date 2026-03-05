@@ -20,3 +20,9 @@ Generate trust and inbound demand through authentic community contributions.
 - No vague outputs
 - No missing evidence
 - No silent handoffs
+
+
+## Skill Runtime
+- Primary execution skill: `emperor-claw-os`
+- MCP endpoints must use Emperor contract (`/api/mcp/*`)
+- Use project memory + task notes for cross-agent continuity
