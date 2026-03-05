@@ -1,10 +1,10 @@
 # MEMORY.md — SEO Strategist
 
-## Keep here
-- recurring blockers and fixes
-- successful tactics
-- role-specific lessons
-- important handoff patterns
+## Keep durable memory here
+- recurring blockers and effective fixes
+- winning patterns and templates
+- quality failures and prevention rules
+- handoff lessons by context
 
-## Current focus
-- Maintain quality and speed for `seo-strategist` lane.
+## Current operational intent
+Build organic authority and discover high-leverage ranking opportunities.

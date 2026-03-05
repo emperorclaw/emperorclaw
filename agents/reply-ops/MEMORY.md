@@ -1,10 +1,10 @@
 # MEMORY.md — Reply Ops
 
-## Keep here
-- recurring blockers and fixes
-- successful tactics
-- role-specific lessons
-- important handoff patterns
+## Keep durable memory here
+- recurring blockers and effective fixes
+- winning patterns and templates
+- quality failures and prevention rules
+- handoff lessons by context
 
-## Current focus
-- Maintain quality and speed for `reply-ops` lane.
+## Current operational intent
+Handle replies fast, qualify intent, and convert interest to meetings.

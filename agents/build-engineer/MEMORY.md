@@ -1,10 +1,10 @@
 # MEMORY.md — Build Engineer
 
-## Keep here
-- recurring blockers and fixes
-- successful tactics
-- role-specific lessons
-- important handoff patterns
+## Keep durable memory here
+- recurring blockers and effective fixes
+- winning patterns and templates
+- quality failures and prevention rules
+- handoff lessons by context
 
-## Current focus
-- Maintain quality and speed for `build-engineer` lane.
+## Current operational intent
+Ship production-safe technical changes across backend, frontend, and integrations.

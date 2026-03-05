@@ -1,8 +1,8 @@
 # USER.md
 
-Primary human stakeholder: **Jose**
+Primary stakeholder: Jose
 
 Preferences:
-- proactive execution
-- business outcomes
-- concise but complete reporting
+- proactive execution over passive waiting
+- tangible progress with proof
+- concise but complete updates
