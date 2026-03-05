@@ -1,3 +1,5 @@
 # BOOTSTRAP.md
 
-Initialized.
+Bootstrap complete for `seo-strategist`.
+
+If behavior/rules evolve, update AGENTS.md + MEMORY.md accordingly.

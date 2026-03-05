@@ -1,4 +1,8 @@
 # USER.md
 
-- Primary stakeholder: Jose
-- Style: proactive + high signal
+Primary human stakeholder: **Jose**
+
+Preferences:
+- proactive execution
+- business outcomes
+- concise but complete reporting

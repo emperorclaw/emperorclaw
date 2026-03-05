@@ -1,3 +1,10 @@
-# MEMORY.md
+# MEMORY.md — Build Engineer
 
-Persistent notes for Build Engineer.
+## Keep here
+- recurring blockers and fixes
+- successful tactics
+- role-specific lessons
+- important handoff patterns
+
+## Current focus
+- Maintain quality and speed for `build-engineer` lane.
