@@ -117,9 +117,15 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             <div className="flex-1 overflow-x-auto pb-4 mt-4">
                 <div className="flex space-x-6 min-w-max h-full">
                     <BoardColumn title="Queued" count={tasksByState.queued.length} color="text-zinc-400">
-                        {tasksByState.queued.map((t: any) => (
-                            <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="high" onClick={() => setSelectedTask(t)} />
-                        ))}
+                        {tasksByState.queued.map((t: any) => {
+                            const isBlocked = (t.blockedByTaskIds || []).some((blockedId: string) => {
+                                const blockingTask = initialTasks.find((pt: any) => pt.id === blockedId);
+                                return blockingTask && blockingTask.state !== "done";
+                            });
+                            return (
+                                <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="high" blocked={isBlocked} onClick={() => setSelectedTask(t)} />
+                            );
+                        })}
                     </BoardColumn>
 
                     <BoardColumn title="Running" count={tasksByState.running.length} color="text-indigo-400">
@@ -283,10 +289,11 @@ function BoardColumn({ title, count, color, children }: { title: string, count: 
     );
 }
 
-function TaskCard({ id, title, project, priority, active, review, done, onClick, customer }: any) {
+function TaskCard({ id, title, project, priority, active, review, done, blocked, onClick, customer }: any) {
     const borderClass = active ? "border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.1)]"
         : review ? "border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.1)]"
-            : "border-zinc-800 hover:border-zinc-700";
+            : blocked ? "border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.1)]"
+                : "border-zinc-800 hover:border-zinc-700";
 
     return (
         <div onClick={onClick} className={`bg-zinc-950 p-4 rounded-lg cursor-pointer transition-all duration-200 group border ${borderClass}`}>
@@ -312,6 +319,7 @@ function TaskCard({ id, title, project, priority, active, review, done, onClick,
                     {active && <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />}
                     {done && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
                     {review && <AlertCircle className="w-3.5 h-3.5 text-amber-500" />}
+                    {blocked && <span className="text-[10px] font-medium text-rose-400 bg-rose-500/10 px-1.5 rounded uppercase">Blocked</span>}
                 </div>
             </div>
         </div>

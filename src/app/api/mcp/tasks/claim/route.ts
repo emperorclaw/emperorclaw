@@ -34,11 +34,19 @@ export async function POST(req: NextRequest) {
       lease_until = NOW() + INTERVAL '2 minutes',
       updated_at = NOW()
     WHERE id = (
-      SELECT id FROM tasks
-      WHERE company_id = ${companyId}
-        AND state = 'queued'
-        AND deleted_at IS NULL
-      ORDER BY priority DESC, created_at ASC
+      SELECT t.id FROM tasks t
+      WHERE t.company_id = ${companyId}
+        AND t.state = 'queued'
+        AND t.deleted_at IS NULL
+        AND (
+          jsonb_array_length(t.blocked_by_task_ids) = 0
+          OR NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(t.blocked_by_task_ids) as blocked_id
+            JOIN tasks b ON b.id = blocked_id::uuid
+            WHERE b.state != 'done'
+          )
+        )
+      ORDER BY t.priority DESC, t.created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )

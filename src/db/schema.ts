@@ -142,6 +142,16 @@ export const agents = pgTable("agents", {
     deletedAt: timestamp("deleted_at"),
 });
 
+export const projectMemory = pgTable("project_memory", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    content: text("content").notNull(),
+    tags: jsonb("tags"),
+    createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const tasks = pgTable("tasks", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -162,6 +172,7 @@ export const tasks = pgTable("tasks", {
     proofTypesJson: jsonb("proof_types_json"),
     inputJson: jsonb("input_json"),
     outputJson: jsonb("output_json"),
+    blockedByTaskIds: jsonb("blocked_by_task_ids").default('[]').notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),

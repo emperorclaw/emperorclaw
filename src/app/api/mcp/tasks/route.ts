@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     if (cachedResponse) return NextResponse.json(cachedResponse);
 
     const body = await req.json();
-    const { projectId, taskType, templateVersion, contractVersion, inputJson, priority = 0, proofRequired = false, humanApprovalRequired = false, proofTypesJson = "[]" } = body;
+    const { projectId, taskType, templateVersion, contractVersion, inputJson, priority = 0, proofRequired = false, humanApprovalRequired = false, proofTypesJson = "[]", blockedByTaskIds = [] } = body;
 
     if (!projectId || !taskType) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
             humanApprovalRequired,
             proofTypesJson,
             inputJson: inputJson || {},
+            blockedByTaskIds,
         }).returning();
 
         await db.insert(taskEvents).values({
