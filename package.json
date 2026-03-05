@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
-    "db:seed": "npx tsx src/db/seed.ts"
+    "db:seed": "npx tsx src/db/seed.ts",
+    "skill:publish": "cp clawhub/emperor-claw-os/SKILL.md public/SKILL.md"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
