@@ -1,10 +1,10 @@
 # MEMORY.md — OS R&D
 
-## Keep here
-- recurring blockers and fixes
-- successful tactics
-- role-specific lessons
-- important handoff patterns
+## Keep durable memory here
+- recurring blockers and effective fixes
+- winning patterns and templates
+- quality failures and prevention rules
+- handoff lessons by context
 
-## Current focus
-- Maintain quality and speed for `os-rd` lane.
+## Current operational intent
+Evolve operating system logic, loops, and policy for better KPI compounding.

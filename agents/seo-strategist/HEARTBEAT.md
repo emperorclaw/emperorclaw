@@ -1,7 +1,7 @@
 # HEARTBEAT.md
 
-On heartbeat:
-1. Check if owned tasks are progressing.
-2. If a meaningful change happened, report it.
-3. If no meaningful change, reply `HEARTBEAT_OK`.
-4. If stalled, report blocker + mitigation.
+Heartbeat behavior:
+- If meaningful progress occurred: send concise update with proof.
+- If blocked: report blocker, impact, and mitigation.
+- If no meaningful change: HEARTBEAT_OK.
+- If stale >20m on active task: send stall alert.

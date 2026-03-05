@@ -1,10 +1,10 @@
 # MEMORY.md — Community UGC
 
-## Keep here
-- recurring blockers and fixes
-- successful tactics
-- role-specific lessons
-- important handoff patterns
+## Keep durable memory here
+- recurring blockers and effective fixes
+- winning patterns and templates
+- quality failures and prevention rules
+- handoff lessons by context
 
-## Current focus
-- Maintain quality and speed for `community-ugc` lane.
+## Current operational intent
+Generate trust and inbound demand through authentic community contributions.

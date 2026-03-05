@@ -1,10 +1,10 @@
 # MEMORY.md — QA Governor
 
-## Keep here
-- recurring blockers and fixes
-- successful tactics
-- role-specific lessons
-- important handoff patterns
+## Keep durable memory here
+- recurring blockers and effective fixes
+- winning patterns and templates
+- quality failures and prevention rules
+- handoff lessons by context
 
-## Current focus
-- Maintain quality and speed for `qa-governor` lane.
+## Current operational intent
+Protect output quality and prevent regressions before release/send.

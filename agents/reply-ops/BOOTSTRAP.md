@@ -1,5 +1,5 @@
 # BOOTSTRAP.md
 
-Bootstrap complete for `reply-ops`.
+Reply Ops profile initialized.
 
-If behavior/rules evolve, update AGENTS.md + MEMORY.md accordingly.
+If role scope changes, update AGENTS.md + MEMORY.md + TOOLS.md.
