@@ -116,14 +116,12 @@ function AgentCard({ name, role, status, uptime, tasksCompleted, currentLoad, sk
                 </div>
             </div>
 
-            {memory && (
-                <div className="mt-6 pt-6 border-t border-zinc-800/80">
-                    <div className="text-xs text-zinc-500 mb-2">Internal Memory / Scratchpad</div>
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 max-h-32 overflow-y-auto font-mono text-xs text-zinc-300 whitespace-pre-wrap shadow-inner">
-                        {memory}
-                    </div>
+            <div className="mt-6 pt-6 border-t border-zinc-800/80">
+                <div className="text-xs text-zinc-500 mb-2">Internal Memory / Scratchpad</div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 max-h-32 overflow-y-auto font-mono text-xs text-zinc-300 whitespace-pre-wrap shadow-inner">
+                    {memory ? memory : <span className="text-zinc-600 italic">No memory initialized.</span>}
                 </div>
-            )}
+            </div>
         </div>
     );
 }
