@@ -15,7 +15,7 @@ export async function PATCH(
 
     const companyId = auth.companyToken!.companyId;
     const { projectId } = await params;
-    const endpoint = `/mcp/projects/${projectId}`;
+    const endpoint = `/api/mcp/projects/${projectId}`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });
@@ -69,7 +69,7 @@ export async function DELETE(
 
     const companyId = auth.companyToken!.companyId;
     const { projectId } = await params;
-    const endpoint = `/mcp/projects/${projectId}`;
+    const endpoint = `/api/mcp/projects/${projectId}`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });

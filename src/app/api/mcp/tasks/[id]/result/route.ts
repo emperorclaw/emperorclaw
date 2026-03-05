@@ -13,7 +13,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const resolvedParams = await params;
     const companyId = auth.companyToken!.companyId;
     const taskId = resolvedParams.id;
-    const endpoint = `/mcp/tasks/${taskId}/result`;
+    const endpoint = `/api/mcp/tasks/${taskId}/result`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { sql } from "drizzle-orm";
-import { taskEvents } from "@/db/schema";
+import { agents, taskEvents } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -11,20 +12,34 @@ export async function POST(req: NextRequest) {
   }
 
   const companyId = auth.companyToken!.companyId;
-  const endpoint = "/mcp/tasks/claim";
+  const endpoint = "/api/mcp/tasks/claim";
 
   const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
   if (error) return NextResponse.json({ error }, { status });
   if (cachedResponse) return NextResponse.json(cachedResponse);
 
-  const { agentId } = await req.json();
+  const { agentId, strictOwnerRole = true, allowedRoles = [] } = await req.json();
   if (!agentId) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
 
   const internalAgentId = await resolveAgentId(companyId, agentId);
 
+  const [agent] = await db.select({ role: agents.role }).from(agents).where(
+    and(eq(agents.companyId, companyId), eq(agents.id, internalAgentId))
+  ).limit(1);
+  const agentRole = agent?.role || null;
+
+  if (Array.isArray(allowedRoles) && allowedRoles.length > 0) {
+    if (!agentRole || !allowedRoles.includes(agentRole)) {
+      const res = { message: "No tasks available for this role policy" };
+      await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
+      return NextResponse.json(res);
+    }
+  }
+
   // Atomic claim using CTE / sub-select with FOR UPDATE SKIP LOCKED
+  // Enforce ownerRole affinity when input_json.ownerRole is provided.
   const result = await db.execute(sql`
     UPDATE tasks
     SET 
@@ -38,6 +53,11 @@ export async function POST(req: NextRequest) {
       WHERE t.company_id = ${companyId}
         AND t.state = 'queued'
         AND t.deleted_at IS NULL
+        AND (
+          ${strictOwnerRole === false} = true
+          OR COALESCE(t.input_json->>'ownerRole', '') = ''
+          OR t.input_json->>'ownerRole' = COALESCE(${agentRole}, '')
+        )
         AND (
           jsonb_array_length(t.blocked_by_task_ids) = 0
           OR NOT EXISTS (
