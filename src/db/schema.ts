@@ -133,6 +133,7 @@ export const agents = pgTable("agents", {
     role: text("role"),
     avatarUrl: text("avatar_url"),
     skillsJson: jsonb("skills_json"),
+    memory: text("memory"),
     modelPolicyJson: jsonb("model_policy_json"),
     concurrencyLimit: integer("concurrency_limit").default(1).notNull(),
     status: text("status").notNull().default('offline'),
