@@ -1,23 +1,21 @@
 # TOOLS.md
 
-## Role tools and interfaces
-- Emperor MCP API (`/api/mcp/*`)
-- Project memory (`/api/mcp/projects/{projectId}/memory`)
-- Task notes/handoffs (`/api/mcp/tasks/{id}/notes`)
-- Artifacts (`/api/mcp/artifacts`)
+## Role Toolset (lead-miner)
+- MCP: tasks/notes
+- Lead discovery workflows
+- Dedup + reason tagging
 
-## Role-specific focus
-- ICP search strategy
-- Source expansion
-- Deduplication
-- Lead reason annotation
+## Communication Protocol (mandatory)
+- Send STARTED update to `main-orchestrator` before execution.
+- Send PROGRESS at each material milestone.
+- Send BLOCKER immediately with mitigation options.
+- Send DONE with evidence/artifact refs and KPI delta.
 
-## Evidence checklist
-- task id
-- action summary
-- output proof / artifact refs
-- next step owner (if handoff)
+## Handoff Rule
+- Default handoff target: `lead-enricher`
+- Use structured task note handoff payload: fromRole, toRole, summary, nextStep, blockers[], artifactRefs[].
 
-
-## Skill Binding
-- Default skill: `emperor-claw-os`
+## Channels
+- MCP team chat: `/api/mcp/messages/send`
+- Task notes: `/api/mcp/tasks/{id}/notes`
+- Project memory: `/api/mcp/projects/{projectId}/memory`
