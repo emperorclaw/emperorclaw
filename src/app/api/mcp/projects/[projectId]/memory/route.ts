@@ -4,7 +4,7 @@ import { projectMemory, projects } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 
-export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
     try {
         const auth = await verifyMcpToken(req);
         if (auth.error) {
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
         }
 
         const companyId = auth.companyToken!.companyId;
-        const projectId = params.projectId;
+        const { projectId } = await params;
 
         // Verify project exists and belongs to company
         const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
     }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { projectId: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
     try {
         const auth = await verifyMcpToken(req);
         if (auth.error) {
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { projectId: 
         }
 
         const companyId = auth.companyToken!.companyId;
-        const projectId = params.projectId;
+        const { projectId } = await params;
 
         // Verify project exists and belongs to company
         const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
