@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error }, { status });
   if (cachedResponse) return NextResponse.json(cachedResponse);
 
-  const { agentId } = await req.json();
+  const { agentId, strictOwnerRole = true, allowedRoles = [] } = await req.json();
   if (!agentId) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
@@ -29,6 +29,14 @@ export async function POST(req: NextRequest) {
     and(eq(agents.companyId, companyId), eq(agents.id, internalAgentId))
   ).limit(1);
   const agentRole = agent?.role || null;
+
+  if (Array.isArray(allowedRoles) && allowedRoles.length > 0) {
+    if (!agentRole || !allowedRoles.includes(agentRole)) {
+      const res = { message: "No tasks available for this role policy" };
+      await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
+      return NextResponse.json(res);
+    }
+  }
 
   // Atomic claim using CTE / sub-select with FOR UPDATE SKIP LOCKED
   // Enforce ownerRole affinity when input_json.ownerRole is provided.
@@ -46,7 +54,8 @@ export async function POST(req: NextRequest) {
         AND t.state = 'queued'
         AND t.deleted_at IS NULL
         AND (
-          COALESCE(t.input_json->>'ownerRole', '') = ''
+          ${strictOwnerRole === false} = true
+          OR COALESCE(t.input_json->>'ownerRole', '') = ''
           OR t.input_json->>'ownerRole' = COALESCE(${agentRole}, '')
         )
         AND (
