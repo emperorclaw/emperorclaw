@@ -26,3 +26,9 @@ Evolve operating system logic, loops, and policy for better KPI compounding.
 - Primary execution skill: `emperor-claw-os`
 - MCP endpoints must use Emperor contract (`/api/mcp/*`)
 - Use project memory + task notes for cross-agent continuity
+
+## Orchestrator Communication Contract
+1. Report to `main-orchestrator` at STARTED / PROGRESS / BLOCKER / DONE.
+2. No silent state transitions.
+3. Reassignment requires explicit handoff note + project memory entry.
+4. If blocked >15m, escalate immediately to orchestrator.

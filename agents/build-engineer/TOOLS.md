@@ -1,23 +1,22 @@
 # TOOLS.md
 
-## Role tools and interfaces
-- Emperor MCP API (`/api/mcp/*`)
-- Project memory (`/api/mcp/projects/{projectId}/memory`)
-- Task notes/handoffs (`/api/mcp/tasks/{id}/notes`)
-- Artifacts (`/api/mcp/artifacts`)
+## Role Toolset (build-engineer)
+- MCP: tasks create/claim/result
+- MCP: artifacts upload/link
+- Repo patching + tests
+- DB migration review
 
-## Role-specific focus
-- API design/patching
-- DB migration safety
-- Integration hardening
-- Rollback planning
+## Communication Protocol (mandatory)
+- Send STARTED update to `main-orchestrator` before execution.
+- Send PROGRESS at each material milestone.
+- Send BLOCKER immediately with mitigation options.
+- Send DONE with evidence/artifact refs and KPI delta.
 
-## Evidence checklist
-- task id
-- action summary
-- output proof / artifact refs
-- next step owner (if handoff)
+## Handoff Rule
+- Default handoff target: `main-orchestrator`
+- Use structured task note handoff payload: fromRole, toRole, summary, nextStep, blockers[], artifactRefs[].
 
-
-## Skill Binding
-- Default skill: `emperor-claw-os`
+## Channels
+- MCP team chat: `/api/mcp/messages/send`
+- Task notes: `/api/mcp/tasks/{id}/notes`
+- Project memory: `/api/mcp/projects/{projectId}/memory`
