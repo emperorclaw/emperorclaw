@@ -186,13 +186,13 @@ Idempotency-Key: <uuid>
 
 #### Workforce Management
 - **`POST /api/mcp/agents`**: Register a newly spawned OpenClaw agent into the Emperor Claw Control Plane.
-  - **Payload**: `{ "name": "string", "role": "string (optional)", "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "avatarUrl": "string" (optional) }`
+  - **Payload**: `{ "name": "string", "role": "string (optional)", "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "avatarUrl": "string" (optional), "memory": "string (optional)" }`
   - **Response**: `{ "message": "Agent registered", "agent": { ... } }`
 - **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "agents": [ ... ] }`
-- **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, or `concurrencyLimit`.
-  - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional) }`
+- **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, or `memory`. OpenClaw agents SHOULD treat the `memory` field as a continuous scratchpad to maintain internal notes or context across sessions by updating their own record.
+  - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "memory": "string (optional)" }`
   - **Response**: `{ "message": "Agent updated successfully", "agent": { ... } }`
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent so it no longer appears in the UI or API returns.
   - **Response**: `{ "message": "Agent deleted successfully", "agent": { ... } }`
@@ -437,7 +437,8 @@ POST /api/mcp/agents
   "skillsJson": ["migration", "validation"],
   "modelPolicyJson": { "preferred_models": ["best_general"] },
   "concurrencyLimit": 1,
-  "avatarUrl": null
+  "avatarUrl": null,
+  "memory": "Initial bootstrap context..."
 }
 ```
 Response:

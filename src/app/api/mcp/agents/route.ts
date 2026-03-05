@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { name, role, skillsJson, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
 
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
             role: role || "operator",
             avatarUrl: avatarUrl || null,
             skillsJson: skillsJson || [],
+            memory: memory || null,
             modelPolicyJson: modelPolicyJson || {},
             concurrencyLimit: typeof concurrencyLimit === "number" ? concurrencyLimit : 1,
             status: "online",

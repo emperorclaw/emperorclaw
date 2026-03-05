@@ -23,10 +23,10 @@ export async function PATCH(
 
     try {
         const body = await req.json();
-        const { role, skillsJson, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
+        const { role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
 
         // Ensure we actually have something to update
-        if (role === undefined && skillsJson === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined) {
+        if (role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined) {
             return NextResponse.json({ error: "At least one field to update must be provided" }, { status: 400 });
         }
 
@@ -41,6 +41,7 @@ export async function PATCH(
         const updateData: any = {};
         if (role !== undefined) updateData.role = role;
         if (skillsJson !== undefined) updateData.skillsJson = skillsJson;
+        if (memory !== undefined) updateData.memory = memory;
         if (modelPolicyJson !== undefined) updateData.modelPolicyJson = modelPolicyJson;
         if (concurrencyLimit !== undefined) updateData.concurrencyLimit = concurrencyLimit;
         if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;

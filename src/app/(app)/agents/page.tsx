@@ -52,6 +52,7 @@ export default async function AgentsPage() {
                             tasksCompleted={completedMap[agent.id] || 0}
                             currentLoad={agent.concurrencyLimit > 0 ? Math.round((agent.currentLoad / agent.concurrencyLimit) * 100) : 0}
                             skills={((agent.skillsJson as string[]) || [])}
+                            memory={agent.memory}
                         />
                     ))
                 )}
@@ -60,7 +61,7 @@ export default async function AgentsPage() {
     );
 }
 
-function AgentCard({ name, role, status, uptime, tasksCompleted, currentLoad, skills }: any) {
+function AgentCard({ name, role, status, uptime, tasksCompleted, currentLoad, skills, memory }: any) {
     const statusColor = {
         online: "bg-emerald-500",
         degraded: "bg-amber-500",
@@ -107,13 +108,22 @@ function AgentCard({ name, role, status, uptime, tasksCompleted, currentLoad, sk
             <div>
                 <div className="text-xs text-zinc-500 mb-2">Registered Skills</div>
                 <div className="flex flex-wrap gap-2">
-                    {skills.map((s: string) => (
+                    {skills.length > 0 ? skills.map((s: string) => (
                         <span key={s} className="px-2 py-1 rounded bg-indigo-500/10 text-indigo-400/80 border border-indigo-500/20 text-xs font-mono">
                             {s}
                         </span>
-                    ))}
+                    )) : <span className="text-xs text-zinc-600 font-mono">None</span>}
                 </div>
             </div>
+
+            {memory && (
+                <div className="mt-6 pt-6 border-t border-zinc-800/80">
+                    <div className="text-xs text-zinc-500 mb-2">Internal Memory / Scratchpad</div>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 max-h-32 overflow-y-auto font-mono text-xs text-zinc-300 whitespace-pre-wrap shadow-inner">
+                        {memory}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

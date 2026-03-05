@@ -36,6 +36,13 @@
       "when": 1772470051131,
       "tag": "0004_steady_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772746152828,
+      "tag": "0005_last_shockwave",
+      "breakpoints": true
     }
   ]
 }
