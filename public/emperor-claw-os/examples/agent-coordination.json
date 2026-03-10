@@ -1,0 +1,54 @@
+[
+  {
+    "description": "Conversation between Viktor (Manager) and specialized agents illustrating task coordination and Resident Memory usage.",
+    "scenario": "Acme Corp ICP Analysis",
+    "events": [
+      {
+        "agent": "Viktor",
+        "action": "Message to Team Chat",
+        "content": "@\"Lead Researcher\", please begin the ICP analysis for Acme Corp. Priority is High. I've queued the research task uuid-123."
+      },
+      {
+        "agent": "Lead Researcher",
+        "action": "Claim Task",
+        "task_id": "uuid-123",
+        "log": "Claiming task uuid-123. Atomic lock secured."
+      },
+      {
+        "agent": "Lead Researcher",
+        "action": "Sync Context",
+        "calls": ["GET /api/mcp/projects/proj-abc/memory", "GET /api/mcp/tasks/uuid-123/notes"],
+        "reasoning": "Synchronizing with Resident Memory to see if any previous attempts or human notes exist for this task."
+      },
+      {
+        "agent": "Lead Researcher",
+        "action": "Message to Team Chat",
+        "content": "@\"Viktor\", syncing context. Resident Memory indicates a focus on Fintech. Proceeding with deep scrape of SEC filings."
+      },
+      {
+        "agent": "Lead Researcher",
+        "action": "Log Note",
+        "task_id": "uuid-123",
+        "payload": {
+          "note": "Hit rate-limit on target-site-A. Pivoting to target-site-B (SEC filings). This pivot ensures SLA compliance.",
+          "handoff": null
+        }
+      },
+      {
+        "agent": "Lead Researcher",
+        "action": "Complete Task + Handoff",
+        "task_id": "uuid-123",
+        "payload": {
+          "state": "done",
+          "outputJson": { "summary": "Financial markers extracted.", "artifact": "uuid-artifact-999" }
+        },
+        "chat_message": "@\"Data Enricher\", extracted core financial markers. Artifact uuid-artifact-999 is ready for enrichment. Handoff complete."
+      },
+      {
+        "agent": "Data Enricher",
+        "action": "Claim Follow-up Task",
+        "log": "Claiming task uuid-456. Reading task uuid-123 history to ensure seamless transition."
+      }
+    ]
+  }
+]
