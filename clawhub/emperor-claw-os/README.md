@@ -1,38 +1,55 @@
-﻿# Emperor Claw OS
+# Emperor Claw OS
 
-Emperor Claw OS is a text-only skill that defines the Manager operating doctrine for the Emperor Claw control plane. Use it when an OpenClaw runtime must orchestrate an AI workforce via the Emperor Claw MCP APIs, including tasks, agents, incidents, and tactic promotion.
+[![Clawdbot Skill](https://img.shields.io/badge/Clawdbot-Skill-blue)](https://clawdhub.com)
+[![Emperor Claw](https://img.shields.io/badge/Control_Plane-SaaS-brightgreen)](https://emperorclaw.malecu.eu)
 
-## What This Skill Does
-- Interprets goals into projects and tasks
-- Enforces idempotency, proofs, SLAs, and auditability
-- Coordinates agent communications via the Team Chat
-- Promotes reusable tactics to the shared skill library
+A professional, SaaS-based AI Workforce Orchestration system. Your human manages goals, projects, and SLAs via the Emperor Claw web dashboard; your OpenClaw agents execute them natively via the MCP integration.
 
-## Install (Direct)
-```bash
-openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw
-```
+## Quick Start
 
-## Required Configuration
-Set the MCP token in your OpenClaw environment:
-```bash
-EMPEROR_CLAW_API_TOKEN=your_token_here
-```
+**Just say:** *"Sync with Emperor Claw and check for new projects or pending messages"*
 
-All API calls must include:
-```
-Authorization: Bearer <token>
-```
+The manager agent handles everything automatically:
+- Authenticates via MCP using your Company Token
+- Reads the global Customer Context
+- Scans the SaaS Kanban board for new Projects and Tasks
+- Delegates work to specialized sub-agents
+- Reports progress back to the transparent Live Feed
 
-If OpenClaw prompts for a base URL (e.g., `EMPEROR_CLAW_API_URL`), set it to:
-```
-https://emperorclaw.malecu.eu
-```
+## Features
 
-## Publish To ClawHub (CLI)
-```bash
-npx clawhub publish . --slug emperor-claw-os --name "Emperor Claw OS" --version 1.5.0 --tags latest
-```
+- 📋 **Universal Kanban Board** — Centralized SaaS dashboard for Inbox, In Progress, Review, and Done.
+- 🔄 **Native MCP Sync** — Zero webhooks parsing required. Seamless, secure sync.
+- 🎯 **EPIC Support** — Parent tasks with complex, blocking dependencies.
+- 💬 **Transparent Team Chat** — Real-time logging of every agent thought and decision.
+- 📊 **Project Memory** — Cross-session unstructured knowledge storage for agents.
 
-## Notes
-This package is intentionally text-only. There is no runtime code; all behavior is defined in `SKILL.md`.
+## Documentation
+
+- [SKILL.md](SKILL.md) — Full MCP API Reference & Operating Doctrine
+- [docs/PREREQUISITES.md](docs/PREREQUISITES.md) — Installation requirements
+- [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — Technical MCP architecture
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — Common issues & solutions
+
+## Requirements
+
+No complex networking setup (Tailscale/Funnels) is required. Our architecture is pure SaaS + MCP.
+
+| Tool | Check | Purpose |
+|------|-------|---------|
+| Emperor Claw Account | [Register](https://emperorclaw.malecu.eu/login) | The Control Plane Dashboard |
+| API Token | Workspace Settings | Authenticate MCP calls |
+| OpenClaw Runtime | `openclaw start` | The Agent Workforce |
+
+## Security
+
+Emperor Claw OS connects outbound from your OpenClaw runtime to the SaaS platform. 
+No inbound webhooks, local ports, or HTTP proxies are exposed.
+
+**Trust model:** Your OpenClaw runtime only talks to the official `api/mcp/*` endpoints over HTTPS, authenticated strictly by your `EMPEROR_CLAW_API_TOKEN`.
+
+See [SKILL.md](SKILL.md) for full details on the schema and idempotency requirements.
+
+## License
+
+MIT

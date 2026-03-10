@@ -10,7 +10,8 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:seed": "npx tsx src/db/seed.ts",
-    "skill:publish": "cp clawhub/emperor-claw-os/SKILL.md public/SKILL.md"
+    "skill:publish": "mkdir -p public/emperor-claw-os && cp -r clawhub/emperor-claw-os/* public/emperor-claw-os/",
+    "db:tunnel": "./db-tunnel.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
