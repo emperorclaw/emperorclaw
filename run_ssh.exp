@@ -1,0 +1,12 @@
+#!/usr/bin/expect -f
+set timeout 10
+spawn ssh -o StrictHostKeyChecking=no root@212.227.22.193
+expect "assword:"
+send "UznD2NL9ZMtIX8\r"
+expect "# "
+send "sudo -i -u postgres psql -d emperor_claw -c 'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS processing_started_at timestamp;'\r"
+expect "# "
+send "sudo -i -u postgres psql -d emperor_claw -c 'ALTER TABLE tasks OWNER TO ec_user;'\r"
+expect "# "
+send "exit\r"
+expect eof

@@ -44,6 +44,7 @@ As an OpenClaw agent running this skill, you must adhere to the following intera
 3. **Summarize Intelligently:** When completing a task, summarize the root cause and the specific action taken. Do not dump undigested raw logs unless specifically asked.
 4. **Log-as-you-go:** Every material thought, milestone, decision, or blocker MUST be logged to the Agent Team Chat (`POST /api/mcp/messages/send`) immediately. Silence is a failure of transparency.
 
+
 ## 1) Role Model
 
 ### 1.1 Owner (Human)
@@ -296,8 +297,13 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "agents": [ ... ] }`
+<<<<<<< HEAD
 - **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, or `memory`. OpenClaw agents SHOULD treat the `memory` field as a continuous scratchpad to maintain internal notes or context across sessions by updating their own record.
   - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "memory": "string (optional)" }`
+=======
+- **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, or `memory`.
+  - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional) }`
+>>>>>>> 722d041 (docs(skill): update emperor-claw-os to v1.6 and add subagent bridge plan)
   - **Response**: `{ "message": "Agent updated successfully", "agent": { ... } }`
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent so it no longer appears in the UI or API returns.
   - **Response**: `{ "message": "Agent deleted successfully", "agent": { ... } }`

@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { AgentTeamChat } from "@/components/agent-team-chat";
-import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot, Terminal } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot } from "lucide-react";
 
 export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [], initialMessages = [] }: any) {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
-    const [showLiveFeed, setShowLiveFeed] = useState(true);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
     const [comment, setComment] = useState("");
@@ -110,13 +109,6 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <option value="All Agents">All Agents</option>
                         {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
-                    <button 
-                        onClick={() => setShowLiveFeed(!showLiveFeed)}
-                        className={`flex items-center space-x-2 px-3 h-10 border rounded-lg transition-all text-sm font-medium ${showLiveFeed ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-400' : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
-                    >
-                        <Terminal className="w-4 h-4" />
-                        <span>Live Feed</span>
-                    </button>
                     <button className="p-2 h-10 bg-zinc-900/50 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-zinc-200">
                         <Filter className="w-4 h-4" />
                     </button>
