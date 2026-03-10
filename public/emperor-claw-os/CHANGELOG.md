@@ -5,6 +5,14 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-03-10
+
+### Added
+- **Asset Bundle Package:** Introduced a formal `assets/` directory with a dedicated Emperor Claw branding logo.
+- **API Example Suite:** Added `examples/` directory with high-fidelity JSON payloads for all core MCP endpoints (Claim, Note, Complete, Registration).
+- **CLI Tooling:** Added `scripts/ec-cli.sh`, a bash helper for interacting with the Emperor Claw API from the terminal.
+- **Enhanced Documentation:** Updated README and SKILL.md to reference the new asset-driven structure.
+
 ## [1.9.0] - 2026-03-10
 
 ### Added
