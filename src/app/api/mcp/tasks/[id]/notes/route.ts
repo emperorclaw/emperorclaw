@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectMemory, taskEvents, tasks } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { id: taskId } = await params;
+    const companyId = auth.companyToken!.companyId;
+
+    try {
+        const events = await db.select().from(taskEvents).where(
+            and(
+                eq(taskEvents.taskId, taskId),
+                eq(taskEvents.companyId, companyId)
+            )
+        ).orderBy(asc(taskEvents.createdAt));
+
+        return NextResponse.json({ events });
+    } catch (err) {
+        console.error(`Error fetching history for task ${taskId}:`, err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
 
 function validateHandoff(handoff: any): string | null {
     if (!handoff) return null;
