@@ -43,6 +43,13 @@
       "when": 1772746152828,
       "tag": "0005_last_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773137873307,
+      "tag": "0006_tense_sersi",
+      "breakpoints": true
     }
   ]
 }

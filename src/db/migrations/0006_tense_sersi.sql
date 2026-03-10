@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ADD COLUMN "processing_started_at" timestamp;

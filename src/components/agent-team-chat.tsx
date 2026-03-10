@@ -105,7 +105,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                                     <span>{msg.senderType === 'human' ? 'Human Manager' : getAgentName(msg.fromUserId)}</span>
                                     <span className="text-zinc-600 px-2">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
-                                {msg.text}
+                                <ParsedMessage text={msg.text} />
                             </div>
                         </div>
                     ))
@@ -115,6 +115,66 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
             <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/30 flex items-center justify-center space-x-2">
                 <span className="text-xs text-zinc-500 font-medium">Transparency Layer Active (Read-Only)</span>
             </div>
+        </div>
+    );
+}
+
+function ParsedMessage({ text }: { text: string }) {
+    if (!text) return null;
+
+    // Detection for structured sections
+    const sections = {
+        update: text.match(/Update:([\s\S]*?)(?=Evidence:|Next:|$)/i),
+        evidence: text.match(/Evidence:([\s\S]*?)(?=Update:|Next:|$)/i),
+        next: text.match(/Next:([\s\S]*?)(?=Update:|Evidence:|$)/i)
+    };
+
+    if (!sections.update && !sections.evidence && !sections.next) {
+        return <div className="whitespace-pre-wrap">{text}</div>;
+    }
+
+    return (
+        <div className="space-y-4 my-2">
+            {sections.update && (
+                <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">Update</div>
+                    <div className="text-zinc-200 leading-relaxed">{sections.update[1].trim()}</div>
+                </div>
+            )}
+            {sections.evidence && (
+                <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">Evidence</div>
+                    <div className="bg-zinc-950/50 border border-zinc-800/50 rounded p-2 font-mono text-[10px] text-indigo-300 break-all leading-normal group">
+                        {sections.evidence[1].trim().split('\n').map((line, i) => {
+                            const urlMatch = line.match(/(https?:\/\/[^\s]+)/);
+                            if (urlMatch) {
+                                return (
+                                    <div key={i} className="flex items-center space-x-1">
+                                        <span className="text-zinc-600">↳</span>
+                                        <a href={urlMatch[1]} target="_blank" rel="noopener noreferrer" className="hover:underline text-indigo-400 truncate">
+                                            {urlMatch[1]}
+                                        </a>
+                                    </div>
+                                );
+                            }
+                            return <div key={i}>{line}</div>;
+                        })}
+                    </div>
+                </div>
+            )}
+            {sections.next && (
+                <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">Next</div>
+                    <div className="text-zinc-400 italic">
+                        {sections.next[1].trim().split('\n').map((line, i) => (
+                            <div key={i} className="flex items-start space-x-2">
+                                <span className="text-indigo-500 mt-1.5 w-1 h-1 rounded-full bg-indigo-500 shrink-0" />
+                                <span>{line.replace(/^[-*]\s*/, '').trim()}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

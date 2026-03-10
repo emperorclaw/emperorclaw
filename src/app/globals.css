@@ -144,3 +144,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Task Processing Indicator Animations */
+@keyframes processingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes processingBorderPulse {
+    0%, 100% { 
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+    }
+    50% { 
+        box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+    }
+}

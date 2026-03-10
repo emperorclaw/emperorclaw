@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send } from "lucide-react";
+import { AgentTeamChat } from "@/components/agent-team-chat";
+import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot, Terminal } from "lucide-react";
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [] }: any) {
+export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [], initialMessages = [] }: any) {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
+    const [showLiveFeed, setShowLiveFeed] = useState(true);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
     const [comment, setComment] = useState("");
@@ -73,7 +75,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
     const artifactsForTask = (taskId: string) => (artifacts || []).filter((a: any) => a.taskId === taskId);
 
-    const getTaskEvents = (taskId: string) => events.filter((e: any) => e.taskId === taskId).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const getTaskEvents = (taskId: string) => events.filter((e: any) => e.taskId === taskId).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     return (
         <div className="h-full flex flex-col space-y-6 animate-in fade-in duration-500 relative">
@@ -108,51 +110,107 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <option value="All Agents">All Agents</option>
                         {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
+                    <button 
+                        onClick={() => setShowLiveFeed(!showLiveFeed)}
+                        className={`flex items-center space-x-2 px-3 h-10 border rounded-lg transition-all text-sm font-medium ${showLiveFeed ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-400' : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
+                    >
+                        <Terminal className="w-4 h-4" />
+                        <span>Live Feed</span>
+                    </button>
                     <button className="p-2 h-10 bg-zinc-900/50 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-zinc-200">
                         <Filter className="w-4 h-4" />
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-x-auto pb-4 mt-4">
-                <div className="flex space-x-6 min-w-max h-full">
-                    <BoardColumn title="Queued" count={tasksByState.queued.length} color="text-zinc-400">
+            <div className="flex-1 flex overflow-hidden -mx-8 px-8">
+                <div className="flex-1 overflow-x-auto pb-4">
+                    <div className="flex space-x-6 min-w-max h-full">
+                    <BoardColumn title="Inbox" count={tasksByState.queued.length} color="text-zinc-400">
                         {tasksByState.queued.map((t: any) => {
                             const isBlocked = (t.blockedByTaskIds || []).some((blockedId: string) => {
                                 const blockingTask = initialTasks.find((pt: any) => pt.id === blockedId);
                                 return blockingTask && blockingTask.state !== "done";
                             });
                             return (
-                                <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="high" blocked={isBlocked} onClick={() => setSelectedTask(t)} />
+                                <TaskCard
+                                    key={t.id}
+                                    {...t}
+                                    project={getProjectName(t.projectId)}
+                                    customer={getCustomerName(t.projectId)}
+                                    agent={agents.find((a: any) => a.id === t.assignedAgentId)}
+                                    blocked={isBlocked}
+                                    onClick={() => setSelectedTask(t)}
+                                />
                             );
                         })}
                     </BoardColumn>
 
-                    <BoardColumn title="Running" count={tasksByState.running.length} color="text-indigo-400">
+                    <BoardColumn title="In Progress" count={tasksByState.running.length} color="text-indigo-400">
                         {tasksByState.running.map((t: any) => (
-                            <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="medium" active onClick={() => setSelectedTask(t)} />
+                            <TaskCard
+                                key={t.id}
+                                {...t}
+                                project={getProjectName(t.projectId)}
+                                customer={getCustomerName(t.projectId)}
+                                agent={agents.find((a: any) => a.id === t.assignedAgentId)}
+                                active
+                                onClick={() => setSelectedTask(t)}
+                            />
                         ))}
                     </BoardColumn>
 
                     <BoardColumn title="Needs Review" count={tasksByState.review.length} color="text-amber-400">
                         {tasksByState.review.map((t: any) => (
-                            <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="high" review onClick={() => setSelectedTask(t)} />
+                            <TaskCard
+                                key={t.id}
+                                {...t}
+                                project={getProjectName(t.projectId)}
+                                customer={getCustomerName(t.projectId)}
+                                agent={agents.find((a: any) => a.id === t.assignedAgentId)}
+                                review
+                                onClick={() => setSelectedTask(t)}
+                            />
                         ))}
                     </BoardColumn>
 
                     <BoardColumn title="Failed" count={tasksByState.failed.length} color="text-red-400">
                         {tasksByState.failed.map((t: any) => (
-                            <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="high" review onClick={() => setSelectedTask(t)} />
+                            <TaskCard
+                                key={t.id}
+                                {...t}
+                                project={getProjectName(t.projectId)}
+                                customer={getCustomerName(t.projectId)}
+                                agent={agents.find((a: any) => a.id === t.assignedAgentId)}
+                                review
+                                onClick={() => setSelectedTask(t)}
+                            />
                         ))}
                     </BoardColumn>
 
                     <BoardColumn title="Done" count={tasksByState.done.length} color="text-emerald-400">
                         {tasksByState.done.map((t: any) => (
-                            <TaskCard key={t.id} id={t.id} title={t.taskType} project={getProjectName(t.projectId)} customer={getCustomerName(t.projectId)} priority="low" done onClick={() => setSelectedTask(t)} />
+                            <TaskCard
+                                key={t.id}
+                                {...t}
+                                project={getProjectName(t.projectId)}
+                                customer={getCustomerName(t.projectId)}
+                                agent={agents.find((a: any) => a.id === t.assignedAgentId)}
+                                done
+                                onClick={() => setSelectedTask(t)}
+                            />
                         ))}
                     </BoardColumn>
                 </div>
             </div>
+
+            {/* Live Feed Sidebar */}
+            {showLiveFeed && (
+                <div className="w-[380px] border-l border-zinc-800/80 bg-zinc-950/20 backdrop-blur-sm flex flex-col h-full animate-in slide-in-from-right-4 duration-300">
+                    <AgentTeamChat initialMessages={initialMessages} agents={agents} />
+                </div>
+            )}
+        </div>
 
             {/* Slide-out Task Drawer */}
             {selectedTask && (
@@ -289,37 +347,80 @@ function BoardColumn({ title, count, color, children }: { title: string, count: 
     );
 }
 
-function TaskCard({ id, title, project, priority, active, review, done, blocked, onClick, customer }: any) {
-    const borderClass = active ? "border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.1)]"
+function TaskCard({ id, taskType, project, priority, active, review, done, blocked, onClick, customer, agent, templateVersion, processingStartedAt }: any) {
+    const isProcessing = active && processingStartedAt;
+    const borderClass = isProcessing ? "border-indigo-500 shadow-[0_0_0_0_rgba(99,102,241,0.4)] animate-[processingBorderPulse_2s_ease-in-out_infinite]" 
+        : active ? "border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.1)]"
         : review ? "border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.1)]"
             : blocked ? "border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.1)]"
                 : "border-zinc-800 hover:border-zinc-700";
 
+    const getPriorityLabel = (p: number) => {
+        if (p >= 80) return { label: "HIGH", class: "bg-rose-500/10 text-rose-500 border-rose-500/20" };
+        if (p >= 50) return { label: "MEDIUM", class: "bg-amber-500/10 text-amber-500 border-amber-500/20" };
+        return { label: "LOW", class: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20" };
+    };
+
+    const prio = getPriorityLabel(priority || 0);
+
+    const getTags = () => {
+        const tags = [];
+        const lowType = taskType.toLowerCase();
+        if (lowType.includes('ci') || lowType.includes('build') || lowType.includes('deploy')) tags.push({ label: 'CI', class: 'bg-blue-500/10 text-blue-400 border-blue-500/20' });
+        if (lowType.includes('security') || lowType.includes('audit')) tags.push({ label: 'Security', class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' });
+        if (lowType.includes('automation') || lowType.includes('hygiene')) tags.push({ label: 'Automation', class: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' });
+        if (lowType.includes('review') || lowType.includes('qa')) tags.push({ label: 'QA', class: 'bg-amber-500/10 text-amber-400 border-amber-500/20' });
+        return tags;
+    };
+
+    const tags = getTags();
+
     return (
         <div onClick={onClick} className={`bg-zinc-950 p-4 rounded-lg cursor-pointer transition-all duration-200 group border ${borderClass}`}>
-            <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center flex-wrap gap-2">
-                    <span className="text-[10px] font-mono text-zinc-500" title={`Task ID: ${id}`}>
-                        TASK-{id.substring(0, 8).toUpperCase()}
-                    </span>
-                    {customer && (
-                        <span className="text-[10px] font-medium text-indigo-400 bg-indigo-500/10 px-1.5 rounded truncate max-w-[100px]" title={customer}>
-                            {customer}
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex flex-col space-y-2">
+                    <div className="flex items-center space-x-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/40" />
+                        <span className="text-[10px] font-mono text-zinc-500" title={`Task ID: ${id}`}>
+                            TASK-{id.substring(0, 8).toUpperCase()}
                         </span>
-                    )}
+                    </div>
                 </div>
-                <button className="text-zinc-600 hover:text-zinc-300 transition-colors opacity-0 group-hover:opacity-100 pt-0.5">
-                    <MoreHorizontal className="w-4 h-4" />
-                </button>
+                <div className={`text-[10px] font-bold px-2 py-0.5 rounded border ${prio.class}`}>
+                    {prio.label}
+                </div>
             </div>
-            <h4 className="text-sm font-medium text-zinc-200 mb-3 leading-snug">{title}</h4>
-            <div className="flex items-center justify-between mt-auto">
-                <span className="text-xs text-zinc-500 truncate max-w-[140px]">{project}</span>
-                <div className="flex items-center">
-                    {active && <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />}
-                    {done && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                    {review && <AlertCircle className="w-3.5 h-3.5 text-amber-500" />}
-                    {blocked && <span className="text-[10px] font-medium text-rose-400 bg-rose-500/10 px-1.5 rounded uppercase">Blocked</span>}
+
+            <h4 className="text-sm font-medium text-zinc-200 mb-3 leading-snug group-hover:text-white transition-colors">
+                {taskType}
+                {templateVersion && <span className="text-[10px] text-zinc-600 ml-2">v{templateVersion}</span>}
+            </h4>
+            
+            {isProcessing && (
+                <div className="flex items-center space-x-2 px-2.5 py-1.5 mb-3 bg-gradient-to-r from-indigo-500/15 to-blue-500/15 rounded-md border border-indigo-500/20 text-indigo-400 text-[10px] font-medium animate-[processingPulse_2s_ease-in-out_infinite]">
+                    <div className="w-2.5 h-2.5 rounded-full border border-indigo-500 border-t-transparent animate-[spin_1s_linear_infinite]" />
+                    <span>Processing</span>
+                    <span className="opacity-70 ml-auto.5">since {new Date(processingStartedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+            )}
+
+            {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                    {tags.map(tag => (
+                        <span key={tag.label} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm border uppercase tracking-wider ${tag.class}`}>
+                            {tag.label}
+                        </span>
+                    ))}
+                </div>
+            )}
+
+            <div className="flex items-center space-x-2 py-2 border-t border-zinc-900 mt-2">
+                <div className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden">
+                    {agent?.avatarUrl ? <img src={agent.avatarUrl} alt="" className="w-full h-full object-cover" /> : <Bot className="w-3 h-3 text-zinc-500" />}
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-300 font-medium leading-none">{agent?.name || "Unassigned"}</span>
+                    <span className="text-[9px] text-zinc-600 leading-none mt-1 uppercase tracking-tighter font-semibold">{agent?.role || "Generalist"}</span>
                 </div>
             </div>
         </div>

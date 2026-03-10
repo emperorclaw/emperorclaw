@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       assigned_agent_id = ${internalAgentId},
       lease_owner = ${agentId},
       lease_until = NOW() + INTERVAL '2 minutes',
+      processing_started_at = NOW(),
       updated_at = NOW()
     WHERE id = (
       SELECT t.id FROM tasks t

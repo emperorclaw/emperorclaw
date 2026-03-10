@@ -162,6 +162,7 @@ export const tasks = pgTable("tasks", {
     contractVersion: text("contract_version"),
     state: text("state").notNull().default('queued'),
     priority: integer("priority").default(0).notNull(),
+    processingStartedAt: timestamp("processing_started_at"),
     assignedAgentId: uuid("assigned_agent_id").references(() => agents.id),
     leaseOwner: text("lease_owner"),
     leaseUntil: timestamp("lease_until"),
