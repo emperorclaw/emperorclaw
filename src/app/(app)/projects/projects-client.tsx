@@ -401,7 +401,11 @@ function TaskCard({ id, taskType, project, priority, active, review, done, block
 
             <div className="flex items-center space-x-2 py-2 border-t border-zinc-900 mt-2">
                 <div className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden">
-                    {agent?.avatarUrl ? <img src={agent.avatarUrl} alt="" className="w-full h-full object-cover" /> : <Bot className="w-3 h-3 text-zinc-500" />}
+                    <img 
+                        src={agent?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent?.id || 'default')}`} 
+                        alt="" 
+                        className="w-full h-full object-cover" 
+                    />
                 </div>
                 <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-300 font-medium leading-none">{agent?.name || "Unassigned"}</span>

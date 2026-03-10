@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
             companyId,
             name,
             role: role || "operator",
-            avatarUrl: avatarUrl || null,
+            avatarUrl: avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name)}`,
             skillsJson: skillsJson || [],
             memory: memory || null,
             modelPolicyJson: modelPolicyJson || {},
