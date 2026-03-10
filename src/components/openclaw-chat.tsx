@@ -164,8 +164,12 @@ export function OpenClawChat() {
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
                         <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-                                <Bot className="w-4 h-4 text-indigo-400" />
+                            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 overflow-hidden">
+                                <img 
+                                    src="https://api.dicebear.com/9.x/pixel-art/svg?seed=OpenClawBase" 
+                                    className="w-full h-full object-cover"
+                                    alt="System"
+                                />
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-sm font-semibold text-zinc-100 leading-tight">OpenClaw Base</span>
@@ -187,19 +191,29 @@ export function OpenClawChat() {
                     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
                         {history.map(msg => (
                             <div key={msg.id} className={cn("flex", msg.senderType === 'human' ? "justify-end" : "justify-start")}>
-                                <div
-                                    className={cn(
+                                    <div className={cn(
                                         "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
                                         msg.senderType === 'human'
                                             ? "bg-indigo-600 text-white rounded-br-sm"
                                             : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
                                     )}
                                 >
-                                    <div className={cn(
-                                        "text-[10px] font-medium mb-1 uppercase tracking-wider",
-                                        msg.senderType === 'human' ? "text-indigo-200" : "text-zinc-500"
-                                    )}>
-                                        {msg.senderType === 'human' ? 'You' : getAgentName(msg.fromUserId)}
+                                    <div className="flex items-center space-x-2 mb-1">
+                                        {msg.senderType !== 'human' && (
+                                            <div className="w-4 h-4 rounded-full overflow-hidden border border-zinc-700/50">
+                                                <img 
+                                                    src={agents.find(a => a.id === msg.fromUserId)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || 'agent')}`} 
+                                                    className="w-full h-full object-cover"
+                                                    alt=""
+                                                />
+                                            </div>
+                                        )}
+                                        <div className={cn(
+                                            "text-[10px] font-medium uppercase tracking-wider",
+                                            msg.senderType === 'human' ? "text-indigo-200" : "text-zinc-500"
+                                        )}>
+                                            {msg.senderType === 'human' ? 'You' : getAgentName(msg.fromUserId)}
+                                        </div>
                                     </div>
                                     <div className="whitespace-pre-wrap">{msg.text}</div>
                                 </div>

@@ -14,6 +14,7 @@ export async function GET() {
         const allAgents = await db.select({
             id: agents.id,
             name: agents.name,
+            avatarUrl: agents.avatarUrl,
         }).from(agents)
             .where(eq(agents.companyId, companyId));
 

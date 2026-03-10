@@ -45,7 +45,9 @@ export default async function AgentsPage() {
                     allAgents.map(agent => (
                         <AgentCard
                             key={agent.id}
+                            id={agent.id}
                             name={agent.name}
+                            avatarUrl={agent.avatarUrl}
                             role={agent.role || 'Unspecified'}
                             status={agent.status}
                             uptime="99.9%" // Could implement actual uptime metric later
@@ -61,7 +63,7 @@ export default async function AgentsPage() {
     );
 }
 
-function AgentCard({ name, role, status, uptime, tasksCompleted, currentLoad, skills, memory }: any) {
+function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, currentLoad, skills, memory }: any) {
     const statusColor = {
         online: "bg-emerald-500",
         degraded: "bg-amber-500",
@@ -72,8 +74,12 @@ function AgentCard({ name, role, status, uptime, tasksCompleted, currentLoad, sk
         <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-6 relative overflow-hidden group hover:border-zinc-700 transition-colors">
             <div className="flex justify-between items-start mb-6">
                 <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-700/50 flex items-center justify-center font-bold text-lg text-zinc-400">
-                        {name.charAt(0)}
+                    <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-700/50 flex items-center justify-center overflow-hidden">
+                        <img 
+                            src={avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(id || name)}`} 
+                            className="w-full h-full object-cover"
+                            alt=""
+                        />
                     </div>
                     <div>
                         <h3 className="text-lg font-medium text-zinc-100 flex items-center space-x-2">

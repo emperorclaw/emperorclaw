@@ -34,7 +34,9 @@ export default async function DashboardPage() {
       : 0;
 
     return {
+      id: agent.id,
       name: agent.name,
+      avatarUrl: agent.avatarUrl,
       online: agent.status === 'online',
       load: Math.min(loadPercent, 100),
       workingOn: assignedTasks,
@@ -97,8 +99,10 @@ export default async function DashboardPage() {
             ) : (
               agentWorkload.map(aw => (
                 <HealthItem
-                  key={aw.name}
+                  key={aw.id}
+                  id={aw.id}
                   name={aw.name}
+                  avatarUrl={aw.avatarUrl}
                   load={aw.load}
                   online={aw.online}
                   warning={aw.load >= 90}
@@ -199,12 +203,19 @@ function IncidentRow({ severity, title, time, status }: { severity: string, titl
   );
 }
 
-function HealthItem({ name, load, online, warning, workingOn }: { name: string, load: number, online: boolean, warning?: boolean, workingOn?: any[] }) {
+function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: { id: string, name: string, avatarUrl: string | null, load: number, online: boolean, warning?: boolean, workingOn?: any[] }) {
   return (
     <div className="flex flex-col space-y-2">
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center space-x-2">
-          <div className={`w-2 h-2 rounded-full ${online ? (warning ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-zinc-600'}`} />
+          <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-800">
+            <img 
+               src={avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(id || name)}`} 
+               className="w-full h-full object-cover"
+               alt=""
+            />
+          </div>
+          <div className={`w-1.5 h-1.5 rounded-full ${online ? (warning ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-zinc-600'}`} />
           <span className="font-medium text-zinc-300">{name}</span>
         </div>
         <span className="text-zinc-500 tracking-tight font-mono text-xs">{load}% load</span>

@@ -7,8 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function CreateAgentDialog() {
     const [open, setOpen] = useState(false);
+    const [name, setName] = useState("");
     const [roleDescription, setRoleDescription] = useState("");
-
+ 
     const handleCreate = async () => {
         console.log("Sending agent creation request to OpenClaw chat:", roleDescription);
         try {
@@ -16,19 +17,20 @@ export function CreateAgentDialog() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    text: `Please spawn a new agent with the exact capabilities described below. Once created, ensure you register it in the Emperor Claw Control Plane via the /api/mcp/agents endpoint so it appears here in the UI.\n\nRequired Capabilites:\n${roleDescription}`,
+                    text: `Please spawn a new agent named "${name || 'Unnamed Agent'}" with the exact capabilities described below. Once created, ensure you register it in the Emperor Claw Control Plane via the /api/mcp/agents endpoint so it appears here in the UI.\n\nRequired Capabilites:\n${roleDescription}`,
                     senderType: "human"
                 })
             });
             if (res.ok) {
                 setOpen(false);
                 setRoleDescription("");
+                setName("");
             }
         } catch (e) {
             console.error(e);
         }
     };
-
+ 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -42,13 +44,34 @@ export function CreateAgentDialog() {
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                    <Textarea
-                        id="roleDescription"
-                        className="bg-zinc-900 border-zinc-800 focus-visible:ring-indigo-500 text-sm h-32"
-                        placeholder="Example: I need a highly-specialized Data Extraction agent capable of writing Python scripts to parse massive unformatted PDF reports."
-                        value={roleDescription}
-                        onChange={(e) => setRoleDescription(e.target.value)}
-                    />
+                    <div className="flex items-center space-x-4 mb-2">
+                        <div className="w-16 h-16 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                            <img 
+                                src={`https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name || 'placeholder')}`} 
+                                className="w-full h-full object-cover"
+                                alt="Avatar Preview"
+                            />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proposed Agent Name</label>
+                            <input
+                                className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
+                                placeholder="e.g. DataSifter"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mission Capabilities</label>
+                        <Textarea
+                            id="roleDescription"
+                            className="bg-zinc-900 border-zinc-800 focus-visible:ring-indigo-500 text-sm h-32"
+                            placeholder="Example: I need a highly-specialized Data Extraction agent capable of writing Python scripts to parse massive unformatted PDF reports."
+                            value={roleDescription}
+                            onChange={(e) => setRoleDescription(e.target.value)}
+                        />
+                    </div>
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
