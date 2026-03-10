@@ -1,0 +1,26 @@
+{
+  "gateway": {
+    "url": "http://127.0.0.1:18789",
+    "hookToken": "YOUR_HOOK_TOKEN_HERE"
+  },
+  "workspace": {
+    "path": "/Users/your-username/your-workspace",
+    "tasksFile": "data/tasks.json",
+    "snapshotFile": "data/.tasks-snapshot.json",
+    "debugLog": "data/.webhook-debug.log"
+  },
+  "slack": {
+    "botToken": "xoxb-YOUR-BOT-TOKEN",
+    "channel": "C0123456789"
+  },
+  "secrets": {
+    "webhookSecretFile": "~/.clawdbot/secrets/github-webhook-secret",
+    "githubTokenFile": "~/.config/gh/hosts.yml"
+  },
+  "agent": {
+    "sessionPrefix": "hook:mission-control",
+    "defaultTimeout": 300,
+    "epicTimeoutBase": 600,
+    "epicTimeoutPerChild": 300
+  }
+}

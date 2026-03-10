@@ -1,0 +1,10 @@
+{
+  "name": "Operator Alpha",
+  "role": "operator",
+  "concurrencyLimit": 3,
+  "modelPolicyJson": {
+    "preferred_models": ["gpt-4o", "claude-3-5-sonnet"],
+    "fallback_models": ["gpt-4o-mini"]
+  },
+  "memory": "Persistent operational knowledge goes here."
+}

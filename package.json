@@ -10,7 +10,7 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:seed": "npx tsx src/db/seed.ts",
-    "skill:publish": "mkdir -p public/emperor-claw-os && cp -r clawhub/emperor-claw-os/* public/emperor-claw-os/",
+    "skill:publish": "mkdir -p public/emperor-claw-os && cp -r clawhub/emperor-claw-os/* public/emperor-claw-os/ && (cd clawhub/emperor-claw-os && npx clawhub publish . --slug emperor-claw-os --name 'Emperor Claw OS' --version $(node -p \"require('./package.json').version\") --tags latest)",
     "db:tunnel": "./db-tunnel.sh"
   },
   "dependencies": {

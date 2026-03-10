@@ -1,0 +1,108 @@
+{
+  "tasks": [
+    {
+      "id": "guide_onboarding",
+      "title": "🚀 Onboarding Guide — Set Up Mission Control",
+      "description": "Welcome to Mission Control! Follow these steps to complete your setup. Work through each subtask in order.\n\n**Tip:** Click on a subtask to see detailed instructions. Check it off when done.",
+      "status": "permanent",
+      "project": "guides",
+      "tags": ["guide", "setup"],
+      "subtasks": [
+        { "id": "sub_001", "title": "1. Enable GitHub Pages: Settings → Pages → Branch: main → Save", "done": false },
+        { "id": "sub_002", "title": "2. Create GitHub Token: github.com/settings/tokens → Generate (classic) → Scope: repo", "done": false },
+        { "id": "sub_003", "title": "3. Connect Dashboard: Open your GitHub Pages URL → Click 'Connect GitHub' → Paste token", "done": false },
+        { "id": "sub_004", "title": "4. Install Tailscale: brew install tailscale && tailscale up", "done": false },
+        { "id": "sub_005", "title": "5. Enable Funnel: tailscale funnel 18789 → Copy your URL", "done": false },
+        { "id": "sub_006", "title": "6. Generate Webhook Token: openssl rand -hex 32 → Save it", "done": false },
+        { "id": "sub_007", "title": "7. Add GitHub Webhook: Settings → Webhooks → Add → URL: https://YOUR-TAILSCALE-URL/hooks/github?token=YOUR-TOKEN", "done": false },
+        { "id": "sub_008", "title": "8. Test: Create a task, move to In Progress, verify MoltBot receives notification", "done": false }
+      ],
+      "priority": "high",
+      "comments": [
+        {
+          "author": "Mission Control",
+          "text": "Once all steps are complete, you can archive this guide or keep it as reference. Your setup is done when MoltBot responds to task changes!",
+          "timestamp": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "guide_user",
+      "title": "📖 User Guide — How to Use Mission Control",
+      "description": "Learn how to use Mission Control effectively. Both you AND MoltBot can manage tasks!\n\n**Two ways to manage tasks:**\n• 👤 **You** — Use the Dashboard UI (drag & drop, buttons, forms)\n• 🤖 **MoltBot** — Uses CLI scripts or edits tasks.json directly",
+      "status": "permanent",
+      "project": "guides",
+      "tags": ["guide", "help"],
+      "subtasks": [
+        { "id": "sub_001", "title": "— THE BOARD —", "done": false },
+        { "id": "sub_002", "title": "Columns: Permanent (recurring) → Backlog → In Progress → Review → Done", "done": false },
+        { "id": "sub_003", "title": "Drag & Drop: Move tasks between columns to change status", "done": false },
+        { "id": "sub_004", "title": "Click task card to open details and edit", "done": false },
+        { "id": "sub_005", "title": "— CREATING TASKS —", "done": false },
+        { "id": "sub_006", "title": "👤 You: Click '+' button in any column header", "done": false },
+        { "id": "sub_007", "title": "🤖 MoltBot: Edits data/tasks.json or uses CLI", "done": false },
+        { "id": "sub_008", "title": "— TASK DETAILS —", "done": false },
+        { "id": "sub_009", "title": "Title: Short, clear name for the task", "done": false },
+        { "id": "sub_010", "title": "Description: Detailed instructions (Markdown supported)", "done": false },
+        { "id": "sub_011", "title": "Subtasks: Break work into smaller steps (checkable)", "done": false },
+        { "id": "sub_012", "title": "Comments: Add notes, feedback, or progress updates", "done": false },
+        { "id": "sub_013", "title": "Priority: High (🔴) / Medium (🟡) / Low (🟢)", "done": false },
+        { "id": "sub_014", "title": "Project: Organize tasks by project/category", "done": false },
+        { "id": "sub_015", "title": "— WORKFLOW WITH MOLTBOT —", "done": false },
+        { "id": "sub_016", "title": "1. Create task in Backlog with clear description", "done": false },
+        { "id": "sub_017", "title": "2. Move to 'In Progress' → MoltBot gets notified via webhook", "done": false },
+        { "id": "sub_018", "title": "3. MoltBot works on task, updates subtasks & adds comments", "done": false },
+        { "id": "sub_019", "title": "4. MoltBot moves to 'Review' when done", "done": false },
+        { "id": "sub_020", "title": "5. You review: Approve → Done, or add feedback → back to In Progress", "done": false },
+        { "id": "sub_021", "title": "— DASHBOARD FEATURES —", "done": false },
+        { "id": "sub_022", "title": "🔍 Search: Filter tasks by text", "done": false },
+        { "id": "sub_023", "title": "📁 Project filter: Click project buttons to filter", "done": false },
+        { "id": "sub_024", "title": "⚙️ Settings: Add/edit projects", "done": false },
+        { "id": "sub_025", "title": "📦 Archive: Store completed tasks out of sight", "done": false },
+        { "id": "sub_026", "title": "👥 Team: See repo collaborators (if public)", "done": false },
+        { "id": "sub_027", "title": "📚 Docs: Built-in documentation", "done": false },
+        { "id": "sub_028", "title": "— MOLTBOT CAPABILITIES —", "done": false },
+        { "id": "sub_029", "title": "🤖 Can CREATE tasks (via CLI or JSON)", "done": false },
+        { "id": "sub_030", "title": "🤖 Can UPDATE task status, subtasks, comments", "done": false },
+        { "id": "sub_031", "title": "🤖 Can MOVE tasks between columns", "done": false },
+        { "id": "sub_032", "title": "🤖 Can DELETE/archive tasks", "done": false },
+        { "id": "sub_033", "title": "🤖 Receives WEBHOOK when you move tasks to In Progress", "done": false }
+      ],
+      "priority": "medium",
+      "comments": [
+        {
+          "author": "Mission Control",
+          "text": "This guide stays in Permanent so you can always reference it. The subtasks aren't meant to be 'completed' — they're documentation!",
+          "timestamp": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "createdAt": "2026-01-01T00:00:01Z"
+    },
+    {
+      "id": "task_example",
+      "title": "Example Task — Delete me when ready!",
+      "description": "This is an example of what a real task looks like. Feel free to edit or delete it.\n\n**Good task descriptions include:**\n- What needs to be done\n- Why it matters\n- Any constraints or requirements\n- Links to relevant resources",
+      "status": "backlog",
+      "project": "default",
+      "tags": ["example"],
+      "subtasks": [
+        { "id": "sub_001", "title": "First step of the task", "done": false },
+        { "id": "sub_002", "title": "Second step", "done": false },
+        { "id": "sub_003", "title": "Final step", "done": false }
+      ],
+      "priority": "low",
+      "comments": [],
+      "createdAt": "2026-01-01T00:00:02Z"
+    }
+  ],
+  "projects": [
+    { "id": "guides", "name": "Guides", "color": "#10b981", "icon": "📚" },
+    { "id": "default", "name": "My Project", "color": "#3b82f6", "icon": "📁" }
+  ],
+  "activities": [
+    { "type": "created", "actor": "Mission Control", "task": "Onboarding Guide", "time": "just now" },
+    { "type": "created", "actor": "Mission Control", "task": "User Guide", "time": "just now" }
+  ],
+  "lastUpdated": "2026-01-01T00:00:00Z"
+}
