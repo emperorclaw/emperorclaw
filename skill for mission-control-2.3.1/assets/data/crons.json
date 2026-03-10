@@ -1,0 +1,35 @@
+{
+  "lastUpdated": "2026-02-20T12:00:00+00:00",
+  "crons": [
+    {
+      "id": "demo-morning-check",
+      "name": "Morning Status Check",
+      "emoji": "☀️",
+      "schedule": "0 8 * * *",
+      "enabled": true,
+      "lastStatus": "ok",
+      "lastRunAt": null,
+      "nextRunAt": null
+    },
+    {
+      "id": "demo-daily-task-check",
+      "name": "Daily Task Check",
+      "emoji": "✅",
+      "schedule": "0 9 * * *",
+      "enabled": true,
+      "lastStatus": "ok",
+      "lastRunAt": null,
+      "nextRunAt": null
+    },
+    {
+      "id": "demo-weekly-review",
+      "name": "Weekly Review",
+      "emoji": "📋",
+      "schedule": "0 10 * * 1",
+      "enabled": true,
+      "lastStatus": null,
+      "lastRunAt": null,
+      "nextRunAt": null
+    }
+  ]
+}

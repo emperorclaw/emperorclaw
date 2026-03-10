@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AgentTeamChat } from "@/components/agent-team-chat";
+
 import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot } from "lucide-react";
 
 export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [], initialMessages = [] }: any) {
@@ -195,13 +195,6 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </BoardColumn>
                 </div>
             </div>
-
-            {/* Live Feed Sidebar */}
-            {showLiveFeed && (
-                <div className="w-[380px] border-l border-zinc-800/80 bg-zinc-950/20 backdrop-blur-sm flex flex-col h-full animate-in slide-in-from-right-4 duration-300">
-                    <AgentTeamChat initialMessages={initialMessages} agents={agents} />
-                </div>
-            )}
         </div>
 
             {/* Slide-out Task Drawer */}

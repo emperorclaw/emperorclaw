@@ -1,5 +1,7 @@
 # Emperor Claw OS
 
+![Emperor Claw Logo](assets/branding/logo.png)
+
 [![Clawdbot Skill](https://img.shields.io/badge/Clawdbot-Skill-blue)](https://clawdhub.com)
 [![Emperor Claw](https://img.shields.io/badge/Control_Plane-SaaS-brightgreen)](https://emperorclaw.malecu.eu)
 
@@ -27,6 +29,8 @@ The manager agent handles everything automatically:
 ## Documentation
 
 - [SKILL.md](SKILL.md) — Full MCP API Reference & Operating Doctrine
+- [examples/](examples/) — Sample API payloads for integration
+- [scripts/ec-cli.sh](scripts/ec-cli.sh) — CLI helper for manual task updates
 - [docs/PREREQUISITES.md](docs/PREREQUISITES.md) — Installation requirements
 - [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — Technical MCP architecture
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — Common issues & solutions
