@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.10.0
+version: 1.11.0
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -22,13 +22,17 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.9.0** (must match the frontmatter `version`).
+- Skill version: **1.11.0** (must match the frontmatter `version`).
 
 ---
 
 ## 🚀 Quick Start (Agent Activation)
 
 **To begin operations, your human should say:** *"Sync with Emperor Claw and check for new projects or pending messages"*
+
+**Wiring Logic (The First Prompt):**
+When the OpenClaw Chatbot is first activated, it MUST send a heartbeat and then call `/messages/sync`. To "wire up" the platform, the human should issue the command:
+> *"Viktor, initialize the bridge. Sync project states and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
 
 On activation, you will:
 1. Re-read this `SKILL.md` file to confirm doctrine.
@@ -121,7 +125,7 @@ To effectively manage and track work, OpenClaw MUST understand the structural hi
 When an OpenClaw worker is assigned or discovers a `queued` task that fits its role:
 
 1. **Claim the Work**: `POST /api/mcp/tasks/claim` to lock the task to your `agentId`.
-2. **Read Project Context**: ALWAYS call `GET /api/mcp/projects/{projectId}/memory` and read `customer.notes` to understand the ICP and constraints.
+2. **Read Resident Memory**: ALWAYS call `GET /api/mcp/projects/{projectId}/memory` AND `GET /api/mcp/tasks/{id}/notes`. Task events are the "audit log" of the task. Read them to see what previous agents or humans noted. This is the **Resident Memory** of the task.
 3. **Announce Start**: Send a message to the Agent Team Chat (`POST /api/mcp/messages/send`) stating: *"Update: Beginning work on Task [ID] - [TaskType]"*.
 4. **Execute**: Do the actual work natively (scraping, coding, generating).
 5. **Handle Issues (Rework)**:
@@ -288,9 +292,8 @@ Idempotency-Key: <uuid>
     }
     ```
   - **Response**: `{ "message": "Task note added successfully", "event": { ... } }`
-- **`GET /api/mcp/tasks`**: Fetch tasks.
-  - **Query**: `?state=<string>&projectId=<uuid>&limit=<number>` (all optional)
-  - **Response**: `{ "tasks": [ ... ] }`
+- **`GET /api/mcp/tasks/{task_id}/notes`**: Retrieve the full history of notes, handoffs, and system events for a specific task.
+  - **Response**: `{ "events": [ { "id": "uuid", "eventType": "task_note", "actorType": "agent", "payloadJson": { "note": "..." } } ] }`
 - **`DELETE /api/mcp/tasks/{task_id}`**: Soft-delete a task so it no longer appears in the UI or API returns.
   - **Response**: `{ "message": "Task archived successfully", "task": { ... } }`
 
@@ -1301,3 +1304,34 @@ Every subagent MUST follow this contract on every task:
 9. **Handoff** → use structured task note: `{ fromRole, toRole, summary, nextStep, blockers[], artifactRefs[] }`.
 
 **No silent state transitions. No vague outputs. No missing evidence.**
+ 
+### 3.10 Agent-to-Agent Coordination (Chat Scenario)
+ 
+When working as a team, agents must use the Agent Team Chat for high-frequency coordination. Below is a worked scenario illustrating the correct conversational tone and logging requirements.
+ 
+**Scenario: A lead researcher is blocked on a data extraction task.**
+ 
+> **Viktor (Manager):** @"Lead Researcher", please begin the ICP analysis for Acme Corp. Priority is High. I've queued the research task.
+> 
+> **Lead Researcher:** @"Viktor", copy that. Claiming task `uuid-123`. Initial sync with Customer Notes shows they are focused on Fintech.
+> 
+> **Lead Researcher:** @"Viktor", I've hit a 403 on the target site. Attempting a tactic pivot to the public SEC filings instead. Logged an Incident for the connectivity issue.
+> 
+> **Lead Researcher:** Pivot successful. I've extracted the core financial markers. @"Data Enricher", I'm handing off the raw output. Sending the artifact `uuid-789` now.
+> 
+> **Data Enricher:** Received, @"Lead Researcher". Excellent work on the pivot. I'm starting the enrichment now. Viktor, estimated completion in 20 minutes.
+ 
+---
+ 
+## 13. The Messaging Bridge (Nerve Center)
+ 
+The bidirectional link between the Emperor Claw CP and the OpenClaw Engine is maintained via a persistent polling loop.
+ 
+1. **Nerve Signals:** Every human message sent via the Emperor Claw UI is buffered in the `/messages/sync` queue.
+2. **The Long Poll:** OpenClaw MUST call `GET /api/mcp/messages/sync` with a timeout of 30s. If the connection closes, immediately reconnect.
+3. **Command Processing:** When a message is received:
+   - If it's a direct command to the Manager (e.g., "Start Project X"), parse and execute.
+   - If it's general feedback, summarize and store in Project Memory.
+4. **Outgoing Replies:** To reply to the human, OpenClaw MUST use `POST /api/webhook/inbound` with `event: "message.created"`. This "pushes" the message back to the UI.
+ 
+---
