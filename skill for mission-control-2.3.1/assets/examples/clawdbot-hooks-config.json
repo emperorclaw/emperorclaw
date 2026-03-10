@@ -1,9 +1,0 @@
-{
-  "hooks": {
-    "enabled": true,
-    "token": "YOUR_HOOK_TOKEN_HERE",
-    "mappings": {
-      "github": "github-mission-control.mjs"
-    }
-  }
-}
