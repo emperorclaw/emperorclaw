@@ -97,8 +97,16 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                 ) : (
                     messages.map((msg) => (
                         <div key={msg.id} className={`flex space-x-3 ${msg.senderType === 'human' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.senderType === 'human' ? 'bg-zinc-800/80 border-zinc-700' : 'bg-indigo-500/10 border-indigo-500/20'}`}>
-                                {msg.senderType === 'human' ? <User className="w-4 h-4 text-zinc-400" /> : <Bot className="w-4 h-4 text-indigo-400" />}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border overflow-hidden ${msg.senderType === 'human' ? 'bg-zinc-800/80 border-zinc-700' : 'bg-indigo-500/10 border-indigo-500/20'}`}>
+                                {msg.senderType === 'human' ? (
+                                    <User className="w-4 h-4 text-zinc-400" />
+                                ) : (
+                                    <img 
+                                        src={agents.find(a => a.id === msg.fromUserId)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || 'agent')}`} 
+                                        className="w-full h-full object-cover"
+                                        alt=""
+                                    />
+                                )}
                             </div>
                             <div className={`rounded-2xl px-4 py-2.5 max-w-[85%] text-sm ${msg.senderType === 'human' ? 'bg-zinc-800/50 border border-zinc-700/50 rounded-tr-none text-zinc-200' : 'bg-zinc-800/30 border border-zinc-800/50 rounded-tl-none text-zinc-300'}`}>
                                 <div className={`text-[10px] font-medium mb-1 tracking-wider uppercase flex justify-between ${msg.senderType === 'human' ? 'text-zinc-500' : 'text-indigo-400'}`}>
