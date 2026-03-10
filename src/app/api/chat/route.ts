@@ -50,6 +50,10 @@ export async function POST(req: NextRequest) {
             threadId: 'default'
         }).returning();
 
+        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
+            broadcastMcpEvent(companyId, { type: 'new_message', message: msg });
+        });
+
         return NextResponse.json({ message: msg });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });

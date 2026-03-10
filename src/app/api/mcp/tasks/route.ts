@@ -96,6 +96,10 @@ export async function POST(req: NextRequest) {
             payloadJson: { source: 'mcp_api' }
         });
 
+        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
+            broadcastMcpEvent(companyId, { type: 'new_task', task: newTask });
+        });
+
         const res = { message: "Task generated", task: newTask };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });

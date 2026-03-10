@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
             text,
         }).returning();
 
+        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
+            broadcastMcpEvent(companyId, { type: 'new_message', message: newMessage });
+        });
+
         return NextResponse.json({
             ok: true,
             message_id: newMessage.id

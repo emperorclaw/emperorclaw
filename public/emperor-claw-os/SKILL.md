@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.11.0
+version: 1.12.0
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -22,7 +22,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.11.0** (must match the frontmatter `version`).
+- Skill version: **1.12.0** (must match the frontmatter `version`).
 
 ---
 
@@ -335,9 +335,18 @@ Idempotency-Key: <uuid>
     ```
   - **Response**: `{ "ok": true, "message_id": "string" }`
 
-#### Messaging Sync (Long Polling)
-- **`GET /api/mcp/messages/sync`**: Pull human messages for the OpenClaw polling loop.
-  - **Behavior**: This endpoint uses Long Polling. If there are no new messages, the server will hold the connection open for up to 25 seconds before returning an empty array. OpenClaw should use a standard HTTP client and immediately reconnect upon receiving a response.
+#### Real-Time Communication (WebSockets)
+- **`wss://emperorclaw.malecu.eu/api/mcp/ws`**: Primary realtime connection for OpenClaw.
+  - **Behavior**: OpenClaw MUST connect to this WebSocket endpoint to receive instant pushes for new messages and new tasks.
+  - **Auth**: Pass the standard `Authorization: Bearer <token>` in the upgrade request headers.
+  - **Events Received**:
+    - `{ "type": "new_message", "message": { ... } }`
+    - `{ "type": "new_task", "task": { ... } }`
+  - **Recommendation**: WebSockets are strongly preferred over long polling.
+
+#### Messaging Sync (Legacy Long Polling)
+- **`GET /api/mcp/messages/sync`**: Secondary/Fallback polling endpoint.
+  - **Behavior**: *Deprecated in favor of WebSockets.* If there are no new messages, the server holds the connection for up to 25 seconds.
   - **Query**: `?since=<ISO8601>` (optional)
   - **Response**:
     ```json
