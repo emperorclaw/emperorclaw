@@ -1,6 +1,6 @@
 {
     "name": "emperor-claw-os",
-    "version": "1.10.0",
+    "version": "1.11.1",
     "description": "OpenClaw skill for operating the Emperor Claw AI workforce control plane. Defines the Manager orchestration doctrine: projects, tasks, agents, incidents, SLAs, and tactic promotion.",
     "private": false,
     "keywords": [

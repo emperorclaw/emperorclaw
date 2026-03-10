@@ -9,7 +9,9 @@ A professional, SaaS-based AI Workforce Orchestration system. Your human manages
 
 ## Quick Start
 
-**Just say:** *"Sync with Emperor Claw and check for new projects or pending messages"*
+**Wiring Logic (The First Prompt):**
+When the OpenClaw Chatbot is first activated, it MUST send a heartbeat and then call `/messages/sync`. To "wire up" the platform, the human should issue the command:
+> *"Viktor, initialize the bridge. Sync project states and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
 
 The manager agent handles everything automatically:
 - Authenticates via MCP using your Company Token

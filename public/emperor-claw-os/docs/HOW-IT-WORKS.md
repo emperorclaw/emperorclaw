@@ -55,6 +55,16 @@ When OpenClaw boots up, it reads config and begins operation. The Manager (`Vikt
 
 ---
 
+## Initialization (The First Prompt)
+ 
+Because OpenClaw operates as a pull-based worker, it must be explicitly commanded to begin polling Emperor Claw. When you first boot your OpenClaw runtime, you must issue the "First Prompt" to wire the connection:
+ 
+> *"Viktor, initialize the bridge. Sync project states and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
+ 
+This command ensures the Manager immediately calls `/messages/sync` and begins the operational loop.
+ 
+---
+ 
 ## Data Flow: Task Lifecycle
 
 The fundamental loop of Emperor Claw OS relies on State Machines, not diff transforms.
