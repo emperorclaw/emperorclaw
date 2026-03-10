@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
         // 3. Transform and Route
         // This inserts the message into Emperor Claw's system-of-record.
-        await db.insert(chatMessages).values({
+        const [newMessage] = await db.insert(chatMessages).values({
             companyId, // Uses the authenticated company token's ID
             threadId: thread_id || chat_id,
             senderType: 'human', // Inbound usually comes from a human or external platform
@@ -45,6 +45,10 @@ export async function POST(req: NextRequest) {
             text: text,
             platformMessageId: id,
             createdAt: timestamp ? new Date(timestamp) : new Date()
+        }).returning();
+
+        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
+            broadcastMcpEvent(companyId, { type: 'new_message', message: newMessage });
         });
 
         // 5. Return 200
