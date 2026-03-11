@@ -2,15 +2,20 @@
 
 import { useState, useEffect } from "react";
 
-import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot, Brain, Plus, History } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { cn } from "@/lib/utils";
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [], initialMessages = [] }: any) {
+export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [], initialMessages = [], initialProjectMemory = [] }: any) {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
     const [comment, setComment] = useState("");
     const [events, setEvents] = useState<any[]>(taskEvents);
+    const [projectMemoryItems, setProjectMemoryItems] = useState<any[]>(initialProjectMemory);
+    const [isContextOpen, setIsContextOpen] = useState(false);
+    const [newContext, setNewContext] = useState("");
+    const [isSubmittingContext, setIsSubmittingContext] = useState(false);
 
     // Data auto-refresh is now handled globally
     // We update local events state after sending a comment for immediate feedback
@@ -50,6 +55,30 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             console.error("Failed to send task context", e);
         }
     };
+
+    const handleAddProjectContext = async () => {
+        if (!newContext.trim() || projectFilter === "All Projects") return;
+        setIsSubmittingContext(true);
+        try {
+            const res = await fetch(`/api/mcp/projects/${projectFilter}/memory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: newContext })
+            });
+            if (res.ok) {
+                const { data } = await res.json();
+                setProjectMemoryItems([data, ...projectMemoryItems]);
+                setNewContext("");
+            }
+        } catch (e) {
+            console.error("Failed to add project context", e);
+        } finally {
+            setIsSubmittingContext(false);
+        }
+    };
+
+    const currentProjectMemory = projectMemoryItems.filter(m => m.projectId === projectFilter)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const filteredTasks = initialTasks.filter((t: any) => {
         if (projectFilter !== "All Projects" && t.projectId !== projectFilter) return false;
@@ -113,6 +142,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     <button className="p-2 h-10 bg-zinc-900/50 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-zinc-200">
                         <Filter className="w-4 h-4" />
                     </button>
+
+                    {projectFilter !== "All Projects" && (
+                        <button 
+                            id="project-brain-btn"
+                            onClick={() => setIsContextOpen(true)}
+                            className="flex items-center space-x-2 px-4 h-10 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-indigo-500/20 transition-all border border-indigo-500/50 animate-in zoom-in-95"
+                        >
+                            <Brain className="w-4 h-4" />
+                            <span>Project Brain</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -308,6 +348,97 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     <Send className="w-4 h-4" />
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Project Brain Drawer (Context Memory) */}
+            {isContextOpen && (
+                <div className="absolute top-0 right-0 w-[45%] h-full bg-zinc-900/98 border-l border-zinc-800 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-10 duration-300 flex flex-col z-50 rounded-l-2xl">
+                    <div className="p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/50 rounded-tl-2xl">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-500 shadow-inner">
+                                <Brain className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-semibold text-zinc-100 uppercase tracking-tight">Project Brain</h2>
+                                <p className="text-xs text-zinc-500 font-medium">Persistent Context & High-level Intelligence</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsContextOpen(false)} className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors">
+                            <ChevronRight className="w-6 h-6" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                        {/* Add New Context Form */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest pl-1">Teach Project New Context</label>
+                            <div className="relative group">
+                                <textarea
+                                    value={newContext}
+                                    onChange={(e) => setNewContext(e.target.value)}
+                                    placeholder="Enter new goals, findings, or critical context for the agents..."
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-200 resize-none outline-none h-32 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+                                />
+                                <button
+                                    onClick={handleAddProjectContext}
+                                    disabled={!newContext.trim() || isSubmittingContext}
+                                    className="absolute bottom-3 right-3 flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/20"
+                                >
+                                    {isSubmittingContext ? (
+                                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Plus className="w-3 h-3" />
+                                    )}
+                                    <span>Append Context</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Memory Timeline */}
+                        <div className="space-y-4">
+                            <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest pl-1 flex items-center space-x-2">
+                                <History className="w-3 h-3" />
+                                <span>Memory Timeline</span>
+                            </h3>
+                            
+                            {currentProjectMemory.length === 0 ? (
+                                <div className="p-8 border border-dashed border-zinc-800 rounded-2xl flex flex-col items-center justify-center text-center space-y-2 opacity-50">
+                                    <Brain className="w-8 h-8 text-zinc-700 mb-2" />
+                                    <p className="text-sm text-zinc-500">This project currently has no high-level memory entries.</p>
+                                    <p className="text-xs text-zinc-600">The "Brain" stores critical cross-task knowledge.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {currentProjectMemory.map((m: any) => (
+                                        <div key={m.id} className="bg-zinc-950/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-sm hover:border-zinc-700 transition-colors group">
+                                            <div className="p-4 border-b border-zinc-800/50 bg-zinc-900/20 flex items-center justify-between">
+                                                <div className="flex items-center space-x-2">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                                                    <span className="text-[10px] font-mono text-zinc-500">{new Date(m.createdAt).toLocaleString()}</span>
+                                                </div>
+                                                {m.createdByAgentId && (
+                                                    <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[9px] text-indigo-400 font-bold uppercase tracking-tighter">
+                                                        <span>By {getAgentName(m.createdByAgentId)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="p-5">
+                                                <MarkdownRenderer content={m.content} className="text-sm prose-invert" />
+                                            </div>
+                                            {m.tags && m.tags.length > 0 && (
+                                                <div className="px-5 pb-4 flex flex-wrap gap-2">
+                                                    {m.tags.map((tag: string) => (
+                                                        <span key={tag} className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900 text-zinc-500 uppercase tracking-widest">{tag}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
