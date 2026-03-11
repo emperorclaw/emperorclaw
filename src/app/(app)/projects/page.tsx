@@ -14,8 +14,8 @@ export default async function ProjectsPage() {
     const allTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
     const allProjects = await db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
     const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-    const allCustomers = await db.select().from(customers).where(eq(customers.companyId, companyId));
-    const allArtifacts = await db.select().from(artifacts).where(eq(artifacts.companyId, companyId));
+    const allCustomers = await db.select().from(customers).where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
+    const allArtifacts = await db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)));
     const allEvents = await db.select().from(taskEvents).where(eq(taskEvents.companyId, companyId));
     const allMessages = await db.select().from(chatMessages).where(eq(chatMessages.companyId, companyId)).limit(50).orderBy(chatMessages.createdAt);
     const allProjectMemory = await db.select().from(projectMemory).where(eq(projectMemory.companyId, companyId));

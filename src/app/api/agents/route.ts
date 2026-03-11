@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function GET() {
             name: agents.name,
             avatarUrl: agents.avatarUrl,
         }).from(agents)
-            .where(eq(agents.companyId, companyId));
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 
         return NextResponse.json({ agents: allAgents });
     } catch (e: any) {
