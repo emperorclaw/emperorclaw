@@ -8,6 +8,7 @@ export function OpenClawChat() {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [history, setHistory] = useState<any[]>([]);
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [agents, setAgents] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
@@ -83,7 +84,8 @@ export function OpenClawChat() {
 
         const interval = setInterval(pollHistory, 5000); // Poll every 5 seconds
         return () => clearInterval(interval);
-    }, [isOpen, lastSeenAt, initialized]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, initialized]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -99,6 +101,7 @@ export function OpenClawChat() {
         } else if (baseTitleRef.current) {
             document.title = baseTitleRef.current;
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [unreadCount]);
 
     useEffect(() => {
@@ -109,9 +112,9 @@ export function OpenClawChat() {
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!message.trim()) return;
-
-        const textToSend = message;
+        const selectedAgent = agents.find(a => a.id === selectedAgentId);
+        const prefix = selectedAgent ? `@${selectedAgent.name} ` : "";
+        const textToSend = prefix + message;
         setMessage("");
 
         try {
@@ -185,6 +188,38 @@ export function OpenClawChat() {
                         >
                             <X className="w-4 h-4" />
                         </button>
+                    </div>
+
+                    {/* Agent Selector */}
+                    <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/20 flex items-center space-x-2 overflow-x-auto no-scrollbar whitespace-nowrap">
+                        <button 
+                            onClick={() => setSelectedAgentId(null)}
+                            className={cn(
+                                "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border",
+                                !selectedAgentId 
+                                    ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" 
+                                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                            )}
+                        >
+                            Broadcast
+                        </button>
+                        {agents.map(agent => (
+                            <button
+                                key={agent.id}
+                                onClick={() => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
+                                className={cn(
+                                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center space-x-1",
+                                    selectedAgentId === agent.id
+                                        ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                                )}
+                            >
+                                <div className="w-3 h-3 rounded-full overflow-hidden border border-white/20">
+                                    <img src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`} className="w-full h-full object-cover" alt="" />
+                                </div>
+                                <span>{agent.name}</span>
+                            </button>
+                        ))}
                     </div>
 
                     {/* Chat History */}
