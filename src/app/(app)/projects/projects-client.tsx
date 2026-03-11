@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 
 import { Search, Filter, MoreHorizontal, Clock, AlertCircle, CheckCircle2, ChevronRight, Send, Bot } from "lucide-react";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts, taskEvents = [], initialMessages = [] }: any) {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
@@ -243,8 +244,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                             <span>{a.contentType}</span>
                                         </div>
                                         {a.contentText && (
-                                            <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap">
-                                                {a.contentText}
+                                            <div className="mt-2">
+                                                <MarkdownRenderer content={a.contentText} className="text-xs" />
                                             </div>
                                         )}
                                         {!a.contentText && a.storageUrl && (

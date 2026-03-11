@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 type PathNode = {
     type: 'customer' | 'project' | 'kind';
@@ -24,7 +25,8 @@ export default function ArtifactsClient({
     customers: any[]
 }) {
     const [artifacts, setArtifacts] = useState(initialArtifacts);
-    const [selectedText, setSelectedText] = useState<string | null>(null);
+    const [selectedArtifact, setSelectedArtifact] = useState<any | null>(null);
+    const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
     const [currentPath, setCurrentPath] = useState<PathNode[]>([]);
 
     const handleDownload = (content: string, contentType: string, artifactId: string) => {
@@ -282,7 +284,7 @@ export default function ArtifactsClient({
                                                                     <Button onClick={() => handleDownload(artifact.contentText!, artifact.contentType!, artifact.id)} variant="outline" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity border-zinc-500/30 hover:bg-zinc-500/10 hover:text-zinc-300 text-zinc-400 bg-transparent h-8">
                                                                         Download
                                                                     </Button>
-                                                                    <Button onClick={() => setSelectedText(artifact.contentText)} variant="outline" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300 text-emerald-400 bg-transparent h-8">
+                                                                    <Button onClick={() => setSelectedArtifact(artifact)} variant="outline" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300 text-emerald-400 bg-transparent h-8">
                                                                         View
                                                                     </Button>
                                                                 </>
@@ -304,21 +306,47 @@ export default function ArtifactsClient({
             </div>
 
             {/* Content View Modal */}
-            <Dialog open={!!selectedText} onOpenChange={(open) => !open && setSelectedText(null)}>
-                <DialogContent className="sm:max-w-[700px] bg-zinc-950 border-zinc-800 text-zinc-200 shadow-2xl p-0 gap-0">
-                    <DialogHeader className="px-6 py-4 border-b border-zinc-800/80 bg-zinc-900/50 flex flex-row items-center justify-between">
-                        <div>
+            <Dialog open={!!selectedArtifact} onOpenChange={(open: boolean) => {
+                if (!open) {
+                    setSelectedArtifact(null);
+                    setViewMode('preview');
+                }
+            }}>
+                <DialogContent className="sm:max-w-[800px] bg-zinc-950 border-zinc-800 text-zinc-200 shadow-2xl p-0 gap-0 flex flex-col max-h-[90vh]">
+                    <DialogHeader className="px-6 py-4 border-b border-zinc-800/80 bg-zinc-900/50 flex flex-row items-center justify-between shrink-0">
+                        <div className="flex flex-col">
                             <DialogTitle className="text-lg font-semibold tracking-tight">Artifact Payload</DialogTitle>
-                            <DialogDescription className="text-zinc-400 mt-1">Raw text payload extracted from the database.</DialogDescription>
+                            <DialogDescription className="text-zinc-400 mt-1">
+                                {selectedArtifact?.kind || "Data"} — {selectedArtifact?.contentType || "text/plain"}
+                            </DialogDescription>
+                        </div>
+                        <div className="flex items-center gap-2 mr-6">
+                            <div className="bg-zinc-900 p-0.5 rounded-lg border border-zinc-800 flex">
+                                <button
+                                    onClick={() => setViewMode('preview')}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'preview' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+                                >
+                                    Preview
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('raw')}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'raw' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+                                >
+                                    Raw
+                                </button>
+                            </div>
                         </div>
                     </DialogHeader>
 
-                    <div className="p-6 bg-zinc-950 max-h-[60vh] overflow-y-auto">
-                        <pre className="text-sm font-mono text-zinc-300 whitespace-pre-wrap bg-zinc-900/50 p-4 border border-zinc-800/50 rounded-lg">
-                            {selectedText}
-                        </pre>
+                    <div className="p-6 bg-zinc-950 overflow-y-auto flex-1">
+                        {viewMode === 'preview' ? (
+                            <MarkdownRenderer content={selectedArtifact?.contentText || ""} />
+                        ) : (
+                            <pre className="text-sm font-mono text-zinc-300 whitespace-pre-wrap bg-zinc-900/50 p-4 border border-zinc-800/50 rounded-lg">
+                                {selectedArtifact?.contentText}
+                            </pre>
+                        )}
                     </div>
-
                 </DialogContent>
             </Dialog>
 
