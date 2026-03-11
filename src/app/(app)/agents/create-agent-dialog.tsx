@@ -17,7 +17,7 @@ export function CreateAgentDialog() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    text: `Please spawn a new agent named "${name || 'Unnamed Agent'}" with the exact capabilities described below. Once created, ensure you register it in the Emperor Claw Control Plane via the /api/mcp/agents endpoint so it appears here in the UI.\n\nRequired Capabilites:\n${roleDescription}`,
+                    text: `/register-agent name="${name || 'Unnamed Agent'}" capabilities="${roleDescription}"`,
                     senderType: "human"
                 })
             });
