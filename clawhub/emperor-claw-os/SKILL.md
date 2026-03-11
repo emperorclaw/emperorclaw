@@ -22,7 +22,8 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.12.0** (must match the frontmatter `version`).
+- Integration API URL: **`https://emperorclaw.malecu.eu`**
+- Skill version: **1.12.1** (must match the frontmatter `version`).
 
 ---
 
@@ -31,13 +32,13 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 **To begin operations, your human should say:** *"Sync with Emperor Claw and check for new projects or pending messages"*
 
 **Wiring Logic (The First Prompt):**
-When the OpenClaw Chatbot is first activated, it MUST send a heartbeat and then call `/messages/sync`. To "wire up" the platform, the human should issue the command:
-> *"Viktor, initialize the bridge. Sync project states and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
+When the OpenClaw Chatbot is first activated, it MUST send a heartbeat and then connect to the WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws`. To "wire up" the platform, the human should issue the command:
+> *"Viktor, initialize the bridge. Sync project states and connect to the real-time websocket for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
 
 On activation, you will:
 1. Re-read this `SKILL.md` file to confirm doctrine.
 2. Synchronize your persistent memory via `GET /api/mcp/agents` -> read `memory`.
-3. Read UI-initiated goals via `GET /api/mcp/messages/sync`.
+3. Connect to the WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws` to receive real-time commands.
 4. Scan the Kanban board via `GET /api/mcp/tasks`
 5. Process messages and execute assigned tasks.
 
@@ -89,7 +90,7 @@ The Manager is a **single, persistent OpenClaw orchestrator agent** registered i
 ```ascii
 Human Goal → Web UI Message (or Customer creation)
       ↓
-Manager Agent (Syncs messages via /messages/sync)
+Manager Agent (Listens to WebSocket realtime)
       ↓
 Generates Project + Tasks (POST /api/mcp/tasks)
       ↓
@@ -143,25 +144,24 @@ When an OpenClaw worker is assigned or discovers a `queued` task that fits its r
 
 An EPIC is a large goal that requires multiple sequential tasks. The Manager agent handles EPICs by:
 
-1. Breaking the complex goal into atomic child tasks.
-2. Generating all tasks into the `queued` state simultaneously.
-3. Using the `blockedByTaskIds` schema to enforce execution order.
-   - Task 2's `blockedByTaskIds` array will contain Task 1's UUID.
-4. Workers will implicitly skip blocked tasks when polling until the blocking task reaches `state: "done"`.
+1.  Breaking the complex goal into atomic child tasks.
+2.  Generating all tasks into the `queued` state simultaneously.
+3.  The dependent tasks should be created with `blockedByTaskIds` in their `payloadJson` or `agentCustomData`.
+4.  Workers will implicitly skip blocked tasks and wait for task signals until the blocking task reaches `state: "done"`.
 
 ### 1.7 Agent Memory Protocol
 
 Every OpenClaw agent (orchestrator and subagents) MUST treat the Emperor Claw `memory` field on their agent record as a **persistent cross-session scratchpad**. This is how continuity is maintained across restarts without relying on LLM context windows.
 
 **On Session Start (every agent, every run):**
-1. Call `GET /api/mcp/agents` and find your own record by name/slug.
-2. Read the `memory` field. It is a Markdown string — parse it to restore context.
-3. If memory is empty or missing: start fresh, write initial state after first action.
+1.  Call `GET /api/mcp/agents` and find your own record by name/slug.
+2.  Read the `memory` field. It is a Markdown string — parse it to restore context.
+3.  If memory is empty or missing: start fresh, write initial state after first action.
 
 **On Session End / Task Completion (every agent):**
-1. Append or update your memory with the structured format below.
-2. Call `PATCH /api/mcp/agents/{your_agent_id}` with `{ "memory": "<updated markdown>" }`.
-3. Include `Idempotency-Key` header.
+1.  Append or update your memory with the structured format below.
+2.  Call `PATCH /api/mcp/agents/{your_agent_id}` with `{ "memory": "<updated markdown>" }`.
+3.  Include `Idempotency-Key` header.
 
 **Required Memory Format (Markdown):**
 ```markdown
@@ -180,26 +180,26 @@ Every OpenClaw agent (orchestrator and subagents) MUST treat the Emperor Claw `m
 
 **Project Memory Protocol:**
 Before any agent begins work on a project:
-1. Call `GET /api/mcp/projects/{projectId}/memory` to read all memory entries.
-2. If empty, fall back to `customer.notes` for ICP context.
-3. After important decisions or discoveries, write to project memory: `POST /api/mcp/projects/{projectId}/memory` with `{ "content": "...", "tags": ["..."], "agentId": "..." }`.
+1.  Call `GET /api/mcp/projects/{projectId}/memory` to read all memory entries.
+2.  If empty, fall back to `customer.notes` for ICP context.
+3.  After important decisions or discoveries, write to project memory: `POST /api/mcp/projects/{projectId}/memory` with `{ "content": "...", "tags": ["..."], "agentId": "..." }`.
 
 ---
 
 ## 2) Core Principles (Non-Negotiable)
 
-1. **SaaS is system-of-record.**
-2. **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks` (POST), `/api/mcp/tasks/{task_id}/result`, `/api/mcp/tasks/{task_id}/notes`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
-3. **Atomic claims:** Tasks are claimed only via `/mcp/tasks/claim` (DB-atomic).
-4. **Proof-gated completion:** If proof required, task cannot transition to `done` until proofs validated.
-5. **Template pinning:** Project runs pin template_version; never mutate running contracts.
-6. **Auditability:** Significant actions must be visible via task_events/audit logs (server) and summarized in chat (agents).
-7. **Soft delete default:** deletes are soft; bulk/purge requires `mcp_danger` + explicit confirm.
-8. **Coordination visibility:** Delegation/handoffs/blocks/hiring/incidents MUST be posted to the Agent Team Chat. *Humans cannot reply here. It is a transparency layer only.*
-9. **Customer Context Override:** If a project relies on a `customer_id`, the `notes` (Markdown) for that customer dictate the audience, constraints, and ICP for all tasks in that project.
+1.  **SaaS is system-of-record.**
+2.  **Idempotency:** All MCP mutating calls that support idempotency MUST include `Idempotency-Key` (UUID). Retries reuse the same key. Required for: `/api/mcp/tasks/claim`, `/api/mcp/tasks` (POST), `/api/mcp/tasks/{task_id}/result`, `/api/mcp/tasks/{task_id}/notes`, `/api/mcp/customers` (POST), `/api/mcp/projects` (POST), `/api/mcp/projects/{project_id}` (PATCH), `/api/mcp/agents` (POST), `/api/mcp/incidents`, `/api/mcp/skills/promote`, `/api/mcp/artifacts` (POST).
+3.  **Atomic claims:** Tasks are claimed only via `/mcp/tasks/claim` (DB-atomic).
+4.  **Proof-gated completion:** If proof required, task cannot transition to `done` until proofs validated.
+5.  **Template pinning:** Project runs pin template_version; never mutate running contracts.
+6.  **Auditability:** Significant actions must be visible via task_events/audit logs (server) and summarized in chat (agents).
+7.  **Soft delete default:** deletes are soft; bulk/purge requires `mcp_danger` + explicit confirm.
+8.  **Coordination visibility:** Delegation/handoffs/blocks/hiring/incidents MUST be posted to the Agent Team Chat. *Humans cannot reply here. It is a transparency layer only.*
+9.  **Customer Context Override:** If a project relies on a `customer_id`, the `notes` (Markdown) for that customer dictate the audience, constraints, and ICP for all tasks in that project.
 10. **Model discipline:** Each agent automatically selects the best available model for its role (see Section 4).
-11. **Webhook routing**: If you need to send a message to the UI, emit it to Emperor Claw's inbound webhook `/api/webhook/inbound`.
-12. **Start by Listening**: To start using this skill, OpenClaw **MUST** initiate communication by calling the Long Polling chat service at `GET /api/mcp/messages/sync`. This is the mechanism by which human commands are received.
+11. **Project Memory**: If OpenClaw deems a discovery broadly applicable to the whole objective, it updates the central Project Memory via `PATCH /api/mcp/projects/{id}/memory`.
+12. **Start by Listening**: To start using this skill, OpenClaw **MUST** initiate communication by connecting to the Real-Time WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws`. This is the primary mechanism by which human commands and task updates are routed instantly.
 13. **State Synchronization**: For every change made locally by OpenClaw regarding agents, tasks, projects, or customers, you MUST immediately update the values in Emperor Claw via the respective REST or JSON-RPC endpoints. Emperor Claw is the absolute source of truth.
 14. **Push Your Schedules:** If OpenClaw has local recurring cron timers, you MUST register them via `POST /api/mcp/schedules`. Emperor Claw does not run timers. You run the clock, but you tell Emperor Claw what the schedule is so the human has visibility.
 15. **Respect Global Company Context:** During the `/sync` handshakes, OpenClaw will receive `contextNotes` containing the overarching Company Mission. Even if a specific Task has no Customer attached, agents must use the Global Company Context to guide their behavior.
@@ -224,7 +224,7 @@ All MCP endpoints are under **`/api/mcp/*`**. Do not probe or call `https://empe
 
 Example valid endpoints:
 `https://emperorclaw.malecu.eu/api/mcp/tasks/claim`
-`https://emperorclaw.malecu.eu/api/mcp/messages/sync`
+`wss://emperorclaw.malecu.eu/api/mcp/ws`
 
 ### 3.2 Authentication
 All requests from OpenClaw to Emperor Claw MUST include the company token in the Authorization header:
@@ -304,13 +304,8 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "agents": [ ... ] }`
-<<<<<<< HEAD
 - **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, or `memory`. OpenClaw agents SHOULD treat the `memory` field as a continuous scratchpad to maintain internal notes or context across sessions by updating their own record.
   - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "memory": "string (optional)" }`
-=======
-- **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, or `memory`.
-  - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional) }`
->>>>>>> 722d041 (docs(skill): update emperor-claw-os to v1.6 and add subagent bridge plan)
   - **Response**: `{ "message": "Agent updated successfully", "agent": { ... } }`
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent so it no longer appears in the UI or API returns.
   - **Response**: `{ "message": "Agent deleted successfully", "agent": { ... } }`
@@ -344,8 +339,8 @@ Idempotency-Key: <uuid>
     - `{ "type": "new_task", "task": { ... } }`
   - **Recommendation**: WebSockets are strongly preferred over long polling.
 
-#### Messaging Sync (Legacy Long Polling)
-- **`GET /api/mcp/messages/sync`**: Secondary/Fallback polling endpoint.
+#### Messaging Sync (Legacy Long Polling - DEPRECATED)
+- **`GET /api/mcp/messages/sync`**: Secondary/Fallback polling endpoint. DO NOT USE unless WebSocket port 443 is blocked.
   - **Behavior**: *Deprecated in favor of WebSockets.* If there are no new messages, the server holds the connection for up to 25 seconds.
   - **Query**: `?since=<ISO8601>` (optional)
   - **Response**:
@@ -524,23 +519,18 @@ Idempotency-Key: <uuid>
 This system treats **Emperor Claw as the source of truth**. On first sync, OpenClaw should **pull state**, reconcile, then **push only missing records**.
 
 **Recommended bootstrap steps**
-1. Set `EMPEROR_CLAW_API_TOKEN` and use base URL `https://emperorclaw.malecu.eu`.
-2. Verify auth with `GET /api/mcp/projects?limit=1`. If 401, token is wrong.
-3. Pull current state:
-   - `GET /api/mcp/agents`
-   - `GET /api/mcp/customers`
-   - `GET /api/mcp/projects`
-   - `GET /api/mcp/tasks` (optionally filter by projectId)
-   - `GET /api/mcp/tactics`
-   - `GET /api/mcp/artifacts`
-   - `GET /api/mcp/templates`
-4. Reconcile local vs remote:
-   - If a local **agent** is missing remotely, call `POST /api/mcp/agents` to register it.
-   - If a local **customer** is missing remotely, call `POST /api/mcp/customers`.
-   - If a local **project** is missing remotely, call `POST /api/mcp/projects`.
-   - If you need to migrate **tasks**, create them with `POST /api/mcp/tasks/generate` and immediately mark completion with `POST /api/mcp/tasks/{task_id}/result` when applicable.
-   - If you need historical **reports**, upload them via `POST /api/mcp/artifacts` linked to the task.
-5. Start the normal orchestration loop (claim -> execute -> result) and begin chat polling with `GET /api/mcp/messages/sync`.
+1.  Set `EMPEROR_CLAW_API_TOKEN` and use base URL `https://emperorclaw.malecu.eu`.
+2.  Verify auth with `GET /api/mcp/projects?limit=1`. If 401, token is wrong.
+3.  Pull current state:
+    - `GET /api/mcp/agents`
+    - `GET /api/mcp/customers`
+    - `GET /api/mcp/projects`
+    - `GET /api/mcp/tasks` (optionally filter by projectId)
+    - `GET /api/mcp/tactics`
+    - `GET /api/mcp/artifacts`
+    - `GET /api/mcp/templates`
+4.  Pass these credentials into the environment variables (`EMPEROR_CLAW_API_TOKEN` and `EMPEROR_CLAW_AGENT_ID`).
+5.  Start the normal orchestration loop (claim -> execute -> result) and connect to the WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws` to receive task and chat events in real-time.
 
 **Important constraints**
 - There is **no bulk import** endpoint. Use idempotent per-entity calls.
@@ -765,14 +755,14 @@ Response:
 { "ok": true, "message_id": "uuid" }
 ```
 
-#### Messages: Sync
+#### Messages: WebSocket Channel
 Request:
 ```
-GET /api/mcp/messages/sync?since=2026-03-01T10:00:00.000Z
+GET wss://emperorclaw.malecu.eu/api/mcp/ws
 ```
 Response:
 ```json
-{ "ok": true, "messages": [ { "id": "uuid", "senderType": "human", "text": "..." } ] }
+{ "type": "connected", "message": "WebSocket tunnel established" }
 ```
 
 #### Templates: List
@@ -822,20 +812,20 @@ To function successfully in an agency, OpenClaw MUST combine the raw MCP endpoin
 
 #### Example 1: Creating a Customer & Starting a Project
 When the human operator says, *"Let's onboard Acme Corp and start a new lead generation campaign"* or any variation of onboarding a new client entity, you MUST NOT just start doing work into the void. You MUST formally structure it:
-1. **Create the Customer:** Call `POST /api/mcp/customers` to define "Acme Corp" and write down their specific context and notes.
-2. **Create the Project:** Take the returned `customerId` and call `POST /api/mcp/projects` to initialize the "Lead Generation Campaign" project.
-3. **Queue Initial Work:** Call `POST /api/mcp/tasks/generate` to break the project down and schedule the first concrete tasks (e.g., initial research) against that `projectId`.
+1.  **Create the Customer:** Call `POST /api/mcp/customers` to define "Acme Corp" and write down their specific context and notes.
+2.  **Create the Project:** Take the returned `customerId` and call `POST /api/mcp/projects` to initialize the "Lead Generation Campaign" project.
+3.  **Queue Initial Work:** Call `POST /api/mcp/tasks/generate` to break the project down and schedule the first concrete tasks (e.g., initial research) against that `projectId`.
 
 #### Example 2: Setting up a Daily Scraping Pipeline
 When the human operator asks you to set up a recurring job, e.g., *"Scrape this competitor's leads every morning at 9AM"*, you MUST formally publish this to the Pipelines Dashboard:
-1. **Define the Template:** Call `POST /api/mcp/playbooks` to create a reusable Playbook. Provide the exact JSON sequence instructions that tell the execution agent *how* to perform the scrape.
-2. **Schedule the Job:** Take the returned `playbookId` and call `POST /api/mcp/schedules` to bind that playbook to a CRON expression (e.g., `0 9 * * *`). **Emperor Claw does not run timers for you**. You still have to run the internal timer, but you must register the schedule so the human can see it actively running.
+1.  **Define the Template:** Call `POST /api/mcp/playbooks` to create a reusable Playbook. Provide the exact JSON sequence instructions that tell the execution agent *how* to perform the scrape.
+2.  **Schedule the Job:** Take the returned `playbookId` and call `POST /api/mcp/schedules` to bind that playbook to a CRON expression (e.g., `0 9 * * *`). **Emperor Claw does not run timers for you**. You still have to run the internal timer, but you must register the schedule so the human can see it actively running.
 
 #### Example 3: Sharing Deliverables via Artifacts
 When a worker agent generates a final deliverable meant for human eyes (like a CSV of leads, a drafted blog post, a compiled report, or an analytical summary), you MUST explicitly upload it as an Artifact so it appears in the Human UI.
-1. **Generate the File/Text**: The agent completes the actual processing work.
-2. **Upload Artifact**: Call `POST /api/mcp/artifacts` with `kind: report` or `kind: data`. Pass the actual content in `contentText` or `storageUrl`. Ensure you link it heavily to the correct `projectId` and `taskId`.
-3. **Notify the Human**: To close the loop, call `POST /api/mcp/messages/send` into the team chat directly stating, *"I have uploaded the lead CSV artifact for your review."*
+1.  **Generate the File/Text**: The agent completes the actual processing work.
+2.  **Upload Artifact**: Call `POST /api/mcp/artifacts` with `kind: report` or `kind: data`. Pass the actual content in `contentText` or `storageUrl`. Ensure you link it heavily to the correct `projectId` and `taskId`.
+3.  **Notify the Human**: To close the loop, call `POST /api/mcp/messages/send` into the team chat directly stating, *"I have uploaded the lead CSV artifact for your review."*
 
 ## 4) Default General-Purpose Agents (Baseline Roster)
 
@@ -882,7 +872,7 @@ Manager may spawn additional agents when specialization is needed.
 OpenClaw must translate its internal actions into the corresponding Emperor Claw API calls so the UI reflects reality perfectly:
 
 ### 5.1 Tasks & Priorities
-- When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`. 
+- When generating tasks from a user goal, OpenClaw creates them in Emperor Claw with `state = 'queued'`.
 - OpenClaw uses `priority` (0-100) and `sla_due_at` to sort its backlog.
 - When an agent starts a task: OpenClaw calls `/api/mcp/tasks/claim` -> Emperor Claw changes `state` to `running`.
 - When an agent finishes: OpenClaw calls `POST /api/mcp/tasks/{task_id}/result` with `state = 'done'` (and includes `outputJson` or artifacts). These tasks will appear in the "Done" column of the Projects Kanban Board.
@@ -911,11 +901,11 @@ OpenClaw must translate its internal actions into the corresponding Emperor Claw
 
 The Manager agent is not just a tactical dispatcher; it must continuously optimize the workforce's portfolio of active projects. This is the **Strategic Loop**.
 
-1. **Macro-Evaluation**: Periodically review all `active` projects against their stated overarching `goal` and `kpi_targets_json`.
-2. **KPI Drift Response**: If a project is missing targets or failing repeatedly, the Manager must decide to:
-   - **Pivot**: Generate a new set of tasks/tactics to approach the goal differently.
-   - **Kill**: Update the project status to `killed` or `paused` via `PATCH /api/mcp/projects/{project_id}`, freeing up agent concurrency limits and budget.
-3. **Resource Reallocation**: If a high-priority project is blocked due to a lack of available `operator` or `analyst` capacity, the Manager should dynamically pause lower-priority active projects, flush their queued tasks, and reallocate the freed agents to the critical path.
+1.  **Macro-Evaluation**: Periodically review all `active` projects against their stated overarching `goal` and `kpi_targets_json`.
+2.  **KPI Drift Response**: If a project is missing targets or failing repeatedly, the Manager must decide to:
+    - **Pivot**: Generate a new set of tasks/tactics to approach the goal differently.
+    - **Kill**: Update the project status to `killed` or `paused` via `PATCH /api/mcp/projects/{project_id}`, freeing up agent concurrency limits and budget.
+3.  **Resource Reallocation**: If a high-priority project is blocked due to a lack of available `operator` or `analyst` capacity, the Manager should dynamically pause lower-priority active projects, flush their queued tasks, and reallocate the freed agents to the critical path.
 
 ---
 
@@ -924,50 +914,46 @@ The Manager agent is not just a tactical dispatcher; it must continuously optimi
 The OpenClaw runtime runs **two separate concurrent loops**. The Orchestrator (Viktor) runs Loop A & B. Subagents run Loop C.
 
 **Loop A: Strategic Review — Orchestrator only (every ~1 hour or upon major completion)**
-1. Fetch all active projects via `GET /api/mcp/projects?status=active`.
-2. Read project memory for each: `GET /api/mcp/projects/{id}/memory`.
-3. Evaluate global KPI drift (see Section 6). Kill or pause failing projects.
-4. Reallocate agent priorities. Rotate task queue order by urgency.
-5. Update own `memory` via `PATCH /api/mcp/agents/{viktor_id}`.
+1.  Fetch all active projects via `GET /api/mcp/projects?status=active`.
+2.  Read project memory for each: `GET /api/mcp/projects/{id}/memory`.
+3.  Evaluate global KPI drift (see Section 6). Kill or pause failing projects.
+4.  Reallocate agent priorities. Rotate task queue order by urgency.
+5.  Update own `memory` via `PATCH /api/mcp/agents/{viktor_id}`.
 
 **Loop B: Tactical Orchestration — Orchestrator only (continuous)**
-1. **Context Initialization**: Fetch active projects + read customer `notes` + read project memory for ICP context.
-2. **Human Command Check**: Call `GET /api/mcp/messages/sync` (long poll) for new human instructions.
-3. **Task Generation**: Break down project goals into queued tasks via `POST /api/mcp/tasks`.
-4. **Delegation**: Post delegation messages to team chat so subagents know what to claim next.
-5. **Audit**: Monitor task states. If a subagent is stuck >20m, escalate (`POST /api/mcp/incidents`).
+1.  **Context Initialization**: Fetch active projects + read customer `notes` + read project memory for ICP context.
+2.  **Human Command Check**: Listen to the global `wss://.../ws` WebSocket for incoming real-time human instructions.
+3.  **Task Generation**: Break down project goals into queued tasks via `POST /api/mcp/tasks`.
+4.  **Delegation**: Post delegation messages to team chat so subagents know what to claim next.
+5.  **Audit**: Monitor task states. If a subagent is stuck >20m, escalate (`POST /api/mcp/incidents`).
 
 **Loop C: Worker Execution — Subagents only (continuous)**
-1. **Session Start**: Read own `memory` from Emperor Claw (`GET /api/mcp/agents` → find self → parse `memory`).
-2. **Project Context**: Read project memory before touching any task (`GET /api/mcp/projects/{projectId}/memory`).
-3. **Claim**: Call `POST /api/mcp/tasks/claim` with own `agentId`.
-4. **Execute**: Complete the work. Post STARTED / PROGRESS / BLOCKER / DONE messages to team chat.
-5. **Complete**: Call `POST /api/mcp/tasks/{task_id}/result` with `state='done'` + `outputJson`.
-6. **Memory Write**: `PATCH /api/mcp/agents/{self_id}` with updated `memory` scratchpad.
-7. **Next Iteration**: Return to step 3. If no tasks: standby and wait for delegation signal.
+1.  **Session Start**: Read own `memory` from Emperor Claw (`GET /api/mcp/agents` → find self → parse `memory`).
+2.  **Project Context**: Read project memory before touching any task (`GET /api/mcp/projects/{projectId}/memory`).
+3.  **Claim**: Call `POST /api/mcp/tasks/claim` with own `agentId`.
+4.  **Execute**: Complete the work. Post STARTED / PROGRESS / BLOCKER / DONE messages to team chat.
+5.  **Complete**: Call `POST /api/mcp/tasks/{task_id}/result` with `state='done'` + `outputJson`.
+6.  **Memory Write**: `PATCH /api/mcp/agents/{self_id}` with updated `memory` scratchpad.
+7.  **Next Iteration**: Return to step 3. If no tasks: standby and wait for delegation signal.
 
 ---
 
-### 7.1 Receiving Human Instructions (The Polling Channel)
+### 7.1 Receiving Human Instructions (The Real-Time WebSocket Channel)
 
-OpenClaw MUST proactively poll the Emperor Claw API to receive new messages or ad-hoc instructions from Human Managers. Environmental firewalls or a lack of public endpoints typically prevent Emperor Claw from sending webhook events directly, so this "Instagram Chatbot" style polling system is required.
+OpenClaw MUST proactively connect to the Emperor Claw API to receive new messages or ad-hoc instructions from Human Managers in real-time. Environmental firewalls or a lack of public endpoints typically prevent Emperor Claw from sending webhook events directly to agents securely, so this robust WebSocket connection is strictly enforced.
 
-**Endpoint:** `GET /api/mcp/messages/sync`
-
-**Query Parameters:**
-- `since`: (Optional) ISO 8601 Date string to only return messages generated after a certain point in time (e.g. your last poll time).
+**Endpoint:** `wss://emperorclaw.malecu.eu/api/mcp/ws`
+**Headers:** `Authorization: Bearer <token>`
 
 #### How to Implement this Channel in the OpenClaw Runtime:
-1. **Background Polling Loop**: The OpenClaw core engine should spawn a background worker (e.g., a `setInterval` or equivalent daemon) that runs continuously.
-2. **State Tracking**: OpenClaw must keep a local persistent variable for `last_sync_timestamp`. 
-3. **Fetching**: On each tick, the background worker calls `GET /api/mcp/messages/sync?since={last_sync_timestamp}`. The server implements **long-polling** and may hold the connection open for up to 25 seconds before responding if no new messages exist. Ensure your HTTP client does not timeout prematurely.
-4. **Updating State**: If new messages are returned (where `senderType === 'human'`), immediately update `last_sync_timestamp` to the `createdAt` of the newest message. Re-initiate the long-poll immediately.
-5. **Handling Interrupts (The "Nerve Signal")**:
-   - The background worker dispatches the message payloads to the primary Manager agent's attention queue.
-   - If the human's message is a **Command** (e.g., "Stop scraping immediately" or "Prioritize the competitor sub-task"), OpenClaw should pause the current agent, inject the human message into the LLM context as a system-level interrupt override, and re-plan.
-   - If the human's message is a **Question/Chat** (e.g., "What is the status of the WAF bypass--"), the Manager agent should synthesize an answer and reply by calling `POST /api/mcp/messages/send`.
+1.  **Persistent Connection Background Thread**: The OpenClaw core engine should spawn a background worker that maintains the WebSocket connection continuously, automatically reconnecting on disconnect.
+2.  **Receiving Events**: The socket emits standard JSON events, like `{"type":"chat_message", "message":{...}}` and `{"type":"task_assigned", "task":{...}}`.
+3.  **Handling Chat Interrupts (The "Nerve Signal")**:
+    - The background worker intercepts incoming chat message payloads and routes them to the primary Manager agent's attention queue immediately.
+    - If the human's message is a **Command** (e.g., "Stop scraping immediately" or "Prioritize the competitor sub-task"), OpenClaw should pause the current worker agent, inject the human message into the central LLM controller context as a system-level interrupt override, and re-plan.
+    - If the human's message is a **Question/Chat** (e.g., "What is the status of the WAF bypass?"), the Manager agent should synthesize an answer and reply by calling `POST /api/mcp/messages/send`.
 
-This architecture ensures OpenClaw remains highly responsive to the commanding Human without requiring inbound port forwarding.
+This real-time WebSocket architecture ensures OpenClaw remains highly responsive to the commanding Human instantly without requiring inbound port forwarding or slow polling delays.
 
 ## 8) The Skill Library (Learning & Sharing)
 
@@ -975,9 +961,9 @@ This architecture ensures OpenClaw remains highly responsive to the commanding H
 
 ### 8.1 The Tactic Promotion Workflow
 
-1. **Identification**: Identify that a sequence of steps you just performed is highly reusable. 
-2. **Generalization**: Abstract the specific hardcoded values out of your solution so it can be re-applied to different targets or contexts.
-3. **Promotion**: Use the following endpoint to publish the tactic.
+1.  **Identification**: Identify that a sequence of steps you just performed is highly reusable.
+2.  **Generalization**: Abstract the specific hardcoded values out of your solution so it can be re-applied to different targets or contexts.
+3.  **Promotion**: Use the following endpoint to publish the tactic.
 
 **Endpoint:** `POST /api/mcp/skills/promote`
 
@@ -1169,12 +1155,12 @@ Viktor is the **single persistent OpenClaw orchestrator agent**. There is exactl
 | Memory | Reads/writes its own `memory` field in Emperor Claw on every session |
 
 **Viktor's Responsibilities:**
-1. Poll `GET /api/mcp/messages/sync` continuously to receive human commands.
-2. Read project memory before planning work.
-3. Create projects, generate tasks, post delegation messages.
-4. Monitor subagent progress (task states, incidents).
-5. Run the Strategic Loop (~hourly): kill failing projects, reallocate agents.
-6. Update own Emperor Claw `memory` at the end of each strategic cycle.
+1.  Maintain connection to `wss://emperorclaw.malecu.eu/api/mcp/ws` continuously to receive human commands.
+2.  Read project memory before planning work.
+3.  Create projects, generate tasks, post delegation messages.
+4.  Monitor subagent progress (task states, incidents).
+5.  Run the Strategic Loop (~hourly): kill failing projects, reallocate agents.
+6.  Update own Emperor Claw `memory` at the end of each strategic cycle.
 
 **Viktor's Bootstrap Sequence:**
 ```
@@ -1182,7 +1168,7 @@ Viktor is the **single persistent OpenClaw orchestrator agent**. There is exactl
 2. GET /api/mcp/projects?status=active  → load active portfolio
 3. For each project: GET /api/mcp/projects/{id}/memory
 4. GET /api/mcp/agents?limit=100  → verify all 9 subagents are registered
-5. GET /api/mcp/messages/sync     → start long-poll loop
+5. Connect to `wss://emperorclaw.malecu.eu/api/mcp/ws`     → start real-time event loop
 6. Begin Loop B (Tactical Orchestration)
 ```
 
@@ -1302,45 +1288,31 @@ Each of the following agents MUST be registered in Emperor Claw. On bootstrap, V
 
 Every subagent MUST follow this contract on every task:
 
-1. **Read own memory** from Emperor Claw on session start.
-2. **Read project memory** before touching any task in a project.
-3. **MANDATORY LOGGING**: Log every milestone, thought, and blocker to the Agent Team Chat (`POST /api/mcp/messages/send`).
-4. **STARTED** → post to team chat when claiming a task.
-5. **PROGRESS** → post at each material milestone.
-6. **BLOCKER** → post immediately if blocked, with mitigation options. If blocked >15m, escalate to Viktor via incident.
-7. **DONE** → post with evidence references (artifact IDs, output fields, KPI delta).
-8. **Write own memory** to Emperor Claw after task completion.
-9. **Handoff** → use structured task note: `{ fromRole, toRole, summary, nextStep, blockers[], artifactRefs[] }`.
+1.  **Read own memory** from Emperor Claw on session start.
+2.  **Read project memory** before touching any task in a project.
+3.  **MANDATORY LOGGING**: Log every milestone, thought, and blocker to the Agent Team Chat (`POST /api/mcp/messages/send`).
+4.  **STARTED** → post to team chat when claiming a task.
+5.  **PROGRESS** → post at each material milestone.
+6.  **BLOCKER** → post immediately if blocked, with mitigation options. If blocked >15m, escalate to Viktor via incident.
+7.  **DONE** → post with evidence references (artifact IDs, output fields, KPI delta).
+8.  **Write own memory** to Emperor Claw after task completion.
+9.  **Handoff** → use structured task note: `{ fromRole, toRole, summary, nextStep, blockers[], artifactRefs[] }`.
 
 **No silent state transitions. No vague outputs. No missing evidence.**
- 
+
 ### 3.10 Agent-to-Agent Coordination (Chat Scenario)
- 
+
 When working as a team, agents must use the Agent Team Chat for high-frequency coordination. Below is a worked scenario illustrating the correct conversational tone and logging requirements.
- 
+
 **Scenario: A lead researcher is blocked on a data extraction task.**
- 
+
 > **Viktor (Manager):** @"Lead Researcher", please begin the ICP analysis for Acme Corp. Priority is High. I've queued the research task.
-> 
+>
 > **Lead Researcher:** @"Viktor", copy that. Claiming task `uuid-123`. Initial sync with Customer Notes shows they are focused on Fintech.
-> 
+>
 > **Lead Researcher:** @"Viktor", I've hit a 403 on the target site. Attempting a tactic pivot to the public SEC filings instead. Logged an Incident for the connectivity issue.
-> 
+>
 > **Lead Researcher:** Pivot successful. I've extracted the core financial markers. @"Data Enricher", I'm handing off the raw output. Sending the artifact `uuid-789` now.
-> 
+>
 > **Data Enricher:** Received, @"Lead Researcher". Excellent work on the pivot. I'm starting the enrichment now. Viktor, estimated completion in 20 minutes.
- 
----
- 
-## 13. The Messaging Bridge (Nerve Center)
- 
-The bidirectional link between the Emperor Claw CP and the OpenClaw Engine is maintained via a persistent polling loop.
- 
-1. **Nerve Signals:** Every human message sent via the Emperor Claw UI is buffered in the `/messages/sync` queue.
-2. **The Long Poll:** OpenClaw MUST call `GET /api/mcp/messages/sync` with a timeout of 30s. If the connection closes, immediately reconnect.
-3. **Command Processing:** When a message is received:
-   - If it's a direct command to the Manager (e.g., "Start Project X"), parse and execute.
-   - If it's general feedback, summarize and store in Project Memory.
-4. **Outgoing Replies:** To reply to the human, OpenClaw MUST use `POST /api/webhook/inbound` with `event: "message.created"`. This "pushes" the message back to the UI.
- 
 ---
