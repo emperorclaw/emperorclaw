@@ -2,6 +2,7 @@ import { config } from "dotenv";
 config();
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
+const uuid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 async function runApiTests() {
     console.log("🚀 Starting Emperor Claw API Automated Tests...\n");
@@ -64,7 +65,7 @@ async function runApiTests() {
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${apiToken}`,
-                "Idempotency-Key": `test-run-${Date.now()}`
+                "Idempotency-Key": `test-run-${uuid()}`
             },
             ...(body && { body: JSON.stringify(body) })
         });
@@ -114,6 +115,43 @@ async function runApiTests() {
             throw new Error(`Task did not persist blockedByTaskIds correctly: ${JSON.stringify(taskGen.task.blockedByTaskIds)}`);
         }
         console.log(`✅ Task Generate OK. Dependency tracking returned successfully mapping array of size. [${taskGen.task.blockedByTaskIds.length}]`);
+
+        // 6. Regression: ensure result(done/failed) always reconciles to terminal state (no zombie review)
+        console.log("🔄 5. Testing Task Result Terminal State Reconciliation...");
+        const agentId = "integration_test_agent";
+        const taskNeedingReview = await mcpFetch('/tasks/generate', 'POST', {
+            projectId,
+            taskType: "api_test_review_to_done",
+            priority: 50,
+            proofRequired: true,
+            humanApprovalRequired: true,
+        });
+
+        const taskId = taskNeedingReview.task.id;
+
+        // Put it into review explicitly (normalize needs_review/review on server input)
+        await mcpFetch(`/tasks/${taskId}/result`, 'POST', {
+            state: "needs_review",
+            agentId,
+            outputJson: { phase: "pre_review" }
+        });
+
+        // Now finalize with done (must become done even if previously in review)
+        await mcpFetch(`/tasks/${taskId}/result`, 'POST', {
+            state: "done",
+            agentId,
+            outputJson: { summary: "finalized" }
+        });
+
+        const taskList = await mcpFetch(`/tasks?projectId=${projectId}&limit=200`, 'GET');
+        const found = (taskList.tasks || []).find((t: any) => t.id === taskId);
+        if (!found) {
+            throw new Error(`Task not found in list after result: ${taskId}`);
+        }
+        if (found.state !== "done") {
+            throw new Error(`Expected task.state=done after result(done); got ${found.state}`);
+        }
+        console.log(`✅ Result reconciliation OK (${taskId})`);
 
         console.log("\n🎉 ALL TESTS PASSED SUCCESSFULLY! The OpenClaw issues are formally resolved locally.");
     } catch (e: any) {

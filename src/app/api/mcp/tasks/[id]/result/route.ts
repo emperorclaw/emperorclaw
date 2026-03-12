@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgent
 import { db } from "@/db";
 import { tasks, taskEvents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { normalizeTaskState } from "@/lib/task-state";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -26,6 +27,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: "state and agentId are required" }, { status: 400 });
     }
 
+    const nextState = normalizeTaskState(state);
+    if (!nextState) {
+        return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+    }
+
     const internalAgentId = await resolveAgentId(companyId, agentId);
 
     const [existingTask] = await db.select().from(tasks).where(
@@ -36,20 +42,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // Determine actual next state based on needs_review rules
-    let nextState = state;
-    if (state === 'done' && existingTask.proofRequired && existingTask.humanApprovalRequired) {
-        nextState = 'review';
-    }
-
     const [updatedTask] = await db.update(tasks).set({
         state: nextState,
-        outputJson: outputJson || existingTask.outputJson,
+        outputJson: outputJson ?? existingTask.outputJson,
         updatedAt: new Date(),
         leaseOwner: null,
         leaseUntil: null,
     }).where(
-        eq(tasks.id, taskId)
+        and(eq(tasks.id, taskId), eq(tasks.companyId, companyId))
     ).returning();
 
     await db.insert(taskEvents).values({
@@ -58,7 +58,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         eventType: `task_${nextState}`,
         actorType: 'agent',
         actorId: internalAgentId,
-        payloadJson: { output: outputJson },
+        payloadJson: { state: nextState, output: outputJson },
+    });
+
+    import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
+        broadcastMcpEvent(companyId, { type: 'task_updated', task: updatedTask });
     });
 
     const res = { message: "Task result saved", task: updatedTask };
