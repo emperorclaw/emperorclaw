@@ -4,6 +4,7 @@ import { tasks, taskEvents, projects } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { normalizeTaskState } from "@/lib/task-state";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
-    const state = searchParams.get("state");
+    const stateParam = searchParams.get("state");
     const projectId = searchParams.get("projectId");
 
     try {
@@ -22,8 +23,12 @@ export async function GET(req: NextRequest) {
             eq(tasks.companyId, companyId),
             isNull(tasks.deletedAt),
         ];
-        if (state) {
-            conditions.push(eq(tasks.state, state));
+        if (stateParam) {
+            const normalized = normalizeTaskState(stateParam);
+            if (!normalized) {
+                return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+            }
+            conditions.push(eq(tasks.state, normalized));
         }
         if (projectId) {
             conditions.push(eq(tasks.projectId, projectId));
