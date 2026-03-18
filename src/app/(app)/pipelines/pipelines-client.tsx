@@ -6,11 +6,13 @@ import { Repeat, FileJson, Clock, Target, CalendarDays, Activity, Plus, X, Send 
 export default function PipelinesClient({
     initialPlaybooks,
     initialSchedules,
-    projectsMap
+    projectsMap,
+    customersMap
 }: {
     initialPlaybooks: any[],
     initialSchedules: any[],
-    projectsMap: Record<string, string>
+    projectsMap: Record<string, string>,
+    customersMap: Record<string, string>
 }) {
     const [playbooks, setPlaybooks] = useState(initialPlaybooks);
     const [schedules, setSchedules] = useState(initialSchedules);
@@ -108,13 +110,31 @@ export default function PipelinesClient({
                                         {s.nextRunAt && <span className="inline-flex items-center"><CalendarDays className="w-3 h-3 mr-1" /> Next: {new Date(s.nextRunAt).toLocaleString()}</span>}
                                     </p>
 
-                                    {s.targetProjectId && (
-                                        <div className="mt-3 bg-zinc-950 rounded border border-zinc-800 p-2 text-xs flex items-center">
-                                            <Target className="w-3 h-3 text-amber-500 mr-2" />
-                                            <span className="text-zinc-500 mr-1">Bound to Project:</span>
-                                            <span className="text-zinc-300 truncate">{projectsMap[s.targetProjectId] || "Unknown Project"}</span>
-                                        </div>
-                                    )}
+                                    <div className="flex flex-col gap-2 mt-3">
+                                        {s.agentPattern && (
+                                            <div className="bg-zinc-950 rounded border border-zinc-800 p-2 text-xs flex items-center">
+                                                <Activity className="w-3 h-3 text-indigo-400 mr-2" />
+                                                <span className="text-zinc-500 mr-1">Assigned Agent:</span>
+                                                <span className="text-zinc-300 font-mono">{s.agentPattern}</span>
+                                            </div>
+                                        )}
+
+                                        {s.targetProjectId && (
+                                            <div className="bg-zinc-950 rounded border border-zinc-800 p-2 text-xs flex items-center">
+                                                <Target className="w-3 h-3 text-amber-500 mr-2" />
+                                                <span className="text-zinc-500 mr-1">Bound to Project:</span>
+                                                <span className="text-zinc-300 truncate">{projectsMap[s.targetProjectId] || "Unknown Project"}</span>
+                                            </div>
+                                        )}
+
+                                        {s.targetCustomerId && (
+                                            <div className="bg-zinc-950 rounded border border-zinc-800 p-2 text-xs flex items-center">
+                                                <Plus className="w-3 h-3 text-rose-500 mr-2" />
+                                                <span className="text-zinc-500 mr-1">Target Customer:</span>
+                                                <span className="text-zinc-300 truncate">{customersMap[s.targetCustomerId] || "Unknown Customer"}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ))
                         )}

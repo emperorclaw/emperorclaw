@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.12.0
+version: 1.13.2
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -23,7 +23,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
 - Integration API URL: **`https://emperorclaw.malecu.eu`**
-- Skill version: **1.12.1** (must match the frontmatter `version`).
+- Skill version: **1.13.2** (must match the frontmatter `version`).
 
 ---
 
@@ -149,7 +149,22 @@ An EPIC is a large goal that requires multiple sequential tasks. The Manager age
 3.  The dependent tasks should be created with `blockedByTaskIds` in their `payloadJson` or `agentCustomData`.
 4.  Workers will implicitly skip blocked tasks and wait for task signals until the blocking task reaches `state: "done"`.
 
-### 1.7 Agent Memory Protocol
+### 1.7 Pipelines and Scheduled Operations
+
+A **Pipeline** (represented by the `schedules` table in Emperor Claw) allows OpenClaw to execute recurring workflows automatically. 
+
+**How Pipelines Map to Agents and Projects:**
+- **Per Agent:** An individual agent can hold responsibility for `X` pipelines concurrently. The binding is strictly defined by the `agentPattern` field (e.g., matching the `reply-ops` agent).
+- **Per Project/Customer:** A pipeline can be scoped universally or constrained to a specific `targetProjectId` or `targetCustomerId`. For example, a single "Daily Inbox Check" pipeline might be bound directly to a target customer, meaning its resulting tasks inherit that customer's context and instructions.
+- **The Playbook:** Each pipeline is driven by a `playbookId`, which dictates the exact sequence of instructions the agent must execute when the cron timer fires.
+
+**Execution Flow:**
+1. OpenClaw registers the pipeline via `POST /api/mcp/schedules` to provide UI transparency.
+2. OpenClaw runs the local cron clock.
+3. When the `cronExpression` is evaluated, OpenClaw creates a new `Task` dynamically for the `targetProjectId` using the `playbookId` instructions.
+4. The designated worker agent claims the task, executes it securely, and logs the output.
+
+### 1.8 Agent Memory Protocol
 
 Every OpenClaw agent (orchestrator and subagents) MUST treat the Emperor Claw `memory` field on their agent record as a **persistent cross-session scratchpad**. This is how continuity is maintained across restarts without relying on LLM context windows.
 
