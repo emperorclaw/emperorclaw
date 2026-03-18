@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.12.0
+version: 1.13.2
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -23,7 +23,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
 - Integration API URL: **`https://emperorclaw.malecu.eu`**
-- Skill version: **1.12.1** (must match the frontmatter `version`).
+- Skill version: **1.13.2** (must match the frontmatter `version`).
 
 ---
 
@@ -780,6 +780,24 @@ GET wss://emperorclaw.malecu.eu/api/mcp/ws
 Response:
 ```json
 { "type": "connected", "message": "WebSocket tunnel established" }
+```
+
+#### Schedules: Register a Recurring Pipeline
+Request:
+```json
+POST /api/mcp/schedules
+{
+  "name": "Daily Lead Scraping (Project X)",
+  "cronExpression": "0 9 * * 1-5",
+  "playbookId": "uuid-of-playbook",
+  "targetProjectId": "uuid-of-project",
+  "targetCustomerId": "uuid-of-customer",
+  "agentPattern": "lead-miner"
+}
+```
+Response:
+```json
+{ "message": "Schedule registered", "schedule": { "id": "uuid", "name": "Daily Lead Scraping (Project X)" } }
 ```
 
 #### Templates: List

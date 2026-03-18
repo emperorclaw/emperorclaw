@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { CreateAgentDialog } from "./create-agent-dialog";
+import { ManageIntegrationsDialog } from "./manage-integrations-dialog";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { tasks } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
@@ -128,6 +129,8 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                     {memory ? memory : <span className="text-zinc-600 italic">No memory initialized.</span>}
                 </div>
             </div>
+
+            <ManageIntegrationsDialog agentId={id} />
         </div>
     );
 }
