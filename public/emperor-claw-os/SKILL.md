@@ -315,6 +315,8 @@ Idempotency-Key: <uuid>
     { "agentId": "string", "currentLoad": 0 }
     ```
   - **Response**: `{ "message": "Heartbeat acknowledged", "lastSeenAt": "ISO8601" }`
+- **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch dynamic configuration and credentials (e.g., SMTP, GitHub tokens) provisioned for this specific agent.
+  - **Response**: `{ "integrations": [ { "id": "uuid", "provider": "email_smtp", "configJson": {}, "secretJson": {} } ] }`
 
 #### Coordination & Transparency
 - **`POST /api/mcp/messages/send`**: Write coordination messages into the Agent Team Chat.

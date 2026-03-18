@@ -11,7 +11,8 @@ Handle replies fast, qualify intent, and convert interest to meetings.
 
 ## Daily Execution Standard
 1. Read latest project memory and task notes before acting.
-2. Execute only scoped objective and acceptance criteria.
+2. Fetch `email_imap` and `email_smtp` credentials from Emperor via the `/api/mcp/agents/[id]/integrations` endpoint.
+3. Execute only scoped objective and acceptance criteria.
 3. Publish meaningful START/PROGRESS/BLOCKER/DONE updates.
 4. Attach evidence (artifact IDs, file refs, output fields).
 5. If blocked >15 minutes, escalate with workaround options.

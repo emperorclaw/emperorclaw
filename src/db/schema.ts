@@ -287,3 +287,16 @@ export const chatMessages = pgTable("chat_messages", {
     platformMessageId: text("platform_message_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const agentIntegrations = pgTable("agent_integrations", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    provider: text("provider").notNull(), // e.g., 'email_smtp', 'email_imap', 'github'
+    name: text("name").notNull(), // Optional display name ("Support Inbox")
+    configJson: jsonb("config_json").default('{}'), // Non-secrets: { host, port, username }
+    secretJson: jsonb("secret_json").default('{}'), // Secrets: { password, apiKey }
+    status: text("status").default('active').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

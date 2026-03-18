@@ -149,7 +149,22 @@ An EPIC is a large goal that requires multiple sequential tasks. The Manager age
 3.  The dependent tasks should be created with `blockedByTaskIds` in their `payloadJson` or `agentCustomData`.
 4.  Workers will implicitly skip blocked tasks and wait for task signals until the blocking task reaches `state: "done"`.
 
-### 1.7 Agent Memory Protocol
+### 1.7 Pipelines and Scheduled Operations
+
+A **Pipeline** (represented by the `schedules` table in Emperor Claw) allows OpenClaw to execute recurring workflows automatically. 
+
+**How Pipelines Map to Agents and Projects:**
+- **Per Agent:** An individual agent can hold responsibility for `X` pipelines concurrently. The binding is strictly defined by the `agentPattern` field (e.g., matching the `reply-ops` agent).
+- **Per Project/Customer:** A pipeline can be scoped universally or constrained to a specific `targetProjectId` or `targetCustomerId`. For example, a single "Daily Inbox Check" pipeline might be bound directly to a target customer, meaning its resulting tasks inherit that customer's context and instructions.
+- **The Playbook:** Each pipeline is driven by a `playbookId`, which dictates the exact sequence of instructions the agent must execute when the cron timer fires.
+
+**Execution Flow:**
+1. OpenClaw registers the pipeline via `POST /api/mcp/schedules` to provide UI transparency.
+2. OpenClaw runs the local cron clock.
+3. When the `cronExpression` is evaluated, OpenClaw creates a new `Task` dynamically for the `targetProjectId` using the `playbookId` instructions.
+4. The designated worker agent claims the task, executes it securely, and logs the output.
+
+### 1.8 Agent Memory Protocol
 
 Every OpenClaw agent (orchestrator and subagents) MUST treat the Emperor Claw `memory` field on their agent record as a **persistent cross-session scratchpad**. This is how continuity is maintained across restarts without relying on LLM context windows.
 
@@ -315,6 +330,8 @@ Idempotency-Key: <uuid>
     { "agentId": "string", "currentLoad": 0 }
     ```
   - **Response**: `{ "message": "Heartbeat acknowledged", "lastSeenAt": "ISO8601" }`
+- **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch dynamic configuration and credentials (e.g., SMTP, GitHub tokens) provisioned for this specific agent.
+  - **Response**: `{ "integrations": [ { "id": "uuid", "provider": "email_smtp", "configJson": {}, "secretJson": {} } ] }`
 
 #### Coordination & Transparency
 - **`POST /api/mcp/messages/send`**: Write coordination messages into the Agent Team Chat.
