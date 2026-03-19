@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.13.2
+version: 1.14.0
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -331,7 +331,21 @@ Idempotency-Key: <uuid>
     ```
   - **Response**: `{ "message": "Heartbeat acknowledged", "lastSeenAt": "ISO8601" }`
 - **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch dynamic configuration and credentials (e.g., SMTP, GitHub tokens) provisioned for this specific agent.
-  - **Response**: `{ "integrations": [ { "id": "uuid", "provider": "email_smtp", "configJson": {}, "secretJson": {} } ] }`
+  - **Response**: `{ "integrations": [ { "id": "uuid", "provider": "email_smtp", "configJson": { "host": "...", "username": "..." }, "secretJson": { "password": "..." } } ] }`
+  - **Note**: This returns ALL active integrations. An agent can have multiple integrations of the same type (e.g., three separate email accounts).
+- **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new integration or external credential for an agent.
+  - **Payload**:
+    ```json
+    {
+      "provider": "email_smtp",
+      "name": "Acme Support Inbox",
+      "configJson": { "host": "smtp.acme.com", "port": 587, "username": "support@acme.com" },
+      "secretJson": { "password": "secure-password" }
+    }
+    ```
+  - **Response**: `{ "message": "Integration added successfully", "integration": { ... } }`
+- **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive an integration so the agent no longer has access to it.
+  - **Response**: `{ "message": "Integration archived successfully" }`
 
 #### Coordination & Transparency
 - **`POST /api/mcp/messages/send`**: Write coordination messages into the Agent Team Chat.
@@ -780,6 +794,24 @@ GET wss://emperorclaw.malecu.eu/api/mcp/ws
 Response:
 ```json
 { "type": "connected", "message": "WebSocket tunnel established" }
+```
+
+#### Schedules: Register a Recurring Pipeline
+Request:
+```json
+POST /api/mcp/schedules
+{
+  "name": "Daily Lead Scraping (Project X)",
+  "cronExpression": "0 9 * * 1-5",
+  "playbookId": "uuid-of-playbook",
+  "targetProjectId": "uuid-of-project",
+  "targetCustomerId": "uuid-of-customer",
+  "agentPattern": "lead-miner"
+}
+```
+Response:
+```json
+{ "message": "Schedule registered", "schedule": { "id": "uuid", "name": "Daily Lead Scraping (Project X)" } }
 ```
 
 #### Templates: List

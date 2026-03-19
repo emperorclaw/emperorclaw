@@ -118,14 +118,23 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                                     </div>
                                                     <div>
                                                         <div className="text-sm font-medium text-zinc-200">{integration.name}</div>
-                                                        <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.provider}</div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.provider}</div>
+                                                            {integration.configJson?.username && (
+                                                                <>
+                                                                    <span className="text-zinc-700 text-[10px]">•</span>
+                                                                    <span className="text-[10px] text-zinc-400 font-mono">{integration.configJson.username}</span>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <button
                                                     onClick={() => handleDelete(integration.id)}
-                                                    className="p-2 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all"
+                                                    className="p-2 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all font-semibold text-[10px] flex items-center"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                                    Remove
                                                 </button>
                                             </div>
                                         ))}
@@ -145,16 +154,26 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                             <select
                                                 value={provider}
                                                 onChange={(e) => setProvider(e.target.value)}
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                                             >
-                                                <option value="email_smtp">Email SMTP (Outbound)</option>
-                                                <option value="email_imap">Email IMAP (Inbound)</option>
-                                                <option value="github">GitHub API Token</option>
-                                                <option value="jira">Jira API Token</option>
+                                                <optgroup label="Email Channels">
+                                                    <option value="email_smtp">Email SMTP (Outbound)</option>
+                                                    <option value="email_imap">Email IMAP (Inbound)</option>
+                                                </optgroup>
+                                                <optgroup label="Development & Tools">
+                                                    <option value="github">GitHub API Token</option>
+                                                    <option value="jira">Jira API Token</option>
+                                                    <option value="linear">Linear API Token</option>
+                                                </optgroup>
+                                                <optgroup label="Messaging">
+                                                    <option value="slack">Slack Webhook/Bot</option>
+                                                    <option value="discord">Discord Webhook</option>
+                                                    <option value="whatsapp">WhatsApp Business</option>
+                                                </optgroup>
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Label</label>
+                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Label / Account Name</label>
                                             <input
                                                 type="text"
                                                 required
