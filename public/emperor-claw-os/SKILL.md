@@ -782,6 +782,24 @@ Response:
 { "type": "connected", "message": "WebSocket tunnel established" }
 ```
 
+#### Schedules: Register a Recurring Pipeline
+Request:
+```json
+POST /api/mcp/schedules
+{
+  "name": "Daily Lead Scraping (Project X)",
+  "cronExpression": "0 9 * * 1-5",
+  "playbookId": "uuid-of-playbook",
+  "targetProjectId": "uuid-of-project",
+  "targetCustomerId": "uuid-of-customer",
+  "agentPattern": "lead-miner"
+}
+```
+Response:
+```json
+{ "message": "Schedule registered", "schedule": { "id": "uuid", "name": "Daily Lead Scraping (Project X)" } }
+```
+
 #### Templates: List
 Request:
 ```
