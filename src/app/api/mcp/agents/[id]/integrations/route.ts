@@ -42,3 +42,101 @@ export async function GET(
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+
+export async function POST(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { id: agentId } = await params;
+    const endpoint = `/api/mcp/agents/${agentId}/integrations`;
+
+    const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
+    if (error) return NextResponse.json({ error }, { status });
+    if (cachedResponse) return NextResponse.json(cachedResponse);
+
+    try {
+        const body = await req.json();
+        const { provider, name, configJson, secretJson } = body;
+
+        if (!provider || !name) {
+            return NextResponse.json({ error: "provider and name are required" }, { status: 400 });
+        }
+
+        // Verify agent exists
+        const [existingAgent] = await db.select().from(agents).where(
+            and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))
+        ).limit(1);
+
+        if (!existingAgent) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+
+        const [newIntegration] = await db.insert(agentIntegrations).values({
+            companyId,
+            agentId,
+            provider,
+            name,
+            configJson: configJson || {},
+            secretJson: secretJson || {},
+            status: 'active'
+        }).returning();
+
+        const res = { message: "Integration added successfully", integration: newIntegration };
+        await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
+        return NextResponse.json(res, { status: 201 });
+
+    } catch (err) {
+        console.error(`Error adding integration for agent ${agentId}:`, err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
+
+export async function DELETE(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { id: agentId } = await params;
+    const { searchParams } = new URL(req.url);
+    const integrationId = searchParams.get('integrationId');
+
+    if (!integrationId) {
+        return NextResponse.json({ error: "integrationId search param is required" }, { status: 400 });
+    }
+
+    try {
+        const [existing] = await db.select().from(agentIntegrations).where(
+            and(
+                eq(agentIntegrations.id, integrationId),
+                eq(agentIntegrations.agentId, agentId),
+                eq(agentIntegrations.companyId, companyId),
+                eq(agentIntegrations.status, 'active')
+            )
+        ).limit(1);
+
+        if (!existing) {
+            return NextResponse.json({ error: "Integration not found or unauthorized" }, { status: 404 });
+        }
+
+        await db.update(agentIntegrations)
+            .set({ status: 'archived', updatedAt: new Date() })
+            .where(eq(agentIntegrations.id, integrationId));
+
+        return NextResponse.json({ message: "Integration archived successfully" }, { status: 200 });
+
+    } catch (err) {
+        console.error(`Error deleting integration for agent ${agentId}:`, err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}

@@ -1,6 +1,4 @@
-# HEARTBEAT.md
-
-Heartbeat behavior for this repo:
-- If commit pushed / blocker found / merge-ready state reached: send update.
-- If no commit for >20 minutes on active implementation branch: alert as stall.
-- Otherwise: HEARTBEAT_OK.
+Status: HEARTBEAT_OK
+- Agents can now have multiple integrations (e.g. 2 emails) and it's visible on the Fleet UI.
+- MCP API now supports full CRUD for agent integrations via /api/mcp/agents/[id]/integrations.
+- HEARTBEAT_SHIPPED: Multiple Integrations Feature.
