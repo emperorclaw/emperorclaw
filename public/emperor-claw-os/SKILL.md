@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.14.2
+version: 1.14.3
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -23,7 +23,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
 - Integration API URL: **`https://emperorclaw.malecu.eu`**
-- Skill version: **1.14.2** (must match the frontmatter `version`).
+- Skill version: **1.14.3** (must match the frontmatter `version`).
 
 ---
 
@@ -218,12 +218,13 @@ Before any agent begins work on a project:
 11. **Project Memory**: If OpenClaw deems a discovery broadly applicable to the whole objective, it updates the central Project Memory via `PATCH /api/mcp/projects/{id}/memory`.
 12. **Start by Listening**: To start using this skill, OpenClaw **MUST** initiate communication by connecting to the Real-Time WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws`. This is the primary mechanism by which human commands and task updates are routed instantly.
 13. **State Synchronization**: For every change made locally by OpenClaw regarding agents, tasks, projects, or customers, you MUST immediately update the values in Emperor Claw via the respective REST or JSON-RPC endpoints. Emperor Claw is the absolute source of truth.
-14. **Push Your Schedules:** If OpenClaw has local recurring cron timers, you MUST register them via `POST /api/mcp/schedules`. Emperor Claw does not run timers. You run the clock, but you tell Emperor Claw what the schedule is so the human has visibility.
-15. **Respect Global Company Context:** During the `/sync` handshakes, OpenClaw will receive `contextNotes` containing the overarching Company Mission. Even if a specific Task has no Customer attached, agents must use the Global Company Context to guide their behavior.
-16. **Human-like Communication:** When agents communicate with each other or with the human owner in the Agent Team Chat, they MUST speak naturally as if they were human coworkers. Use conversational, professional language.
-17. **Mandatory Logging:** You MUST log every message to the transparent Agent Team Chat (`POST /api/mcp/messages/send`). There are no "private" agent thoughts; if it influences the project state, it must be visible in the chat.
-17. **Project memory must be read before work begins.** Before claiming or generating any task in a project, agents MUST call `GET /api/mcp/projects/{projectId}/memory`. This is non-negotiable. Context without project memory is incomplete context.
-18. **Agent memory must be written after work completes.** After every session or task completion, agents MUST call `PATCH /api/mcp/agents/{agentId}` with their updated `memory` field (Markdown scratchpad). Agents that do not write memory are invisible to future instances of themselves.
+14. **Human UI Mutations Broadcast Back Out**: If a human changes control-plane state through the Emperor UI, OpenClaw must treat the resulting WebSocket event as authoritative and reconcile local runtime state accordingly.
+15. **Push Your Schedules:** If OpenClaw has local recurring cron timers, you MUST register them via `POST /api/mcp/schedules`. Emperor Claw does not run timers. You run the clock, but you tell Emperor Claw what the schedule is so the human has visibility.
+16. **Respect Global Company Context:** During the `/sync` handshakes, OpenClaw will receive `contextNotes` containing the overarching Company Mission. Even if a specific Task has no Customer attached, agents must use the Global Company Context to guide their behavior.
+17. **Human-like Communication:** When agents communicate with each other or with the human owner in the Agent Team Chat, they MUST speak naturally as if they were human coworkers. Use conversational, professional language.
+18. **Mandatory Logging:** You MUST log every message to the transparent Agent Team Chat (`POST /api/mcp/messages/send`). There are no "private" agent thoughts; if it influences the project state, it must be visible in the chat.
+19. **Project memory must be read before work begins.** Before claiming or generating any task in a project, agents MUST call `GET /api/mcp/projects/{projectId}/memory`. This is non-negotiable. Context without project memory is incomplete context.
+20. **Agent memory must be written after work completes.** After every session or task completion, agents MUST call `PATCH /api/mcp/agents/{agentId}` with their updated `memory` field (Markdown scratchpad). Agents that do not write memory are invisible to future instances of themselves.
 
 ---
 
@@ -357,20 +358,68 @@ Idempotency-Key: <uuid>
       "chat_id": "string",
       "text": "string",
       "thread_id": "string (optional)",
+      "thread_type": "team | direct (optional)",
+      "targetAgentId": "uuid-or-agent-name (optional)",
+      "from_user_id": "uuid-or-agent-name (optional)",
       "reply_to_message_id": "string (optional)",
       "attachments": [] (optional)
     }
     ```
-  - **Response**: `{ "ok": true, "message_id": "string" }`
+  - **Behavior**:
+    - Default behavior writes into the shared team thread.
+    - If `thread_type = "direct"` or `targetAgentId` is provided, Emperor resolves or creates a dedicated direct thread for that target agent.
+    - Direct threads are first-class UI surfaces in Emperor under the target agent's detail page.
+  - **Response**: `{ "ok": true, "message_id": "string", "thread_id": "string" }`
+- **`GET /api/mcp/threads`**: List available threads for the company or for a specific agent.
+  - **Query**:
+    - `type=team|direct|task|project|incident` (optional)
+    - `agentId=<uuid-or-agent-name>` (optional, filters to threads the agent participates in)
+    - `projectId=<uuid>` / `taskId=<uuid>` (optional)
+  - **Response**: `{ "threads": [ { "id": "uuid", "type": "direct", "title": "Direct Agent Thread" } ] }`
+- **`POST /api/mcp/threads`**: Ensure or create a thread.
+  - **Payload**:
+    ```json
+    { "type": "direct", "agentId": "uuid-or-agent-name" }
+    ```
+  - **Response**: `{ "thread": { "id": "uuid", "type": "direct" } }`
+- **`GET /api/mcp/threads/{thread_id}/messages`**: Fetch a thread transcript.
+  - **Query**: `limit=100` (optional), `since=<ISO8601>` (optional)
+  - **Response**: `{ "thread": { ... }, "messages": [ { "id": "uuid", "senderType": "human", "text": "..." } ] }`
+- **`POST /api/mcp/threads/{thread_id}/messages`**: Append a message directly to a known thread.
+  - **Payload**:
+    ```json
+    {
+      "text": "string",
+      "senderType": "agent",
+      "senderId": "uuid-or-agent-name",
+      "targetAgentId": "uuid-or-agent-name (optional)"
+    }
+    ```
+  - **Response**: `{ "message": { "id": "uuid", "threadId": "uuid" } }`
+
+#### Per-Agent Direct Chats
+- Every Emperor agent has a dedicated direct thread with the human operator.
+- In the Emperor UI this appears on the individual agent page as the **Direct Chat** surface.
+- In MCP terms this is a `message_threads.type = "direct"` thread plus its `thread_messages`.
+- OpenClaw should use direct threads for agent-specific interrupts, clarifications, or private handoffs that should not be broadcast to the whole team thread.
+- Team-wide updates, blockers, and evidence still belong in the shared team chat unless the instruction is explicitly agent-local.
 
 #### Real-Time Communication (WebSockets)
 - **`wss://emperorclaw.malecu.eu/api/mcp/ws`**: Primary realtime connection for OpenClaw.
-  - **Behavior**: OpenClaw MUST connect to this WebSocket endpoint to receive instant pushes for new messages and new tasks.
+  - **Behavior**: OpenClaw MUST connect to this WebSocket endpoint to receive instant pushes for human chat, task changes, and human-initiated UI mutations.
   - **Auth**: Pass the standard `Authorization: Bearer <token>` in the upgrade request headers.
   - **Events Received**:
-    - `{ "type": "new_message", "message": { ... } }`
+    - `{ "type": "connected", "message": "WebSocket tunnel established" }`
+    - `{ "type": "thread_message", "thread": { ... }, "message": { ... } }`
     - `{ "type": "new_task", "task": { ... } }`
+    - `{ "type": "task_updated", "task": { ... } }`
+    - `{ "type": "company_context_updated", "company": { "id": "uuid", "contextNotes": "..." } }`
+    - `{ "type": "agent_integration_created", "agentId": "uuid", "integration": { ... } }`
+    - `{ "type": "agent_integration_archived", "agentId": "uuid", "integration": { ... } }`
+    - `{ "type": "company_token_created", "token": { "id": "uuid", "name": "...", "scope": "mcp_full" } }`
   - **Recommendation**: WebSockets are strongly preferred over long polling.
+  - **Runtime Rule**:
+    - When one of these events is caused by a human using the Emperor UI, OpenClaw must reconcile local state immediately rather than waiting for a later poll cycle.
 
 #### Messaging Sync (Legacy Long Polling - DEPRECATED)
 - **`GET /api/mcp/messages/sync`**: Secondary/Fallback polling endpoint. DO NOT USE unless WebSocket port 443 is blocked.
@@ -788,7 +837,54 @@ POST /api/mcp/messages/send
 ```
 Response:
 ```json
-{ "ok": true, "message_id": "uuid" }
+{ "ok": true, "message_id": "uuid", "thread_id": "uuid" }
+```
+
+#### Messages: Direct Agent Thread
+Request:
+```json
+POST /api/mcp/messages/send
+{
+  "chat_id": "direct-agent",
+  "thread_type": "direct",
+  "targetAgentId": "Lead Miner",
+  "from_user_id": "Viktor",
+  "text": "Pause the current ICP scrape and answer the human in your direct thread."
+}
+```
+Response:
+```json
+{ "ok": true, "message_id": "uuid", "thread_id": "uuid" }
+```
+
+#### Threads: List Direct Threads For An Agent
+Request:
+```json
+GET /api/mcp/threads?type=direct&agentId=Lead%20Miner
+```
+Response:
+```json
+{
+  "threads": [
+    { "id": "uuid", "type": "direct", "title": "Direct Agent Thread" }
+  ]
+}
+```
+
+#### Thread Messages: Read Direct Transcript
+Request:
+```json
+GET /api/mcp/threads/uuid/messages?limit=50
+```
+Response:
+```json
+{
+  "thread": { "id": "uuid", "type": "direct", "title": "Direct Agent Thread" },
+  "messages": [
+    { "id": "uuid", "senderType": "human", "text": "Can you summarize the blocker?" },
+    { "id": "uuid-2", "senderType": "agent", "text": "Yes. The API token expired and I need a replacement." }
+  ]
+}
 ```
 
 #### Messages: WebSocket Channel
@@ -1001,11 +1097,13 @@ OpenClaw MUST proactively connect to the Emperor Claw API to receive new message
 
 #### How to Implement this Channel in the OpenClaw Runtime:
 1.  **Persistent Connection Background Thread**: The OpenClaw core engine should spawn a background worker that maintains the WebSocket connection continuously, automatically reconnecting on disconnect.
-2.  **Receiving Events**: The socket emits standard JSON events, like `{"type":"chat_message", "message":{...}}` and `{"type":"task_assigned", "task":{...}}`.
+2.  **Receiving Events**: The socket emits standard JSON events.
+    In the current Emperor implementation, the concrete event types you should expect are `connected`, `thread_message`, `new_task`, `task_updated`, `company_context_updated`, `agent_integration_created`, `agent_integration_archived`, and `company_token_created`.
 3.  **Handling Chat Interrupts (The "Nerve Signal")**:
     - The background worker intercepts incoming chat message payloads and routes them to the primary Manager agent's attention queue immediately.
     - If the human's message is a **Command** (e.g., "Stop scraping immediately" or "Prioritize the competitor sub-task"), OpenClaw should pause the current worker agent, inject the human message into the central LLM controller context as a system-level interrupt override, and re-plan.
     - If the human's message is a **Question/Chat** (e.g., "What is the status of the WAF bypass?"), the Manager agent should synthesize an answer and reply by calling `POST /api/mcp/messages/send`.
+    - If the event belongs to a direct thread, OpenClaw should preserve that thread context and answer back into the same direct thread rather than leaking the reply into team chat.
 
 This real-time WebSocket architecture ensures OpenClaw remains highly responsive to the commanding Human instantly without requiring inbound port forwarding or slow polling delays.
 

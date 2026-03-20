@@ -87,3 +87,10 @@ export async function deleteAgentIntegration(id: string) {
 
     revalidatePath("/agents");
 }
+
+import { canManageSecrets } from "@/lib/secrets";
+export async function getSecretManagerStatus() {
+    return {
+        enabled: canManageSecrets()
+    };
+}

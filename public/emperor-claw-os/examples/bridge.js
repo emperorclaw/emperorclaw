@@ -72,6 +72,8 @@ class EmperorBridge {
     this.runtime = null;
     this.session = null;
     this.memory = null;
+    this.companyContextNotes = null;
+    this.integrations = [];
     this.socket = null;
     this.heartbeatTimer = null;
     this.syncTimer = null;
@@ -94,10 +96,13 @@ class EmperorBridge {
 
     this.session = sessionPayload.session;
     this.memory = sessionPayload.memory;
+    this.companyContextNotes = sessionPayload.contextNotes || null;
     this.lastSeenAt = null;
+    await this.refreshIntegrations();
 
     console.log(`[bridge] runtime=${this.runtime.runtimeId} agent=${this.agent.name} session=${this.session.id}`);
     console.log(`[bridge] memory snapshot loaded=${Boolean(this.memory?.snapshot)}`);
+    console.log(`[bridge] company context loaded=${Boolean(this.companyContextNotes)}`);
   }
 
   async registerRuntime() {
@@ -150,6 +155,27 @@ class EmperorBridge {
     this.startHeartbeatLoop();
     this.connectWebSocket();
     this.startSyncFallback();
+  }
+
+  async refreshStatusSummary() {
+    const payload = await http("/api/mcp", {
+      method: "POST",
+      body: {
+        jsonrpc: "2.0",
+        id: "status-summary",
+        method: "status.summary",
+        params: {},
+      },
+    });
+    this.companyContextNotes = payload.result?.contextNotes || null;
+    return payload.result || null;
+  }
+
+  async refreshIntegrations() {
+    if (!this.agent) return [];
+    const payload = await http(`/api/mcp/agents/${this.agent.id}/integrations`);
+    this.integrations = payload.integrations || [];
+    return this.integrations;
   }
 
   startHeartbeatLoop() {
@@ -221,8 +247,44 @@ class EmperorBridge {
 
   async handleRealtimeEvent(payload) {
     if (payload.type === "connected") {
+      console.log("[bridge] ws tunnel established");
       return;
     }
+
+    if (payload.type === "thread_message") {
+      console.log(`[bridge] thread_message thread=${payload.thread?.id || "unknown"} sender=${payload.message?.senderType || "unknown"}`);
+      return;
+    }
+
+    if (payload.type === "new_task") {
+      console.log(`[bridge] new_task id=${payload.task?.id || "unknown"} type=${payload.task?.taskType || "unknown"}`);
+      return;
+    }
+
+    if (payload.type === "task_updated") {
+      console.log(`[bridge] task_updated id=${payload.task?.id || "unknown"} state=${payload.task?.state || "unknown"}`);
+      return;
+    }
+
+    if (payload.type === "company_context_updated") {
+      this.companyContextNotes = payload.company?.contextNotes || null;
+      console.log("[bridge] company context updated via ws");
+      return;
+    }
+
+    if (payload.type === "agent_integration_created" || payload.type === "agent_integration_archived") {
+      if (payload.agentId === this.agent?.id) {
+        await this.refreshIntegrations();
+        console.log(`[bridge] integrations refreshed after ${payload.type}`);
+      }
+      return;
+    }
+
+    if (payload.type === "company_token_created") {
+      console.log(`[bridge] company_token_created id=${payload.token?.id || "unknown"}`);
+      return;
+    }
+
     console.log("[bridge] realtime event:", payload.type);
   }
 
