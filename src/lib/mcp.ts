@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { companyTokens, idempotencyKeys, auditLog } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import * as crypto from "crypto";
 
 export async function verifyMcpToken(req: NextRequest) {
@@ -98,4 +98,11 @@ export async function logAudit(companyId: string, actorType: string, actorId: st
         targetId,
         payloadJson: payload,
     }).execute().catch(console.error);
+}
+
+export async function notifyMcpEvent(companyId: string, payload: { type: string; [key: string]: any }) {
+    // Broadcast via Postgres NOTIFY mcp_events
+    // We escape single quotes in JSON string for SQL safety
+    const jsonStr = JSON.stringify({ companyId, payload }).replace(/'/g, "''");
+    await db.execute(sql`SELECT pg_notify('mcp_events', ${jsonStr})`);
 }
