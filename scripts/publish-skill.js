@@ -17,7 +17,7 @@ if (copyOnly) {
     process.exit(0);
 }
 
-const command = process.platform === "win32" ? "npx.cmd" : "npx";
+const command = "npx";
 const args = [
     "clawhub",
     "publish",
@@ -35,6 +35,7 @@ const args = [
 const result = spawnSync(command, args, {
     cwd: skillDir,
     stdio: "inherit",
+    shell: process.platform === "win32",
 });
 
 if (result.error) {

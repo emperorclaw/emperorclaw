@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Settings2, Plus, X, Trash2, Key, Mail, ShieldCheck } from "lucide-react";
-import { getAgentIntegrations, saveAgentIntegration, deleteAgentIntegration } from "@/app/actions/integrations";
+import { getAgentIntegrations, saveAgentIntegration, deleteAgentIntegration, getSecretManagerStatus } from "@/app/actions/integrations";
 
 const PROVIDER_UI: Record<string, {
     identityLabel: string;
@@ -77,6 +77,7 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
     const [integrations, setIntegrations] = useState<Awaited<ReturnType<typeof getAgentIntegrations>>>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [managerEnabled, setManagerEnabled] = useState(false);
 
     const [provider, setProvider] = useState("email_smtp");
     const [name, setName] = useState("");
@@ -96,8 +97,12 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
     const loadIntegrations = useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = await getAgentIntegrations(agentId);
+            const [data, status] = await Promise.all([
+                getAgentIntegrations(agentId),
+                getSecretManagerStatus(),
+            ]);
             setIntegrations(data);
+            setManagerEnabled(status.enabled);
         } catch (error) {
             console.error("Failed to fetch integrations", error);
         } finally {
@@ -147,8 +152,8 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
 
     const getConfigUsername = (configJson: unknown) => {
         if (!configJson || typeof configJson !== "object") return null;
-        const username = (configJson as Record<string, unknown>).username;
-        return typeof username === "string" && username.length > 0 ? username : null;
+        const value = (configJson as Record<string, unknown>).username;
+        return typeof value === "string" && value.length > 0 ? value : null;
     };
 
     return (
@@ -193,35 +198,36 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                         {integrations.map((integration) => {
                                             const configUsername = getConfigUsername(integration.configJson);
                                             return (
-                                            <div key={integration.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex items-center justify-between group">
-                                                <div className="flex items-center space-x-3">
-                                                    <div className="p-2 bg-zinc-800 rounded-lg">
-                                                        {integration.provider.includes("email") ? <Mail className="w-4 h-4 text-indigo-400" /> : <Settings2 className="w-4 h-4 text-zinc-400" />}
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-sm font-medium text-zinc-200">{integration.name}</div>
-                                                        <div className="flex items-center space-x-2">
-                                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.provider}</div>
-                                                            <span className="text-zinc-700 text-[10px]">*</span>
-                                                            <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.ownership}</span>
-                                                            {configUsername && (
-                                                                <>
-                                                                    <span className="text-zinc-700 text-[10px]">*</span>
-                                                                    <span className="text-[10px] text-zinc-400 font-mono">{configUsername}</span>
-                                                                </>
-                                                            )}
+                                                <div key={integration.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex items-center justify-between group">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className="p-2 bg-zinc-800 rounded-lg">
+                                                            {integration.provider.includes("email") ? <Mail className="w-4 h-4 text-indigo-400" /> : <Settings2 className="w-4 h-4 text-zinc-400" />}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-sm font-medium text-zinc-200">{integration.name}</div>
+                                                            <div className="flex items-center space-x-2">
+                                                                <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.provider}</div>
+                                                                <span className="text-zinc-700 text-[10px]">*</span>
+                                                                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.ownership}</span>
+                                                                {configUsername && (
+                                                                    <>
+                                                                        <span className="text-zinc-700 text-[10px]">*</span>
+                                                                        <span className="text-[10px] text-zinc-400 font-mono">{configUsername}</span>
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
+                                                    <button
+                                                        onClick={() => handleDelete(integration.id)}
+                                                        className="p-2 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all font-semibold text-[10px] flex items-center"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                                        Remove
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDelete(integration.id)}
-                                                    className="p-2 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all font-semibold text-[10px] flex items-center"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5 mr-1" />
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        )})}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </section>
@@ -322,9 +328,19 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                     </div>
 
                                     <div className="pt-2">
-                                        <p className="text-[11px] text-zinc-500 mb-3">
-                                            Managed secrets are leased back to OpenClaw only when the server has `EMPEROR_CLAW_MASTER_KEY`. Otherwise this record remains metadata-only and the runtime keeps the secret locally.
-                                        </p>
+                                        <div className={`p-3 rounded-xl border mb-4 flex items-center space-x-3 ${managerEnabled ? "bg-emerald-950/20 border-emerald-800" : "bg-amber-950/20 border-amber-800"}`}>
+                                            <ShieldCheck className={`w-5 h-5 ${managerEnabled ? "text-emerald-500" : "text-amber-500"}`} />
+                                            <div>
+                                                <div className={`text-xs font-bold ${managerEnabled ? "text-emerald-400" : "text-amber-400"}`}>
+                                                    {managerEnabled ? "Secure Managed Storage Active" : "Managed Storage Offline"}
+                                                </div>
+                                                <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
+                                                    {managerEnabled
+                                                        ? "Secrets are encrypted using AES-256-GCM and stored server-side. Access is limited to authorized agents."
+                                                        : "No Master Key set. Credentials remain metadata-only on the server; the OpenClaw runtime must possess the secret locally."}
+                                                </p>
+                                            </div>
+                                        </div>
                                         <button
                                             type="submit"
                                             disabled={isSaving}
