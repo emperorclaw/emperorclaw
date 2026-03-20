@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { schedules, playbooks, projects, customers } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export async function GET(req: NextRequest) {
@@ -13,16 +13,41 @@ export async function GET(req: NextRequest) {
 
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+    const rawLimit = parseInt(searchParams.get("limit") || "100", 10);
+    const rawPage = parseInt(searchParams.get("page") || "1", 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 100;
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+    const offset = (page - 1) * limit;
 
     try {
+        const whereClause = and(
+            eq(schedules.companyId, companyId),
+            isNull(schedules.deletedAt),
+        );
+
+        const [summary] = await db.select({ total: count() })
+            .from(schedules)
+            .where(whereClause);
+
         const rows = await db.select()
             .from(schedules)
-            .where(eq(schedules.companyId, companyId))
+            .where(whereClause)
             .orderBy(desc(schedules.createdAt))
-            .limit(limit);
+            .limit(limit)
+            .offset(offset);
 
-        return NextResponse.json({ schedules: rows });
+        const total = summary?.total ?? 0;
+
+        return NextResponse.json({
+            schedules: rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+                hasMore: offset + rows.length < total,
+            },
+        });
     } catch (err) {
         console.error("Error fetching schedules:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -82,7 +107,7 @@ export async function POST(req: NextRequest) {
         const res = { message: "Schedule registered", schedule: newSchedule };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("Schedules POST Error:", e);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
