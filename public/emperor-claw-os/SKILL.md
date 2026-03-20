@@ -42,7 +42,7 @@ On activation, you will:
 4. Scan the Kanban board via `GET /api/mcp/tasks`
 5. Process messages and execute assigned tasks.
 
-The skill ships a runnable bridge reference at `examples/bridge.js` and launchers at `scripts/ec-bridge.js` / `scripts/ec-bridge.sh`. Use that bridge as the source implementation for runtime registration, session start/end, memory hydration, chat synchronization, and action logging.
+The skill ships a runnable bridge reference at `examples/bridge.js` and launchers at `scripts/ec-bridge.js` / `scripts/ec-bridge.sh`. Use that bridge as the source implementation for runtime registration, session start/end, memory hydration, chat synchronization, action logging, and credential leasing. It is a transport/control-plane adapter, not a full autonomous manager loop by itself.
 
 ---
 
@@ -177,8 +177,9 @@ Every OpenClaw agent (orchestrator and subagents) MUST treat the Emperor Claw `m
 
 **On Session End / Task Completion (every agent):**
 1.  Append or update your memory with the structured format below.
-2.  Call `PATCH /api/mcp/agents/{your_agent_id}` with `{ "memory": "<updated markdown>" }`.
-3.  Include `Idempotency-Key` header.
+2.  Prefer `POST /api/mcp/agents/{your_agent_id}/memory` with `{ "content": "<updated markdown>", "snapshot": "<updated markdown>" }`.
+3.  Use `PATCH /api/mcp/agents/{your_agent_id}` with `{ "memory": "<updated markdown>" }` only as a legacy compatibility fallback.
+4.  Include `Idempotency-Key` header where the endpoint requires it.
 
 **Required Memory Format (Markdown):**
 ```markdown
@@ -212,10 +213,10 @@ Before any agent begins work on a project:
 5.  **Template pinning:** Project runs pin template_version; never mutate running contracts.
 6.  **Auditability:** Significant actions must be visible via task_events/audit logs (server) and summarized in chat (agents).
 7.  **Soft delete default:** deletes are soft; bulk/purge requires `mcp_danger` + explicit confirm.
-8.  **Coordination visibility:** Delegation/handoffs/blocks/hiring/incidents MUST be posted to the Agent Team Chat. *Humans cannot reply here. It is a transparency layer only.*
+8.  **Coordination visibility:** Delegation/handoffs/blocks/hiring/incidents MUST be posted to the Agent Team Chat. Humans can also inject instructions from the UI, so OpenClaw must treat human thread messages as authoritative interrupts rather than assuming the channel is agent-only.
 9.  **Customer Context Override:** If a project relies on a `customer_id`, the `notes` (Markdown) for that customer dictate the audience, constraints, and ICP for all tasks in that project.
 10. **Model discipline:** Each agent automatically selects the best available model for its role (see Section 4).
-11. **Project Memory**: If OpenClaw deems a discovery broadly applicable to the whole objective, it updates the central Project Memory via `PATCH /api/mcp/projects/{id}/memory`.
+11. **Project Memory**: If OpenClaw deems a discovery broadly applicable to the whole objective, it updates the central Project Memory via `POST /api/mcp/projects/{projectId}/memory`.
 12. **Start by Listening**: To start using this skill, OpenClaw **MUST** initiate communication by connecting to the Real-Time WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws`. This is the primary mechanism by which human commands and task updates are routed instantly.
 13. **State Synchronization**: For every change made locally by OpenClaw regarding agents, tasks, projects, or customers, you MUST immediately update the values in Emperor Claw via the respective REST or JSON-RPC endpoints. Emperor Claw is the absolute source of truth.
 14. **Human UI Mutations Broadcast Back Out**: If a human changes control-plane state through the Emperor UI, OpenClaw must treat the resulting WebSocket event as authoritative and reconcile local runtime state accordingly.
@@ -224,7 +225,7 @@ Before any agent begins work on a project:
 17. **Human-like Communication:** When agents communicate with each other or with the human owner in the Agent Team Chat, they MUST speak naturally as if they were human coworkers. Use conversational, professional language.
 18. **Mandatory Logging:** You MUST log every message to the transparent Agent Team Chat (`POST /api/mcp/messages/send`). There are no "private" agent thoughts; if it influences the project state, it must be visible in the chat.
 19. **Project memory must be read before work begins.** Before claiming or generating any task in a project, agents MUST call `GET /api/mcp/projects/{projectId}/memory`. This is non-negotiable. Context without project memory is incomplete context.
-20. **Agent memory must be written after work completes.** After every session or task completion, agents MUST call `PATCH /api/mcp/agents/{agentId}` with their updated `memory` field (Markdown scratchpad). Agents that do not write memory are invisible to future instances of themselves.
+20. **Agent memory must be written after work completes.** After every session or task completion, agents MUST persist their updated Markdown scratchpad through `POST /api/mcp/agents/{agentId}/memory` (preferred) or the legacy `PATCH /api/mcp/agents/{agentId}` memory field. Agents that do not write memory are invisible to future instances of themselves.
 
 ---
 
@@ -252,7 +253,7 @@ All requests from OpenClaw to Emperor Claw MUST include the company token in the
 - `EMPEROR_CLAW_API_TOKEN`: Company API token used for MCP authentication (Authorization: Bearer <token>).
 
 ### 3.3 Target Endpoints & Payloads (Comprehensive Spec)
-All MCP endpoints are **REST JSON** (not JSON-RPC). All actions that change state must be executed via the Emperor Claw API. All requests require the `Authorization: Bearer <company_token>` header.
+The primary Emperor control-plane surface is **REST JSON**. A small compatibility JSON-RPC surface also exists at `POST /api/mcp` for `status.summary` and legacy `*.upsert` probes. All state changes must still be reflected in Emperor Claw, and all MCP requests require the `Authorization: Bearer <company_token>` header.
 
 ### 3.3.1 Required Headers (All MCP Calls)
 ```
@@ -322,7 +323,10 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/agents`**: List active agents (optionally filtered via query params).
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "agents": [ ... ] }`
-- **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, or `memory`. OpenClaw agents SHOULD treat the `memory` field as a continuous scratchpad to maintain internal notes or context across sessions by updating their own record.
+- **`POST /api/mcp/agents/{agent_id}/memory`**: Append a first-class memory entry and optionally update the agent scratchpad snapshot.
+  - **Payload**: `{ "content": "string", "summary": "string (optional)", "snapshot": "string (optional)", "sessionId": "uuid (optional)", "projectId": "uuid (optional)", "taskId": "uuid (optional)", "kind": "context|checkpoint|..." }`
+  - **Response**: `{ "entry": { ... }, "snapshot": { ... } }`
+- **`PATCH /api/mcp/agents/{agent_id}`**: Dynamically update an agent's `skillsJson`, `modelPolicyJson`, `role`, `concurrencyLimit`, avatar, or the legacy top-level `memory` field. Use the dedicated `/memory` endpoint for normal cross-session memory writes.
   - **Payload**: `{ "skillsJson": ["string"] (optional), "modelPolicyJson": { ... } (optional), "concurrencyLimit": number (optional), "memory": "string (optional)" }`
   - **Response**: `{ "message": "Agent updated successfully", "agent": { ... } }`
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent so it no longer appears in the UI or API returns.
@@ -373,13 +377,13 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/threads`**: List available threads for the company or for a specific agent.
   - **Query**:
     - `type=team|direct|task|project|incident` (optional)
-    - `agentId=<uuid-or-agent-name>` (optional, filters to threads the agent participates in)
+    - `agentId=<uuid>` (optional, filters to threads the agent participates in)
     - `projectId=<uuid>` / `taskId=<uuid>` (optional)
   - **Response**: `{ "threads": [ { "id": "uuid", "type": "direct", "title": "Direct Agent Thread" } ] }`
 - **`POST /api/mcp/threads`**: Ensure or create a thread.
   - **Payload**:
     ```json
-    { "type": "direct", "agentId": "uuid-or-agent-name" }
+    { "type": "direct", "agentId": "uuid" }
     ```
   - **Response**: `{ "thread": { "id": "uuid", "type": "direct" } }`
 - **`GET /api/mcp/threads/{thread_id}/messages`**: Fetch a thread transcript.
@@ -396,6 +400,7 @@ Idempotency-Key: <uuid>
     }
     ```
   - **Response**: `{ "message": { "id": "uuid", "threadId": "uuid" } }`
+  - **Realtime**: Emits the same `thread_message` websocket event as `/api/mcp/messages/send`.
 
 #### Per-Agent Direct Chats
 - Every Emperor agent has a dedicated direct thread with the human operator.
@@ -413,6 +418,8 @@ Idempotency-Key: <uuid>
     - `{ "type": "thread_message", "thread": { ... }, "message": { ... } }`
     - `{ "type": "new_task", "task": { ... } }`
     - `{ "type": "task_updated", "task": { ... } }`
+    - `{ "type": "task_note_added", "taskId": "uuid", "projectId": "uuid", "event": { ... } }`
+    - `{ "type": "project_memory_added", "projectId": "uuid", "memory": { ... } }`
     - `{ "type": "company_context_updated", "company": { "id": "uuid", "contextNotes": "..." } }`
     - `{ "type": "agent_integration_created", "agentId": "uuid", "integration": { ... } }`
     - `{ "type": "agent_integration_archived", "agentId": "uuid", "integration": { ... } }`
@@ -860,7 +867,7 @@ Response:
 #### Threads: List Direct Threads For An Agent
 Request:
 ```json
-GET /api/mcp/threads?type=direct&agentId=Lead%20Miner
+GET /api/mcp/threads?type=direct&agentId=uuid-agent-lead-miner
 ```
 Response:
 ```json
@@ -1235,7 +1242,7 @@ Response: find your agent by name, read the `memory` field.
 #### Write Own Memory (Session End / Task Complete)
 Request:
 ```json
-PATCH /api/mcp/agents/{agent_id}
+POST /api/mcp/agents/{agent_id}/memory
 Authorization: Bearer <EMPEROR_CLAW_API_TOKEN>
 Content-Type: application/json
 Idempotency-Key: <uuid>
