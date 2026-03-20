@@ -5,6 +5,15 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-03-20
+
+### Added
+- Shipped a runnable JavaScript bridge with launcher scripts for session bootstrap, memory sync, WebSocket connectivity, and action logging.
+
+### Changed
+- Formalized Emperor as the durable source of truth for agent memory, sessions, messages, and managed credential leasing.
+- Standardized the public install slug on `emperor-claw-os` while keeping compatibility with the legacy registry alias.
+
 ## [1.14.1] - 2026-03-19
 
 ### Changed

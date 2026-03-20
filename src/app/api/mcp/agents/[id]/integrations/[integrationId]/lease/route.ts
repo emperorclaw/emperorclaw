@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { db } from "@/db";
-import { agentIntegrations } from "@/db/schema";
 import { getLatestManagedSecret, logCredentialAccess } from "@/lib/control-plane";
 import { decryptSecretPayload } from "@/lib/secrets";
+import { getAgentIntegration, updateIntegrationLeaseState } from "@/lib/agent-integrations";
+import { isMissingSchemaError } from "@/lib/schema-compat";
 
 export async function POST(
     req: NextRequest,
@@ -22,20 +22,43 @@ export async function POST(
         const body = await req.json();
         const { sessionId, reason } = body;
 
-        const [integration] = await db.select().from(agentIntegrations).where(
-            and(
-                eq(agentIntegrations.id, integrationId),
-                eq(agentIntegrations.companyId, companyId),
-                eq(agentIntegrations.agentId, agentId),
-                eq(agentIntegrations.status, "active")
-            )
-        ).limit(1);
+        const integration = await getAgentIntegration(companyId, agentId, integrationId);
 
         if (!integration) {
             return NextResponse.json({ error: "Integration not found" }, { status: 404 });
         }
 
         const resolvedAgentId = await resolveAgentId(companyId, agentId);
+
+        if (integration.compatMode === "legacy-inline" && integration.secretJson && Object.keys(integration.secretJson).length > 0) {
+            await logCredentialAccess({
+                companyId,
+                integrationId,
+                agentId: resolvedAgentId,
+                sessionId: sessionId || null,
+                action: "lease",
+                status: "success",
+                reason: "legacy inline secret storage",
+                metadataJson: { ownership: integration.ownership, requestedReason: reason || null },
+            });
+
+            return NextResponse.json({
+                integration: {
+                    id: integration.id,
+                    provider: integration.provider,
+                    name: integration.name,
+                    ownership: integration.ownership,
+                    configJson: integration.configJson || {},
+                },
+                managed: true,
+                configJson: integration.configJson || {},
+                secretJson: integration.secretJson || {},
+                lease: {
+                    version: "legacy-inline",
+                    keyVersion: "legacy-inline",
+                },
+            });
+        }
 
         if (integration.ownership !== "managed") {
             await logCredentialAccess({
@@ -83,12 +106,11 @@ export async function POST(
             metadataJson: { requestedReason: reason || null, version: secretVersion.version },
         });
 
-        await db.update(agentIntegrations).set({
+        await updateIntegrationLeaseState(integrationId, {
             lastUsedAt: new Date(),
             lastFailureAt: null,
             lastFailureReason: null,
-            updatedAt: new Date(),
-        }).where(eq(agentIntegrations.id, integrationId));
+        });
 
         return NextResponse.json({
             integration: {
@@ -106,11 +128,12 @@ export async function POST(
             },
         });
     } catch (error: any) {
-        await db.update(agentIntegrations).set({
-            lastFailureAt: new Date(),
-            lastFailureReason: error.message || "lease failed",
-            updatedAt: new Date(),
-        }).where(eq(agentIntegrations.id, integrationId));
+        if (!isMissingSchemaError(error)) {
+            await updateIntegrationLeaseState(integrationId, {
+                lastFailureAt: new Date(),
+                lastFailureReason: error.message || "lease failed",
+            });
+        }
 
         return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }

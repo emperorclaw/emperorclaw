@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
-import { agentIntegrations, agents, integrationSecretVersions } from "@/db/schema";
+import { agentIntegrations, agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { canManageSecrets, encryptSecretPayload } from "@/lib/secrets";
+import { createAgentIntegration, listAgentIntegrationsForAgent, archiveAgentIntegration } from "@/lib/agent-integrations";
 
 export async function GET(
     req: NextRequest,
@@ -28,18 +28,12 @@ export async function GET(
         }
 
         // Fetch integrations
-        const activeIntegrations = await db.select().from(agentIntegrations).where(
-            and(
-                eq(agentIntegrations.agentId, agentId),
-                eq(agentIntegrations.companyId, companyId),
-                eq(agentIntegrations.status, 'active')
-            )
-        );
+        const activeIntegrations = await listAgentIntegrationsForAgent(companyId, agentId);
 
         return NextResponse.json({
             integrations: activeIntegrations.map(({ secretJson, ...integration }) => ({
                 ...integration,
-                secretConfigured: integration.ownership === "managed",
+                secretConfigured: integration.ownership === "managed" || integration.compatMode === "legacy-inline",
                 secretJson: undefined,
             })),
         }, { status: 200 });
@@ -84,39 +78,21 @@ export async function POST(
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
 
-        const ownership = canManageSecrets() ? "managed" : "local_runtime";
-        const [newIntegration] = await db.insert(agentIntegrations).values({
+        const newIntegration = await createAgentIntegration({
             companyId,
             agentId,
             provider,
             name,
-            ownership,
-            configJson: configJson || {},
-            secretJson: ownership === "managed" ? {} : {},
-            status: 'active'
-        }).returning();
-
-        if (ownership === "managed" && secretJson && Object.keys(secretJson).length > 0) {
-            const encrypted = encryptSecretPayload(secretJson);
-            if (!encrypted) {
-                throw new Error("Managed secret storage is unavailable");
-            }
-
-            await db.insert(integrationSecretVersions).values({
-                companyId,
-                integrationId: newIntegration.id,
-                version: 1,
-                encryptedSecret: encrypted.encryptedSecret,
-                keyVersion: encrypted.keyVersion,
-            });
-        }
+            configJson,
+            secretJson,
+        });
 
         const res = {
             message: "Integration added successfully",
             integration: {
                 ...newIntegration,
                 secretJson: undefined,
-                secretConfigured: ownership === "managed",
+                secretConfigured: newIntegration.ownership === "managed" || newIntegration.compatMode === "legacy-inline",
             },
         };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
@@ -160,9 +136,7 @@ export async function DELETE(
             return NextResponse.json({ error: "Integration not found or unauthorized" }, { status: 404 });
         }
 
-        await db.update(agentIntegrations)
-            .set({ status: 'archived', updatedAt: new Date() })
-            .where(eq(agentIntegrations.id, integrationId));
+        await archiveAgentIntegration(companyId, integrationId);
 
         return NextResponse.json({ message: "Integration archived successfully" }, { status: 200 });
 

@@ -5,7 +5,6 @@ import { ArrowLeft, Bot, Cable, Clock3, KeyRound, MemoryStick, ScrollText } from
 import { db } from "@/db";
 import {
     actionRuns,
-    agentIntegrations,
     agentMemoryEntries,
     agentMemorySnapshots,
     agentSessions,
@@ -16,6 +15,8 @@ import {
 } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { listAgentIntegrationsForAgent } from "@/lib/agent-integrations";
+import { isMissingSchemaError } from "@/lib/schema-compat";
 
 export const dynamic = "force-dynamic";
 
@@ -32,42 +33,52 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         redirect("/agents");
     }
 
-    const [latestSnapshot] = await db.select().from(agentMemorySnapshots).where(
-        and(eq(agentMemorySnapshots.companyId, companyId), eq(agentMemorySnapshots.agentId, id))
-    ).orderBy(desc(agentMemorySnapshots.createdAt)).limit(1);
+    let latestSnapshot: any = null;
+    let memoryEntries: any[] = [];
+    let sessions: any[] = [];
+    let runs: any[] = [];
+    let participants: any[] = [];
+    let threads: any[] = [];
+    let lastMessages: any[] = [];
 
-    const memoryEntries = await db.select().from(agentMemoryEntries).where(
-        and(eq(agentMemoryEntries.companyId, companyId), eq(agentMemoryEntries.agentId, id))
-    ).orderBy(desc(agentMemoryEntries.createdAt)).limit(30);
+    try {
+        [latestSnapshot] = await db.select().from(agentMemorySnapshots).where(
+            and(eq(agentMemorySnapshots.companyId, companyId), eq(agentMemorySnapshots.agentId, id))
+        ).orderBy(desc(agentMemorySnapshots.createdAt)).limit(1);
 
-    const sessions = await db.select().from(agentSessions).where(
-        and(eq(agentSessions.companyId, companyId), eq(agentSessions.agentId, id))
-    ).orderBy(desc(agentSessions.startedAt)).limit(20);
+        memoryEntries = await db.select().from(agentMemoryEntries).where(
+            and(eq(agentMemoryEntries.companyId, companyId), eq(agentMemoryEntries.agentId, id))
+        ).orderBy(desc(agentMemoryEntries.createdAt)).limit(30);
 
-    const runs = await db.select().from(actionRuns).where(
-        and(eq(actionRuns.companyId, companyId), eq(actionRuns.agentId, id))
-    ).orderBy(desc(actionRuns.startedAt)).limit(20);
+        sessions = await db.select().from(agentSessions).where(
+            and(eq(agentSessions.companyId, companyId), eq(agentSessions.agentId, id))
+        ).orderBy(desc(agentSessions.startedAt)).limit(20);
 
-    const integrations = await db.select().from(agentIntegrations).where(
-        and(eq(agentIntegrations.companyId, companyId), eq(agentIntegrations.agentId, id), eq(agentIntegrations.status, "active"))
-    ).orderBy(desc(agentIntegrations.updatedAt)).limit(20);
+        runs = await db.select().from(actionRuns).where(
+            and(eq(actionRuns.companyId, companyId), eq(actionRuns.agentId, id))
+        ).orderBy(desc(actionRuns.startedAt)).limit(20);
 
-    const participants = await db.select().from(threadParticipants).where(
-        and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), eq(threadParticipants.participantId, id))
-    );
+        participants = await db.select().from(threadParticipants).where(
+            and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), eq(threadParticipants.participantId, id))
+        );
 
-    const threadIds = participants.map(participant => participant.threadId);
-    const threads = threadIds.length > 0
-        ? await db.select().from(messageThreads).where(
-            and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, threadIds), isNull(messageThreads.archivedAt))
-        ).orderBy(desc(messageThreads.createdAt)).limit(20)
-        : [];
+        const threadIds = participants.map(participant => participant.threadId);
+        threads = threadIds.length > 0
+            ? await db.select().from(messageThreads).where(
+                and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, threadIds), isNull(messageThreads.archivedAt))
+            ).orderBy(desc(messageThreads.createdAt)).limit(20)
+            : [];
 
-    const lastMessages = threadIds.length > 0
-        ? await db.select().from(threadMessages).where(
-            and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, threadIds))
-        ).orderBy(desc(threadMessages.createdAt)).limit(100)
-        : [];
+        lastMessages = threadIds.length > 0
+            ? await db.select().from(threadMessages).where(
+                and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, threadIds))
+            ).orderBy(desc(threadMessages.createdAt)).limit(100)
+            : [];
+    } catch (error) {
+        if (!isMissingSchemaError(error)) throw error;
+    }
+
+    const integrations = await listAgentIntegrationsForAgent(companyId, id);
 
     const latestMessageByThread = lastMessages.reduce((acc, message) => {
         if (!acc[message.threadId]) acc[message.threadId] = message;
