@@ -34,7 +34,7 @@ export default function SetupPage() {
                         <CardContent className="space-y-4">
                             <div className="bg-zinc-900 p-4 rounded-md border border-zinc-800 overflow-x-auto">
                                 <pre className="text-sm font-mono text-zinc-300">
-                                    {`openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw`}
+                                    {`openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os`}
                                 </pre>
                             </div>
                             <p className="text-sm text-zinc-400">

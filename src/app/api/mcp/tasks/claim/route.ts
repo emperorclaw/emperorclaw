@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { sql } from "drizzle-orm";
 import { agents, taskEvents } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { TASK_STATES } from "@/lib/task-state";
 
 export async function POST(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   const result = await db.execute(sql`
     UPDATE tasks
     SET 
-      state = 'in_progress', 
+      state = ${TASK_STATES.inProgress},
       assigned_agent_id = ${internalAgentId},
       lease_owner = ${agentId},
       lease_until = NOW() + INTERVAL '2 minutes',
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     WHERE id = (
       SELECT t.id FROM tasks t
       WHERE t.company_id = ${companyId}
-        AND t.state = 'queued'
+        AND t.state = ${TASK_STATES.queued}
         AND t.deleted_at IS NULL
         AND (
           ${strictOwnerRole === false} = true

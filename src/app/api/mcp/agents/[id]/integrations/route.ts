@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
-import { agentIntegrations, agents } from "@/db/schema";
+import { agentIntegrations, agents, integrationSecretVersions } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { canManageSecrets, encryptSecretPayload } from "@/lib/secrets";
 
 export async function GET(
     req: NextRequest,
@@ -35,7 +36,13 @@ export async function GET(
             )
         );
 
-        return NextResponse.json({ integrations: activeIntegrations }, { status: 200 });
+        return NextResponse.json({
+            integrations: activeIntegrations.map(({ secretJson, ...integration }) => ({
+                ...integration,
+                secretConfigured: integration.ownership === "managed",
+                secretJson: undefined,
+            })),
+        }, { status: 200 });
 
     } catch (err) {
         console.error(`Error fetching integrations for agent ${agentId}:`, err);
@@ -77,17 +84,41 @@ export async function POST(
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
 
+        const ownership = canManageSecrets() ? "managed" : "local_runtime";
         const [newIntegration] = await db.insert(agentIntegrations).values({
             companyId,
             agentId,
             provider,
             name,
+            ownership,
             configJson: configJson || {},
-            secretJson: secretJson || {},
+            secretJson: ownership === "managed" ? {} : {},
             status: 'active'
         }).returning();
 
-        const res = { message: "Integration added successfully", integration: newIntegration };
+        if (ownership === "managed" && secretJson && Object.keys(secretJson).length > 0) {
+            const encrypted = encryptSecretPayload(secretJson);
+            if (!encrypted) {
+                throw new Error("Managed secret storage is unavailable");
+            }
+
+            await db.insert(integrationSecretVersions).values({
+                companyId,
+                integrationId: newIntegration.id,
+                version: 1,
+                encryptedSecret: encrypted.encryptedSecret,
+                keyVersion: encrypted.keyVersion,
+            });
+        }
+
+        const res = {
+            message: "Integration added successfully",
+            integration: {
+                ...newIntegration,
+                secretJson: undefined,
+                secretConfigured: ownership === "managed",
+            },
+        };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
 

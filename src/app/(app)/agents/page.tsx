@@ -7,6 +7,7 @@ import { tasks } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Mail, Github, Zap } from "lucide-react";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,9 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                     </div>
                     <div>
                         <h3 className="text-lg font-medium text-zinc-100 flex items-center space-x-2">
-                            <span>{name}</span>
+                            <Link href={`/agents/${id}`} className="hover:text-white underline-offset-4 hover:underline">
+                                {name}
+                            </Link>
                             <span className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-zinc-800 text-zinc-400">
                                 {role}
                             </span>

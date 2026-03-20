@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Save, ScrollText } from "lucide-react";
+import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Save, ScrollText, Cable } from "lucide-react";
 
 export default function SettingsClient({ initialTokens, initialContextNotes }: { initialTokens: any[], initialContextNotes: string }) {
     const [tokens, setTokens] = useState(initialTokens);
@@ -150,6 +150,27 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
                         </div>
                     </div>
                 )}
+            </div>
+
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+                <h2 className="text-lg font-medium text-zinc-200 mb-4 flex items-center">
+                    <Cable className="w-5 h-5 mr-2 text-indigo-400" />
+                    Bridge Setup
+                </h2>
+                <p className="text-sm text-zinc-400 mb-4">
+                    Install the Emperor Claw OS skill, export your company token, then launch the shipped JS bridge. The bridge keeps OpenClaw runtime sessions, durable memory, and action traces synchronized back into Emperor.
+                </p>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
+                        openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os
+                    </code>
+                    <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
+                        EMPEROR_CLAW_API_TOKEN=your_token_here node skills/emperor-claw-os/scripts/ec-bridge.js
+                    </code>
+                </div>
+                <p className="text-xs text-zinc-500 mt-4">
+                    Managed secret leasing is enabled when the server is configured with `EMPEROR_CLAW_MASTER_KEY`. Otherwise, Emperor stores integration metadata and the runtime keeps unsupported secrets locally.
+                </p>
             </div>
 
             {/* Token List */}

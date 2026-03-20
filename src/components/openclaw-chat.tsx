@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { MessageSquare, X, Send, Bot, User } from "lucide-react";
+import { MessageSquare, X, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function OpenClawChat() {
@@ -16,12 +16,20 @@ export function OpenClawChat() {
     const scrollRef = useRef<HTMLDivElement>(null);
     const baseTitleRef = useRef<string | null>(null);
 
+    const buildChatUrl = (since?: string | null) => {
+        const params = new URLSearchParams();
+        if (since) params.set("since", since);
+        if (selectedAgentId) params.set("targetAgentId", selectedAgentId);
+        const query = params.toString();
+        return query ? `/api/chat?${query}` : "/api/chat";
+    };
+
     // Fetch history and poll
     useEffect(() => {
         const initFetch = async () => {
             try {
                 // Fetch chat history
-                const res = await fetch('/api/chat');
+                const res = await fetch(buildChatUrl());
                 if (res.ok) {
                     const data = await res.json();
                     if (data.messages && data.messages.length > 0) {
@@ -48,7 +56,7 @@ export function OpenClawChat() {
         const pollHistory = async () => {
             if (!initialized) return; // Only poll after initial fetch
             try {
-                const url = lastSeenAt ? `/api/chat?since=${encodeURIComponent(lastSeenAt)}` : '/api/chat';
+                const url = buildChatUrl(lastSeenAt);
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
@@ -85,7 +93,13 @@ export function OpenClawChat() {
         const interval = setInterval(pollHistory, 5000); // Poll every 5 seconds
         return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, initialized]);
+    }, [isOpen, initialized, selectedAgentId, lastSeenAt]);
+
+    useEffect(() => {
+        setHistory([]);
+        setLastSeenAt(null);
+        setInitialized(false);
+    }, [selectedAgentId]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -112,16 +126,14 @@ export function OpenClawChat() {
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        const selectedAgent = agents.find(a => a.id === selectedAgentId);
-        const prefix = selectedAgent ? `@${selectedAgent.name} ` : "";
-        const textToSend = prefix + message;
+        const textToSend = message;
         setMessage("");
 
         try {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: textToSend })
+                body: JSON.stringify({ text: textToSend, targetAgentId: selectedAgentId })
             });
             if (res.ok) {
                 const data = await res.json();
@@ -175,10 +187,12 @@ export function OpenClawChat() {
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <span className="text-sm font-semibold text-zinc-100 leading-tight">OpenClaw Base</span>
+                                <span className="text-sm font-semibold text-zinc-100 leading-tight">
+                                    {selectedAgentId ? agents.find(a => a.id === selectedAgentId)?.name || "Direct Agent Thread" : "OpenClaw Base"}
+                                </span>
                                 <span className="text-[10px] text-zinc-500 flex items-center space-x-1">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    <span>Online</span>
+                                    <span>{selectedAgentId ? "Direct Thread" : "Team Thread"}</span>
                                 </span>
                             </div>
                         </div>
@@ -237,7 +251,7 @@ export function OpenClawChat() {
                                             {msg.senderType !== 'human' && (
                                                 <div className="w-4 h-4 rounded-full overflow-hidden border border-zinc-700/50">
                                                     <img 
-                                                        src={agents.find(a => a.id === msg.fromUserId)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || 'agent')}`} 
+                                                        src={agents.find(a => a.id === (msg.fromUserId || msg.senderId))?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || msg.senderId || 'agent')}`} 
                                                         className="w-full h-full object-cover"
                                                         alt=""
                                                     />
@@ -247,7 +261,7 @@ export function OpenClawChat() {
                                                 "text-[10px] font-bold uppercase tracking-wider",
                                                 msg.senderType === 'human' ? "text-indigo-100" : "text-zinc-400"
                                             )}>
-                                                {msg.senderType === 'human' ? 'You' : getAgentName(msg.fromUserId)}
+                                                {msg.senderType === 'human' ? 'You' : getAgentName(msg.fromUserId || msg.senderId)}
                                             </div>
                                         </div>
                                         
@@ -270,7 +284,7 @@ export function OpenClawChat() {
                             type="text"
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
-                            placeholder="Message OpenClaw Manager..."
+                            placeholder={selectedAgentId ? "Message selected agent..." : "Message OpenClaw Manager..."}
                             className="flex-1 bg-zinc-950 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                         />
                         <button

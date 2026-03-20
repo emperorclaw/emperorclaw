@@ -143,6 +143,49 @@ export const agents = pgTable("agents", {
     deletedAt: timestamp("deleted_at"),
 });
 
+export const runtimeNodes = pgTable("runtime_nodes", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    runtimeId: text("runtime_id").notNull(),
+    name: text("name").notNull(),
+    hostname: text("hostname"),
+    gatewayVersion: text("gateway_version"),
+    capabilitiesJson: jsonb("capabilities_json").default('[]').notNull(),
+    status: text("status").default('active').notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    startedAt: timestamp("started_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
+export const agentSessions = pgTable("agent_sessions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    runtimeNodeId: uuid("runtime_node_id").references(() => runtimeNodes.id, { onDelete: 'set null' }),
+    openclawSessionId: text("openclaw_session_id").notNull(),
+    sessionType: text("session_type").default('main').notNull(),
+    channel: text("channel"),
+    checkpointJson: jsonb("checkpoint_json"),
+    syncStatus: text("sync_status").default('synced').notNull(),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    lastCheckpointAt: timestamp("last_checkpoint_at"),
+    endedAt: timestamp("ended_at"),
+    status: text("status").default('starting').notNull(),
+    summary: text("summary"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const agentMemorySnapshots = pgTable("agent_memory_snapshots", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: 'set null' }),
+    content: text("content").notNull(),
+    summary: text("summary"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const projectMemory = pgTable("project_memory", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -178,6 +221,20 @@ export const tasks = pgTable("tasks", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
+});
+
+export const agentMemoryEntries = pgTable("agent_memory_entries", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: 'set null' }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
+    kind: text("kind").default('context').notNull(),
+    content: text("content").notNull(),
+    summary: text("summary"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const taskEvents = pgTable("task_events", {
@@ -277,6 +334,45 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const messageThreads = pgTable("message_threads", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    type: text("type").default('team').notNull(),
+    title: text("title"),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
+    incidentId: uuid("incident_id").references(() => incidents.id, { onDelete: 'set null' }),
+    createdByType: text("created_by_type").default('system').notNull(),
+    createdById: uuid("created_by_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    archivedAt: timestamp("archived_at"),
+});
+
+export const threadParticipants = pgTable("thread_participants", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id").notNull().references(() => messageThreads.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    participantType: text("participant_type").notNull(),
+    participantId: uuid("participant_id"),
+    participantRef: text("participant_ref"),
+    role: text("role").default('member').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const threadMessages = pgTable("thread_messages", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id").notNull().references(() => messageThreads.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    senderType: text("sender_type").notNull(),
+    senderId: text("sender_id"),
+    targetAgentId: uuid("target_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    text: text("text").notNull(),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    deliveryState: text("delivery_state").default('delivered').notNull(),
+    platformMessageId: text("platform_message_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const chatMessages = pgTable("chat_messages", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -288,15 +384,75 @@ export const chatMessages = pgTable("chat_messages", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const actionRuns = pgTable("action_runs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: 'set null' }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
+    kind: text("kind").default('task_execution').notNull(),
+    status: text("status").default('running').notNull(),
+    summary: text("summary"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const actionSteps = pgTable("action_steps", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actionRunId: uuid("action_run_id").notNull().references(() => actionRuns.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    stepType: text("step_type").default('tool').notNull(),
+    toolName: text("tool_name"),
+    status: text("status").default('running').notNull(),
+    target: text("target"),
+    inputSummaryJson: jsonb("input_summary_json").default('{}').notNull(),
+    outputSummaryJson: jsonb("output_summary_json").default('{}').notNull(),
+    errorText: text("error_text"),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const agentIntegrations = pgTable("agent_integrations", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
     provider: text("provider").notNull(), // e.g., 'email_smtp', 'email_imap', 'github'
     name: text("name").notNull(), // Optional display name ("Support Inbox")
+    ownership: text("ownership").default('managed').notNull(),
     configJson: jsonb("config_json").default('{}'), // Non-secrets: { host, port, username }
     secretJson: jsonb("secret_json").default('{}'), // Secrets: { password, apiKey }
     status: text("status").default('active').notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+    lastFailureAt: timestamp("last_failure_at"),
+    lastFailureReason: text("last_failure_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const integrationSecretVersions = pgTable("integration_secret_versions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    integrationId: uuid("integration_id").notNull().references(() => agentIntegrations.id, { onDelete: 'cascade' }),
+    version: integer("version").default(1).notNull(),
+    encryptedSecret: text("encrypted_secret").notNull(),
+    keyVersion: text("key_version").default('v1').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
+});
+
+export const credentialAccessLogs = pgTable("credential_access_logs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    integrationId: uuid("integration_id").notNull().references(() => agentIntegrations.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: 'set null' }),
+    action: text("action").default('lease').notNull(),
+    status: text("status").default('success').notNull(),
+    reason: text("reason"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -102,7 +102,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                                     <User className="w-4 h-4 text-zinc-400" />
                                 ) : (
                                     <img 
-                                        src={agents.find(a => a.id === msg.fromUserId)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || 'agent')}`} 
+                                        src={agents.find(a => a.id === (msg.fromUserId || msg.senderId))?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || msg.senderId || 'agent')}`} 
                                         className="w-full h-full object-cover"
                                         alt=""
                                     />
@@ -110,7 +110,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                             </div>
                             <div className={`rounded-2xl px-4 py-2.5 max-w-[85%] text-sm ${msg.senderType === 'human' ? 'bg-zinc-800/50 border border-zinc-700/50 rounded-tr-none text-zinc-200' : 'bg-zinc-800/30 border border-zinc-800/50 rounded-tl-none text-zinc-300'}`}>
                                 <div className={`text-[10px] font-medium mb-1 tracking-wider uppercase flex justify-between ${msg.senderType === 'human' ? 'text-zinc-500' : 'text-indigo-400'}`}>
-                                    <span>{msg.senderType === 'human' ? 'Human Manager' : getAgentName(msg.fromUserId)}</span>
+                                    <span>{msg.senderType === 'human' ? 'Human Manager' : getAgentName(msg.fromUserId || msg.senderId)}</span>
                                     <span className="text-zinc-600 px-2">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
                                 <ParsedMessage text={msg.text} />

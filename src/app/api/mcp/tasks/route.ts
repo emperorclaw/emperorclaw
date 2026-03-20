@@ -4,7 +4,7 @@ import { tasks, taskEvents, projects } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { normalizeTaskState } from "@/lib/task-state";
+import { normalizeTaskState, TASK_STATES } from "@/lib/task-state";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
             taskType,
             templateVersion,
             contractVersion,
-            state: 'queued',
+            state: TASK_STATES.queued,
             priority,
             proofRequired,
             humanApprovalRequired,

@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { db } from "@/db";
 import { tasks, taskEvents } from "@/db/schema";
 import { randomUUID } from "crypto";
+import { TASK_STATES } from "@/lib/task-state";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
             taskType,
             templateVersion,
             contractVersion,
-            state: 'queued',
+            state: TASK_STATES.queued,
             priority,
             proofRequired,
             humanApprovalRequired,

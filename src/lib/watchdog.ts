@@ -1,7 +1,8 @@
 import { db } from "@/db";
-import { lt, and, eq, or } from "drizzle-orm";
+import { lt, and, eq, inArray } from "drizzle-orm";
 import { tasks, taskEvents, incidents } from "@/db/schema";
 import { Pool } from "pg";
+import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "./task-state";
 
 let isWatchdogRunning = false;
 const WATCHDOG_INTERVAL_MS = 60000;
@@ -35,9 +36,9 @@ async function runWatchdog() {
 
         const now = new Date();
         // 1. Reclaim expired leases (Retry / Dead Letter)
-        // Find tasks where state = 'running' AND leaseUntil < now
+        // Canonical in-progress tasks hold leases.
         const expiredTasks = await db.select().from(tasks).where(
-            and(eq(tasks.state, 'running'), lt(tasks.leaseUntil, now))
+            and(eq(tasks.state, TASK_STATES.inProgress), lt(tasks.leaseUntil, now))
         );
 
         for (const task of expiredTasks) {
@@ -62,7 +63,7 @@ async function runWatchdog() {
             } else {
                 // Dead letter
                 await db.update(tasks).set({
-                    state: 'dead_letter',
+                    state: TASK_STATES.deadLetter,
                     updatedAt: new Date()
                 }).where(eq(tasks.id, task.id));
 
@@ -87,10 +88,10 @@ async function runWatchdog() {
         }
 
         // 2. Detect SLA breaches
-        // state in ('queued', 'running', 'needs_review') AND slaDueAt < now
+        // Canonical pre-terminal task states remain SLA-tracked.
         const breachedTasks = await db.select().from(tasks).where(
             and(
-                or(eq(tasks.state, 'queued'), eq(tasks.state, 'running'), eq(tasks.state, 'needs_review')),
+                inArray(tasks.state, SLA_TRACKED_TASK_STATES),
                 lt(tasks.slaDueAt, now)
             )
         );

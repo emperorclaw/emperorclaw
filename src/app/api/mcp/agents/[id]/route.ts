@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { writeAgentMemory } from "@/lib/control-plane";
 
 export async function PATCH(
     req: NextRequest,
@@ -49,6 +50,17 @@ export async function PATCH(
         // We do not update name or currentLoad here; name is immutable after creation via MCP, and load is managed by the system.
 
         const [updatedAgent] = await db.update(agents).set(updateData).where(eq(agents.id, agentId)).returning();
+
+        if (memory !== undefined) {
+            await writeAgentMemory({
+                companyId,
+                agentId,
+                kind: "checkpoint",
+                content: memory || "",
+                summary: "Agent memory updated via legacy MCP patch",
+                snapshot: memory || "",
+            });
+        }
 
         const res = { message: `Agent ${agentId} updated successfully`, agent: updatedAgent };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

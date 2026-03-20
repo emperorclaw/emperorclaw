@@ -42,6 +42,8 @@ On activation, you will:
 4. Scan the Kanban board via `GET /api/mcp/tasks`
 5. Process messages and execute assigned tasks.
 
+The skill ships a runnable bridge reference at `examples/bridge.js` and launchers at `scripts/ec-bridge.js` / `scripts/ec-bridge.sh`. Use that bridge as the source implementation for runtime registration, session start/end, memory hydration, chat synchronization, and action logging.
+
 ---
 
 ## 12. Agent Communication Guidelines

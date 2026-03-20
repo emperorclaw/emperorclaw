@@ -10,7 +10,6 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Form state
     const [provider, setProvider] = useState("email_smtp");
     const [name, setName] = useState("");
     const [host, setHost] = useState("");
@@ -97,7 +96,6 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                            {/* Existing Integrations */}
                             <section>
                                 <h4 className="text-sm font-semibold text-zinc-400 mb-4 flex items-center">
                                     <Key className="w-4 h-4 mr-2" /> Active Credentials
@@ -114,12 +112,14 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                             <div key={integration.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex items-center justify-between group">
                                                 <div className="flex items-center space-x-3">
                                                     <div className="p-2 bg-zinc-800 rounded-lg">
-                                                        {integration.provider.includes('email') ? <Mail className="w-4 h-4 text-indigo-400" /> : <Settings2 className="w-4 h-4 text-zinc-400" />}
+                                                        {integration.provider.includes("email") ? <Mail className="w-4 h-4 text-indigo-400" /> : <Settings2 className="w-4 h-4 text-zinc-400" />}
                                                     </div>
                                                     <div>
                                                         <div className="text-sm font-medium text-zinc-200">{integration.name}</div>
                                                         <div className="flex items-center space-x-2">
                                                             <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.provider}</div>
+                                                            <span className="text-zinc-700 text-[10px]">•</span>
+                                                            <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{integration.ownership}</span>
                                                             {integration.configJson?.username && (
                                                                 <>
                                                                     <span className="text-zinc-700 text-[10px]">•</span>
@@ -142,7 +142,6 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                 )}
                             </section>
 
-                            {/* Add New Integration */}
                             <section className="pt-6 border-t border-zinc-800/50">
                                 <h4 className="text-sm font-semibold text-zinc-400 mb-4 flex items-center">
                                     <Plus className="w-4 h-4 mr-2" /> Add New Provider
@@ -185,7 +184,7 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                         </div>
                                     </div>
 
-                                    {(provider === 'email_smtp' || provider === 'email_imap') && (
+                                    {(provider === "email_smtp" || provider === "email_imap") && (
                                         <div className="grid grid-cols-3 gap-4">
                                             <div className="col-span-2 space-y-1.5">
                                                 <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Host</label>
@@ -235,6 +234,9 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                     </div>
 
                                     <div className="pt-2">
+                                        <p className="text-[11px] text-zinc-500 mb-3">
+                                            Managed secrets are leased back to OpenClaw only when the server has `EMPEROR_CLAW_MASTER_KEY`. Otherwise this record remains metadata-only and the runtime keeps the secret locally.
+                                        </p>
                                         <button
                                             type="submit"
                                             disabled={isSaving}

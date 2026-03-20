@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
-import { chatMessages, companies } from "@/db/schema";
+import { companies, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
@@ -28,24 +28,24 @@ export async function GET(req: NextRequest) {
             if (req.signal.aborted) break;
 
             let conditions: any[] = [
-                eq(chatMessages.companyId, companyId),
+                eq(threadMessages.companyId, companyId),
             ];
 
             if (senderTypeFilter) {
-                conditions.push(eq(chatMessages.senderType, senderTypeFilter));
+                conditions.push(eq(threadMessages.senderType, senderTypeFilter));
             } else if (mode === 'human_only') {
                 // Default behavior keeps existing OpenClaw directive semantics.
-                conditions.push(eq(chatMessages.senderType, 'human'));
+                conditions.push(eq(threadMessages.senderType, 'human'));
             }
 
             if (isValidSince) {
-                conditions.push(gt(chatMessages.createdAt, sinceDate));
+                conditions.push(gt(threadMessages.createdAt, sinceDate));
             }
 
             const messages = await db.select()
-                .from(chatMessages)
+                .from(threadMessages)
                 .where(and(...conditions))
-                .orderBy(desc(chatMessages.createdAt))
+                .orderBy(desc(threadMessages.createdAt))
                 .limit(100);
 
             if (messages.length > 0) {

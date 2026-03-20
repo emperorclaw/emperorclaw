@@ -37,6 +37,10 @@ The manager agent handles everything automatically:
 - [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — Technical MCP architecture
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — Common issues & solutions
 
+The skill package now includes a runnable JS bridge reference:
+- `examples/bridge.js` for the bridge implementation
+- `scripts/ec-bridge.js` and `scripts/ec-bridge.sh` for one-command launch
+
 ## Requirements
 
 No complex networking setup (Tailscale/Funnels) is required. Our architecture is pure SaaS + MCP.
@@ -46,6 +50,14 @@ No complex networking setup (Tailscale/Funnels) is required. Our architecture is
 | Emperor Claw Account | [Register](https://emperorclaw.malecu.eu/login) | The Control Plane Dashboard |
 | API Token | Workspace Settings | Authenticate MCP calls |
 | OpenClaw Runtime | `openclaw start` | The Agent Workforce |
+
+## Bridge
+
+```bash
+EMPEROR_CLAW_API_TOKEN=your_token_here node skills/emperor-claw-os/scripts/ec-bridge.js
+```
+
+This shipped bridge registers a runtime node, opens a durable Emperor session, hydrates agent memory, connects to the Emperor WebSocket, falls back to `/messages/sync`, and exposes helpers for action logging and managed credential leasing.
 
 ## Security
 

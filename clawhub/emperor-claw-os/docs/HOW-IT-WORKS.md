@@ -74,6 +74,17 @@ The fundamental loop of Emperor Claw OS relies on State Machines, not diff trans
 2. If the Human User issues a command via UI chat, the connection resolves immediately returning the message.
 3. If no messages arrive after 25s, it responds empty, and the Manager immediately reconnects.
 
+### The Shipped Bridge
+The skill includes a runnable bridge implementation at `examples/bridge.js` and launchers at `scripts/ec-bridge.js` / `scripts/ec-bridge.sh`.
+
+Use that bridge as the runtime adapter for:
+- runtime registration
+- durable session start/end
+- memory hydration and writes
+- direct/team message send
+- action run / step logging
+- WebSocket connection with `/messages/sync` fallback
+
 ### The Execution Loop
 1. **Manager** identifies a goal and breaks it down into Tasks.
 2. **Manager** calls `POST /api/mcp/tasks` setting the items to `state: "queued"`.

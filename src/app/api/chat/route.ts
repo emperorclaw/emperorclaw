@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { chatMessages } from "@/db/schema";
+import { messageThreads } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
-import { eq, desc, and, gt } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
+import { resolveAgentId } from "@/lib/mcp";
+import { broadcastMcpEvent } from "@/lib/pubsub";
+
+function serializeMessage(message: any) {
+    return {
+        ...message,
+        fromUserId: message.fromUserId || message.senderId || null,
+    };
+}
 
 export async function GET(req: NextRequest) {
     const companyId = await getCompanyId();
@@ -12,22 +22,21 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const since = searchParams.get("since");
         const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
+        const targetAgentId = searchParams.get("targetAgentId");
+        const sinceDate = since ? new Date(since) : null;
 
-        const conditions: any[] = [eq(chatMessages.companyId, companyId)];
-        if (since) {
-            const sinceDate = new Date(since);
-            if (!isNaN(sinceDate.getTime())) {
-                conditions.push(gt(chatMessages.createdAt, sinceDate));
-            }
-        }
+        const thread = targetAgentId
+            ? await ensureDirectThread(companyId, targetAgentId, await getUserId())
+            : await ensureTeamThread(companyId);
 
-        const messages = await db.select()
-            .from(chatMessages)
-            .where(and(...conditions))
-            .orderBy(desc(chatMessages.createdAt))
-            .limit(limit);
+        const messages = await getThreadMessages(
+            companyId,
+            thread.id,
+            limit,
+            sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null
+        );
 
-        return NextResponse.json({ messages: messages.reverse() });
+        return NextResponse.json({ thread, messages: messages.map(serializeMessage) });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
@@ -39,22 +48,32 @@ export async function POST(req: NextRequest) {
     if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        const { text } = await req.json();
+        const { text, targetAgentId } = await req.json();
         if (!text) return NextResponse.json({ error: "Text is required" }, { status: 400 });
 
-        const [msg] = await db.insert(chatMessages).values({
+        const resolvedTargetAgentId = targetAgentId
+            ? await resolveAgentId(companyId, targetAgentId)
+            : null;
+        const thread = resolvedTargetAgentId
+            ? await ensureDirectThread(companyId, resolvedTargetAgentId, userId)
+            : await ensureTeamThread(companyId);
+        const message = await appendThreadMessage({
             companyId,
-            senderType: 'human',
-            fromUserId: userId,
+            threadId: thread.id,
+            senderType: "human",
+            senderId: userId,
+            targetAgentId: resolvedTargetAgentId,
             text,
-            threadId: 'default'
-        }).returning();
-
-        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
-            broadcastMcpEvent(companyId, { type: 'new_message', message: msg });
+            mirrorToLegacyChat: !resolvedTargetAgentId,
         });
 
-        return NextResponse.json({ message: msg });
+        broadcastMcpEvent(companyId, {
+            type: "thread_message",
+            thread,
+            message,
+        });
+
+        return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

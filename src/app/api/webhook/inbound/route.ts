@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { chatMessages } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
+import { appendThreadMessage, ensureTeamThread } from "@/lib/control-plane";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function POST(req: NextRequest) {
     try {
@@ -37,19 +39,19 @@ export async function POST(req: NextRequest) {
 
         // 3. Transform and Route
         // This inserts the message into Emperor Claw's system-of-record.
-        const [newMessage] = await db.insert(chatMessages).values({
-            companyId, // Uses the authenticated company token's ID
-            threadId: thread_id || chat_id,
-            senderType: 'human', // Inbound usually comes from a human or external platform
-            fromUserId: from_user_id,
-            text: text,
+        const thread = await ensureTeamThread(companyId);
+        const newMessage = await appendThreadMessage({
+            companyId,
+            threadId: thread_id || thread.id,
+            senderType: "human",
+            senderId: from_user_id,
+            text,
             platformMessageId: id,
-            createdAt: timestamp ? new Date(timestamp) : new Date()
-        }).returning();
-
-        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
-            broadcastMcpEvent(companyId, { type: 'new_message', message: newMessage });
+            mirrorToLegacyChat: true,
+            createdAt: timestamp ? new Date(timestamp) : new Date(),
         });
+
+        broadcastMcpEvent(companyId, { type: 'thread_message', thread, message: newMessage });
 
         // 5. Return 200
         return NextResponse.json({ ok: true });

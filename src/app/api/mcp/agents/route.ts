@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { writeAgentMemory } from "@/lib/control-plane";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -68,6 +69,17 @@ export async function POST(req: NextRequest) {
         }).returning();
 
         await logAudit(companyId, "agent", null, "register_agent", "agent", agent.id, { name, role });
+
+        if (memory) {
+            await writeAgentMemory({
+                companyId,
+                agentId: agent.id,
+                kind: "context",
+                content: memory,
+                summary: `Initial memory bootstrap for ${name}`,
+                snapshot: memory,
+            });
+        }
 
         const responseObj = { message: "Agent registered", agent };
         await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, responseObj);
