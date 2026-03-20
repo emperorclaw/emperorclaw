@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { agents, agentIntegrations } from "@/db/schema";
+import { agents } from "@/db/schema";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { ManageIntegrationsDialog } from "./manage-integrations-dialog";
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
@@ -8,6 +8,7 @@ import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Mail, Github, Zap } from "lucide-react";
 import Link from "next/link";
+import { listAgentIntegrationsForAgents } from "@/lib/agent-integrations";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +30,8 @@ export default async function AgentsPage() {
     }, {} as Record<string, number>);
 
     // Fetch all integrations for these agents
-    const integrationsList = allAgents.length > 0 
-        ? await db.select().from(agentIntegrations).where(
-            and(
-                eq(agentIntegrations.companyId, companyId),
-                inArray(agentIntegrations.agentId, allAgents.map(a => a.id)),
-                eq(agentIntegrations.status, 'active')
-            )
-        )
+    const integrationsList = allAgents.length > 0
+        ? await listAgentIntegrationsForAgents(companyId, allAgents.map(a => a.id))
         : [];
 
     const integrationMap = integrationsList.reduce((acc, curr) => {
