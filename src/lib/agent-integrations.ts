@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { agentIntegrations, integrationSecretVersions } from "@/db/schema";
 import { canManageSecrets, encryptSecretPayload } from "@/lib/secrets";
 import { isMissingSchemaError } from "@/lib/schema-compat";
+import { notifyMcpEvent } from "./mcp";
 
 type CompatMode = "current" | "legacy-inline";
 
@@ -148,13 +149,23 @@ export async function createAgentIntegration(input: {
             }
         }
 
-        return {
+        const result = {
             ...newIntegration,
             lastUsedAt: newIntegration.lastUsedAt ?? null,
             lastFailureAt: newIntegration.lastFailureAt ?? null,
             lastFailureReason: newIntegration.lastFailureReason ?? null,
             compatMode: "current" as const,
         };
+
+        // Notify agents about the change
+        notifyMcpEvent(input.companyId, {
+            type: "agent_integrations_updated",
+            agentId: input.agentId,
+            integrationId: newIntegration.id,
+            provider: input.provider
+        }).catch(console.error);
+
+        return result;
     } catch (error) {
         if (!isMissingSchemaError(error)) throw error;
 
@@ -180,9 +191,19 @@ export async function createAgentIntegration(input: {
 }
 
 export async function archiveAgentIntegration(companyId: string, integrationId: string) {
-    await db.update(agentIntegrations)
+    const [archived] = await db.update(agentIntegrations)
         .set({ status: "archived", updatedAt: new Date() })
-        .where(and(eq(agentIntegrations.id, integrationId), eq(agentIntegrations.companyId, companyId)));
+        .where(and(eq(agentIntegrations.id, integrationId), eq(agentIntegrations.companyId, companyId)))
+        .returning();
+
+    if (archived) {
+        notifyMcpEvent(companyId, {
+            type: "agent_integrations_updated",
+            agentId: archived.agentId,
+            integrationId: archived.id,
+            provider: archived.provider
+        }).catch(console.error);
+    }
 }
 
 export async function updateIntegrationLeaseState(
