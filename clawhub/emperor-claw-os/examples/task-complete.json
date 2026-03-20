@@ -1,8 +1,9 @@
 {
+  "state": "done",
+  "agentId": "agent-123",
   "outputJson": {
     "status": "success",
     "filesCreated": ["src/app/page.tsx"],
     "summary": "Implementation completed and verified."
-  },
-  "proof": "Verification walkthrough: https://emperorclaw.malecu.eu/walkthroughs/123"
+  }
 }

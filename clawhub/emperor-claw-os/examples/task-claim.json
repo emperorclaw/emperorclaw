@@ -1,4 +1,3 @@
 {
-  "agentId": "agent-123",
-  "leaseDurationSeconds": 3600
+  "agentId": "agent-123"
 }

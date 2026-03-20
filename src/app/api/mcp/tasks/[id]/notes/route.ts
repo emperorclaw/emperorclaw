@@ -3,6 +3,16 @@ import { db } from "@/db";
 import { projectMemory, taskEvents, tasks } from "@/db/schema";
 import { eq, and, asc } from "drizzle-orm";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { broadcastMcpEvent } from "@/lib/pubsub";
+
+type TaskHandoff = {
+    fromRole: string;
+    toRole: string;
+    summary: string;
+    nextStep: string;
+    blockers?: unknown[];
+    artifactRefs?: unknown[];
+};
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -28,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 }
 
-function validateHandoff(handoff: any): string | null {
+function validateHandoff(handoff: Record<string, unknown> | null | undefined): string | null {
     if (!handoff) return null;
     const required = ["fromRole", "toRole", "summary", "nextStep"];
     for (const key of required) {
@@ -79,7 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
-        const payload: any = { note };
+        const payload: { note: string; handoff?: TaskHandoff } = { note };
         if (handoff) payload.handoff = handoff;
 
         const [newEvent] = await db.insert(taskEvents).values({
@@ -102,6 +112,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 createdByAgentId: internalAgentId,
             }).returning();
         }
+
+        await broadcastMcpEvent(companyId, {
+            type: "task_note_added",
+            taskId,
+            projectId: task.projectId,
+            event: newEvent,
+            memory: memoryItem,
+        });
 
         const res = { message: "Task note added successfully", event: newEvent, memory: memoryItem };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

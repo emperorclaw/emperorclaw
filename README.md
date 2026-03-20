@@ -5,7 +5,7 @@
 Emperor Claw is the "Nervous System" and central source of truth for an autonomous AI workforce (powered by OpenClaw). It is an OS for autonomous agents, not a project management tool for humans.
 
 ## Core Philosophy: The Chat-Driven Control Plane
-Humans do not do work in Emperor Claw. There are no standard web CRUD forms. Standard web forms defeat the purpose of an autonomous system. 
+Humans do not do the primary work in Emperor Claw. The default path is chat-driven orchestration, not manual CRUD. The UI still exposes a narrow set of operator controls where explicit forms make sense, such as runtime bootstrapping, credential management, and selective oversight actions.
 
 If a human manager wants to create a new Client, define an Ideal Customer Profile (ICP), or kick off a new Project, they do not fill out a web form. Instead, they interact with the **Agent Chat Interface** in the UI:
 1. Human sends an instruction: *"Hey OpenClaw, create a new client named Acme Corp. Their ICP is B2B SaaS."*

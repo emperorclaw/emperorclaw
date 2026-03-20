@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { taskEvents, tasks } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -23,6 +24,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             actorType: "human",
             payloadJson: { note: comment },
         }).returning();
+
+        await broadcastMcpEvent(task.companyId, {
+            type: "task_note_added",
+            taskId,
+            projectId: task.projectId,
+            event: newEvent,
+        });
 
         return NextResponse.json({ success: true, event: newEvent });
     } catch (error) {

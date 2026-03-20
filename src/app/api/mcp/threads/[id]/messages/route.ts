@@ -4,6 +4,7 @@ import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { messageThreads } from "@/db/schema";
 import { appendThreadMessage, getThreadMessages } from "@/lib/control-plane";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -40,6 +41,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id: threadId } = await params;
 
     try {
+        const [thread] = await db.select().from(messageThreads).where(
+            and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
+        ).limit(1);
+
+        if (!thread) {
+            return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+        }
+
         const body = await req.json();
         const { text, senderType = "agent", senderId, targetAgentId, metadataJson, mirrorToLegacyChat = false } = body;
 
@@ -53,6 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const resolvedTargetAgentId = targetAgentId
             ? await resolveAgentId(companyId, targetAgentId)
             : null;
+        const shouldMirrorToLegacyChat = mirrorToLegacyChat || thread.type === "team";
 
         const message = await appendThreadMessage({
             companyId,
@@ -62,11 +72,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             targetAgentId: resolvedTargetAgentId,
             text,
             metadataJson: metadataJson || {},
-            mirrorToLegacyChat,
+            mirrorToLegacyChat: shouldMirrorToLegacyChat,
         });
 
+        await broadcastMcpEvent(companyId, { type: "thread_message", thread, message });
+
         return NextResponse.json({ message }, { status: 201 });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

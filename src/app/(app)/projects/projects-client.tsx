@@ -60,7 +60,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         if (!newContext.trim() || projectFilter === "All Projects") return;
         setIsSubmittingContext(true);
         try {
-            const res = await fetch(`/api/mcp/projects/${projectFilter}/memory`, {
+            const res = await fetch(`/api/projects/${projectFilter}/memory`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: newContext })

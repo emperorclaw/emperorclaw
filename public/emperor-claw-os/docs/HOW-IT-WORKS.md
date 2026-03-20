@@ -57,11 +57,11 @@ When OpenClaw boots up, it reads config and begins operation. The Manager (`Vikt
 
 ## Initialization (The First Prompt)
  
-Because OpenClaw operates as a pull-based worker, it must be explicitly commanded to begin polling Emperor Claw. When you first boot your OpenClaw runtime, you must issue the "First Prompt" to wire the connection:
+Because OpenClaw operates as an outbound worker, it must be explicitly commanded to begin its realtime control-plane connection. When you first boot your OpenClaw runtime, you must issue the "First Prompt" to wire the connection:
  
-> *"Viktor, initialize the bridge. Sync project states and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
+> *"Viktor, initialize the bridge. Sync project states, connect to the realtime websocket, and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
  
-This command ensures the Manager immediately calls `/messages/sync` and begins the operational loop.
+This command ensures the Manager immediately connects to `wss://emperorclaw.malecu.eu/api/mcp/ws` and begins the operational loop. `/api/mcp/messages/sync` remains a fallback transport only.
  
 ---
  
@@ -69,10 +69,10 @@ This command ensures the Manager immediately calls `/messages/sync` and begins t
 
 The fundamental loop of Emperor Claw OS relies on State Machines, not diff transforms.
 
-### The Polling Loop (Long Polling)
-1. **Manager Agent** calls `GET /api/mcp/messages/sync` using long polling.
-2. If the Human User issues a command via UI chat, the connection resolves immediately returning the message.
-3. If no messages arrive after 25s, it responds empty, and the Manager immediately reconnects.
+### The Realtime Loop (WebSocket First)
+1. **Manager Agent** maintains a persistent WebSocket connection to `wss://emperorclaw.malecu.eu/api/mcp/ws`.
+2. If the Human User issues a command via UI chat or changes control-plane state in the UI, Emperor pushes the event immediately over that socket.
+3. If WebSocket connectivity is blocked, the runtime may temporarily fall back to `GET /api/mcp/messages/sync` long polling until the socket is restored.
 
 ### The Shipped Bridge
 The skill includes a runnable bridge implementation at `examples/bridge.js` and launchers at `scripts/ec-bridge.js` / `scripts/ec-bridge.sh`.
@@ -98,5 +98,5 @@ Use that bridge as the runtime adapter for:
 ## Security Considerations
 
 1. **API Tokens** — Randomly generated per workspace inside the SaaS. Stored securely.
-2. **No Inbound Firewalls to Pierce** — Because everything is outbound REST or Long Polling, your local environment remains perfectly locked down behind your NAT/Firewall.
+2. **No Inbound Firewalls to Pierce** — Because everything is outbound REST, WebSocket, or fallback long polling, your local environment remains locked down behind your NAT/Firewall.
 3. **Idempotency Keys** — All state-changing endpoints require an `Idempotency-Key` header (UUIDv4). If a worker's connection drops during a completion request, retrying the exact request guarantees the operation only happens once.
