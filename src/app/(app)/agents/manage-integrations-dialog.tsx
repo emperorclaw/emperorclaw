@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { Settings2, Plus, X, Trash2, Key, Mail, ShieldCheck } from "lucide-react";
-import { getAgentIntegrations, saveAgentIntegration, deleteAgentIntegration } from "@/app/actions/integrations";
+import { getAgentIntegrations, saveAgentIntegration, deleteAgentIntegration, getSecretManagerStatus } from "@/app/actions/integrations";
 
 export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [integrations, setIntegrations] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [managerEnabled, setManagerEnabled] = useState(false);
 
     const [provider, setProvider] = useState("email_smtp");
     const [name, setName] = useState("");
@@ -27,6 +28,9 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
         } finally {
             setIsLoading(false);
         }
+
+        const status = await getSecretManagerStatus();
+        setManagerEnabled(status.enabled);
     };
 
     useEffect(() => {
@@ -233,11 +237,19 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                         </div>
                                     </div>
 
-                                    <div className="pt-2">
-                                        <p className="text-[11px] text-zinc-500 mb-3">
-                                            Managed secrets are leased back to OpenClaw only when the server has `EMPEROR_CLAW_MASTER_KEY`. Otherwise this record remains metadata-only and the runtime keeps the secret locally.
-                                        </p>
-                                        <button
+                                     <div className="pt-2">
+                                         <div className={`p-3 rounded-xl border mb-4 flex items-center space-x-3 ${managerEnabled ? 'bg-emerald-950/20 border-emerald-800' : 'bg-amber-950/20 border-amber-800'}`}>
+                                            <ShieldCheck className={`w-5 h-5 ${managerEnabled ? 'text-emerald-500' : 'text-amber-500'}`} />
+                                            <div>
+                                                <div className={`text-xs font-bold ${managerEnabled ? 'text-emerald-400' : 'text-amber-400'}`}>{managerEnabled ? 'Secure Managed Storage Active' : 'Managed Storage Offline'}</div>
+                                                <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
+                                                    {managerEnabled 
+                                                        ? 'Secrets are encrypted using AES-256-GCM and stored server-side. Access is limited to authorized agents.'
+                                                        : 'No Master Key set. Credentials remain metadata-only on the server; the OpenClaw runtime must possess the secret locally.'}
+                                                </p>
+                                            </div>
+                                         </div>
+                                         <button
                                             type="submit"
                                             disabled={isSaving}
                                             className="w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 px-4 py-2.5 rounded-lg text-sm font-bold tracking-tight transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"

@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:seed": "npx tsx src/db/seed.ts",
     "skill:publish": "node scripts/publish-skill.js",
+    "db:migrate": "npx tsx src/db/migrate.ts",
     "db:tunnel": "./db-tunnel.sh"
   },
   "dependencies": {
