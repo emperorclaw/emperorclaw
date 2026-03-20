@@ -31,6 +31,7 @@
         "task_id": "uuid-123",
         "payload": {
           "note": "Hit rate-limit on target-site-A. Pivoting to target-site-B (SEC filings). This pivot ensures SLA compliance.",
+          "agentId": "uuid-agent-lead-researcher",
           "handoff": null
         }
       },
@@ -40,6 +41,7 @@
         "task_id": "uuid-123",
         "payload": {
           "state": "done",
+          "agentId": "uuid-agent-lead-researcher",
           "outputJson": { "summary": "Financial markers extracted.", "artifact": "uuid-artifact-999" }
         },
         "chat_message": "@\"Data Enricher\", extracted core financial markers. Artifact uuid-artifact-999 is ready for enrichment. Handoff complete."

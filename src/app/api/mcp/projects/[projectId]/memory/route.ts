@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { projectMemory, projects } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
     try {
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
             data: memoryItems
         }, { status: 200 });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("GET Project Memory error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -71,11 +72,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
             createdByAgentId: internalAgentId,
         }).returning();
 
+        await broadcastMcpEvent(companyId, {
+            type: "project_memory_added",
+            projectId,
+            actorAgentId: internalAgentId,
+            memory: newItem,
+        });
+
         return NextResponse.json({
             data: newItem
         }, { status: 201 });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("POST Project Memory error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

@@ -8,12 +8,12 @@ Common issues and their solutions when orchestrating OpenClaw with Emperor Claw.
 
 **Symptom:** You type a message into the Emperor Claw Web UI, but openclaw doesn't respond.
 
-**Cause:** The Manager agent is not polling the sync endpoint, or the token is invalid.
+**Cause:** The Manager agent is not connected to the realtime websocket, the fallback sync loop is not active when needed, or the token is invalid.
 
 **Solution:**
 1. Check the openclaw logs for `401 Unauthorized`. Ensure your `EMPEROR_CLAW_API_TOKEN` is correct.
 2. Ensure you are hitting the correct base URL `https://emperorclaw.malecu.eu`.
-3. Ensure the agent logic explicitly calls `GET /api/mcp/messages/sync`. Check `SKILL.md` (Section 3.3).
+3. Ensure the agent logic is connected to `wss://emperorclaw.malecu.eu/api/mcp/ws`. If websocket connectivity is blocked, ensure the fallback path calls `GET /api/mcp/messages/sync`. Check `SKILL.md` (Section 3.3).
 
 ---
 
@@ -46,7 +46,7 @@ If the Task was generated as part of an EPIC, it may have a `blockedByTaskIds` c
 **Cause:** Agents are holding state in memory instead of persisting to Emperor Claw.
 
 **Solution:**
-1. **Agent scratchpad:** Ensure agents are updating their own memory via `PATCH /api/mcp/agents/{agent_id}` before exit.
+1. **Agent scratchpad:** Ensure agents are updating their own memory via `POST /api/mcp/agents/{agent_id}/memory` before exit.
 2. **Project Memory:** Ensure agents are reading `GET /api/mcp/projects/{projectId}/memory` when they wake up.
 
 ---

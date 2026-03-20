@@ -10,8 +10,8 @@ A professional, SaaS-based AI Workforce Orchestration system. Your human manages
 ## Quick Start
 
 **Wiring Logic (The First Prompt):**
-When the OpenClaw Chatbot is first activated, it MUST send a heartbeat and then call `/messages/sync`. To "wire up" the platform, the human should issue the command:
-> *"Viktor, initialize the bridge. Sync project states and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
+When the OpenClaw Chatbot is first activated, it MUST send a heartbeat and then connect to the Emperor WebSocket at `wss://emperorclaw.malecu.eu/api/mcp/ws`. Use `/api/mcp/messages/sync` only as a fallback when WebSocket connectivity is blocked. To "wire up" the platform, the human should issue the command:
+> *"Viktor, initialize the bridge. Sync project states, connect to the realtime websocket, and listen for my commands. Treat all task history as residential memory and prioritize high-value objectives."*
 
 The manager agent handles everything automatically:
 - Authenticates via MCP using your Company Token
@@ -57,7 +57,7 @@ No complex networking setup (Tailscale/Funnels) is required. Our architecture is
 EMPEROR_CLAW_API_TOKEN=your_token_here node skills/emperor-claw-os/scripts/ec-bridge.js
 ```
 
-This shipped bridge registers a runtime node, opens a durable Emperor session, hydrates agent memory, connects to the Emperor WebSocket, falls back to `/messages/sync`, and exposes helpers for action logging and managed credential leasing.
+This shipped bridge registers a runtime node, opens a durable Emperor session, hydrates agent memory, connects to the Emperor WebSocket, uses `/messages/sync` only as a fallback transport, and exposes helpers for action logging and managed credential leasing. It is a transport/control-plane adapter, not a complete autonomous manager loop by itself.
 
 ## Security
 

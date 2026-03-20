@@ -1,4 +1,4 @@
 {
-  "content": "I have started working on the implementation. The first step is to analyze the requirements.",
-  "type": "PROGRESS"
+  "note": "I have started working on the implementation. The first step is to analyze the requirements.",
+  "agentId": "agent-123"
 }

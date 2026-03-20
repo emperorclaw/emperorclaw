@@ -154,7 +154,6 @@ class EmperorBridge {
 
     this.startHeartbeatLoop();
     this.connectWebSocket();
-    this.startSyncFallback();
   }
 
   async refreshStatusSummary() {
@@ -176,6 +175,20 @@ class EmperorBridge {
     const payload = await http(`/api/mcp/agents/${this.agent.id}/integrations`);
     this.integrations = payload.integrations || [];
     return this.integrations;
+  }
+
+  async leaseIntegration(integrationId, options = {}) {
+    if (!this.agent) {
+      throw new Error("Agent not initialized");
+    }
+
+    return http(`/api/mcp/agents/${this.agent.id}/integrations/${integrationId}/lease`, {
+      method: "POST",
+      body: {
+        sessionId: options.sessionId || this.session?.id || null,
+        reason: options.reason || null,
+      },
+    });
   }
 
   startHeartbeatLoop() {
@@ -203,6 +216,7 @@ class EmperorBridge {
     });
 
     this.socket.onopen = () => {
+      this.stopSyncFallback();
       console.log("[bridge] websocket connected");
     };
 
@@ -217,16 +231,20 @@ class EmperorBridge {
     };
 
     this.socket.onclose = () => {
+      this.startSyncFallback();
       console.warn("[bridge] websocket disconnected, retrying in 5s");
       setTimeout(() => this.connectWebSocket(), 5000);
     };
 
     this.socket.onerror = (error) => {
+      this.startSyncFallback();
       console.error("[bridge] websocket error:", error.message || error);
     };
   }
 
   startSyncFallback() {
+    if (this.syncTimer) return;
+
     const loop = async () => {
       try {
         const payload = await http(`/api/mcp/messages/sync?mode=all${this.lastSeenAt ? `&since=${encodeURIComponent(this.lastSeenAt)}` : ""}`);
@@ -242,7 +260,14 @@ class EmperorBridge {
       }
     };
 
+    void loop();
     this.syncTimer = setInterval(loop, 15000);
+  }
+
+  stopSyncFallback() {
+    if (!this.syncTimer) return;
+    clearInterval(this.syncTimer);
+    this.syncTimer = null;
   }
 
   async handleRealtimeEvent(payload) {
@@ -252,6 +277,7 @@ class EmperorBridge {
     }
 
     if (payload.type === "thread_message") {
+      this.lastSeenAt = payload.message?.createdAt || this.lastSeenAt;
       console.log(`[bridge] thread_message thread=${payload.thread?.id || "unknown"} sender=${payload.message?.senderType || "unknown"}`);
       return;
     }
@@ -282,6 +308,16 @@ class EmperorBridge {
 
     if (payload.type === "company_token_created") {
       console.log(`[bridge] company_token_created id=${payload.token?.id || "unknown"}`);
+      return;
+    }
+
+    if (payload.type === "project_memory_added") {
+      console.log(`[bridge] project_memory_added project=${payload.projectId || "unknown"} memory=${payload.memory?.id || "unknown"}`);
+      return;
+    }
+
+    if (payload.type === "task_note_added") {
+      console.log(`[bridge] task_note_added task=${payload.taskId || "unknown"} event=${payload.event?.id || "unknown"}`);
       return;
     }
 
