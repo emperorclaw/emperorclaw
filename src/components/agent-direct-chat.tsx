@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Send, User } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type DirectThread = {
     id: string;
@@ -22,9 +23,11 @@ type DirectMessage = {
 export function AgentDirectChat({
     agentId,
     agentName,
+    hideHeader = false,
 }: {
     agentId: string;
     agentName: string;
+    hideHeader?: boolean;
 }) {
     const [thread, setThread] = useState<DirectThread | null>(null);
     const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -142,26 +145,28 @@ export function AgentDirectChat({
     };
 
     return (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/40">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                            <Bot className="w-4 h-4 text-emerald-400" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-medium text-zinc-100">Direct Chat</h2>
-                            <p className="text-xs text-zinc-500">
-                                Dedicated human-to-agent thread for {agentName}. Team, task, and incident threads stay under `Threads`.
-                            </p>
+        <div className={cn("bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
+            {!hideHeader && (
+                <div className="flex items-center justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/40">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                                <Bot className="w-4 h-4 text-emerald-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-medium text-zinc-100">Direct Chat</h2>
+                                <p className="text-xs text-zinc-500">
+                                    Dedicated human-to-agent thread for {agentName}. Team, task, and incident threads stay under `Threads`.
+                                </p>
+                            </div>
                         </div>
                     </div>
+                    <div className="text-right">
+                        <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Thread</div>
+                        <div className="text-xs font-mono text-zinc-400">{thread?.id || "provisioning"}</div>
+                    </div>
                 </div>
-                <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Thread</div>
-                    <div className="text-xs font-mono text-zinc-400">{thread?.id || "provisioning"}</div>
-                </div>
-            </div>
+            )}
 
             <div ref={scrollRef} className="h-[420px] overflow-y-auto p-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))]">
                 {isLoading ? (
