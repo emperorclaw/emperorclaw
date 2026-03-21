@@ -356,6 +356,8 @@ export const threadParticipants = pgTable("thread_participants", {
     participantId: uuid("participant_id"),
     participantRef: text("participant_ref"),
     role: text("role").default('member').notNull(),
+    lastReadAt: timestamp("last_read_at"),
+    typingUntil: timestamp("typing_until"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
