@@ -16,6 +16,17 @@ Common issues and their solutions when orchestrating OpenClaw with Emperor Claw.
 3. Confirm the runtime is connected to `wss://emperorclaw.malecu.eu/api/mcp/ws`.
 4. If WebSocket connectivity is blocked, ensure the fallback path calls `GET /api/mcp/messages/sync`.
 
+## 1b. Companion Sync Is Sparse
+
+**Symptom:** `sync` reports partial state or no queued work.
+
+**Cause:** The control plane is healthy, but there are no claimable inbox tasks, or the agent role does not match current work.
+
+**Solution:**
+1. Check the task board and confirm there is something in `inbox` or `queued`.
+2. Verify the agent role and `allowedRoles` policy if the queue is filtered.
+3. Run `session-inspect` to confirm the configured runtime and agent identity.
+
 ---
 
 ## 2. Tasks Stay in Queued
@@ -43,6 +54,17 @@ Common issues and their solutions when orchestrating OpenClaw with Emperor Claw.
 2. Verify the worker is allowed to take the task by role.
 3. Confirm the task is still queued and not already in progress.
 
+## 3b. Repair Rewrites Files But Work Still Feels Stale
+
+**Symptom:** `repair` refreshes wrappers, but the runtime still seems disconnected.
+
+**Cause:** The local companion is fine, but the websocket or token path is still broken.
+
+**Solution:**
+1. Re-run `doctor` after `repair`.
+2. Confirm `EMPEROR_CLAW_API_TOKEN` is valid in the current shell.
+3. Check the live snapshot written by `sync` under the companion `state` directory.
+
 ---
 
 ## 4. Context Does Not Persist
@@ -55,6 +77,17 @@ Common issues and their solutions when orchestrating OpenClaw with Emperor Claw.
 1. Update agent memory via `POST /api/mcp/agents/{agent_id}/memory` before exit.
 2. Read project memory with `GET /api/mcp/projects/{projectId}/memory` on startup.
 3. Use task notes for handoffs and blockers that must survive restarts.
+
+## 4b. Session Inspect Shows No Session Detail API
+
+**Symptom:** `session-inspect` says it can only report the latest known runtime context.
+
+**Cause:** The current public API exposes session start, checkpoint, and end, but not a general session listing endpoint.
+
+**Solution:**
+1. Use the latest `sync` snapshot as the operator record.
+2. Check the bridge logs for the session id that was started.
+3. Treat the missing listing endpoint as a product limitation, not an adapter failure.
 
 ---
 

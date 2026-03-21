@@ -1,11 +1,12 @@
 import { db } from "@/db";
-import { agents, tasks, incidents, chatMessages } from "@/db/schema";
-import { eq, inArray, and, sql, desc, isNull } from "drizzle-orm";
+import { agents, tasks, incidents } from "@/db/schema";
+import { eq, inArray, and, sql, isNull } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 
 export const dynamic = "force-dynamic";
 
@@ -49,14 +50,9 @@ export default async function DashboardPage() {
     };
   });
 
-  // 4. Agent Team Chat Feed
-  const recentMessages = await db.select()
-    .from(chatMessages)
-    .where(eq(chatMessages.companyId, companyId))
-    .orderBy(desc(chatMessages.createdAt))
-    .limit(50);
-
-  const reverseMessages = [...recentMessages].reverse();
+  // 4. Agent Team Thread Feed
+  const teamThread = await ensureTeamThread(companyId);
+  const teamMessages = await getThreadMessages(companyId, teamThread.id, 50);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -123,7 +119,7 @@ export default async function DashboardPage() {
         <div className="space-y-4">
           <h2 className="text-lg font-medium text-zinc-200">Live Agent Operations</h2>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm h-[400px]">
-            <AgentTeamChat initialMessages={reverseMessages} agents={allAgents} />
+            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} />
           </div>
         </div>
       </div>

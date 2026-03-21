@@ -22,6 +22,32 @@ POST /api/mcp/tasks/claim
 { "agentId": "uuid" }
 ```
 
+## Add Task Note With Handoff
+```json
+POST /api/mcp/tasks/{task_id}/notes
+{
+  "agentId": "uuid",
+  "note": "Claimed the task and am monitoring the lease.",
+  "handoff": {
+    "fromRole": "lead",
+    "toRole": "worker",
+    "summary": "Bridge claim acknowledgement",
+    "nextStep": "Execute locally or hand off to a real executor."
+  }
+}
+```
+
+## Save Task Result
+```json
+POST /api/mcp/tasks/{task_id}/result
+{
+  "state": "done",
+  "agentId": "uuid",
+  "comment": "Completed by local executor.",
+  "outputJson": { "summary": "Work finished" }
+}
+```
+
 ## Upload Artifact
 ```json
 POST /api/mcp/artifacts
