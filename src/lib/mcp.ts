@@ -13,9 +13,12 @@ export async function verifyMcpToken(req: NextRequest) {
     const token = authHeader.split(" ")[1];
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const [companyToken] = await db.select().from(companyTokens).where(
-        eq(companyTokens.tokenHash, tokenHash)
-    ).limit(1);
+    console.log(`[mcp-verify] Checking hash: ${tokenHash}`);
+
+    const allTokens = await db.select().from(companyTokens);
+    console.log(`[mcp-verify] Found ${allTokens.length} tokens. First 3: ${allTokens.slice(0,3).map(t => t.tokenHash.substring(0,8)).join(', ')}`);
+    
+    const companyToken = allTokens.find(t => t.tokenHash === tokenHash);
 
     if (!companyToken || companyToken.revokedAt) {
         return { error: "Invalid or revoked token", status: 401 };
