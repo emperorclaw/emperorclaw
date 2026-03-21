@@ -31,9 +31,12 @@ export function AgentDirectChat({
 }) {
     const [thread, setThread] = useState<DirectThread | null>(null);
     const [messages, setMessages] = useState<DirectMessage[]>([]);
+    const [participants, setParticipants] = useState<any[]>([]);
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [isTyping, setIsTyping] = useState(false);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastSeenAtRef = useRef<string | null>(null);
 
@@ -46,10 +49,24 @@ export function AgentDirectChat({
             throw new Error("Failed to load direct thread");
         }
 
-        const data = await res.json() as { thread?: DirectThread; messages?: DirectMessage[] };
+        const data = await res.json() as { 
+            thread?: DirectThread; 
+            messages?: DirectMessage[];
+            participants?: any[];
+        };
 
         if (data.thread) {
             setThread(data.thread);
+            // Mark as read whenever we successfully poll and have a thread
+            void fetch("/api/chat/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ threadId: data.thread.id, markRead: true }),
+            });
+        }
+
+        if (data.participants) {
+            setParticipants(data.participants);
         }
 
         if (data.messages && data.messages.length > 0) {
@@ -65,6 +82,34 @@ export function AgentDirectChat({
         }
     }, [agentId]);
 
+    const handleTyping = (text: string) => {
+        setDraft(text);
+        
+        if (!isTyping && text.trim().length > 0) {
+            setIsTyping(true);
+            if (thread?.id) {
+                void fetch("/api/chat/status", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ threadId: thread.id, typing: true }),
+                });
+            }
+        }
+
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        
+        typingTimeoutRef.current = setTimeout(() => {
+            setIsTyping(false);
+            if (thread?.id) {
+                void fetch("/api/chat/status", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ threadId: thread.id, typing: false }),
+                });
+            }
+        }, 3000);
+    };
+
     useEffect(() => {
         let active = true;
 
@@ -72,6 +117,7 @@ export function AgentDirectChat({
             setIsLoading(true);
             setMessages([]);
             setThread(null);
+            setParticipants([]);
             lastSeenAtRef.current = null;
 
             try {
@@ -100,6 +146,7 @@ export function AgentDirectChat({
         return () => {
             active = false;
             clearInterval(interval);
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         };
     }, [loadMessages]);
 
@@ -144,6 +191,14 @@ export function AgentDirectChat({
         }
     };
 
+    const isAgentTyping = participants.some(p => 
+        p.participantType === 'agent' && 
+        p.typingUntil && 
+        new Date(p.typingUntil).getTime() > Date.now()
+    );
+
+    const agentLastReadAt = participants.find(p => p.participantType === 'agent')?.lastReadAt;
+
     return (
         <div className={cn("bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
             {!hideHeader && (
@@ -168,7 +223,7 @@ export function AgentDirectChat({
                 </div>
             )}
 
-            <div ref={scrollRef} className="h-[420px] overflow-y-auto p-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))]">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))]">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         Loading direct thread...
@@ -183,30 +238,57 @@ export function AgentDirectChat({
                         </div>
                     </div>
                 ) : (
-                    messages.map((message) => {
-                        const isHuman = message.senderType === "human";
+                    <div className="space-y-4">
+                        {messages.map((message) => {
+                            const isHuman = message.senderType === "human";
+                            const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
 
-                        return (
-                            <div key={message.id} className={`flex ${isHuman ? "justify-end" : "justify-start"}`}>
-                                <div className={`max-w-[80%] rounded-2xl border px-4 py-3 shadow-sm ${isHuman ? "bg-emerald-500 text-emerald-950 border-emerald-400/40 rounded-br-sm" : "bg-zinc-950/85 text-zinc-200 border-zinc-800 rounded-bl-sm"}`}>
-                                    <div className="flex items-center justify-between gap-3 mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${isHuman ? "bg-emerald-950/15" : "bg-zinc-800"}`}>
-                                                {isHuman ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3 text-emerald-400" />}
+                            return (
+                                <div key={message.id} className={`flex ${isHuman ? "justify-end" : "justify-start"}`}>
+                                    <div className="flex flex-col items-end max-w-[80%]">
+                                        <div className={`rounded-2xl border px-4 py-3 shadow-sm ${isHuman ? "bg-emerald-500 text-emerald-950 border-emerald-400/40 rounded-br-sm" : "bg-zinc-950/85 text-zinc-200 border-zinc-800 rounded-bl-sm"}`}>
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${isHuman ? "bg-emerald-950/15" : "bg-zinc-800"}`}>
+                                                        {isHuman ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3 text-emerald-400" />}
+                                                    </div>
+                                                    <span className={`text-[10px] uppercase tracking-wider font-bold ${isHuman ? "text-emerald-950/70" : "text-zinc-500"}`}>
+                                                        {isHuman ? "You" : agentName}
+                                                    </span>
+                                                </div>
+                                                <span className={`text-[10px] ${isHuman ? "text-emerald-950/70" : "text-zinc-600"}`}>
+                                                    {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                </span>
                                             </div>
-                                            <span className={`text-[10px] uppercase tracking-wider font-bold ${isHuman ? "text-emerald-950/70" : "text-zinc-500"}`}>
-                                                {isHuman ? "You" : agentName}
-                                            </span>
+                                            <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</div>
                                         </div>
-                                        <span className={`text-[10px] ${isHuman ? "text-emerald-950/70" : "text-zinc-600"}`}>
-                                            {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                        </span>
+                                        {isHuman && (
+                                            <div className="mt-1 flex items-center gap-1 px-1">
+                                                <span className={cn("text-[10px] font-medium transition-colors", isRead ? "text-emerald-500" : "text-zinc-600")}>
+                                                    {isRead ? "Read" : "Sent"}
+                                                </span>
+                                                {isRead && <div className="w-1 h-1 rounded-full bg-emerald-500" />}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</div>
+                                </div>
+                            );
+                        })}
+                        {isAgentTyping && (
+                            <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-300">
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-2">
+                                    <div className="flex gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]" />
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]" />
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
+                                    </div>
+                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                                        {agentName} is typing
+                                    </span>
                                 </div>
                             </div>
-                        );
-                    })
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -215,7 +297,7 @@ export function AgentDirectChat({
                     <input
                         type="text"
                         value={draft}
-                        onChange={(event) => setDraft(event.target.value)}
+                        onChange={(event) => handleTyping(event.target.value)}
                         placeholder={`Message ${agentName} directly...`}
                         className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
