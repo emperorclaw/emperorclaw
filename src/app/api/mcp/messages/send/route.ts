@@ -3,6 +3,9 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { appendThreadMessage, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { db } from "@/db";
+import { messageThreads } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -29,7 +32,19 @@ export async function POST(req: NextRequest) {
             : await ensureTeamThread(companyId);
 
         const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-        const targetThreadId = (thread_id && isUuid(thread_id)) ? thread_id : thread.id;
+        let targetThreadId = thread.id;
+        let responseThread = thread;
+        if (thread_id && isUuid(thread_id)) {
+            const [existingThread] = await db.select().from(messageThreads).where(
+                and(eq(messageThreads.id, thread_id), eq(messageThreads.companyId, companyId))
+            ).limit(1);
+
+            if (!existingThread) {
+                return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+            }
+            targetThreadId = existingThread.id;
+            responseThread = existingThread;
+        }
 
         const message = await appendThreadMessage({
             companyId,
@@ -42,15 +57,17 @@ export async function POST(req: NextRequest) {
             mirrorToLegacyChat: !resolvedTargetAgentId,
         });
 
-        broadcastMcpEvent(companyId, { type: 'thread_message', thread, message });
+        broadcastMcpEvent(companyId, { type: 'thread_message', thread: responseThread, message });
 
         return NextResponse.json({
             ok: true,
             message_id: message.id,
-            thread_id: thread.id,
+            thread_id: targetThreadId,
         });
     } catch (error) {
         console.error("Chat send webhook error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        const status = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status });
     }
 }

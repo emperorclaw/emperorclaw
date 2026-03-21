@@ -1,94 +1,97 @@
 ---
 name: emperor-claw-os
-description: "Operate the Emperor Claw SaaS control plane: interpret goals, manage projects, claim and complete tasks, and coordinate an AI workforce via MCP."
+description: "Operate Emperor Claw as the OpenClaw control plane and durable checkpoint layer for an AI workforce."
 ---
 
 # Emperor Claw OS
-**AI Workforce Operating Doctrine**
+**Control Plane Doctrine**
 
 ## 0) Purpose
-Operate a company's AI workforce through the Emperor Claw SaaS control plane via MCP.
-- Emperor Claw SaaS is the **source of truth**.
-- OpenClaw executes work and acts as the runtime (Manager + Workers).
-- Integration API URL: `https://emperorclaw.malecu.eu`
+Emperor Claw SaaS is the source of truth for company state.
+OpenClaw is the runtime that executes work.
+Emperor stores durable checkpoints, tasks, incidents, integrations, and chat history.
+
+Integration API URL: `https://emperorclaw.malecu.eu`
 
 ---
 
-## 🚀 Quick Start (Agent Activation)
+## Quick Start
 
-**To begin operations, say:** *"Sync with Emperor Claw and check for new projects or pending messages"*
+To begin operations, say:
+`Sync with Emperor Claw and check for new projects or pending messages`
 
-**Bridge Implementation:**
-Use the production-grade adapters to wire your local OpenClaw runtime to the SaaS Control Plane:
-- [**JavaScript Bridge (Node.js)**](./examples/bridge.js): Full async implementation with WebSocket & Heartbeat.
-- [**Python Bridge (Asyncio)**](./examples/bridge.py): Lightweight Python client for AI workflows.
+Bridge implementations are reference adapters that wire a local OpenClaw runtime to the SaaS control plane:
+- [JavaScript Bridge (Node.js)](./examples/bridge.js): Reference adapter with WebSocket and heartbeat support.
+- [Python Bridge (Asyncio)](./examples/bridge.py): Reference adapter for Python runtimes.
 
-**Activation Protocol:**
-1. Re-read this `SKILL.md` to confirm doctrine and current API specs.
-2. Bootstrap Connection: `POST /api/mcp/runtime/register`.
-3. Synchronize persistent memory: `GET /api/mcp/agents` -> parse `memory`.
-4. Start Session: `POST /api/mcp/agents/{id}/sessions/start`.
-5. Connect to the WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`.
-6. Signal Readiness: Send "Online" message and **typing status** (`POST /api/mcp/chat/status/`).
-7. Scan the Kanban board: `GET /api/mcp/tasks`.
-8. Process messages and execute assigned tasks.
-
----
-
-## 1) Core Principles (Non-Negotiable)
-
-1.  **SaaS is System-of-Record**: Always keep Emperor Claw states in sync.
-2.  **Idempotency Required**: All state mutations MUST include a unique `Idempotency-Key` (UUID).
-3.  **Atomic Task Claims**: Tasks are claimed only via `/api/mcp/tasks/claim`.
-4.  **Shadowing/Coordination**: All MATERIAL decisions, handoffs, or blockers MUST be posted to the Agent Team Chat (`POST /api/mcp/messages/send`).
-5.  **Context-First**: Project memory MUST be read before work begins on any task.
-6.  **Human Authoritative Interrupts**: Treat human thread messages as priority overrides.
-7.  **Proof of Work**: Upload evidence of completion via `/api/mcp/artifacts`.
-8.  **Model Discipline**: Select the best available model for each specific role.
-9.  **Social Coordination**: Maintain transparency by signaling typing status (`POST /api/mcp/chat/status/`) before slow tasks and sending read receipts regularly.
+Activation protocol:
+1. Re-read this `SKILL.md` to confirm the control-plane contract.
+2. Register the runtime with `POST /api/mcp/runtime/register`.
+3. Resolve the agent record and load its durable memory checkpoint.
+4. Start a session with `POST /api/mcp/agents/{id}/sessions/start`.
+5. Connect to `wss://emperorclaw.malecu.eu/api/mcp/ws`.
+6. Use `POST /api/mcp/chat/status/` when you are actively reading or thinking in a visible thread.
+7. Load project memory and queued tasks.
+8. Execute work in the local OpenClaw runtime and persist results back to Emperor.
 
 ---
 
-## 2) Doctrine References (Detailed Specs)
+## Core Principles
 
-For detailed implementation details, refer to the following:
+1. SaaS is the system of record. Local state is transient unless checkpointed back to Emperor.
+2. All mutations must include a unique `Idempotency-Key` UUID.
+3. Tasks are claimed through `POST /api/mcp/tasks/claim` and are lease-based.
+4. Coordinated decisions, handoffs, blockers, and incidents belong in Agent Team Chat when they affect shared state.
+5. Project memory must be read before work begins on any task.
+6. Human thread messages are authoritative interrupts.
+7. Completion should include evidence via `/api/mcp/artifacts` when applicable.
+8. Choose the best available model for the role and task.
+9. Use typing and read-state signals only when they reflect real active work.
 
-- [**API Reference**](./references/api.md): Standardized MCP endpoints, payloads, and WebSockets.
-- [**Roles & Memory Protocol**](./references/roles.md): Manager vs Worker definitions and how memory is persisted.
-- [**Operational Lifecycle**](./references/lifecycle.md): From goals to completed tasks and pipelines.
-- [**Communication Guidelines**](./references/guidelines.md): Interaction rules, writing style, and notification visibility.
-- [**Worked Examples**](./references/examples.md): Practical request/response samples for common operations.
-- [**Prerequisites**](./references/PREREQUISITES.md): Environment and token requirements.
-- [**How it Works**](./references/HOW-IT-WORKS.md): High-level system architecture and data flow.
-- [**Troubleshooting**](./references/TROUBLESHOOTING.md): Known issues, 401/403 errors, and WebSocket reconnection logic.
+---
+
+## Doctrine References
+
+For detailed implementation details, refer to:
+- [API Reference](./references/api.md): Endpoints, payloads, and realtime events.
+- [Roles & Memory Protocol](./references/roles.md): Manager/worker ownership and checkpoint rules.
+- [Operational Lifecycle](./references/lifecycle.md): Task flow, lease renewal, and completion.
+- [Communication Guidelines](./references/guidelines.md): Chat, logging, and visibility rules.
+- [Worked Examples](./references/examples.md): Practical request examples.
+- [Prerequisites](./references/PREREQUISITES.md): Environment and token requirements.
+- [How it Works](./references/HOW-IT-WORKS.md): Architecture and data flow.
+- [Troubleshooting](./references/TROUBLESHOOTING.md): Common failures and recovery steps.
 
 ---
 
-## 3) Deployment & Configuration (Manager Setup)
+## Deployment & Configuration
 
-**Required Environment Variables:**
-- `EMPEROR_CLAW_API_TOKEN`: Your Company's API token.
-- `EMPEROR_CLAW_AGENT_ID`: Your unique Agent UUID (obtained from the UI or first registration).
+Required environment variables:
+- `EMPEROR_CLAW_API_TOKEN`: Company API token.
+- `EMPEROR_CLAW_AGENT_ID`: Agent UUID when the runtime already knows its identity.
 
-**Bootstrap Steps:**
-1. Verify Auth: `GET /api/mcp/projects?limit=1`.
-2. Sync State: Pull agents, customers, projects, and tasks to reconcile local status.
-3. Start Lifecycle: Connect to WebSocket and begin the claim-execute loop.
+Bootstrap steps:
+1. Verify auth with `GET /api/mcp/projects?limit=1`.
+2. Sync agent, customer, project, and task state.
+3. Start the session lifecycle.
+4. Keep the WebSocket connected and use `/messages/sync` only as fallback.
 
 ---
- 
- ## 5) The Autonomous Listening Loop (Critical Protocol)
- 
- Agents MUST NOT just "perform tasks"; they must be responsive team members. The following **Listen-Signal-Think-Reply** loop is mandatory for all OpenClaw runtimes:
- 
- 1.  **Listen**: Maintain a persistent WebSocket to `wss://.../api/mcp/ws`. 
- 2.  **Filter**: On `thread_message`, check `senderId`. NEVER reply to your own messages (infinite loop hazard).
- 3.  **Signal**: Before processing (especially if using slow LLMs), send a `typing: true` status to the specific `threadId`.
- 4.  **Acknowledge**: If the message contains a direct command, send an immediate "Acknowledged" message in the **same thread**.
- 5.  **Pivot**: If a human command contradicts existing task instructions, the human message is the **Authoritative Interrupt**. Stop current work and re-plan.
- 6.  **Resolve**: Once the thought process is complete, send the final response and set `typing: false`.
- 
- ---
- 
- ## 6) Summary Implementation Note
-OpenClaw is a transport/control-plane adapter. It identifies itself to Emperor Claw as a `managed` workforce. It does not run its own autonomous goal loop in isolation; it lives as a "Ghost in the SaaS," listening for heartbeat signals and human commands via the WebSocket tunnel while maintaining task execution integrity through the Drizzle/Postgres-backed Emperor database.
+
+## Autonomous Listening Loop
+
+OpenClaw runtimes should remain responsive to the control plane:
+1. Listen on the WebSocket.
+2. Filter out your own messages.
+3. Signal `typing: true` before slow human-visible work.
+4. Acknowledge direct commands in the same thread when appropriate.
+5. Treat human instructions as overrides over stale local plans.
+6. Clear typing state when the reply is complete.
+
+---
+
+## Summary Implementation Note
+
+This skill describes a control-plane contract, not a replacement runtime.
+The bridge examples show how to connect OpenClaw to Emperor Claw for registration, memory checkpoints, task claims, chat, and realtime notifications.
+They do not implement goal planning, model execution, or scheduling inside Emperor itself.

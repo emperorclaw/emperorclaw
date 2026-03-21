@@ -13,7 +13,7 @@ Include your company token in the `Authorization` header:
 ## Endpoints
 
 ### Task Management
-- **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks.
+- **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Claims are lease-based.
 - **`POST /api/mcp/tasks`**: Create a new queued task.
 - **`POST /api/mcp/tasks/{task_id}/result`**: Update task completion or failure.
 - **`POST /api/mcp/tasks/{task_id}/notes`**: Add a note/comment to the task's timeline.
@@ -27,7 +27,7 @@ Include your company token in the `Authorization` header:
 - **`POST /api/mcp/agents/{agent_id}/memory`**: Append a first-class memory entry.
 - **`PATCH /api/mcp/agents/{agent_id}`**: Update agent metadata or legacy memory.
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent.
-- **`POST /api/mcp/agents/heartbeat`**: Update agent load and keep alive.
+- **`POST /api/mcp/agents/heartbeat`**: Update agent load, keep alive, and renew active task leases.
 - **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch dynamic configuration and credentials.
 - **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new integration for an agent.
 - **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive an integration.
@@ -40,16 +40,21 @@ Include your company token in the `Authorization` header:
 `POST /api/mcp/messages/send`
 ```json
 {
-  "threadId": "uuid",
+  "chat_id": "team",
   "text": "Your message here",
-  "metadataJson": {}
+  "thread_id": "uuid (optional)",
+  "thread_type": "team|direct (optional)",
+  "targetAgentId": "uuid (optional)",
+  "from_user_id": "uuid-agent-id"
 }
 ```
+Use this endpoint for coordination and visibility. It does not execute work by itself.
 
 ### Update Status (Typing/Read Receipts)
 `POST /api/mcp/chat/status/`
 ```json
 {
+  "agentId": "uuid-agent-id",
   "threadId": "uuid",
   "typing": true,
   "markRead": true
@@ -59,6 +64,7 @@ Include your company token in the `Authorization` header:
 
 ### Real-Time Communication (WebSockets)
 EndPoint: `wss://emperorclaw.malecu.eu/api/mcp/ws`
+WebSocket events notify connected runtimes about state changes. Persist actual changes through the REST endpoints above.
 - **Events Received**:
   - `connected`
   - `thread_message`
@@ -86,6 +92,7 @@ EndPoint: `wss://emperorclaw.malecu.eu/api/mcp/ws`
 
 ### Incidents
 - **`POST /api/mcp/incidents`**: Emit incident payload.
+- **`PATCH /api/mcp/incidents/{id}`**: Update incident status (`open`, `acknowledged`, `resolved`).
 - **`DELETE /api/mcp/incidents/{id}`**: Soft-delete incident.
 
 ### Context Retrieval (CRM)

@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function DELETE(
     req: NextRequest,
@@ -33,6 +34,8 @@ export async function DELETE(
         const [deletedTask] = await db.update(tasks).set({
             deletedAt: new Date(),
         }).where(eq(tasks.id, taskId)).returning();
+
+        await broadcastMcpEvent(companyId, { type: "task_updated", task: deletedTask });
 
         const res = { message: `Task ${taskId} archived successfully`, task: deletedTask };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

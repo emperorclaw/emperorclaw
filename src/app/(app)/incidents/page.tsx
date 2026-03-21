@@ -40,7 +40,7 @@ export default async function IncidentsPage() {
                         allIncidents.map(inc => (
                             <IncidentRow
                                 key={inc.id}
-                                id={inc.id.substring(0, 8).toUpperCase()}
+                                id={inc.id}
                                 severity={inc.severity}
                                 taskId={inc.taskId ? `TASK-${inc.taskId.substring(0, 8)}` : "System"}
                                 summary={inc.summary}

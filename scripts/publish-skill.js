@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -17,7 +18,6 @@ if (copyOnly) {
     process.exit(0);
 }
 
-const command = "npx";
 const args = [
     "clawhub",
     "publish",
@@ -25,18 +25,29 @@ const args = [
     "--slug",
     "emperor-claw-os",
     "--name",
-    "Emperor Claw OS",
+    "control-plane",
     "--version",
     skillPackage.version,
     "--tags",
     "latest",
 ];
 
-const result = spawnSync(command, args, {
-    cwd: skillDir,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-});
+const result = process.platform === "win32"
+    ? spawnSync(process.env.ComSpec || "cmd.exe", [
+        "/d",
+        "/s",
+        "/c",
+        `npx ${args.map((arg) => arg.includes(" ") ? `"${arg}"` : arg).join(" ")}`,
+    ], {
+        cwd: skillDir,
+        stdio: "inherit",
+        shell: false,
+    })
+    : spawnSync("npx", args, {
+        cwd: skillDir,
+        stdio: "inherit",
+        shell: false,
+    });
 
 if (result.error) {
     throw result.error;

@@ -7,7 +7,7 @@ import aiohttp
 import websockets
 from datetime import datetime
 
-# Emperor Claw Bridge Implementation (Python/Asyncio)
+# Emperor Claw bridge example (Python/Asyncio).
 API_URL = os.getenv("EMPEROR_CLAW_API_URL", "https://emperorclaw.malecu.eu")
 API_TOKEN = os.getenv("EMPEROR_CLAW_API_TOKEN")
 RUNTIME_ID = os.getenv("EMPEROR_CLAW_RUNTIME_ID", str(uuid.uuid4()))
@@ -136,13 +136,13 @@ class EmperorBridge:
         if etype == "thread_message":
             msg = payload.get("message", {})
             thread = payload.get("thread", {})
-            # DOD: Ignore our own messages
+            # Ignore our own messages.
             if msg.get("senderId") == self.agent.get("id"):
                 return
             
             print(f"[event] {etype} in thread {thread.get('id')}: {msg.get('text')}")
             
-            # TRIGGER AGENT LOGIC
+            # The runtime decides how to respond.
             if hasattr(self, 'on_message'):
                 await self.on_message(msg, thread)
         else:
@@ -169,22 +169,22 @@ class EmperorBridge:
     async def start(self):
         await self.bootstrap()
         
-        # DEFINING THE AGENT BRAIN
+        # Example handler. Replace this stub with your runtime's real agent logic.
         async def my_brain(msg, thread):
-            # 1. Start typing
+            # 1. Start typing.
             await self.update_status(thread["id"], typing=True, mark_read=True)
             
-            # 2. Mock work
+            # 2. Replace this delay with real model inference / tool use.
             await asyncio.sleep(2)
             
-            # 3. Respond
+            # 3. Respond in the same thread.
             await self.send_message(
                 f"Acknowledged {msg.get('senderType')}, Python bridge is processing in this thread.", 
                 thread_id=thread["id"], 
                 thread_type=thread.get("type", "team")
             )
             
-            # 4. Stop typing
+            # 4. Stop typing.
             await self.update_status(thread["id"], typing=False)
 
         self.on_message = my_brain

@@ -1,15 +1,18 @@
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { db } from "@/db";
 import { agents, tasks, incidents, chatMessages } from "@/db/schema";
 import { eq, inArray, and, sql, desc, isNull } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
-import { GoalHub } from "@/components/goal-hub";
 import { getCompanyId } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+type WorkloadTask = {
+  id: string;
+  taskType: string;
+};
 
 export default async function DashboardPage() {
   const companyId = await getCompanyId();
@@ -61,8 +64,6 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Control Plane</h1>
         <p className="text-zinc-500 font-medium">System overview and active workforce telemetry.</p>
       </div>
-
-      <GoalHub />
 
       {totalAgents === 0 && <GettingStartedHero />}
 
@@ -207,7 +208,7 @@ function IncidentRow({ severity, title, time, status }: { severity: string, titl
   );
 }
 
-function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: { id: string, name: string, avatarUrl: string | null, load: number, online: boolean, warning?: boolean, workingOn?: any[] }) {
+function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: { id: string, name: string, avatarUrl: string | null, load: number, online: boolean, warning?: boolean, workingOn?: WorkloadTask[] }) {
   return (
     <div className="flex flex-col space-y-2">
       <div className="flex justify-between items-center text-sm">
@@ -231,11 +232,10 @@ function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: {
         />
       </div>
 
-      {/* Show active tasks details */}
       <div className="pt-1">
         {workingOn && workingOn.length > 0 ? (
           <div className="space-y-1">
-            {workingOn.map((t: any) => (
+            {workingOn.map((t) => (
               <div key={t.id} className="text-[10px] font-mono text-zinc-500 flex items-center space-x-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 pulse" />
                 <span className="truncate">Working on: TASK-{t.id.substring(0, 8)} ({t.taskType})</span>

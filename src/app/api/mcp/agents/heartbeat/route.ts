@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { agents, tasks } from "@/db/schema";
+import { eq, and, isNull, sql } from "drizzle-orm";
+import { TASK_STATES } from "@/lib/task-state";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -20,7 +21,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "agentId and currentLoad required" }, { status: 400 });
         }
 
-        const internalAgentId = await resolveAgentId(companyId, agentId);
+        let internalAgentId: string;
+        try {
+            internalAgentId = await resolveAgentId(companyId, agentId);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Agent not found";
+            return NextResponse.json({ error: message }, { status: 404 });
+        }
 
         const [agent] = await db.update(agents).set({
             lastSeenAt: new Date(),
@@ -37,6 +44,18 @@ export async function POST(req: NextRequest) {
         if (!agent) {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
+
+        await db.update(tasks).set({
+            leaseUntil: sql`NOW() + INTERVAL '10 minutes'`,
+            updatedAt: new Date(),
+        }).where(
+            and(
+                eq(tasks.companyId, companyId),
+                eq(tasks.assignedAgentId, internalAgentId),
+                eq(tasks.state, TASK_STATES.inProgress),
+                isNull(tasks.deletedAt)
+            )
+        );
 
         return NextResponse.json({ message: "Heartbeat acknowledged", lastSeenAt: agent.lastSeenAt });
     } catch (error) {
