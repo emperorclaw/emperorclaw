@@ -27,9 +27,13 @@ export async function POST(req: NextRequest) {
         const thread = resolvedTargetAgentId || thread_type === "direct"
             ? await ensureDirectThread(companyId, resolvedTargetAgentId || resolvedSenderId)
             : await ensureTeamThread(companyId);
+
+        const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+        const targetThreadId = (thread_id && isUuid(thread_id)) ? thread_id : thread.id;
+
         const message = await appendThreadMessage({
             companyId,
-            threadId: thread_id || thread.id,
+            threadId: targetThreadId,
             senderType: 'agent',
             senderId: resolvedSenderId,
             targetAgentId: resolvedTargetAgentId,
