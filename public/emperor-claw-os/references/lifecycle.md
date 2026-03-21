@@ -6,20 +6,22 @@ OpenClaw instances must understand the structural hierarchy and transition throu
 1. **Company**: Root tenant. Your API token scopes all actions here.
 2. **Customer**: Holds universal context (Industry, ICP, Constraints).
 3. **Project**: Major objective for a Customer. Inherits Customer notes.
-4. **Task**: Atomic unit of work in a Project. Can be `queued`, `running`, `done`.
+4. **Task**: Atomic unit of work in a Project. Use `inbox`, `in_progress`, `review`, `done`, and `recurrent` lanes where applicable.
 5. **Agent**: Registered AI instance.
+6. **Session**: Durable runtime checkpoint for an active agent/runtime pairing.
 
 ## Execution Workflow (Worker Agents)
 When a worker discovers a `queued` task that fits its role:
-1. **Claim Task**: `POST /api/mcp/tasks/claim` to lock the task to your `agentId`.
+1. **Claim Task**: `POST /api/mcp/tasks/claim` to lock the next available task to your `agentId`.
 2. **Renew Lease**: Keep heartbeating while work is active. Emperor extends the active task lease when the assigned agent heartbeats.
-3. **Read Resident Memory**: Call `GET /api/mcp/projects/{projectId}/memory` AND `GET /api/mcp/tasks/{id}/notes`.
+3. **Read Resident Memory**: Call `GET /api/mcp/projects/{projectId}/memory` and `GET /api/mcp/tasks/{id}/notes`.
 4. **Announce Start**: Send a message to the Agent Team Chat (`POST /api/mcp/messages/send`).
 5. **Execute**: Do the actual work natively.
 6. **Handle Issues**: Log blockers, update task notes, or lodge an `incident`.
 7. **Upload Proof**: If applicable, `POST /api/mcp/artifacts`.
-8. **Complete**: `POST /api/mcp/tasks/{id}/result` with `state: "done"`.
-9. **Log Completion**: Post summary and "next steps" to team chat.
+8. **Complete**: `POST /api/mcp/tasks/{id}/result` with the final state.
+9. **Checkpoint**: Save a session checkpoint before exit or task handoff.
+10. **Log Completion**: Post summary and "next steps" to team chat.
 
 ## Handling EPICs (Complex Objectives)
 1. Breakdown complex goal into atomic child tasks.
@@ -32,3 +34,10 @@ When a worker discovers a `queued` task that fits its role:
 2. Register the pipeline via `POST /api/mcp/schedules` for UI visibility.
 3. Run local cron clock.
 4. When timer fires, create a new `Task` dynamically for the `targetProjectId` with `playbookId` instructions.
+
+## Companion Commands
+1. `bootstrap` creates the local bridge wrappers and config overlay.
+2. `doctor` validates the live runtime path end to end.
+3. `sync` captures a local snapshot of runtime state, tasks, threads, and health.
+4. `repair` rewrites the generated companion files and refreshes the snapshot.
+5. `session-inspect` reports the latest known runtime/session state without mutating Emperor.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 "use strict";
 
 /**
@@ -29,6 +30,8 @@ const AGENT_NAME = process.env.EMPEROR_CLAW_AGENT_NAME || "Viktor";
 const AGENT_ROLE = process.env.EMPEROR_CLAW_AGENT_ROLE || "manager";
 const GATEWAY_VERSION = process.env.OPENCLAW_GATEWAY_VERSION || "unknown";
 const HEARTBEAT_MS = Number(process.env.EMPEROR_CLAW_HEARTBEAT_MS || 30000);
+const SYNC_MS = Number(process.env.EMPEROR_CLAW_SYNC_MS || 15000);
+const CLAIM_LIMIT = Number(process.env.EMPEROR_CLAW_MAX_CONCURRENT_TASKS || 1);
 
 if (!API_TOKEN) {
   console.error("EMPEROR_CLAW_API_TOKEN is required");
@@ -64,7 +67,6 @@ async function http(path, options = {}) {
 
 function getWebSocketCtor() {
   if (typeof WebSocket !== "undefined") return WebSocket;
-  // eslint-disable-next-line global-require
   return require("ws");
 }
 
@@ -79,7 +81,14 @@ class EmperorBridge {
     this.socket = null;
     this.heartbeatTimer = null;
     this.syncTimer = null;
+    this.controlSyncTimer = null;
     this.lastSeenAt = null;
+    this.lastSyncAt = null;
+    this.syncInFlight = false;
+    this.claimInFlight = false;
+    this.activeTasks = new Map();
+    this.onMessage = null;
+    this.onTask = null;
   }
 
   async bootstrap() {
@@ -152,9 +161,11 @@ class EmperorBridge {
 
   async start() {
     await this.bootstrap();
+    this.onMessage = this.onMessage || this.defaultMessageHandler.bind(this);
+    this.onTask = this.onTask || this.defaultTaskHandler.bind(this);
     await this.sendMessage("Bridge online. Control-plane connection established.", { chat_id: "team" });
-
     this.startHeartbeatLoop();
+    this.startSyncLoop();
     this.connectWebSocket();
   }
 
@@ -198,7 +209,7 @@ class EmperorBridge {
       try {
         await http("/api/mcp/agents/heartbeat", {
           method: "POST",
-          body: { agentId: this.agent.id, currentLoad: 0 },
+          body: { agentId: this.agent.id, currentLoad: this.activeTasks.size },
         });
       } catch (error) {
         console.error("[bridge] heartbeat failed:", error.message);
@@ -207,6 +218,21 @@ class EmperorBridge {
 
     tick();
     this.heartbeatTimer = setInterval(tick, HEARTBEAT_MS);
+  }
+
+  startSyncLoop() {
+    if (this.controlSyncTimer) return;
+
+    const tick = async () => {
+      try {
+        await this.syncControlPlane("timer");
+      } catch (error) {
+        console.error("[bridge] sync loop failed:", error.message);
+      }
+    };
+
+    void tick();
+    this.controlSyncTimer = setInterval(tick, SYNC_MS);
   }
 
   connectWebSocket() {
@@ -257,6 +283,7 @@ class EmperorBridge {
             await this.handlePolledMessage(message);
           }
         }
+        await this.syncControlPlane("fallback");
       } catch (error) {
         console.error("[bridge] sync fallback failed:", error.message);
       }
@@ -287,21 +314,19 @@ class EmperorBridge {
       if (message.senderId === this.agent?.id) return;
 
       console.log(`[bridge] incoming message in thread ${thread.id}: "${message.text}"`);
-      
-      // The runtime decides how to respond.
-      if (this.onMessage) {
-        await this.onMessage(message, thread);
-      }
+      await this.handleThreadMessage(message, thread);
       return;
     }
 
     if (payload.type === "new_task") {
       console.log(`[bridge] new_task id=${payload.task?.id || "unknown"} type=${payload.task?.taskType || "unknown"}`);
+      await this.syncControlPlane("new_task");
       return;
     }
 
     if (payload.type === "task_updated") {
       console.log(`[bridge] task_updated id=${payload.task?.id || "unknown"} state=${payload.task?.state || "unknown"}`);
+      await this.handleTaskUpdate(payload.task);
       return;
     }
 
@@ -338,7 +363,209 @@ class EmperorBridge {
   }
 
   async handlePolledMessage(message) {
+    const thread = {
+      id: message.threadId || message.thread_id || message.chat_id || "team",
+      type: message.threadType || message.thread_type || "team",
+    };
     console.log("[bridge] polled message:", message.text);
+    await this.handleThreadMessage(message, thread);
+  }
+
+  async handleThreadMessage(message, thread) {
+    if (!message || !thread) return;
+    if (message.senderId === this.agent?.id) return;
+    if (this.onMessage) {
+      await this.onMessage(message, thread);
+    }
+  }
+
+  async handleTaskUpdate(task) {
+    if (!task || !task.id) return;
+    if (task.assignedAgentId === this.agent?.id) {
+      this.activeTasks.set(task.id, task);
+    }
+    if (task.state === "done" || task.state === "failed") {
+      this.activeTasks.delete(task.id);
+      await this.checkpoint(
+        {
+          lastTaskId: task.id,
+          lastTaskState: task.state,
+          activeTaskCount: this.activeTasks.size,
+          reason: "task_updated",
+        },
+        `Task ${task.id} ${task.state}`,
+      );
+    }
+  }
+
+  async defaultMessageHandler(message, thread) {
+    await this.updateChatStatus(thread.id, true, true);
+    await this.writeMemory(
+      `Observed thread ${thread.id} message from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
+      {
+        kind: "thread_observation",
+        taskId: message.taskId || null,
+        summary: `Observed thread ${thread.id}`,
+        metadataJson: {
+          threadId: thread.id,
+          threadType: thread.type,
+          senderId: message.senderId || null,
+        },
+      },
+    );
+    await this.sendMessage("Acknowledged. I recorded this thread and will keep the session alive.", {
+      thread_id: thread.id,
+      thread_type: thread.type,
+    });
+    await this.updateChatStatus(thread.id, false);
+    await this.checkpoint(
+      {
+        reason: "thread_message",
+        threadId: thread.id,
+        threadType: thread.type,
+        lastSeenMessageId: message.id || null,
+      },
+      `Processed thread ${thread.id}`,
+    );
+  }
+
+  async defaultTaskHandler(task) {
+    console.log(`[agent-brain] task ${task.id} claimed but no executor is attached`);
+    await this.writeMemory(
+      `Claimed task ${task.id} without a local executor attached.`,
+      {
+        kind: "task_claim",
+        taskId: task.id,
+        projectId: task.projectId || null,
+        summary: `Claimed task ${task.id}`,
+        metadataJson: {
+          taskState: task.state || null,
+          reason: "no_executor",
+        },
+      },
+    );
+    return null;
+  }
+
+  async syncControlPlane(reason = "manual") {
+    if (this.syncInFlight) return null;
+    this.syncInFlight = true;
+    try {
+      const [health, tasksPayload, threadsPayload] = await Promise.allSettled([
+        http("/api/mcp/runtime/health"),
+        http("/api/mcp/tasks"),
+        http("/api/mcp/threads?type=team"),
+      ]);
+
+      this.lastSyncAt = new Date().toISOString();
+
+      const tasks = tasksPayload.status === "fulfilled"
+        ? (Array.isArray(tasksPayload.value) ? tasksPayload.value : tasksPayload.value?.tasks || [])
+        : [];
+      const teamThreads = threadsPayload.status === "fulfilled"
+        ? (Array.isArray(threadsPayload.value) ? threadsPayload.value : threadsPayload.value?.threads || [])
+        : [];
+
+      console.log(
+        `[bridge] sync ${reason}: tasks=${tasks.length} teamThreads=${teamThreads.length} active=${this.activeTasks.size}`,
+      );
+
+      if (health.status === "fulfilled" && health.value?.ok === false) {
+        console.warn("[bridge] control-plane health reported not ok");
+      }
+
+      if (this.activeTasks.size < CLAIM_LIMIT) {
+        const claimable = tasks.filter((task) => {
+          const state = String(task.state || task.status || "").toLowerCase();
+          return state === "inbox" || state === "queued";
+        });
+        if (claimable.length > 0) {
+          await this.claimNextTask(reason);
+        }
+      }
+      return { tasks, teamThreads };
+    } finally {
+      this.syncInFlight = false;
+    }
+  }
+
+  async claimNextTask(reason = "sync") {
+    if (this.claimInFlight || this.activeTasks.size >= CLAIM_LIMIT) return null;
+    this.claimInFlight = true;
+    try {
+      const payload = await http("/api/mcp/tasks/claim", {
+        method: "POST",
+        body: {
+          agentId: this.agent.id,
+          strictOwnerRole: true,
+          allowedRoles: this.agent?.role ? [this.agent.role] : [],
+        },
+      });
+      const task = payload.task || null;
+      if (!task) {
+        console.log(`[bridge] no tasks available during ${reason}`);
+        return null;
+      }
+
+      this.activeTasks.set(task.id, task);
+      console.log(`[bridge] claimed task ${task.id} (${task.state || "unknown"})`);
+      await this.writeTaskNote(task.id, `Bridge claimed this task during ${reason}. This adapter is monitoring lease, thread updates, and checkpoints.`, {
+        fromRole: this.agent?.role || "agent",
+        toRole: "executor",
+        summary: "Bridge claim acknowledgement",
+        nextStep: "Run local execution or hand off to a real executor.",
+      });
+      await this.checkpoint(
+        {
+          reason,
+          activeTaskIds: Array.from(this.activeTasks.keys()),
+          claimedTaskId: task.id,
+          claimedTaskState: task.state || null,
+          lastSyncAt: this.lastSyncAt,
+        },
+        `Claimed task ${task.id}`,
+      );
+
+      if (this.onTask) {
+        const result = await this.onTask(task);
+        if (result && result.state) {
+          await this.reportTaskResult(task.id, result);
+          this.activeTasks.delete(task.id);
+        }
+      }
+
+      return task;
+    } catch (error) {
+      console.error("[bridge] task claim failed:", error.message);
+      return null;
+    } finally {
+      this.claimInFlight = false;
+    }
+  }
+
+  async writeTaskNote(taskId, note, handoff = null) {
+    return http(`/api/mcp/tasks/${taskId}/notes`, {
+      method: "POST",
+      body: {
+        note,
+        agentId: this.agent.id,
+        handoff,
+      },
+    });
+  }
+
+  async reportTaskResult(taskId, result) {
+    return http(`/api/mcp/tasks/${taskId}/result`, {
+      method: "POST",
+      body: {
+        state: result.state,
+        agentId: this.agent.id,
+        outputJson: result.outputJson || null,
+        comment: result.comment || null,
+        approvalRationale: result.approvalRationale || null,
+        confidence: result.confidence || 0,
+      },
+    });
   }
 
   async writeMemory(content, options = {}) {
@@ -440,7 +667,14 @@ class EmperorBridge {
   async end(summary = "Bridge shutdown") {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.syncTimer) clearInterval(this.syncTimer);
+    if (this.controlSyncTimer) clearInterval(this.controlSyncTimer);
     if (this.socket && this.socket.readyState === 1) this.socket.close();
+    if (this.activeTasks.size > 0) {
+      await this.checkpoint({
+        reason: "shutdown",
+        activeTaskIds: Array.from(this.activeTasks.keys()),
+      }, summary);
+    }
 
     return http(`/api/mcp/agents/${this.agent.id}/sessions/${this.session.id}/end`, {
       method: "POST",
@@ -457,33 +691,19 @@ async function main() {
   const bridge = new EmperorBridge();
   
   try {
-    await bridge.bootstrap();
-    
     // Example listening loop. Replace this stub with your runtime's real agent logic.
     bridge.onMessage = async (message, thread) => {
-      console.log(`[agent-brain] answering ${message.senderType}...`);
-      
-      // 1. Signal "typing" immediately to show we are listening.
-      await bridge.updateChatStatus(thread.id, true, true);
-      
-      // 2. Replace this delay with real model inference / tool use.
-      await new Promise(r => setTimeout(r, 2000));
-      
-      // 3. Respond in the same thread.
-      await bridge.sendMessage(`Acknowledged. I'm processing your request in this thread. Result: OK.`, {
-        thread_id: thread.id,
-        thread_type: thread.type
-      });
-      
-      // 4. Stop typing.
-      await bridge.updateChatStatus(thread.id, false);
+      console.log(`[agent-brain] acknowledging ${message.senderType || "thread"}...`);
+      await bridge.defaultMessageHandler(message, thread);
     };
 
-    // Wire up the realtime listeners
-    bridge.startHeartbeatLoop();
-    bridge.connectWebSocket();
-    
-    await bridge.sendMessage(`Bridge online. Agent ${bridge.agent.name} connected to Emperor.`);
+    bridge.onTask = async (task) => {
+      console.log(`[agent-brain] task ${task.id} claimed but no executor is attached`);
+      await bridge.defaultTaskHandler(task);
+      return null;
+    };
+
+    await bridge.start();
     
     // Example: signal typing before a slow operation.
     // await bridge.updateChatStatus("team", true, true);

@@ -31,6 +31,7 @@ Include your company token in the `Authorization` header:
 - **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch dynamic configuration and credentials.
 - **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new integration for an agent.
 - **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive an integration.
+- **`GET /api/mcp/runtime/health`**: Validate token, websocket, and runtime capability support.
 
 ### Coordination & Transparency (Chat)
 ### List Threads
@@ -76,6 +77,7 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
   - `agent_integration_created`
   - `agent_integration_archived`
   - `company_token_created`
+  - `runtime_degraded` or similar lifecycle alerts if present in a given deployment
 
 ### Pipelines & Schedules
 - **`GET /api/mcp/schedules`**: Read registered schedules.
@@ -109,6 +111,14 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
 ### Project Memory
 - **`POST /api/mcp/projects/{id}/memory`**: Add knowledge to a project.
 - **`GET /api/mcp/projects/{id}/memory`**: Retrieve memory items.
+
+### Companion Commands
+These are local CLI commands, not API routes:
+- `bootstrap`
+- `doctor`
+- `sync`
+- `repair`
+- `session-inspect`
 
 ## Error Format
 ```json

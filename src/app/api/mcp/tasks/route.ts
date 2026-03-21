@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { tasks, taskEvents, projects } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
-import { and, desc, eq, isNull } from "drizzle-orm";
-import { randomUUID } from "crypto";
-import { normalizeTaskState, TASK_STATES } from "@/lib/task-state";
 import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
+import { createTaskForProject, listTasksForCompany } from "@/lib/openclaw/tasks";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -20,26 +16,12 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get("projectId");
 
     try {
-        const conditions = [
-            eq(tasks.companyId, companyId),
-            isNull(tasks.deletedAt),
-        ];
-        if (stateParam) {
-            const normalized = normalizeTaskState(stateParam);
-            if (!normalized) {
-                return NextResponse.json({ error: "Invalid state" }, { status: 400 });
-            }
-            conditions.push(eq(tasks.state, normalized));
-        }
-        if (projectId) {
-            conditions.push(eq(tasks.projectId, projectId));
-        }
-
-        const rows = await db.select()
-            .from(tasks)
-            .where(and(...conditions))
-            .orderBy(desc(tasks.createdAt))
-            .limit(limit);
+        const rows = await listTasksForCompany({
+            companyId,
+            limit,
+            state: stateParam,
+            projectId,
+        });
 
         const approvalSummary = await getPendingApprovalSummaryForTaskIds(
             companyId,
@@ -60,6 +42,9 @@ export async function GET(req: NextRequest) {
             }),
         });
     } catch (err) {
+        if (err instanceof Error && err.message === "Invalid state") {
+            return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+        }
         console.error("Error fetching tasks:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -98,18 +83,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
     }
 
-    // Integrity Guard: Verify Project exists
-    const [existingProject] = await db.select()
-        .from(projects)
-        .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)));
-
-    if (!existingProject) {
-        return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
-    }
-
     try {
-        const [newTask] = await db.insert(tasks).values({
-            id: randomUUID(),
+        const { task } = await createTaskForProject({
             companyId,
             projectId,
             recurringTaskDefinitionId,
@@ -117,33 +92,22 @@ export async function POST(req: NextRequest) {
             taskType,
             templateVersion,
             contractVersion,
-            state: TASK_STATES.inbox,
+            inputJson,
             priority,
             proofRequired,
-            humanApprovalRequired: typeof humanApprovalRequired === "boolean"
-                ? humanApprovalRequired
-                : Boolean(existingProject.requireApprovalForDone),
+            humanApprovalRequired,
             proofTypesJson,
-            inputJson: inputJson || {},
             blockedByTaskIds,
-        }).returning();
-
-        await db.insert(taskEvents).values({
-            companyId,
-            taskId: newTask.id,
-            eventType: 'task_generated',
-            actorType: 'system',
-            payloadJson: { source: 'mcp_api' }
+            source: "mcp_api",
         });
 
-        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
-            broadcastMcpEvent(companyId, { type: 'new_task', task: newTask });
-        });
-
-        const res = { message: "Task generated", task: newTask };
+        const res = { message: "Task generated", task };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
     } catch (dbError) {
+        if (dbError instanceof Error && dbError.message === "RELATIONSHIP_VIOLATION") {
+            return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
+        }
         console.error("DB Error:", dbError);
         return NextResponse.json({ error: "Failed to generate task" }, { status: 500 });
     }

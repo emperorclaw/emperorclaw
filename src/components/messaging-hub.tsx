@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { MessageSquare, Users, Bot, Search } from "lucide-react";
+import { Users, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
@@ -14,7 +14,16 @@ type Agent = {
     status: string;
 };
 
-export function MessagingHub({ agents }: { agents: Agent[] }) {
+type TeamMessage = {
+    id: string;
+    senderType: string;
+    senderId?: string | null;
+    fromUserId?: string | null;
+    text: string;
+    createdAt: string | Date;
+};
+
+export function MessagingHub({ agents, initialTeamMessages = [] }: { agents: Agent[]; initialTeamMessages?: TeamMessage[] }) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -136,10 +145,8 @@ export function MessagingHub({ agents }: { agents: Agent[] }) {
                             </div>
                         </div>
                         <div className="flex-1 overflow-hidden relative">
-                             {/* Note: In a real app we'd fetch messages for team thread here. 
-                             For now, we reuse AgentTeamChat if we want it to be broadcast style */}
                              <div className="h-full">
-                                 <AgentTeamChat initialMessages={[]} agents={agents} />
+                                 <AgentTeamChat initialMessages={initialTeamMessages} agents={agents} />
                              </div>
                         </div>
                     </div>

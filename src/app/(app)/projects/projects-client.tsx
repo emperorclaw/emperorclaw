@@ -12,6 +12,7 @@ type Props = {
     projects: any[];
     agents: any[];
     customers: any[];
+    recurringDefinitions?: any[];
     artifacts?: any[];
     taskEvents?: any[];
     initialMessages?: any[];
@@ -19,11 +20,11 @@ type Props = {
     initialSchedules?: any[];
 };
 
-const isRecurring = (task: any) => Boolean(task?.recurringTaskDefinitionId) || task?.taskKind === "recurring" || task?.taskKind === "recurrent";
+const isRecurring = (task: any) => task?.taskKind === "recurring" || task?.taskKind === "recurrent";
 const isBlocked = (task: any, allTasks: any[]) => (Array.isArray(task?.blockedByTaskIds) ? task.blockedByTaskIds : []).some((id: string) => allTasks.some((candidate) => candidate.id === id && candidate.state !== "done"));
 const reviewBucket = (task: any, blocked: boolean) => (blocked ? "blocked" : task?.humanApprovalRequired ? "approval_needed" : task?.proofRequired ? "waiting_review" : "ready_to_close");
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers, artifacts = [], taskEvents = [], initialProjectMemory = [] }: Props) {
+export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [] }: Props) {
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
@@ -52,6 +53,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     }, [agentFilter, customers, initialTasks, projectFilter, projects, searchQuery, agents]);
 
     const recurrentTasks = filteredTasks.filter(isRecurring);
+    const recurrentDefinitions = recurringDefinitions.filter((definition) => projectFilter === "All Projects" ? true : definition.projectId === projectFilter);
     const workflowTasks = filteredTasks.filter((task) => !isRecurring(task) && task.state !== "failed" && task.state !== "dead_letter");
     const exceptionTasks = filteredTasks.filter((task) => task.state === "failed" || task.state === "dead_letter");
     const byState = {
@@ -154,14 +156,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <MetricCard label="In Progress" value={byState.inProgress.length} hint="Active execution" accent="indigo" />
                 <MetricCard label="Review" value={byState.review.length} hint="Human / proof review" accent="amber" />
                 <MetricCard label="Done" value={byState.done.length} hint="Closed work" accent="emerald" />
-                <MetricCard label="Recurrent" value={recurrentTasks.length} hint="Recurring task instances" accent="slate" />
+                <MetricCard label="Recurrent" value={recurrentDefinitions.length} hint="Recurring task definitions" accent="slate" />
             </div>
 
             {(blockedCount > 0 || exceptionTasks.length > 0) && (
                 <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-sm">
                     {blockedCount > 0 && <span className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-rose-300"><AlertTriangle className="mr-1 inline h-4 w-4" />{blockedCount} blocked tasks</span>}
                     {exceptionTasks.length > 0 && <span className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-300">{exceptionTasks.length} failed/dead-letter tasks</span>}
-                    <span className="text-zinc-500">Recurrent tasks stay in their own lane so the main workflow stays clean.</span>
+                    <span className="text-zinc-500">Recurring definitions stay in their own lane so spawned execution tasks do not distort workflow metrics.</span>
                 </div>
             )}
 
@@ -186,7 +188,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <BoardColumn title="Done" count={byState.done.length} tone="emerald" icon={CheckCircle2}>
                             {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} />)}
                         </BoardColumn>
-                        {recurrentTasks.length > 0 && <BoardColumn title="Recurrent" count={recurrentTasks.length} tone="slate" icon={Repeat}>{recurrentTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurrent blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}</BoardColumn>}
+                        {(recurrentDefinitions.length > 0 || recurrentTasks.length > 0) && <BoardColumn title="Recurrent" count={recurrentDefinitions.length + recurrentTasks.length} tone="slate" icon={Repeat}>
+                            {recurrentDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
+                            {recurrentTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurrent blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
+                        </BoardColumn>}
                     </div>
                 </div>
             </div>
@@ -272,6 +277,10 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
     const priority = task.priority >= 80 ? { label: "HIGH", cls: "bg-rose-500/10 text-rose-400 border-rose-500/20" } : task.priority >= 50 ? { label: "MED", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" } : { label: "LOW", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
     const border = blocked ? "border-rose-500/50" : recurrent ? "border-indigo-500/40" : active ? "border-indigo-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
     return <button onClick={onClick} className={cn("w-full rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80", border)}><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{task.taskType}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{String(task.state).replace("_", " ")}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{reviewBucket.replace("_", " ")}</span>}{recurrent && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">Recurring</span>}</div>{(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}</button>;
+}
+
+function RecurringCard({ definition, project, customer, agent }: { definition: any; project: string; customer: string; agent: string }) {
+    return <div className="w-full rounded-lg border border-indigo-500/30 bg-zinc-950 p-4 text-left"><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">RECUR-{definition.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{definition.name}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", definition.active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-500")}>{definition.active ? "ACTIVE" : "PAUSED"}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">{definition.taskType}</span>{definition.cronExpression && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{definition.cronExpression}</span>}{definition.nextRunAt && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">Next {new Date(definition.nextRunAt).toLocaleString()}</span>}</div></div>;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

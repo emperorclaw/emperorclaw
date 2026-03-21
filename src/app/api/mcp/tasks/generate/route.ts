@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
-import { db } from "@/db";
-import { projects, tasks, taskEvents } from "@/db/schema";
-import { randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
-import { TASK_STATES } from "@/lib/task-state";
+import { createTaskForProject } from "@/lib/openclaw/tasks";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -40,16 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const [existingProject] = await db.select().from(projects).where(
-            and(eq(projects.id, projectId), eq(projects.companyId, companyId))
-        ).limit(1);
-
-        if (!existingProject) {
-            return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
-        }
-
-        const [newTask] = await db.insert(tasks).values({
-            id: randomUUID(),
+        const { task } = await createTaskForProject({
             companyId,
             projectId,
             recurringTaskDefinitionId,
@@ -57,33 +44,22 @@ export async function POST(req: NextRequest) {
             taskType,
             templateVersion,
             contractVersion,
-            state: TASK_STATES.inbox,
+            inputJson,
             priority,
             proofRequired,
-            humanApprovalRequired: typeof humanApprovalRequired === "boolean"
-                ? humanApprovalRequired
-                : Boolean(existingProject.requireApprovalForDone),
+            humanApprovalRequired,
             proofTypesJson,
-            inputJson: inputJson || {},
             blockedByTaskIds,
-        }).returning();
-
-        await db.insert(taskEvents).values({
-            companyId,
-            taskId: newTask.id,
-            eventType: 'task_generated',
-            actorType: 'system',
-            payloadJson: { source: 'mcp_api' }
+            source: "mcp_api",
         });
 
-        import('@/lib/pubsub').then(({ broadcastMcpEvent }) => {
-            broadcastMcpEvent(companyId, { type: 'new_task', task: newTask });
-        });
-
-        const res = { message: "Task generated", task: newTask };
+        const res = { message: "Task generated", task };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
     } catch (dbError) {
+        if (dbError instanceof Error && dbError.message === "RELATIONSHIP_VIOLATION") {
+            return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
+        }
         console.error("DB Error:", dbError);
         return NextResponse.json({ error: "Failed to generate task" }, { status: 500 });
     }

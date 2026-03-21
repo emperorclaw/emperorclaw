@@ -197,7 +197,7 @@ export async function getTasksByIds(taskIds: string[]) {
 }
 
 export function isRecurringTask(task: Pick<WorkflowTask, "taskKind" | "recurringTaskDefinitionId">) {
-  return task.taskKind === "recurrent" || Boolean(task.recurringTaskDefinitionId);
+  return task.taskKind === "recurrent" || task.taskKind === "recurring";
 }
 
 export function normalizeRequestedTaskState(input: unknown) {

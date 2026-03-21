@@ -5,6 +5,13 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.12] - 2026-03-21
+
+### Changed
+- Added companion `sync`, `repair`, and `session-inspect` flows alongside `bootstrap` and `doctor`.
+- Upgraded the shipped bridge examples into honest minimal runtime adapters that sync, claim, checkpoint, and record task notes without pretending to be full executors.
+- Documented the new runtime/cooperation boundary and recurring-task definition workflow more explicitly.
+
 ## [1.14.11] - 2026-03-21
 
 ### Changed

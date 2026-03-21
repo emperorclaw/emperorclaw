@@ -21,8 +21,15 @@ To begin operations, say:
 `Sync with Emperor Claw and check for new projects or pending messages`
 
 Bridge implementations are reference adapters that wire a local OpenClaw runtime to the SaaS control plane:
-- [JavaScript Bridge (Node.js)](./examples/bridge.js): Reference adapter with WebSocket and heartbeat support.
-- [Python Bridge (Asyncio)](./examples/bridge.py): Reference adapter for Python runtimes.
+- [JavaScript Bridge (Node.js)](./examples/bridge.js): Reference adapter with WebSocket, heartbeat, task claim, checkpoint, and honest note/result support.
+- [Python Bridge (Asyncio)](./examples/bridge.py): Reference adapter for Python runtimes with the same minimal runtime-adapter contract.
+
+Companion commands:
+- `bootstrap`: generate the local companion directory and wrappers.
+- `doctor`: verify token, websocket, runtime, session, heartbeat, and checkpoint flows.
+- `sync`: capture a live control-plane snapshot without mutating Emperor.
+- `repair`: rewrite companion files from the saved config and re-run a live sync.
+- `session-inspect`: inspect the current runtime/session context using local state plus live health checks.
 
 Activation protocol:
 1. Re-read this `SKILL.md` to confirm the control-plane contract.
@@ -32,7 +39,8 @@ Activation protocol:
 5. Connect to `wss://emperorclaw.malecu.eu/api/mcp/ws`.
 6. Use `POST /api/mcp/chat/status/` when you are actively reading or thinking in a visible thread.
 7. Load project memory and queued tasks.
-8. Execute work in the local OpenClaw runtime and persist results back to Emperor.
+8. Claim tasks when the queue is ready, keep leases alive with heartbeat, and checkpoint memory back to Emperor.
+9. Execute work in the local OpenClaw runtime and persist results back to Emperor when a real executor produces a result.
 
 ---
 
@@ -40,11 +48,12 @@ Activation protocol:
 
 1. SaaS is the system of record. Local state is transient unless checkpointed back to Emperor.
 2. All mutations must include a unique `Idempotency-Key` UUID.
-3. Tasks are claimed through `POST /api/mcp/tasks/claim` and are lease-based.
+3. Tasks are claimed through `POST /api/mcp/tasks/claim` and are lease-based. Heartbeats renew active leases.
 4. Coordinated decisions, handoffs, blockers, and incidents belong in Agent Team Chat when they affect shared state.
 5. Project memory must be read before work begins on any task.
 6. Human thread messages are authoritative interrupts.
 7. Completion should include evidence via `/api/mcp/artifacts` when applicable.
+8. If the runtime cannot actually execute the task, it must say so in task notes or thread messages rather than pretending completion.
 8. Choose the best available model for the role and task.
 9. Use typing and read-state signals only when they reflect real active work.
 
@@ -95,3 +104,4 @@ OpenClaw runtimes should remain responsive to the control plane:
 This skill describes a control-plane contract, not a replacement runtime.
 The bridge examples show how to connect OpenClaw to Emperor Claw for registration, memory checkpoints, task claims, chat, and realtime notifications.
 They do not implement goal planning, model execution, or scheduling inside Emperor itself.
+They do claim work, checkpoint memory, post task notes, and report results when a real executor returns them.

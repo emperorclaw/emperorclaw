@@ -322,3 +322,50 @@ Emperor should become:
 
 The winning move is not "be more magical than Mission Control."
 It is "be more reliable than Mission Control while keeping a better business object model."
+
+## Current Status
+
+Completed:
+
+- Local companion bootstrap and doctor exist under `scripts/control-plane.js`.
+- Server-side lifecycle monitor exists and runs separately from the task watchdog.
+- Project workflow policy fields exist in schema and MCP project APIs.
+- Durable approvals exist with web and MCP routes plus an approvals workspace.
+- Projects board UI now uses `inbox`, `in_progress`, `review`, `done`, plus a recurrent lane.
+- Review buckets are visible in the projects UI.
+- Customers now act as a portfolio grouping layer with summaries.
+- Team and direct chat surfaces now bootstrap from canonical thread data instead of legacy-only chat reads.
+
+Partially completed:
+
+- Canonical messaging is mostly in place, but legacy `chat_messages` mirroring still exists for compatibility and inbound webhook flow.
+- Cooperation rules are enforced at the workflow layer, but single-lead project behavior is not yet fully surfaced and enforced end-to-end in UI/runtime behavior.
+- Runtime reliability is improved, but the shipped bridge is still not a full runtime adapter comparable to Mission Control’s lifecycle/gateway stack.
+
+Still missing:
+
+- Architectural boundary tests that prevent route-level transport drift.
+- A dedicated runtime/cooperation service layer under `src/lib/openclaw/` or equivalent.
+- Full replacement of the example bridge posture with a production-grade runtime adapter.
+- `sync` / `repair` companion flows beyond `bootstrap` and `doctor`.
+- Removal of the remaining legacy chat mirror once webhook/back-compat strategy is finalized.
+
+## Status Update
+
+This plan has advanced beyond the earlier snapshot above.
+
+Newly completed since the original status block:
+
+- `sync`, `repair`, and `session-inspect` now exist in the local companion alongside `bootstrap` and `doctor`.
+- Core MCP runtime routes now delegate into `src/lib/openclaw/` instead of owning task claim, result, heartbeat, and message-send behavior inline.
+- Architecture tests now enforce those route boundaries.
+- MCP recurring-task definition CRUD and manual spawn routes now exist per project.
+- The recurrent lane is now backed by recurring-task definitions so spawned execution tasks can stay in the normal workflow lanes.
+- The shipped Node and Python bridge examples now act as honest minimal runtime adapters instead of pure reference shells.
+
+Still intentionally minimal:
+
+- The bridge still needs a real executor integration to become a production-grade runtime.
+- Legacy `chat_messages` mirroring remains for compatibility and inbound webhook flow.
+- Recurring-task support includes definitions plus manual spawn, but not an automatic scheduler loop yet.
+- Lead/worker behavior is enforced more strongly in the backend than in every human-facing UI surface.
