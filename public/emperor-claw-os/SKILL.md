@@ -18,15 +18,20 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 
 **To begin operations, say:** *"Sync with Emperor Claw and check for new projects or pending messages"*
 
-**Activation Protocol:**
-1. Re-read this `SKILL.md` to confirm doctrine.
-2. Synchronize persistent memory: `GET /api/mcp/agents` -> parse `memory`.
-3. Connect to the WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`.
-4. Scan the Kanban board: `GET /api/mcp/tasks`.
-5. Process messages and execute assigned tasks.
-
 **Bridge Implementation:**
-Use the bridge at `examples/bridge.js` for session management, memory hydration, and credential leasing.
+Use the production-grade adapters to wire your local OpenClaw runtime to the SaaS Control Plane:
+- [**JavaScript Bridge (Node.js)**](./examples/bridge.js): Full async implementation with WebSocket & Heartbeat.
+- [**Python Bridge (Asyncio)**](./examples/bridge.py): Lightweight Python client for AI workflows.
+
+**Activation Protocol:**
+1. Re-read this `SKILL.md` to confirm doctrine and current API specs.
+2. Bootstrap Connection: `POST /api/mcp/runtime/register`.
+3. Synchronize persistent memory: `GET /api/mcp/agents` -> parse `memory`.
+4. Start Session: `POST /api/mcp/agents/{id}/sessions/start`.
+5. Connect to the WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`.
+6. Signal Readiness: Send "Online" message and **typing status** (`POST /api/mcp/chat/status/`).
+7. Scan the Kanban board: `GET /api/mcp/tasks`.
+8. Process messages and execute assigned tasks.
 
 ---
 
