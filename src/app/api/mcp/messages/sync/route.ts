@@ -39,7 +39,9 @@ export async function GET(req: NextRequest) {
             }
 
             if (isValidSince) {
-                conditions.push(gt(threadMessages.createdAt, sinceDate));
+                // Safety buffer: subtract 10ms to handle sub-millisecond precision drift between servers/DBs
+                const bufferDate = new Date(sinceDate.getTime() - 10);
+                conditions.push(gt(threadMessages.createdAt, bufferDate));
             }
 
             const messages = await db.select()
@@ -49,14 +51,21 @@ export async function GET(req: NextRequest) {
                 .limit(100);
 
             if (messages.length > 0) {
-                const [comp] = await db.select({ contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId));
+                // To avoid duplicate delivery caused by our 10ms safety buffer,
+                // we filter out any message that the client has ALREADY seen by looking for the explicit 'since' string if applicable.
+                // Note: The client normally sends the last message's createdAt.
+                // We'll filter based on ID or exact timestamp if we had it, but for now we filter strictly on the client's provided date.
+                const filtered = messages.filter(m => m.createdAt.toISOString() !== since);
 
-                return NextResponse.json({
-                    ok: true,
-                    mode,
-                    contextNotes: comp?.contextNotes || null,
-                    messages: messages.reverse() // Return chronological order
-                });
+                if (filtered.length > 0) {
+                    const [comp] = await db.select({ contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId));
+                    return NextResponse.json({
+                        ok: true,
+                        mode,
+                        contextNotes: comp?.contextNotes || null,
+                        messages: filtered.reverse()
+                    });
+                }
             }
 
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
