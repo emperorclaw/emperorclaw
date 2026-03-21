@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
         // Adhering to OpenClaw Custom Channel Adapter Spec v1
         const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, thread_type } = body;
 
-        if (!chat_id || !text) {
-            return NextResponse.json({ error: "chat_id and text required" }, { status: 400 });
+        if (!text || (!chat_id && !thread_id)) {
+            return NextResponse.json({ error: "text and either chat_id or thread_id are required" }, { status: 400 });
         }
 
         const senderId = from_user_id || agentId || 'openclaw';
@@ -53,7 +53,10 @@ export async function POST(req: NextRequest) {
             senderId: resolvedSenderId,
             targetAgentId: resolvedTargetAgentId,
             text,
-            metadataJson: { chatId: chat_id },
+            metadataJson: {
+                chatId: chat_id || null,
+                threadType: thread_type || null,
+            },
             mirrorToLegacyChat: !resolvedTargetAgentId,
         });
 

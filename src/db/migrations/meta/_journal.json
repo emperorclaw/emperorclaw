@@ -57,6 +57,13 @@
       "when": 1774000836937,
       "tag": "0007_wooden_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774099200000,
+      "tag": "0008_control_plane_v1",
+      "breakpoints": true
     }
   ]
 }

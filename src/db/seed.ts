@@ -83,17 +83,17 @@ async function main() {
         companyId: acmeCompany.id,
         customerId: customerA.id,
         goal: "Migrate legacy infrastructure to AWS",
-        status: "in_progress",
+        status: "active",
     }).returning();
 
-    const taskData = [
-        { companyId: acmeCompany.id, projectId: projectX.id, title: "Analyze current network topology", taskType: "analysis", state: "done" },
-        { companyId: acmeCompany.id, projectId: projectX.id, title: "Provision VPC and Subnets", taskType: "execution", state: "in_progress" },
-        { companyId: acmeCompany.id, projectId: projectX.id, title: "Migrate DB Schema", taskType: "execution", state: "queued" },
+    const taskData: Array<typeof tasks.$inferInsert> = [
+        { companyId: acmeCompany.id, projectId: projectX.id, taskType: "Analyze current network topology", state: "done" },
+        { companyId: acmeCompany.id, projectId: projectX.id, taskType: "Provision VPC and Subnets", state: "in_progress" },
+        { companyId: acmeCompany.id, projectId: projectX.id, taskType: "Migrate DB Schema", state: "inbox" },
     ];
 
     for (const t of taskData) {
-        await db.insert(tasks).values(t as any);
+        await db.insert(tasks).values(t);
     }
 
     // 6. Create an Incident

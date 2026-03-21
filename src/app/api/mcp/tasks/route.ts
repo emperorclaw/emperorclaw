@@ -5,6 +5,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { normalizeTaskState, TASK_STATES } from "@/lib/task-state";
+import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -40,7 +41,24 @@ export async function GET(req: NextRequest) {
             .orderBy(desc(tasks.createdAt))
             .limit(limit);
 
-        return NextResponse.json({ tasks: rows });
+        const approvalSummary = await getPendingApprovalSummaryForTaskIds(
+            companyId,
+            rows.map((task) => task.id),
+        );
+
+        return NextResponse.json({
+            tasks: rows.map((task) => {
+                const summary = approvalSummary.get(task.id);
+                return {
+                    ...task,
+                    approvalSummary: {
+                        total: summary?.total || 0,
+                        pending: summary?.pending || 0,
+                        latestPendingApprovalId: summary?.latestApprovalId || null,
+                    },
+                };
+            }),
+        });
     } catch (err) {
         console.error("Error fetching tasks:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -61,7 +79,20 @@ export async function POST(req: NextRequest) {
     if (cachedResponse) return NextResponse.json(cachedResponse);
 
     const body = await req.json();
-    const { projectId, taskType, templateVersion, contractVersion, inputJson, priority = 0, proofRequired = false, humanApprovalRequired = false, proofTypesJson = "[]", blockedByTaskIds = [] } = body;
+    const {
+        projectId,
+        taskType,
+        templateVersion,
+        contractVersion,
+        inputJson,
+        priority = 0,
+        proofRequired = false,
+        humanApprovalRequired,
+        proofTypesJson = "[]",
+        blockedByTaskIds = [],
+        taskKind = "standard",
+        recurringTaskDefinitionId = null,
+    } = body;
 
     if (!projectId || !taskType) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
@@ -81,13 +112,17 @@ export async function POST(req: NextRequest) {
             id: randomUUID(),
             companyId,
             projectId,
+            recurringTaskDefinitionId,
+            taskKind,
             taskType,
             templateVersion,
             contractVersion,
-            state: TASK_STATES.queued,
+            state: TASK_STATES.inbox,
             priority,
             proofRequired,
-            humanApprovalRequired,
+            humanApprovalRequired: typeof humanApprovalRequired === "boolean"
+                ? humanApprovalRequired
+                : Boolean(existingProject.requireApprovalForDone),
             proofTypesJson,
             inputJson: inputJson || {},
             blockedByTaskIds,

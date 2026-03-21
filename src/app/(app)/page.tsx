@@ -20,7 +20,7 @@ export default async function DashboardPage() {
 
   // 1. Top Level KPIs
   const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-  const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.queued), isNull(tasks.deletedAt)));
+  const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.inbox), isNull(tasks.deletedAt)));
   const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.review), isNull(tasks.deletedAt)));
   const [{ count: slaBreaches }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
 
@@ -44,8 +44,8 @@ export default async function DashboardPage() {
       avatarUrl: agent.avatarUrl,
       online: agent.status === 'online',
       load: Math.min(loadPercent, 100),
-      workingOn: assignedTasks,
-      reviewing: assignedReview
+      workingOn: assignedTasks.map(({ id, taskType }) => ({ id, taskType })),
+      reviewing: assignedReview.map(({ id, taskType }) => ({ id, taskType }))
     };
   });
 
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
-        <KpiCard title="Tasks Queued" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
+        <KpiCard title="Tasks In Inbox" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
         <KpiCard title="Needs Review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
         <KpiCard title="SLA Breaches" value={slaBreaches.toString()} trend="Live" trendLabel="open incidents" alert={slaBreaches > 0} good={slaBreaches === 0} />
       </div>

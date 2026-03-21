@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-21T19:58:48.529Z",
+  "repoRoot": "c:\\Users\\JZ\\Documents\\w\\emperorclaw",
+  "apiBaseUrl": "http://localhost:3000",
+  "wsUrl": "ws://localhost:3000/api/mcp/ws",
+  "bridgeEntry": "c:\\Users\\JZ\\Documents\\w\\emperorclaw\\clawhub\\emperor-claw-os\\examples\\bridge.js",
+  "workspace": "c:\\Users\\JZ\\Documents\\w\\emperorclaw\\.tmp-openclaw\\workspace",
+  "doctorAgentName": "emperor-doctor",
+  "runtimeId": "emperor-doctor-desktop-7juse67",
+  "openclawHome": "c:\\Users\\JZ\\Documents\\w\\emperorclaw\\.tmp-openclaw"
+}

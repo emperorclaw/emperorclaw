@@ -1,5 +1,5 @@
 export const TASK_STATES = {
-  queued: "queued",
+  inbox: "inbox",
   inProgress: "in_progress",
   review: "review",
   done: "done",
@@ -8,7 +8,7 @@ export const TASK_STATES = {
 } as const;
 
 export type TaskState =
-  | typeof TASK_STATES.queued
+  | typeof TASK_STATES.inbox
   | typeof TASK_STATES.inProgress
   | typeof TASK_STATES.review
   | typeof TASK_STATES.done
@@ -22,7 +22,7 @@ export const ACTIVE_TASK_STATES = [
 ] as const satisfies readonly TaskState[];
 
 export const SLA_TRACKED_TASK_STATES = [
-  TASK_STATES.queued,
+  TASK_STATES.inbox,
   TASK_STATES.inProgress,
   TASK_STATES.review,
 ] as const satisfies readonly TaskState[];
@@ -32,8 +32,9 @@ export function normalizeTaskState(input: unknown): TaskState | null {
   const state = input.trim().toLowerCase();
 
   switch (state) {
-    case TASK_STATES.queued:
-      return TASK_STATES.queued;
+    case "queued":
+    case TASK_STATES.inbox:
+      return TASK_STATES.inbox;
     case "running":
     case "inprogress":
     case "in-progress":
