@@ -109,9 +109,17 @@ export const projects = pgTable("projects", {
     customerId: uuid("customer_id").references(() => customers.id),
     goal: text("goal").notNull(),
     templateId: uuid("template_id").references(() => workflowTemplates.id),
+    leadAgentId: uuid("lead_agent_id").references(() => agents.id, { onDelete: 'set null' }),
     status: text("status").notNull(),
     kpiTargetsJson: jsonb("kpi_targets_json"),
+    requireApprovalForDone: boolean("require_approval_for_done").default(false).notNull(),
+    requireReviewBeforeDone: boolean("require_review_before_done").default(false).notNull(),
+    commentRequiredForReview: boolean("comment_required_for_review").default(false).notNull(),
+    blockStatusChangesWithPendingApproval: boolean("block_status_changes_with_pending_approval").default(false).notNull(),
+    onlyLeadCanChangeStatus: boolean("only_lead_can_change_status").default(false).notNull(),
+    maxActiveAgents: integer("max_active_agents").default(3).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
 
@@ -170,6 +178,13 @@ export const agentSessions = pgTable("agent_sessions", {
     syncStatus: text("sync_status").default('synced').notNull(),
     startedAt: timestamp("started_at").defaultNow().notNull(),
     lastCheckpointAt: timestamp("last_checkpoint_at"),
+    lastHeartbeatAt: timestamp("last_heartbeat_at"),
+    checkinDeadlineAt: timestamp("checkin_deadline_at"),
+    lastWakeAt: timestamp("last_wake_at"),
+    wakeAttempts: integer("wake_attempts").default(0).notNull(),
+    maxWakeAttempts: integer("max_wake_attempts").default(3).notNull(),
+    lifecycleGeneration: integer("lifecycle_generation").default(1).notNull(),
+    lastProvisionError: text("last_provision_error"),
     endedAt: timestamp("ended_at"),
     status: text("status").default('starting').notNull(),
     summary: text("summary"),
@@ -196,14 +211,38 @@ export const projectMemory = pgTable("project_memory", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const recurringTaskDefinitions = pgTable("recurring_task_definitions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    name: text("name").notNull(),
+    taskType: text("task_type").notNull(),
+    cronExpression: text("cron_expression"),
+    payloadJson: jsonb("payload_json").default('{}').notNull(),
+    priority: integer("priority").default(0).notNull(),
+    proofRequired: boolean("proof_required").default(false).notNull(),
+    humanApprovalRequired: boolean("human_approval_required").default(false).notNull(),
+    proofTypesJson: jsonb("proof_types_json").default('[]').notNull(),
+    active: boolean("active").default(true).notNull(),
+    lastSpawnedTaskId: uuid("last_spawned_task_id"),
+    lastRunAt: timestamp("last_run_at"),
+    nextRunAt: timestamp("next_run_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
 export const tasks = pgTable("tasks", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    recurringTaskDefinitionId: uuid("recurring_task_definition_id").references(() => recurringTaskDefinitions.id, { onDelete: 'set null' }),
+    taskKind: text("task_kind").default('standard').notNull(),
     taskType: text("task_type").notNull(),
     templateVersion: text("template_version"),
     contractVersion: text("contract_version"),
-    state: text("state").notNull().default('queued'),
+    state: text("state").notNull().default('inbox'),
     priority: integer("priority").default(0).notNull(),
     processingStartedAt: timestamp("processing_started_at"),
     assignedAgentId: uuid("assigned_agent_id").references(() => agents.id),
@@ -221,6 +260,31 @@ export const tasks = pgTable("tasks", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
+});
+
+export const approvals = pgTable("approvals", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    requesterAgentId: uuid("requester_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    resolverUserId: uuid("resolver_user_id").references(() => users.id, { onDelete: 'set null' }),
+    status: text("status").default('pending').notNull(),
+    actionType: text("action_type").default('task_done').notNull(),
+    rationale: text("rationale"),
+    resolutionNote: text("resolution_note"),
+    confidence: integer("confidence").default(0).notNull(),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    requestedAt: timestamp("requested_at").defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const approvalTaskLinks = pgTable("approval_task_links", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    approvalId: uuid("approval_id").notNull().references(() => approvals.id, { onDelete: 'cascade' }),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const agentMemoryEntries = pgTable("agent_memory_entries", {

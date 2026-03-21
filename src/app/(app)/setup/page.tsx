@@ -9,14 +9,14 @@ export default function SetupPage() {
                 <h2 className="text-3xl font-bold tracking-tight text-white mb-6">OpenClaw Integration</h2>
             </div>
             <p className="text-zinc-400 mb-8">
-                Connect your OpenClaw agent to the Emperor Claw Control Plane by installing the official Emperor Claw OS skill.
-                Once installed, the skill will configure the endpoint URLs and authentication required to receive realtime events, claim tasks, and synchronize threads.
+                Connect your OpenClaw runtime to the Emperor Claw Control Plane by installing the official skill and then running the local companion bootstrap.
+                The skill provides the contract. The bootstrap and doctor flow validates the real runtime path: websocket reachability, token auth, sessions, heartbeats, threads, and checkpoints.
             </p>
 
             <Tabs defaultValue="install" className="space-y-4">
                 <TabsList className="bg-zinc-900 border border-zinc-800">
                     <TabsTrigger value="install" className="data-[state=active]:bg-zinc-800">1. Install the Skill</TabsTrigger>
-                    <TabsTrigger value="configure" className="data-[state=active]:bg-zinc-800">2. Configuration Options</TabsTrigger>
+                    <TabsTrigger value="configure" className="data-[state=active]:bg-zinc-800">2. Bootstrap & Doctor</TabsTrigger>
                     <TabsTrigger value="context" className="data-[state=active]:bg-zinc-800">3. Global Context</TabsTrigger>
                 </TabsList>
 
@@ -38,7 +38,7 @@ export default function SetupPage() {
                                 </pre>
                             </div>
                             <p className="text-sm text-zinc-400">
-                                This will download the <code className="text-indigo-400 px-1 py-0.5 rounded bg-indigo-500/10">SKILL.md</code> for Emperor Claw OS, which automatically routes all MCP requests to the correct backend endpoint.
+                                This downloads the <code className="text-indigo-400 px-1 py-0.5 rounded bg-indigo-500/10">SKILL.md</code> contract for Emperor Claw OS. After install, use the local bootstrap and doctor flow to wire and validate the real runtime path.
                             </p>
                         </CardContent>
                     </Card>
@@ -49,27 +49,29 @@ export default function SetupPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Settings className="w-5 h-5 text-rose-400" />
-                                Local Environment & Tokens
+                                Local Bootstrap, Tokens, and Validation
                             </CardTitle>
                             <CardDescription className="text-zinc-400">
-                                The installed skill requires an API Token to authenticate with Emperor Claw.
+                                Use a company token together with the local companion bootstrap and doctor commands.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <p className="text-sm text-zinc-400">
-                                Open your OpenClaw environment settings (e.g., your `.env` file) and add the following variable representing your Company Token.
+                                Export your company token, run bootstrap once, then run doctor before starting the bridge.
                             </p>
                             <div className="bg-zinc-900 p-4 rounded-md border border-zinc-800 overflow-x-auto">
                                 <pre className="text-sm font-mono text-zinc-300">
                                     {`# Required: Get your Company Token from the API Access page
 EMPEROR_CLAW_API_TOKEN=your_token_here
-`}
+npm run control-plane:bootstrap
+npm run control-plane:doctor
+node clawhub/emperor-claw-os/examples/bridge.js`}
                                 </pre>
                             </div>
                             <div className="bg-zinc-900 p-4 rounded-md border border-zinc-800 overflow-x-auto">
                                 <pre className="text-sm font-mono text-zinc-300">
-                                    {`# All MCP calls must include:
-Authorization: Bearer $EMPEROR_CLAW_API_TOKEN`}
+                                    {`# The companion writes a local directory under ~/.openclaw/emperor-control-plane
+# with bridge launchers, a doctor wrapper, and a conservative config overlay.`}
                                 </pre>
                             </div>
                             <p className="text-sm text-zinc-400 mt-4">
@@ -93,7 +95,7 @@ Authorization: Bearer $EMPEROR_CLAW_API_TOKEN`}
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <p className="text-sm text-zinc-400">
-                                Before dispatching complex Playbooks, navigate to the <strong>Settings</strong> page and define your <strong>Global Company Context</strong>.
+                                Before dispatching real work, navigate to the <strong>Settings</strong> page and define your <strong>Global Company Context</strong>.
                             </p>
                             <div className="bg-zinc-900 p-4 rounded-md border border-zinc-800">
                                 <ul className="list-disc list-inside text-sm text-zinc-300 space-y-2">
@@ -103,7 +105,7 @@ Authorization: Bearer $EMPEROR_CLAW_API_TOKEN`}
                                 </ul>
                             </div>
                             <p className="text-sm text-zinc-400 mt-4">
-                                This context is injected into every automated task assigned to an Agent, ensuring they represent your organization accurately.
+                                This context is available as durable company context for your runtime and agents, ensuring they represent your organization accurately without relying on fake orchestration helpers.
                             </p>
                         </CardContent>
                     </Card>

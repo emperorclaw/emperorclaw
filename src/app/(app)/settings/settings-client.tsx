@@ -4,7 +4,15 @@
 import { useState } from "react";
 import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Save, ScrollText, Cable } from "lucide-react";
 
-export default function SettingsClient({ initialTokens, initialContextNotes }: { initialTokens: any[], initialContextNotes: string }) {
+type SettingsToken = {
+    id: string;
+    name: string;
+    scope: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+};
+
+export default function SettingsClient({ initialTokens, initialContextNotes }: { initialTokens: SettingsToken[], initialContextNotes: string }) {
     const [tokens, setTokens] = useState(initialTokens);
     const [contextNotes, setContextNotes] = useState(initialContextNotes);
     const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -91,7 +99,7 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
                     </button>
                 </div>
                 <div className="space-y-2">
-                    <p className="text-sm text-zinc-400 mb-2">Define the overarching mission or "System Prompt" for your company. All OpenClaw agents pull this context automatically, regardless of customer assignments.</p>
+                    <p className="text-sm text-zinc-400 mb-2">Define the overarching mission or &quot;System Prompt&quot; for your company. All OpenClaw agents pull this context automatically, regardless of customer assignments.</p>
                     <textarea
                         value={contextNotes}
                         onChange={(e) => setContextNotes(e.target.value)}
@@ -155,21 +163,27 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
                 <h2 className="text-lg font-medium text-zinc-200 mb-4 flex items-center">
                     <Cable className="w-5 h-5 mr-2 text-indigo-400" />
-                    Bridge Setup
+                    Control Plane Bootstrap
                 </h2>
                 <p className="text-sm text-zinc-400 mb-4">
-                    Install the Emperor Claw OS skill, export your company token, then launch the shipped JS bridge. The bridge keeps OpenClaw runtime sessions, durable memory, and action traces synchronized back into Emperor.
+                    Install the skill, export your company token, then use the local companion bootstrap and doctor commands before launching the bridge. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
                 </p>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
                         openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os
                     </code>
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
-                        EMPEROR_CLAW_API_TOKEN=your_token_here node skills/emperor-claw-os/scripts/ec-bridge.js
+                        EMPEROR_CLAW_API_TOKEN=your_token_here npm run control-plane:bootstrap
+                    </code>
+                    <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
+                        EMPEROR_CLAW_API_TOKEN=your_token_here npm run control-plane:doctor
+                    </code>
+                    <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
+                        EMPEROR_CLAW_API_TOKEN=your_token_here node clawhub/emperor-claw-os/examples/bridge.js
                     </code>
                 </div>
                 <p className="text-xs text-zinc-500 mt-4">
-                    Managed secret leasing is enabled when the server is configured with `EMPEROR_CLAW_MASTER_KEY`. Otherwise, Emperor stores integration metadata and the runtime keeps unsupported secrets locally.
+                    Managed secret leasing is enabled when the server is configured with `EMPEROR_CLAW_MASTER_KEY`. Otherwise, Emperor stores integration metadata and the runtime keeps unsupported secrets locally. The bootstrap command writes a safe companion directory under your local OpenClaw home without overwriting your main OpenClaw config.
                 </p>
             </div>
 

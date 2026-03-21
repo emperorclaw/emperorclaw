@@ -61,7 +61,18 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { customerId, goal, status: projectStatus } = body;
+        const {
+            customerId,
+            goal,
+            status: projectStatus,
+            leadAgentId = null,
+            requireApprovalForDone = false,
+            requireReviewBeforeDone = false,
+            commentRequiredForReview = false,
+            blockStatusChangesWithPendingApproval = false,
+            onlyLeadCanChangeStatus = false,
+            maxActiveAgents = 3,
+        } = body;
 
         if (!goal) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
@@ -72,7 +83,14 @@ export async function POST(req: NextRequest) {
             companyId,
             customerId: customerId || null,
             goal,
+            leadAgentId,
             status: projectStatus || "active",
+            requireApprovalForDone: Boolean(requireApprovalForDone),
+            requireReviewBeforeDone: Boolean(requireReviewBeforeDone),
+            commentRequiredForReview: Boolean(commentRequiredForReview),
+            blockStatusChangesWithPendingApproval: Boolean(blockStatusChangesWithPendingApproval),
+            onlyLeadCanChangeStatus: Boolean(onlyLeadCanChangeStatus),
+            maxActiveAgents: Math.max(1, Number(maxActiveAgents) || 3),
         }).returning();
 
         const res = { message: "Project created", project };

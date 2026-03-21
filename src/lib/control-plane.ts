@@ -1,6 +1,5 @@
 import { db } from "@/db";
 import {
-    actionRuns,
     agentMemoryEntries,
     agentMemorySnapshots,
     agentSessions,
@@ -15,6 +14,8 @@ import {
     threadParticipants,
 } from "@/db/schema";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { nextCheckinDeadline } from "./lifecycle";
+import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 
 type SenderType = "human" | "agent" | "system";
 
@@ -115,6 +116,7 @@ export async function appendThreadMessage(input: {
     platformMessageId?: string | null;
     mirrorToLegacyChat?: boolean;
     createdAt?: Date;
+    deliveryState?: ExecutionState;
 }) {
     const [threadMessage] = await db.insert(threadMessages).values({
         threadId: input.threadId,
@@ -124,6 +126,7 @@ export async function appendThreadMessage(input: {
         targetAgentId: input.targetAgentId || null,
         text: input.text,
         metadataJson: input.metadataJson || {},
+        deliveryState: input.deliveryState || (input.senderType === "human" ? "queued" : "resolved"),
         platformMessageId: input.platformMessageId || null,
         createdAt: input.createdAt || new Date(),
     }).returning();
@@ -141,6 +144,37 @@ export async function appendThreadMessage(input: {
     }
 
     return threadMessage;
+}
+
+export async function updateThreadExecutionState(input: {
+    companyId: string;
+    threadId: string;
+    actorType: "agent" | "human";
+    actorId?: string | null;
+    targetState: ExecutionState;
+}) {
+    const targetState = normalizeExecutionState(input.targetState);
+    if (!targetState) return null;
+
+    const [latestHumanMessage] = await db.select().from(threadMessages).where(and(
+        eq(threadMessages.companyId, input.companyId),
+        eq(threadMessages.threadId, input.threadId),
+        eq(threadMessages.senderType, "human"),
+    )).orderBy(desc(threadMessages.createdAt)).limit(1);
+
+    if (!latestHumanMessage) return null;
+
+    const [updated] = await db.update(threadMessages).set({
+        deliveryState: targetState,
+        metadataJson: {
+            ...(latestHumanMessage.metadataJson as Record<string, unknown> || {}),
+            executionStateUpdatedAt: new Date().toISOString(),
+            executionStateUpdatedBy: input.actorType,
+            executionActorId: input.actorId || null,
+        },
+    }).where(eq(threadMessages.id, latestHumanMessage.id)).returning();
+
+    return updated || null;
 }
 
 export async function getThreadMessages(companyId: string, threadId: string, limit = 100, since?: Date | null) {
@@ -286,6 +320,11 @@ export async function startAgentSession(input: {
             sessionType: input.sessionType || existing.sessionType,
             channel: input.channel || existing.channel,
             checkpointJson: input.checkpointJson || existing.checkpointJson,
+            lastWakeAt: new Date(),
+            checkinDeadlineAt: nextCheckinDeadline(),
+            wakeAttempts: 0,
+            lifecycleGeneration: (existing.lifecycleGeneration || 0) + 1,
+            lastProvisionError: null,
             status: "active",
         }).where(eq(agentSessions.id, existing.id)).returning();
 
@@ -301,6 +340,10 @@ export async function startAgentSession(input: {
         channel: input.channel || null,
         checkpointJson: input.checkpointJson || null,
         startedAt: input.startedAt || new Date(),
+        lastWakeAt: new Date(),
+        checkinDeadlineAt: nextCheckinDeadline(),
+        wakeAttempts: 0,
+        lifecycleGeneration: 1,
         status: "active",
     }).returning();
 
@@ -320,6 +363,7 @@ export async function checkpointAgentSession(input: {
         lastCheckpointAt: new Date(),
         status: input.status || "active",
         syncStatus: input.syncStatus || "synced",
+        lastProvisionError: null,
         summary: input.summary || undefined,
     }).where(
         and(eq(agentSessions.id, input.sessionId), eq(agentSessions.companyId, input.companyId))
@@ -340,6 +384,7 @@ export async function endAgentSession(input: {
         summary: input.summary || null,
         checkpointJson: input.checkpointJson || undefined,
         lastCheckpointAt: input.checkpointJson ? new Date() : undefined,
+        checkinDeadlineAt: null,
         endedAt: new Date(),
     }).where(
         and(eq(agentSessions.id, input.sessionId), eq(agentSessions.companyId, input.companyId))

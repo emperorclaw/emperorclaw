@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { tasks, projects, agents, customers, artifacts, taskEvents, chatMessages, projectMemory } from "@/db/schema";
+import { tasks, projects, agents, customers, artifacts, taskEvents, chatMessages, projectMemory, schedules } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -19,6 +19,7 @@ export default async function ProjectsPage() {
     const allEvents = await db.select().from(taskEvents).where(eq(taskEvents.companyId, companyId));
     const allMessages = await db.select().from(chatMessages).where(eq(chatMessages.companyId, companyId)).limit(50).orderBy(chatMessages.createdAt);
     const allProjectMemory = await db.select().from(projectMemory).where(eq(projectMemory.companyId, companyId));
+    const allSchedules = await db.select().from(schedules).where(and(eq(schedules.companyId, companyId), isNull(schedules.deletedAt)));
 
     return (
         <ProjectsClient
@@ -30,6 +31,7 @@ export default async function ProjectsPage() {
             taskEvents={allEvents}
             initialMessages={allMessages}
             initialProjectMemory={allProjectMemory}
+            initialSchedules={allSchedules}
         />
     );
 }

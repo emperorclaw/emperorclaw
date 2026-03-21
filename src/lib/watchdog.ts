@@ -45,7 +45,7 @@ async function runWatchdog() {
         for (const task of expiredTasks) {
             if (task.retries < task.maxRetries) {
                 const [updatedTask] = await db.update(tasks).set({
-                    state: TASK_STATES.queued,
+                    state: TASK_STATES.inbox,
                     retries: task.retries + 1,
                     leaseOwner: null,
                     leaseUntil: null,

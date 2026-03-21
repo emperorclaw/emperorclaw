@@ -22,11 +22,10 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
 
     const handleNotifyAgent = async () => {
         try {
-            await fetch('/api/mcp/messages/send', {
+            await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    chat_id: 'human_manager',
                     text: `URGENT INCIDENT (${severity}): Review incident ${id} on task ${taskId}. Please investigate the blockage and report back.`,
                 })
             });

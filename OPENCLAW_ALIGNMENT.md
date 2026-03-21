@@ -82,6 +82,7 @@ Emperor Claw should not behave as:
 
 - [README.md](./README.md)
 - [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md)
+- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
 - [SKILL.md](./clawhub/emperor-claw-os/SKILL.md)
 - [api.md](./clawhub/emperor-claw-os/references/api.md)
 - [lifecycle.md](./clawhub/emperor-claw-os/references/lifecycle.md)
