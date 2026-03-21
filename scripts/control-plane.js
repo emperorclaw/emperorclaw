@@ -8,7 +8,10 @@ const path = require("path");
 const crypto = require("crypto");
 const WebSocket = require("ws");
 
+const SCRIPT_ENTRY = __filename;
+const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(__dirname, "..");
+const STANDALONE_BRIDGE_ENTRY = path.join(SCRIPT_DIR, "bridge.js");
 const DEFAULT_OPENCLAW_HOME = path.join(os.homedir(), ".openclaw");
 const DEFAULT_COMPANION_DIR = path.join(
   DEFAULT_OPENCLAW_HOME,
@@ -18,13 +21,16 @@ const DEFAULT_CONFIG_PATH = path.join(
   DEFAULT_COMPANION_DIR,
   "bridge.config.json",
 );
-const DEFAULT_BRIDGE_ENTRY = path.join(
-  REPO_ROOT,
-  "clawhub",
-  "emperor-claw-os",
-  "examples",
-  "bridge.js",
-);
+const DEFAULT_BRIDGE_ENTRY = process.env.EMPEROR_CLAW_BRIDGE_ENTRY
+  || (fs.existsSync(STANDALONE_BRIDGE_ENTRY)
+    ? STANDALONE_BRIDGE_ENTRY
+    : path.join(
+      REPO_ROOT,
+      "clawhub",
+      "emperor-claw-os",
+      "examples",
+      "bridge.js",
+    ));
 const DEFAULT_API_BASE_URL =
   process.env.EMPEROR_CLAW_API_URL || "http://localhost:3000";
 
@@ -207,7 +213,7 @@ if [[ -z "\${EMPEROR_CLAW_API_TOKEN}" ]]; then
   exit 1
 fi
 
-node "${path.join(REPO_ROOT, "scripts", "control-plane.js")}" ${command} --config "${config.configPath}" "$@"
+node "${SCRIPT_ENTRY}" ${command} --config "${config.configPath}" "$@"
 `;
 }
 
@@ -221,7 +227,7 @@ if not defined EMPEROR_CLAW_API_TOKEN (
   echo EMPEROR_CLAW_API_TOKEN is required.
   exit /b 1
 )
-node "${path.join(REPO_ROOT, "scripts", "control-plane.js")}" ${command} --config "${config.configPath}" %*
+node "${SCRIPT_ENTRY}" ${command} --config "${config.configPath}" %*
 `;
 }
 
