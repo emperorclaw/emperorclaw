@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { messageThreads, threadParticipants } from "@/db/schema";
+import { threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
-function serializeMessage(message: any) {
+type ThreadMessageLike = {
+    fromUserId?: string | null;
+    senderId?: string | null;
+    [key: string]: unknown;
+};
+
+function serializeMessage(message: ThreadMessageLike) {
     return {
         ...message,
         fromUserId: message.fromUserId || message.senderId || null,
@@ -41,8 +47,10 @@ export async function GET(req: NextRequest) {
         );
 
         return NextResponse.json({ thread, messages: messages.map(serializeMessage), participants });
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        const status = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status });
     }
 }
 
@@ -78,7 +86,9 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({ thread, message: serializeMessage(message) });
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        const status = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status });
     }
 }

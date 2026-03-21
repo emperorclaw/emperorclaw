@@ -46,6 +46,6 @@ Unlike legacy task management skills, Emperor Claw OS uses a clean MCP architect
 - **NO Tailscale** required (we don't use inbound webhooks)
 - **NO HTTP Tunnels/Funnels** required
 - **NO Local Repositories** to push/pull from
-- **NO Shell Scripts** for status updates
+- **NO Shell Scripts** are required for the core contract. Use the bridge or HTTP API directly; shell wrappers are optional helpers.
 
 Everything is managed gracefully via standardized HTTP REST calls over MCP.

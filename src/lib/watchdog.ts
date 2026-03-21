@@ -3,6 +3,7 @@ import { lt, and, eq, inArray } from "drizzle-orm";
 import { tasks, taskEvents, incidents } from "@/db/schema";
 import { Pool } from "pg";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "./task-state";
+import { broadcastMcpEvent } from "./pubsub";
 
 let isWatchdogRunning = false;
 const WATCHDOG_INTERVAL_MS = 60000;
@@ -28,7 +29,7 @@ async function runWatchdog() {
     const client = await pool.connect();
     try {
         // Attempt to acquire advisory lock
-        const lockRes = await client.query('SELECT pg_try_advisory_lock($1) as locked', [ADVISORY_LOCK_ID]);
+        const lockRes = await client.query("SELECT pg_try_advisory_lock($1) as locked", [ADVISORY_LOCK_ID]);
         if (!lockRes.rows[0].locked) {
             // Another instance holding the lock, skip loop
             return;
@@ -43,46 +44,58 @@ async function runWatchdog() {
 
         for (const task of expiredTasks) {
             if (task.retries < task.maxRetries) {
-                // Retry
-                await db.update(tasks).set({
-                    state: 'queued',
+                const [updatedTask] = await db.update(tasks).set({
+                    state: TASK_STATES.queued,
                     retries: task.retries + 1,
                     leaseOwner: null,
                     leaseUntil: null,
                     assignedAgentId: null,
-                    updatedAt: new Date()
-                }).where(eq(tasks.id, task.id));
+                    updatedAt: new Date(),
+                }).where(eq(tasks.id, task.id)).returning();
 
                 await db.insert(taskEvents).values({
                     companyId: task.companyId,
                     taskId: task.id,
-                    eventType: 'lease_expired_retry',
-                    actorType: 'system',
-                    payloadJson: { reason: 'lease expired, retrying' },
+                    eventType: "lease_expired_retry",
+                    actorType: "system",
+                    payloadJson: { reason: "lease expired, retrying" },
+                });
+
+                await broadcastMcpEvent(task.companyId, {
+                    type: "task_updated",
+                    task: updatedTask,
                 });
             } else {
-                // Dead letter
-                await db.update(tasks).set({
+                const [deadLetterTask] = await db.update(tasks).set({
                     state: TASK_STATES.deadLetter,
-                    updatedAt: new Date()
-                }).where(eq(tasks.id, task.id));
+                    updatedAt: new Date(),
+                }).where(eq(tasks.id, task.id)).returning();
 
                 await db.insert(taskEvents).values({
                     companyId: task.companyId,
                     taskId: task.id,
-                    eventType: 'dead_lettered',
-                    actorType: 'system',
-                    payloadJson: { reason: 'max retries exceeded' },
+                    eventType: "dead_lettered",
+                    actorType: "system",
+                    payloadJson: { reason: "max retries exceeded" },
                 });
 
-                // Create incident
-                await db.insert(incidents).values({
+                await broadcastMcpEvent(task.companyId, {
+                    type: "task_updated",
+                    task: deadLetterTask,
+                });
+
+                const [incident] = await db.insert(incidents).values({
                     companyId: task.companyId,
                     projectId: task.projectId,
                     taskId: task.id,
-                    severity: 'high',
-                    reasonCode: 'max_retries_exceeded',
+                    severity: "high",
+                    reasonCode: "max_retries_exceeded",
                     summary: `Task ${task.id} exceeded max retries and was dead-lettered.`,
+                }).returning();
+
+                await broadcastMcpEvent(task.companyId, {
+                    type: "incident_updated",
+                    incident,
                 });
             }
         }
@@ -97,23 +110,27 @@ async function runWatchdog() {
         );
 
         for (const task of breachedTasks) {
-            // Check if an open incident already exists
             const [existingIncident] = await db.select().from(incidents).where(
                 and(
                     eq(incidents.taskId, task.id),
-                    eq(incidents.reasonCode, 'sla_breach'),
-                    eq(incidents.status, 'open')
+                    eq(incidents.reasonCode, "sla_breach"),
+                    eq(incidents.status, "open")
                 )
             ).limit(1);
 
             if (!existingIncident) {
-                await db.insert(incidents).values({
+                const [incident] = await db.insert(incidents).values({
                     companyId: task.companyId,
                     projectId: task.projectId,
                     taskId: task.id,
-                    severity: 'medium',
-                    reasonCode: 'sla_breach',
+                    severity: "medium",
+                    reasonCode: "sla_breach",
                     summary: `Task ${task.id} breached SLA deadline.`,
+                }).returning();
+
+                await broadcastMcpEvent(task.companyId, {
+                    type: "incident_updated",
+                    incident,
                 });
             }
         }
@@ -122,7 +139,7 @@ async function runWatchdog() {
         console.error("Watchdog execution error:", error);
     } finally {
         try {
-            await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_ID]);
+            await client.query("SELECT pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]);
         } catch (unlockErr) {
             console.error("Error releasing lock:", unlockErr);
         }

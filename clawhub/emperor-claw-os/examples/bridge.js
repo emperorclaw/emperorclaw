@@ -4,7 +4,7 @@
 /**
  * Emperor Claw bridge example for OpenClaw.
  *
- * This is a real runnable reference adapter that:
+ * This is a runnable reference adapter that:
  * - registers a runtime node
  * - resolves or creates the local agent record
  * - opens a durable Emperor session
@@ -12,6 +12,8 @@
  * - maintains heartbeat
  * - connects to the MCP WebSocket, with /messages/sync fallback
  * - exposes helper methods for memory, actions, and messages
+ *
+ * It does not implement planning or execution logic by itself.
  *
  * Usage:
  *   EMPEROR_CLAW_API_TOKEN=... node examples/bridge.js
@@ -150,7 +152,7 @@ class EmperorBridge {
 
   async start() {
     await this.bootstrap();
-    await this.sendMessage("Bridge online. Hydrated Emperor memory and waiting for commands.", { chat_id: "team" });
+    await this.sendMessage("Bridge online. Control-plane connection established.", { chat_id: "team" });
 
     this.startHeartbeatLoop();
     this.connectWebSocket();
@@ -281,12 +283,12 @@ class EmperorBridge {
       const thread = payload.thread;
       this.lastSeenAt = message?.createdAt || this.lastSeenAt;
 
-      // DOD: Ignore our own messages to avoid loops
+      // Ignore our own messages to avoid loops.
       if (message.senderId === this.agent?.id) return;
 
       console.log(`[bridge] incoming message in thread ${thread.id}: "${message.text}"`);
       
-      // TRIGGER AGENT BRAIN
+      // The runtime decides how to respond.
       if (this.onMessage) {
         await this.onMessage(message, thread);
       }
@@ -457,23 +459,23 @@ async function main() {
   try {
     await bridge.bootstrap();
     
-    // THE LISTENING LOOP: How OpenClaw "reasons and replies"
+    // Example listening loop. Replace this stub with your runtime's real agent logic.
     bridge.onMessage = async (message, thread) => {
       console.log(`[agent-brain] answering ${message.senderType}...`);
       
-      // 1. Signal "typing" immediately to show we are listening
+      // 1. Signal "typing" immediately to show we are listening.
       await bridge.updateChatStatus(thread.id, true, true);
       
-      // 2. [ACTUAL WORK HAPPENS HERE]
+      // 2. Replace this delay with real model inference / tool use.
       await new Promise(r => setTimeout(r, 2000));
       
-      // 3. Respond in the SAME thread
+      // 3. Respond in the same thread.
       await bridge.sendMessage(`Acknowledged. I'm processing your request in this thread. Result: OK.`, {
         thread_id: thread.id,
         thread_type: thread.type
       });
-
-      // 4. Stop typing
+      
+      // 4. Stop typing.
       await bridge.updateChatStatus(thread.id, false);
     };
 
@@ -481,9 +483,9 @@ async function main() {
     bridge.startHeartbeatLoop();
     bridge.connectWebSocket();
     
-    await bridge.sendMessage(`Bridge online. Agent ${bridge.agent.name} ready for mission.`);
+    await bridge.sendMessage(`Bridge online. Agent ${bridge.agent.name} connected to Emperor.`);
     
-    // Example: Signal typing before we start a "heavy" mock task
+    // Example: signal typing before a slow operation.
     // await bridge.updateChatStatus("team", true, true);
     // setTimeout(() => bridge.updateChatStatus("team", false), 5000);
 

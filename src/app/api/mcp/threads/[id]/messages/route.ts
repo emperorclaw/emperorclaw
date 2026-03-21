@@ -80,6 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ message }, { status: 201 });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: 500 });
+        const status = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status });
     }
 }

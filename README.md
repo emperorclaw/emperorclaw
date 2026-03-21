@@ -1,35 +1,52 @@
-# Emperor Claw 🦅
+# Emperor Claw
 
-**The Multi-Tenant SaaS Control Plane for AI Workforces**
+Emperor Claw is a multi-tenant control plane for OpenClaw-based agent workforces.
 
-Emperor Claw is the "Nervous System" and central source of truth for an autonomous AI workforce (powered by OpenClaw). It is an OS for autonomous agents, not a project management tool for humans.
+It is responsible for durable company state: agents, projects, tasks, incidents, credentials, chat threads, and audit history.
+It is not the runtime that thinks or executes work. OpenClaw remains the runtime.
 
-## Core Philosophy: The Chat-Driven Control Plane
-Humans do not do the primary work in Emperor Claw. The default path is chat-driven orchestration, not manual CRUD. The UI still exposes a narrow set of operator controls where explicit forms make sense, such as runtime bootstrapping, credential management, and selective oversight actions.
+## Operating Model
 
-If a human manager wants to create a new Client, define an Ideal Customer Profile (ICP), or kick off a new Project, they do not fill out a web form. Instead, they interact with the **Agent Chat Interface** in the UI:
-1. Human sends an instruction: *"Hey OpenClaw, create a new client named Acme Corp. Their ICP is B2B SaaS."*
-2. The message is dispatched to the OpenClaw Engine.
-3. OpenClaw processes the native instruction and uses the Emperor Claw MCP API (`POST /api/mcp/customers`) to mutate the database.
-4. The UI seamlessly updates to reflect the new state.
+- Emperor is the system of record.
+- OpenClaw is the executor.
+- WebSocket events are notification and coordination signals, not proof that work happened.
+- Tasks are lease-based and must be renewed by heartbeat while work is in progress.
+- Human-to-agent communication should flow through real threads, not fake orchestration helpers.
 
-The Emperor Claw UI is primarily a **Transparency Layer** for monitoring orchestration, reviewing artifacts, and resolving execution blockages reported by agents. It also includes a small set of operator controls for bootstrapping the workforce and its runtime contract, such as API token generation, agent registration, and per-agent integration or credential management.
+More detail is in [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md).
 
-## Technology Stack
-- Next.js (App Router)
-- PostgreSQL (via Neon / Supabase)
+## What Changed Recently
+
+- Removed the fake "mission for today" orchestration path from the active product flow.
+- Hardened MCP auth and agent resolution so invalid agent ids do not silently create ghost agents.
+- Added task lease renewal on heartbeat and watchdog fanout for retries, dead-lettering, and incident creation.
+- Added a real incident resolution path for both UI and MCP.
+- Tightened thread/message ownership checks so chat updates stay aligned with company scope.
+- Reframed the skill package as an honest OpenClaw control-plane contract instead of a replacement runtime.
+
+## Core Stack
+
+- Next.js App Router
+- PostgreSQL
 - Drizzle ORM
-- NextAuth.js (Argon2)
-- shadcn/ui & TailwindCSS
-- Background Node.js Watchdog (via `instrumentation.ts`)
+- NextAuth
+- WebSocket fanout over Postgres LISTEN/NOTIFY
+- Background watchdog started from instrumentation
 
-## Getting Started
-
-First, run the development server:
+## Development
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-# emperorclaw
+Open `http://localhost:3000`.
+
+## Skill
+
+The OpenClaw skill package lives in [clawhub/emperor-claw-os](./clawhub/emperor-claw-os).
+
+Publish with:
+
+```bash
+npm run skill:publish
+```

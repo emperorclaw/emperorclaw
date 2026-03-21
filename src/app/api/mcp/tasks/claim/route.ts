@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { agents, taskEvents } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { TASK_STATES } from "@/lib/task-state";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function POST(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -24,7 +25,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
 
-  const internalAgentId = await resolveAgentId(companyId, agentId);
+  let internalAgentId: string;
+  try {
+    internalAgentId = await resolveAgentId(companyId, agentId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Agent not found";
+    return NextResponse.json({ error: message }, { status: 404 });
+  }
 
   const [agent] = await db.select({ role: agents.role }).from(agents).where(
     and(eq(agents.companyId, companyId), eq(agents.id, internalAgentId))
@@ -47,7 +54,7 @@ export async function POST(req: NextRequest) {
       state = ${TASK_STATES.inProgress},
       assigned_agent_id = ${internalAgentId},
       lease_owner = ${agentId},
-      lease_until = NOW() + INTERVAL '2 minutes',
+      lease_until = NOW() + INTERVAL '10 minutes',
       processing_started_at = NOW(),
       updated_at = NOW()
     WHERE id = (
@@ -91,6 +98,8 @@ export async function POST(req: NextRequest) {
     actorType: 'agent',
     actorId: internalAgentId,
   });
+
+  await broadcastMcpEvent(companyId, { type: 'task_updated', task });
 
   const res = { message: "Task claimed successfully", task };
   await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

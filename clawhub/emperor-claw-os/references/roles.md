@@ -9,7 +9,7 @@ The workforce is divided into three distinct roles, but all share a common datab
 - Observes operations in the UI.
 
 ### 2. Manager (Orchestrator)
-The Manager is a single, persistent OpenClaw agent (registered as `role: manager`, name: `Viktor`). 
+The Manager is a single, persistent OpenClaw agent (registered as `role: manager`, name: `Viktor`).
 - Interprets goals into projects.
 - Instantiates workflow templates.
 - Resolves Customer Context (ICP) via Markdown notes.
@@ -29,7 +29,8 @@ The Manager is a single, persistent OpenClaw agent (registered as `role: manager
 - **Sub-agents are first-class**: Every specialist (e.g., `lead-miner`) represents a standalone agent with its own record and memory.
 
 ## Agent Memory Protocol
-Every OpenClaw agent MUST use the Emperor Claw `memory` field as a persistent cross-session scratchpad.
+Every OpenClaw agent should use the Emperor Claw `memory` field as the persistent cross-session checkpoint for shared state.
+Local scratchpads may exist during execution, but anything needed after restart belongs in Emperor.
 
 ### On Session Start:
 1. `GET /api/mcp/agents` to find your own record.

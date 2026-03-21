@@ -1,9 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
-export function IncidentRow({ id, severity, taskId, summary, time, status }: any) {
-    const isResolved = status === 'resolved';
+type IncidentSeverity = "high" | "medium" | "low" | string;
+type IncidentStatus = "open" | "acknowledged" | "resolved" | string;
+
+type IncidentRowProps = {
+    id: string;
+    severity: IncidentSeverity;
+    taskId: string;
+    summary: string;
+    time: string;
+    status: IncidentStatus;
+};
+
+export function IncidentRow({ id, severity, taskId, summary, time, status }: IncidentRowProps) {
+    const [currentStatus, setCurrentStatus] = useState(status);
+    const [isPending, setIsPending] = useState(false);
+    const isResolved = currentStatus === 'resolved';
 
     const handleNotifyAgent = async () => {
         try {
@@ -17,8 +32,30 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: any
             });
             // Show optimistic feedback in a real app, for now just log success
             console.log(`Instructed OpenClaw agent to address incident: ${id}`);
-        } catch (e) {
-            console.error("Failed to notify agent", e);
+        } catch (error: unknown) {
+            console.error("Failed to notify agent", error);
+        }
+    };
+
+    const handleResolve = async () => {
+        if (isPending || isResolved) return;
+        setIsPending(true);
+        try {
+            const res = await fetch(`/api/incidents/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "resolved" }),
+            });
+
+            if (!res.ok) {
+                throw new Error("Failed to resolve incident");
+            }
+
+            setCurrentStatus("resolved");
+        } catch (error: unknown) {
+            console.error("Failed to resolve incident", error);
+        } finally {
+            setIsPending(false);
         }
     };
 
@@ -39,7 +76,7 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: any
                 {taskId}
             </div>
             <div className="col-span-5 text-sm font-medium text-zinc-200">
-                <span className="mr-2 text-xs text-zinc-500 font-mono">{id}</span>
+                <span className="mr-2 text-xs text-zinc-500 font-mono">{id.substring(0, 8).toUpperCase()}</span>
                 {summary}
             </div>
             <div className="col-span-2 text-xs text-zinc-500">
@@ -47,12 +84,21 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: any
             </div>
             <div className="col-span-2 text-right">
                 {!isResolved ? (
-                    <button
-                        onClick={handleNotifyAgent}
-                        className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded border border-indigo-500/20"
-                    >
-                        Notify Agent
-                    </button>
+                    <div className="flex justify-end items-center gap-2">
+                        <button
+                            onClick={handleNotifyAgent}
+                            className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded border border-indigo-500/20"
+                        >
+                            Notify Agent
+                        </button>
+                        <button
+                            onClick={handleResolve}
+                            disabled={isPending}
+                            className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded border border-emerald-500/20 disabled:opacity-50"
+                        >
+                            {isPending ? "Resolving" : "Resolve"}
+                        </button>
+                    </div>
                 ) : (
                     <div className="flex justify-end items-center text-xs text-zinc-500 space-x-1">
                         <CheckCircle2 className="w-4 h-4" />

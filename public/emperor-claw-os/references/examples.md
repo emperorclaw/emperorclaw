@@ -47,8 +47,8 @@ POST /api/mcp/messages/send
 {
   "chat_id": "direct-agent",
   "thread_type": "direct",
-  "targetAgentId": "Lead Miner",
-  "from_user_id": "Viktor",
+  "targetAgentId": "agent-target-uuid",
+  "from_user_id": "agent-source-uuid",
   "text": "Pause the current ICP scrape and answer the human in your direct thread."
 }
 ```
