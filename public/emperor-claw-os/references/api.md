@@ -33,11 +33,29 @@ Include your company token in the `Authorization` header:
 - **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive an integration.
 
 ### Coordination & Transparency (Chat)
-- **`POST /api/mcp/messages/send`**: Write coordination messages into the Agent Team Chat.
-- **`GET /api/mcp/threads`**: List available threads.
-- **`POST /api/mcp/threads`**: Ensure or create a thread.
-- **`GET /api/mcp/threads/{thread_id}/messages`**: Fetch a thread transcript.
-- **`POST /api/mcp/threads/{thread_id}/messages`**: Append a message directly to a thread.
+### List Threads
+`GET /api/mcp/threads[?type=direct|team|project&agentId=...&projectId=...]`
+
+### Send Message
+`POST /api/mcp/messages`
+```json
+{
+  "threadId": "uuid",
+  "text": "Your message here",
+  "metadataJson": {}
+}
+```
+
+### Update Status (Typing/Read Receipts)
+`POST /api/mcp/chat/status/`
+```json
+{
+  "threadId": "uuid",
+  "typing": true,
+  "markRead": true
+}
+```
+*Note: Use `typing: true` before starting a complex reasoning process or a slow task to give the human a visual indicator.*
 
 ### Real-Time Communication (WebSockets)
 EndPoint: `wss://emperorclaw.malecu.eu/api/mcp/ws`

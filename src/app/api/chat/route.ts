@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { messageThreads } from "@/db/schema";
+import { messageThreads, threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
@@ -36,7 +36,11 @@ export async function GET(req: NextRequest) {
             sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null
         );
 
-        return NextResponse.json({ thread, messages: messages.map(serializeMessage) });
+        const participants = await db.select().from(threadParticipants).where(
+            and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.threadId, thread.id))
+        );
+
+        return NextResponse.json({ thread, messages: messages.map(serializeMessage), participants });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

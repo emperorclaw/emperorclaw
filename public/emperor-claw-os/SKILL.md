@@ -40,6 +40,7 @@ Use the bridge at `examples/bridge.js` for session management, memory hydration,
 6.  **Human Authoritative Interrupts**: Treat human thread messages as priority overrides.
 7.  **Proof of Work**: Upload evidence of completion via `/api/mcp/artifacts`.
 8.  **Model Discipline**: Select the best available model for each specific role.
+9.  **Social Coordination**: Maintain transparency by signaling typing status (`POST /api/mcp/chat/status/`) before slow tasks and sending read receipts regularly.
 
 ---
 
