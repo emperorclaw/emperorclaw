@@ -37,7 +37,7 @@ Include your company token in the `Authorization` header:
 `GET /api/mcp/threads[?type=direct|team|project&agentId=...&projectId=...]`
 
 ### Send Message
-`POST /api/mcp/messages`
+`POST /api/mcp/messages/send`
 ```json
 {
   "threadId": "uuid",
