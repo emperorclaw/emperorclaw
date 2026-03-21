@@ -10,6 +10,7 @@ The skill package defines the contract between them, and the bridge examples sho
 - OpenClaw reads from Emperor, performs work locally, and writes results back.
 - WebSocket events are notifications and coordination signals, not a substitute for idempotent REST mutations.
 - `/api/mcp/messages/sync` is fallback transport only when realtime connectivity is blocked.
+- The local companion commands `bootstrap`, `doctor`, `sync`, `repair`, and `session-inspect` are operator tools for setup, diagnosis, and recovery.
 
 ## Bridge Contract
 
@@ -21,9 +22,13 @@ The shipped bridge is a reference adapter. It shows how to:
 - keep heartbeats alive so task leases can be renewed
 - connect to the realtime WebSocket
 - fall back to sync polling when the socket is unavailable
+- claim tasks when queue pressure exists
+- post honest notes/handoffs
+- checkpoint memory
 - send messages and status updates
 
 The bridge does not implement planning, model selection, task scheduling, or incident handling inside Emperor itself.
+If no real executor is attached, it should say so rather than pretending to have finished the task.
 
 ## Runtime Loop
 
@@ -36,7 +41,7 @@ The bridge does not implement planning, model selection, task scheduling, or inc
 7. Claim a task with a lease.
 8. Heartbeat while work is active so the lease stays valid.
 9. Post notes, messages, artifacts, or incidents as shared state changes.
-10. Complete the task and checkpoint the result.
+10. Complete the task and checkpoint the result, or leave an explicit handoff if execution is deferred.
 
 ## Task Lifecycle
 
@@ -44,6 +49,7 @@ The bridge does not implement planning, model selection, task scheduling, or inc
 - Heartbeat renews the lease for in-progress tasks assigned to the agent.
 - `POST /api/mcp/tasks/{id}/result` records completion, failure, or review state.
 - Notes and memory entries are durable control-plane records, not ephemeral chat-only state.
+- The shipped bridge uses these endpoints honestly: it claims work, records the claim in notes/memory, and only reports completion if a real executor returns a result.
 
 ## Security
 

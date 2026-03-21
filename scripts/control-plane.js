@@ -32,6 +32,9 @@ function printUsage() {
   console.log(`Usage:
   node scripts/control-plane.js bootstrap [options]
   node scripts/control-plane.js doctor [options]
+  node scripts/control-plane.js sync [options]
+  node scripts/control-plane.js repair [options]
+  node scripts/control-plane.js session-inspect [options]
 
 Commands:
   bootstrap   Create a local OpenClaw companion directory, launch wrappers, and
@@ -39,6 +42,13 @@ Commands:
   doctor      Verify MCP/runtime connectivity end to end against a live Emperor
               server: token, websocket, runtime register, session, heartbeat,
               thread send, checkpoint, and session end.
+  sync        Pull a live control-plane snapshot and persist it to the local
+              companion state directory without mutating Emperor data.
+  repair      Rewrite local companion files from the saved config, then run a
+              fresh sync so the operator can see what is still broken.
+  session-inspect
+              Inspect the current runtime/session context using local state,
+              configured agent identity, and live health checks where available.
 
 Options:
   --api-base-url <url>   Emperor base URL. Default: ${DEFAULT_API_BASE_URL}
@@ -47,7 +57,10 @@ Options:
   --openclaw-home <dir>  OpenClaw home directory. Default: ${DEFAULT_OPENCLAW_HOME}
   --workspace <dir>      OpenClaw workspace path. Default: <openclaw-home>/workspace
   --agent-name <name>    Diagnostic/bridge agent name. Default: emperor-doctor
+  --agent-id <id>        Optional agent UUID for session-inspect and doctor flows.
   --runtime-id <id>      Runtime id. Default: emperor-doctor-<hostname>
+  --session-id <id>      Optional session id for session-inspect reporting.
+  --json                 Print the command snapshot as JSON where supported.
   --skip-validate        Bootstrap only: write files without validating API access
   -h, --help            Show this help
 `);
@@ -180,7 +193,7 @@ function bootstrapPayload(args) {
   };
 }
 
-function renderPosixBridgeLauncher(config) {
+function renderPosixCommandLauncher(config, command) {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -188,6 +201,38 @@ export EMPEROR_CLAW_API_URL="\${EMPEROR_CLAW_API_URL:-${config.apiBaseUrl}}"
 export EMPEROR_CLAW_API_TOKEN="\${EMPEROR_CLAW_API_TOKEN:-}"
 export EMPEROR_AGENT_NAME="\${EMPEROR_AGENT_NAME:-${config.doctorAgentName}}"
 export EMPEROR_RUNTIME_ID="\${EMPEROR_RUNTIME_ID:-${config.runtimeId}}"
+
+if [[ -z "\${EMPEROR_CLAW_API_TOKEN}" ]]; then
+  echo "EMPEROR_CLAW_API_TOKEN is required." >&2
+  exit 1
+fi
+
+node "${path.join(REPO_ROOT, "scripts", "control-plane.js")}" ${command} --config "${config.configPath}" "$@"
+`;
+}
+
+function renderWindowsCommandLauncher(config, command) {
+  return `@echo off
+set "EMPEROR_CLAW_API_URL=${config.apiBaseUrl}"
+if defined EMPEROR_CLAW_API_URL_OVERRIDE set "EMPEROR_CLAW_API_URL=%EMPEROR_CLAW_API_URL_OVERRIDE%"
+if not defined EMPEROR_AGENT_NAME set "EMPEROR_AGENT_NAME=${config.doctorAgentName}"
+if not defined EMPEROR_RUNTIME_ID set "EMPEROR_RUNTIME_ID=${config.runtimeId}"
+if not defined EMPEROR_CLAW_API_TOKEN (
+  echo EMPEROR_CLAW_API_TOKEN is required.
+  exit /b 1
+)
+node "${path.join(REPO_ROOT, "scripts", "control-plane.js")}" ${command} --config "${config.configPath}" %*
+`;
+}
+
+function renderPosixBridgeLauncher(config) {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+export EMPEROR_CLAW_API_URL="\${EMPEROR_CLAW_API_URL:-${config.apiBaseUrl}}"
+export EMPEROR_CLAW_API_TOKEN="\${EMPEROR_CLAW_API_TOKEN:-}"
+export EMPEROR_CLAW_AGENT_NAME="\${EMPEROR_CLAW_AGENT_NAME:-${config.doctorAgentName}}"
+export EMPEROR_CLAW_RUNTIME_ID="\${EMPEROR_CLAW_RUNTIME_ID:-${config.runtimeId}}"
 
 if [[ -z "\${EMPEROR_CLAW_API_TOKEN}" ]]; then
   echo "EMPEROR_CLAW_API_TOKEN is required." >&2
@@ -202,26 +247,13 @@ function renderWindowsBridgeLauncher(config) {
   return `@echo off
 set "EMPEROR_CLAW_API_URL=${config.apiBaseUrl}"
 if defined EMPEROR_CLAW_API_URL_OVERRIDE set "EMPEROR_CLAW_API_URL=%EMPEROR_CLAW_API_URL_OVERRIDE%"
-if not defined EMPEROR_AGENT_NAME set "EMPEROR_AGENT_NAME=${config.doctorAgentName}"
-if not defined EMPEROR_RUNTIME_ID set "EMPEROR_RUNTIME_ID=${config.runtimeId}"
+if not defined EMPEROR_CLAW_AGENT_NAME set "EMPEROR_CLAW_AGENT_NAME=${config.doctorAgentName}"
+if not defined EMPEROR_CLAW_RUNTIME_ID set "EMPEROR_CLAW_RUNTIME_ID=${config.runtimeId}"
 if not defined EMPEROR_CLAW_API_TOKEN (
   echo EMPEROR_CLAW_API_TOKEN is required.
   exit /b 1
 )
 node "${config.bridgeEntry}"
-`;
-}
-
-function renderPosixDoctorLauncher(config) {
-  return `#!/usr/bin/env bash
-set -euo pipefail
-node "${path.join(REPO_ROOT, "scripts", "control-plane.js")}" doctor --config "${config.configPath}" "$@"
-`;
-}
-
-function renderWindowsDoctorLauncher(config) {
-  return `@echo off
-node "${path.join(REPO_ROOT, "scripts", "control-plane.js")}" doctor --config "${config.configPath}" %*
 `;
 }
 
@@ -234,14 +266,21 @@ Files:
 - bridge.config.json: local Emperor/OpenClaw companion config
 - run-bridge.sh / run-bridge.cmd: launch the shipped Emperor bridge
 - doctor.sh / doctor.cmd: run MCP/runtime diagnostics
+- sync.sh / sync.cmd: capture a live control-plane snapshot
+- repair.sh / repair.cmd: rewrite companion files from the saved config
+- session-inspect.sh / session-inspect.cmd: inspect the current runtime/session context
 - openclaw.control-plane.json: conservative OpenClaw config overlay to merge manually
 
 Recommended flow:
 1. Export EMPEROR_CLAW_API_TOKEN in your shell.
 2. Run doctor first:
-   ${process.platform === "win32" ? "doctor.cmd" : "./doctor.sh"}
+  ${process.platform === "win32" ? "doctor.cmd" : "./doctor.sh"}
 3. Launch the bridge:
-   ${process.platform === "win32" ? "run-bridge.cmd" : "./run-bridge.sh"}
+  ${process.platform === "win32" ? "run-bridge.cmd" : "./run-bridge.sh"}
+4. If something drifts, run sync or repair:
+   ${process.platform === "win32" ? "sync.cmd" : "./sync.sh"}
+5. If you need a live runtime snapshot without mutating Emperor, run session-inspect:
+   ${process.platform === "win32" ? "session-inspect.cmd" : "./session-inspect.sh"}
 
 Current values:
 - API base URL: ${config.apiBaseUrl}
@@ -306,26 +345,213 @@ async function runBootstrap(args) {
     doctorAgentName: config.doctorAgentName,
     runtimeId: config.runtimeId,
     openclawHome: config.openclawHome,
+    companionDir: config.companionDir,
+  };
+
+  writeTextFile(config.configPath, `${JSON.stringify(payload, null, 2)}\n`);
+  writeTextFile(path.join(config.companionDir, "run-bridge.sh"), renderPosixBridgeLauncher(config), 0o755);
+  writeTextFile(path.join(config.companionDir, "run-bridge.cmd"), renderWindowsBridgeLauncher(config));
+  writeTextFile(path.join(config.companionDir, "doctor.sh"), renderPosixCommandLauncher(config, "doctor"), 0o755);
+  writeTextFile(path.join(config.companionDir, "doctor.cmd"), renderWindowsCommandLauncher(config, "doctor"));
+  writeTextFile(path.join(config.companionDir, "sync.sh"), renderPosixCommandLauncher(config, "sync"), 0o755);
+  writeTextFile(path.join(config.companionDir, "sync.cmd"), renderWindowsCommandLauncher(config, "sync"));
+  writeTextFile(path.join(config.companionDir, "repair.sh"), renderPosixCommandLauncher(config, "repair"), 0o755);
+  writeTextFile(path.join(config.companionDir, "repair.cmd"), renderWindowsCommandLauncher(config, "repair"));
+  writeTextFile(path.join(config.companionDir, "session-inspect.sh"), renderPosixCommandLauncher(config, "session-inspect"), 0o755);
+  writeTextFile(path.join(config.companionDir, "session-inspect.cmd"), renderWindowsCommandLauncher(config, "session-inspect"));
+  writeTextFile(path.join(config.companionDir, ".env.example"), `EMPEROR_CLAW_API_URL=${config.apiBaseUrl}
+EMPEROR_CLAW_API_TOKEN=replace_me
+EMPEROR_AGENT_NAME=${config.doctorAgentName}
+EMPEROR_RUNTIME_ID=${config.runtimeId}
+`);
+  writeTextFile(path.join(config.companionDir, "openclaw.control-plane.json"), `${renderOpenClawOverlay(config)}\n`);
+  writeTextFile(path.join(config.companionDir, "README.txt"), renderCompanionReadme(config));
+
+  console.log(`[ok] Companion config written to ${config.configPath}`);
+  console.log(`[ok] Launch wrappers written to ${config.companionDir}`);
+  console.log(
+    `[next] Export EMPEROR_CLAW_API_TOKEN, then run ${
+      process.platform === "win32"
+        ? path.join(config.companionDir, "doctor.cmd")
+        : path.join(config.companionDir, "doctor.sh")
+    } or ${process.platform === "win32" ? "sync.cmd" : "./sync.sh"}`,
+  );
+}
+
+function loadConfig(args) {
+  const configPath = path.resolve(args.config || DEFAULT_CONFIG_PATH);
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+  const raw = fs.readFileSync(configPath, "utf8");
+  return {
+    ...JSON.parse(raw),
+    configPath,
+    companionDir: path.dirname(configPath),
+  };
+}
+
+function snapshotDirFromConfig(config) {
+  return path.join(config.companionDir || path.dirname(config.configPath), "state");
+}
+
+function snapshotPathFromConfig(config, name) {
+  return path.join(snapshotDirFromConfig(config), `${name}.json`);
+}
+
+function ensureParentDir(filePath) {
+  ensureDir(path.dirname(filePath));
+}
+
+function writeJsonFile(filePath, value) {
+  ensureParentDir(filePath);
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readJsonFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function safeRequest(label, fn) {
+  try {
+    return { label, ok: true, value: await fn() };
+  } catch (error) {
+    return { label, ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function asList(value, key) {
+  if (Array.isArray(value)) return value;
+  if (value && Array.isArray(value[key])) return value[key];
+  return [];
+}
+
+async function collectControlPlaneSnapshot(apiBaseUrl, token, agentName, runtimeId) {
+  const [health, agentsRes, projectsRes, tasksRes, threadsRes] = await Promise.all([
+    safeRequest("health", () => httpJson("GET", `${apiBaseUrl}/api/mcp/runtime/health`, token)),
+    safeRequest("agents", () => httpJson("GET", `${apiBaseUrl}/api/mcp/agents?limit=200`, token)),
+    safeRequest("projects", () => httpJson("GET", `${apiBaseUrl}/api/mcp/projects`, token)),
+    safeRequest("tasks", () => httpJson("GET", `${apiBaseUrl}/api/mcp/tasks`, token)),
+    safeRequest("threads", () => httpJson("GET", `${apiBaseUrl}/api/mcp/threads?type=team`, token)),
+  ]);
+
+  const agents = agentsRes.ok ? asList(agentsRes.value, "agents") : [];
+  const projects = projectsRes.ok ? asList(projectsRes.value, "projects") : [];
+  const tasks = tasksRes.ok ? asList(tasksRes.value, "tasks") : [];
+  const threads = threadsRes.ok ? asList(threadsRes.value, "threads") : [];
+  const matchedAgent = agents.find((agent) => agent.name === agentName) || null;
+
+  return {
+    capturedAt: new Date().toISOString(),
+    runtimeId,
+    agentName,
+    health,
+    matchedAgent,
+    counts: {
+      agents: agents.length,
+      projects: projects.length,
+      tasks: tasks.length,
+      teamThreads: threads.length,
+    },
+    samples: {
+      projects: projects.slice(0, 5),
+      tasks: tasks.slice(0, 10),
+      teamThreads: threads.slice(0, 5),
+    },
+    requests: {
+      agents: agentsRes,
+      projects: projectsRes,
+      tasks: tasksRes,
+      threads: threadsRes,
+    },
+  };
+}
+
+function printSnapshotSummary(snapshot) {
+  const healthOk = snapshot.health?.ok === true || snapshot.health?.value?.ok === true;
+  console.log(`[sync] capturedAt=${snapshot.capturedAt}`);
+  console.log(`[sync] runtimeId=${snapshot.runtimeId}`);
+  console.log(`[sync] health=${healthOk ? "ok" : "partial"}`);
+  console.log(
+    `[sync] counts agents=${snapshot.counts.agents} projects=${snapshot.counts.projects} tasks=${snapshot.counts.tasks} threads=${snapshot.counts.teamThreads}`,
+  );
+  if (snapshot.matchedAgent) {
+    console.log(`[sync] matchedAgent=${snapshot.matchedAgent.name} (${snapshot.matchedAgent.id})`);
+  }
+}
+
+function rewriteCompanionFiles(config) {
+  ensureDir(config.openclawHome || DEFAULT_OPENCLAW_HOME);
+  ensureDir(config.companionDir || path.dirname(config.configPath));
+  ensureDir(config.workspace || path.join(config.openclawHome || DEFAULT_OPENCLAW_HOME, "workspace"));
+  ensureDir(path.dirname(config.configPath));
+
+  const payload = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    repoRoot: REPO_ROOT,
+    apiBaseUrl: config.apiBaseUrl,
+    wsUrl: config.wsUrl,
+    bridgeEntry: config.bridgeEntry || DEFAULT_BRIDGE_ENTRY,
+    workspace: config.workspace,
+    doctorAgentName: config.doctorAgentName,
+    runtimeId: config.runtimeId,
+    openclawHome: config.openclawHome,
+    companionDir: config.companionDir,
   };
 
   writeTextFile(config.configPath, `${JSON.stringify(payload, null, 2)}\n`);
   writeTextFile(
     path.join(config.companionDir, "run-bridge.sh"),
-    renderPosixBridgeLauncher(config),
+    renderPosixCommandLauncher(config, "bootstrap"),
     0o755,
   );
   writeTextFile(
     path.join(config.companionDir, "run-bridge.cmd"),
-    renderWindowsBridgeLauncher(config),
+    renderWindowsCommandLauncher(config, "bootstrap"),
   );
   writeTextFile(
     path.join(config.companionDir, "doctor.sh"),
-    renderPosixDoctorLauncher(config),
+    renderPosixCommandLauncher(config, "doctor"),
     0o755,
   );
   writeTextFile(
     path.join(config.companionDir, "doctor.cmd"),
-    renderWindowsDoctorLauncher(config),
+    renderWindowsCommandLauncher(config, "doctor"),
+  );
+  writeTextFile(
+    path.join(config.companionDir, "sync.sh"),
+    renderPosixCommandLauncher(config, "sync"),
+    0o755,
+  );
+  writeTextFile(
+    path.join(config.companionDir, "sync.cmd"),
+    renderWindowsCommandLauncher(config, "sync"),
+  );
+  writeTextFile(
+    path.join(config.companionDir, "repair.sh"),
+    renderPosixCommandLauncher(config, "repair"),
+    0o755,
+  );
+  writeTextFile(
+    path.join(config.companionDir, "repair.cmd"),
+    renderWindowsCommandLauncher(config, "repair"),
+  );
+  writeTextFile(
+    path.join(config.companionDir, "session-inspect.sh"),
+    renderPosixCommandLauncher(config, "session-inspect"),
+    0o755,
+  );
+  writeTextFile(
+    path.join(config.companionDir, "session-inspect.cmd"),
+    renderWindowsCommandLauncher(config, "session-inspect"),
   );
   writeTextFile(
     path.join(config.companionDir, ".env.example"),
@@ -344,24 +570,7 @@ EMPEROR_RUNTIME_ID=${config.runtimeId}
     renderCompanionReadme(config),
   );
 
-  console.log(`[ok] Companion config written to ${config.configPath}`);
-  console.log(`[ok] Launch wrappers written to ${config.companionDir}`);
-  console.log(
-    `[next] Export EMPEROR_CLAW_API_TOKEN, then run ${
-      process.platform === "win32"
-        ? path.join(config.companionDir, "doctor.cmd")
-        : path.join(config.companionDir, "doctor.sh")
-    }`,
-  );
-}
-
-function loadConfig(args) {
-  const configPath = path.resolve(args.config || DEFAULT_CONFIG_PATH);
-  if (!fs.existsSync(configPath)) {
-    return null;
-  }
-  const raw = fs.readFileSync(configPath, "utf8");
-  return JSON.parse(raw);
+  return payload;
 }
 
 function waitForWsEvent(ws, matcher, timeoutMs) {
@@ -580,9 +789,173 @@ async function runDoctor(args) {
       },
     );
     console.log("[ok] session ended");
+    if (config.configPath) {
+      writeJsonFile(snapshotPathFromConfig(config, "last-doctor"), {
+        inspectedAt: new Date().toISOString(),
+        apiBaseUrl,
+        wsUrl,
+        runtimeId,
+        agentName,
+        sessionId: session.id,
+        status: "passed",
+      });
+    }
     console.log("[done] Emperor control-plane doctor passed");
   } finally {
     ws.close();
+  }
+}
+
+async function runSync(args) {
+  const config = loadConfig(args);
+  if (!config) {
+    throw new Error("Companion config not found. Run bootstrap first.");
+  }
+
+  const apiBaseUrl = (
+    args["api-base-url"] ||
+    process.env.EMPEROR_CLAW_API_URL ||
+    config.apiBaseUrl ||
+    DEFAULT_API_BASE_URL
+  ).replace(/\/$/, "");
+  const token =
+    args.token || process.env.EMPEROR_CLAW_API_TOKEN || config.token || "";
+  if (!token) {
+    throw new Error("Token is required. Pass --token or export EMPEROR_CLAW_API_TOKEN.");
+  }
+
+  console.log(`[step] validating token against ${apiBaseUrl}`);
+  await validateApiAccess(apiBaseUrl, token);
+  console.log("[ok] MCP token is valid");
+
+  const snapshot = await collectControlPlaneSnapshot(
+    apiBaseUrl,
+    token,
+    args["agent-name"] || process.env.EMPEROR_AGENT_NAME || config.doctorAgentName || "emperor-doctor",
+    args["runtime-id"] || process.env.EMPEROR_RUNTIME_ID || config.runtimeId || `emperor-doctor-${os.hostname().toLowerCase()}`,
+  );
+  writeJsonFile(snapshotPathFromConfig(config, "last-sync"), snapshot);
+  printSnapshotSummary(snapshot);
+
+  if (args.json) {
+    console.log(JSON.stringify(snapshot, null, 2));
+  }
+}
+
+async function runRepair(args) {
+  const config = loadConfig(args);
+  if (!config) {
+    throw new Error("Companion config not found. Run bootstrap first.");
+  }
+
+  console.log("[step] rewriting companion files");
+  const payload = rewriteCompanionFiles(config);
+  writeJsonFile(snapshotPathFromConfig(config, "last-repair"), {
+    repairedAt: new Date().toISOString(),
+    configPath: config.configPath,
+    companionDir: config.companionDir,
+    apiBaseUrl: config.apiBaseUrl,
+    wsUrl: config.wsUrl,
+  });
+  console.log(`[ok] companion files refreshed in ${config.companionDir}`);
+
+  const token =
+    args.token || process.env.EMPEROR_CLAW_API_TOKEN || config.token || "";
+  if (token) {
+    console.log("[step] running live sync after repair");
+    const snapshot = await collectControlPlaneSnapshot(
+      config.apiBaseUrl,
+      token,
+      config.doctorAgentName || "emperor-doctor",
+      config.runtimeId || `emperor-doctor-${os.hostname().toLowerCase()}`,
+    );
+    writeJsonFile(snapshotPathFromConfig(config, "last-sync"), snapshot);
+    printSnapshotSummary(snapshot);
+  } else {
+    console.log("[warn] Skipping live sync because no token was provided.");
+  }
+
+  if (args.json) {
+    console.log(JSON.stringify({ repaired: true, config: payload }, null, 2));
+  }
+}
+
+async function runSessionInspect(args) {
+  const config = loadConfig(args);
+  if (!config) {
+    throw new Error("Companion config not found. Run bootstrap first.");
+  }
+
+  const apiBaseUrl = (
+    args["api-base-url"] ||
+    process.env.EMPEROR_CLAW_API_URL ||
+    config.apiBaseUrl ||
+    DEFAULT_API_BASE_URL
+  ).replace(/\/$/, "");
+  const runtimeId =
+    args["runtime-id"] ||
+    process.env.EMPEROR_RUNTIME_ID ||
+    config.runtimeId ||
+    `emperor-doctor-${os.hostname().toLowerCase()}`;
+  const agentName =
+    args["agent-name"] ||
+    process.env.EMPEROR_AGENT_NAME ||
+    config.doctorAgentName ||
+    "emperor-doctor";
+  const sessionId = args["session-id"] || null;
+  const snapshot = readJsonFile(snapshotPathFromConfig(config, "last-sync"));
+  const token =
+    args.token || process.env.EMPEROR_CLAW_API_TOKEN || config.token || "";
+
+  const report = {
+    inspectedAt: new Date().toISOString(),
+    configPath: config.configPath,
+    apiBaseUrl,
+    runtimeId,
+    agentName,
+    sessionId,
+    localSnapshot: snapshot,
+  };
+
+  if (token) {
+    report.health = await safeRequest(
+      "health",
+      () => httpJson("GET", `${apiBaseUrl}/api/mcp/runtime/health`, token),
+    );
+    report.agents = await safeRequest(
+      "agents",
+      () => httpJson("GET", `${apiBaseUrl}/api/mcp/agents?limit=200`, token),
+    );
+    const agentList = report.agents.ok ? asList(report.agents.value, "agents") : [];
+    report.matchedAgent = agentList.find((agent) => agent.name === agentName || agent.id === args["agent-id"]) || null;
+  } else {
+    report.warning = "No token provided, live inspection limited to local companion state.";
+  }
+
+  if (args.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  console.log(`[inspect] config=${config.configPath}`);
+  console.log(`[inspect] runtimeId=${runtimeId}`);
+  console.log(`[inspect] sessionId=${sessionId || "none"}`);
+  if (report.matchedAgent) {
+    console.log(`[inspect] agent=${report.matchedAgent.name} (${report.matchedAgent.id})`);
+  } else {
+    console.log(`[inspect] agent=${agentName} (not found in live agents)`);
+  }
+  if (report.health) {
+    const healthOk = report.health.ok === true || report.health.value?.ok === true;
+    console.log(`[inspect] health=${healthOk ? "ok" : "partial"}`);
+  }
+  if (snapshot) {
+    console.log(`[inspect] lastSync=${snapshot.capturedAt} tasks=${snapshot.counts?.tasks || 0} projects=${snapshot.counts?.projects || 0}`);
+  } else {
+    console.log("[inspect] lastSync=none");
+  }
+  if (!sessionId) {
+    console.log("[inspect] session detail API is not exposed; this reports the latest known runtime context only.");
   }
 }
 
@@ -602,6 +975,21 @@ async function main() {
 
   if (command === "doctor") {
     await runDoctor(args);
+    return;
+  }
+
+  if (command === "sync") {
+    await runSync(args);
+    return;
+  }
+
+  if (command === "repair") {
+    await runRepair(args);
+    return;
+  }
+
+  if (command === "session-inspect") {
+    await runSessionInspect(args);
     return;
   }
 

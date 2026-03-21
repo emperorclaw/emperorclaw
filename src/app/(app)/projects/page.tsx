@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { tasks, projects, agents, customers, artifacts, taskEvents, chatMessages, projectMemory, schedules } from "@/db/schema";
+import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions, schedules } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -17,8 +17,8 @@ export default async function ProjectsPage() {
     const allCustomers = await db.select().from(customers).where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
     const allArtifacts = await db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)));
     const allEvents = await db.select().from(taskEvents).where(eq(taskEvents.companyId, companyId));
-    const allMessages = await db.select().from(chatMessages).where(eq(chatMessages.companyId, companyId)).limit(50).orderBy(chatMessages.createdAt);
     const allProjectMemory = await db.select().from(projectMemory).where(eq(projectMemory.companyId, companyId));
+    const allRecurringTaskDefinitions = await db.select().from(recurringTaskDefinitions).where(and(eq(recurringTaskDefinitions.companyId, companyId), isNull(recurringTaskDefinitions.deletedAt)));
     const allSchedules = await db.select().from(schedules).where(and(eq(schedules.companyId, companyId), isNull(schedules.deletedAt)));
 
     return (
@@ -29,8 +29,8 @@ export default async function ProjectsPage() {
             customers={allCustomers}
             artifacts={allArtifacts}
             taskEvents={allEvents}
-            initialMessages={allMessages}
             initialProjectMemory={allProjectMemory}
+            recurringDefinitions={allRecurringTaskDefinitions}
             initialSchedules={allSchedules}
         />
     );

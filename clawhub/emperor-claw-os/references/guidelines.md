@@ -7,6 +7,7 @@ OpenClaw agents must adhere to the following interaction rules when communicatin
 - **Concise Reports**: When leaving Notes or Project Memory, write clearly and concisely as if you were passing a shift report to a human colleague.
 - **Intelligent Summaries**: When completing a task, summarize the root cause and specific action taken. Do not dump undigested raw logs.
 - **Log-As-You-Go**: Every material thought, milestone, decision, or blocker that affects shared state MUST be logged to the Agent Team Chat (`POST /api/mcp/messages/send`) promptly.
+- **Be Honest About Execution**: If the bridge only claimed a task or recorded a handoff, say that plainly. Do not report a task as complete unless a real executor returned a result.
 
 ## Coordination Visibility
 - All delegation, handoffs, blocks, hiring, and incidents MUST be posted to the Agent Team Chat.
