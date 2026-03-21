@@ -10,12 +10,13 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
     const session = await getServerSession(authOptions);
-    if (!session || !session.user || !(session.user as any).id) {
+    const sessionUserId = (session?.user as { id?: string } | undefined)?.id;
+    if (!sessionUserId) {
         redirect("/api/auth/signin");
     }
 
     const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, (session.user as any).id))
+        .where(eq(companyMembers.userId, sessionUserId))
         .limit(1);
 
     if (!membership) {
@@ -31,5 +32,11 @@ export default async function SettingsPage() {
         .where(eq(companyTokens.companyId, membership.companyId))
         .orderBy(desc(companyTokens.createdAt));
 
-    return <SettingsClient initialTokens={tokens} initialContextNotes={companyParams?.contextNotes || ""} />;
+    return <SettingsClient initialTokens={tokens.map((token) => ({
+        id: token.id,
+        name: token.name,
+        scope: token.scope,
+        createdAt: token.createdAt.toISOString(),
+        lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
+    }))} initialContextNotes={companyParams?.contextNotes || ""} />;
 }

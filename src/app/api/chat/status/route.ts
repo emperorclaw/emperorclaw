@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { normalizeExecutionState } from "@/lib/project-workflow";
+import { updateThreadExecutionState } from "@/lib/control-plane";
 
 export async function POST(req: NextRequest) {
     const companyId = await getCompanyId();
@@ -11,10 +13,10 @@ export async function POST(req: NextRequest) {
     if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        const { threadId, typing, markRead } = await req.json();
+        const { threadId, typing, markRead, executionState } = await req.json();
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
 
-        const updates: any = {};
+        const updates: { lastReadAt?: Date; typingUntil?: Date | null } = {};
         if (markRead) updates.lastReadAt = new Date();
         if (typeof typing === 'boolean') {
             // Typing for 5 seconds by default
@@ -41,8 +43,30 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        const derivedState = normalizeExecutionState(executionState)
+            || (markRead ? "seen" : null);
+
+        if (derivedState) {
+            const updatedMessage = await updateThreadExecutionState({
+                companyId,
+                threadId,
+                actorType: "human",
+                actorId: userId,
+                targetState: derivedState,
+            });
+
+            if (updatedMessage) {
+                broadcastMcpEvent(companyId, {
+                    type: "thread_message",
+                    threadId,
+                    message: updatedMessage,
+                });
+            }
+        }
+
         return NextResponse.json({ ok: true });
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Internal Server Error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

@@ -14,6 +14,7 @@ It is not the runtime that thinks or executes work. OpenClaw remains the runtime
 - Human-to-agent communication should flow through real threads, not fake orchestration helpers.
 
 More detail is in [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md).
+The concrete next-step roadmap is in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
 
 ## What Changed Recently
 
@@ -49,4 +50,11 @@ Publish with:
 
 ```bash
 npm run skill:publish
+```
+
+Bootstrap the local companion and verify the bridge contract with:
+
+```bash
+npm run control-plane:bootstrap
+npm run control-plane:doctor
 ```

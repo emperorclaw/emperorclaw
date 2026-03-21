@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
-import { tasks, taskEvents } from "@/db/schema";
+import { projects, tasks, taskEvents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { normalizeTaskState, TASK_STATES } from "@/lib/task-state";
+import { createApprovalRequest, getLatestPendingApproval, taskHasPendingApproval } from "@/lib/approvals";
+import { validateTaskStateTransition } from "@/lib/project-workflow";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -21,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (cachedResponse) return NextResponse.json(cachedResponse);
 
     const body = await req.json();
-    const { state, outputJson, agentId } = body;
+    const { state, outputJson, agentId, comment, approvalRationale, confidence = 0 } = body;
 
     if (!state || !agentId) {
         return NextResponse.json({ error: "state and agentId are required" }, { status: 400 });
@@ -52,8 +54,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: "Only the assigned agent can complete this task" }, { status: 409 });
     }
 
-    if (existingTask.humanApprovalRequired && nextState === TASK_STATES.done) {
-        return NextResponse.json({ error: "Task requires human approval before done" }, { status: 409 });
+    const [project] = await db.select().from(projects).where(
+        and(eq(projects.id, existingTask.projectId), eq(projects.companyId, companyId))
+    ).limit(1);
+
+    if (!project) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    const hasPendingApproval = await taskHasPendingApproval(companyId, taskId);
+    const transitionError = validateTaskStateTransition({
+        project,
+        task: existingTask,
+        requestedState: nextState,
+        actorAgentId: internalAgentId,
+        hasPendingApproval,
+        comment,
+    });
+
+    if (transitionError) {
+        return NextResponse.json({ error: transitionError }, { status: 409 });
+    }
+
+    if (
+        nextState === TASK_STATES.done &&
+        (existingTask.humanApprovalRequired || project.requireApprovalForDone)
+    ) {
+        const approval = await createApprovalRequest({
+            companyId,
+            projectId: project.id,
+            taskIds: [taskId],
+            requesterAgentId: internalAgentId,
+            rationale: approvalRationale || comment || `Approval requested to complete task ${taskId}.`,
+            confidence,
+            actionType: "task_done",
+            metadataJson: {
+                requestedState: nextState,
+                taskType: existingTask.taskType,
+            },
+        });
+
+        const pendingApproval = approval || (await getLatestPendingApproval(companyId, taskId));
+        return NextResponse.json({
+            error: "Task requires approval before done",
+            approval: pendingApproval,
+        }, { status: 409 });
     }
 
     const [updatedTask] = await db.update(tasks).set({

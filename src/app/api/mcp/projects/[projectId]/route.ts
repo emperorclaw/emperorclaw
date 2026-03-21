@@ -23,16 +23,18 @@ export async function PATCH(
 
     try {
         const body = await req.json();
-        const { status: newStatus } = body;
-
-        if (!newStatus) {
-            return NextResponse.json({ error: "status is required" }, { status: 400 });
-        }
-
-        const validStatuses = ["active", "paused", "killed", "completed"];
-        if (!validStatuses.includes(newStatus)) {
-            return NextResponse.json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }, { status: 400 });
-        }
+        const {
+            status: newStatus,
+            goal,
+            customerId,
+            leadAgentId,
+            requireApprovalForDone,
+            requireReviewBeforeDone,
+            commentRequiredForReview,
+            blockStatusChangesWithPendingApproval,
+            onlyLeadCanChangeStatus,
+            maxActiveAgents,
+        } = body;
 
         const [existing] = await db.select().from(projects).where(
             and(eq(projects.id, projectId), eq(projects.companyId, companyId), isNull(projects.deletedAt))
@@ -42,13 +44,28 @@ export async function PATCH(
             return NextResponse.json({ error: "Project not found or unauthorized." }, { status: 404 });
         }
 
+        if (newStatus) {
+            const validStatuses = ["active", "paused", "killed", "completed"];
+            if (!validStatuses.includes(newStatus)) {
+                return NextResponse.json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }, { status: 400 });
+            }
+        }
+
         const [project] = await db.update(projects).set({
-            status: newStatus,
-            // Assuming we added an updatedAt field to the DB at some point, 
-            // but schema.ts currently lacks it for `projects`, so we'll omit it.
+            status: newStatus ?? existing.status,
+            goal: goal ?? existing.goal,
+            customerId: customerId === undefined ? existing.customerId : (customerId || null),
+            leadAgentId: leadAgentId === undefined ? existing.leadAgentId : (leadAgentId || null),
+            requireApprovalForDone: requireApprovalForDone === undefined ? existing.requireApprovalForDone : Boolean(requireApprovalForDone),
+            requireReviewBeforeDone: requireReviewBeforeDone === undefined ? existing.requireReviewBeforeDone : Boolean(requireReviewBeforeDone),
+            commentRequiredForReview: commentRequiredForReview === undefined ? existing.commentRequiredForReview : Boolean(commentRequiredForReview),
+            blockStatusChangesWithPendingApproval: blockStatusChangesWithPendingApproval === undefined ? existing.blockStatusChangesWithPendingApproval : Boolean(blockStatusChangesWithPendingApproval),
+            onlyLeadCanChangeStatus: onlyLeadCanChangeStatus === undefined ? existing.onlyLeadCanChangeStatus : Boolean(onlyLeadCanChangeStatus),
+            maxActiveAgents: maxActiveAgents === undefined ? existing.maxActiveAgents : Math.max(1, Number(maxActiveAgents) || existing.maxActiveAgents),
+            updatedAt: new Date(),
         }).where(eq(projects.id, projectId)).returning();
 
-        const res = { message: `Project status updated to ${newStatus}`, project };
+        const res = { message: "Project updated", project };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 200 });
 
