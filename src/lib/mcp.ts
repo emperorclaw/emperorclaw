@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { companyTokens, idempotencyKeys, auditLog } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { companyTokens, idempotencyKeys, auditLog, agents } from "@/db/schema";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import * as crypto from "crypto";
+
+type JsonObject = Record<string, unknown>;
 
 export async function verifyMcpToken(req: NextRequest) {
     const authHeader = req.headers.get("authorization");
@@ -13,12 +15,9 @@ export async function verifyMcpToken(req: NextRequest) {
     const token = authHeader.split(" ")[1];
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    console.log(`[mcp-verify] Checking hash: ${tokenHash}`);
-
-    const allTokens = await db.select().from(companyTokens);
-    console.log(`[mcp-verify] Found ${allTokens.length} tokens. First 3: ${allTokens.slice(0,3).map(t => t.tokenHash.substring(0,8)).join(', ')}`);
-    
-    const companyToken = allTokens.find(t => t.tokenHash === tokenHash);
+    const [companyToken] = await db.select().from(companyTokens).where(
+        eq(companyTokens.tokenHash, tokenHash)
+    ).limit(1);
 
     if (!companyToken || companyToken.revokedAt) {
         return { error: "Invalid or revoked token", status: 401 };
@@ -53,7 +52,7 @@ export async function checkIdempotency(req: NextRequest, companyId: string, endp
     return { requestHash };
 }
 
-export async function saveIdempotencyResponse(companyId: string, endpoint: string, requestHash: string, responseObj: any) {
+export async function saveIdempotencyResponse(companyId: string, endpoint: string, requestHash: string, responseObj: JsonObject) {
     await db.insert(idempotencyKeys).values({
         companyId,
         endpoint,
@@ -62,11 +61,14 @@ export async function saveIdempotencyResponse(companyId: string, endpoint: strin
     });
 }
 
-import { agents } from "@/db/schema";
-export async function resolveAgentId(companyId: string, providedAgentId: string): Promise<string> {
+export async function resolveAgentId(
+    companyId: string,
+    providedAgentId: string,
+    options: { autoCreate?: boolean } = {}
+): Promise<string> {
     // 1. Try to fetch existing agent UUID by their string name identifier
     const [agent] = await db.select().from(agents).where(
-        and(eq(agents.companyId, companyId), eq(agents.name, providedAgentId))
+        and(eq(agents.companyId, companyId), eq(agents.name, providedAgentId), isNull(agents.deletedAt))
     ).limit(1);
 
     if (agent) return agent.id;
@@ -75,12 +77,16 @@ export async function resolveAgentId(companyId: string, providedAgentId: string)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(providedAgentId)) {
         const [existing] = await db.select().from(agents).where(
-            and(eq(agents.companyId, companyId), eq(agents.id, providedAgentId))
+            and(eq(agents.companyId, companyId), eq(agents.id, providedAgentId), isNull(agents.deletedAt))
         ).limit(1);
         if (existing) return existing.id;
     }
 
-    // 3. Fallback: auto-register this new agent string with a fresh UUID
+    if (!options.autoCreate) {
+        throw new Error(`Agent not found: ${providedAgentId}`);
+    }
+
+    // 3. Explicit fallback: auto-register this new agent string with a fresh UUID
     const [newAgent] = await db.insert(agents).values({
         companyId,
         name: providedAgentId,
@@ -91,7 +97,7 @@ export async function resolveAgentId(companyId: string, providedAgentId: string)
     return newAgent.id;
 }
 
-export async function logAudit(companyId: string, actorType: string, actorId: string | null, action: string, targetType: string, targetId: string, payload: any = {}) {
+export async function logAudit(companyId: string, actorType: string, actorId: string | null, action: string, targetType: string, targetId: string, payload: JsonObject = {}) {
     await db.insert(auditLog).values({
         companyId,
         actorType,
@@ -103,7 +109,7 @@ export async function logAudit(companyId: string, actorType: string, actorId: st
     }).execute().catch(console.error);
 }
 
-export async function notifyMcpEvent(companyId: string, payload: { type: string; [key: string]: any }) {
+export async function notifyMcpEvent(companyId: string, payload: { type: string } & JsonObject) {
     // Broadcast via Postgres NOTIFY mcp_events
     // We escape single quotes in JSON string for SQL safety
     const jsonStr = JSON.stringify({ companyId, payload }).replace(/'/g, "''");

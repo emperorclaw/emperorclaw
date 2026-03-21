@@ -57,7 +57,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
 
         let internalAgentId = null;
         if (agentId) {
-            internalAgentId = await resolveAgentId(companyId, agentId);
+            try {
+                internalAgentId = await resolveAgentId(companyId, agentId);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Agent not found";
+                return NextResponse.json({ error: message }, { status: 404 });
+            }
         }
 
         if (!content || typeof content !== 'string') {
@@ -85,6 +90,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
 
     } catch (err: unknown) {
         console.error("POST Project Memory error:", err);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        const message = err instanceof Error ? err.message : "Internal Server Error";
+        const status = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status });
     }
 }
