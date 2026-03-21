@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { agents, tasks, incidents, chatMessages } from "@/db/schema";
 import { eq, inArray, and, sql, desc, isNull } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
+import { GoalHub } from "@/components/goal-hub";
 import { getCompanyId } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { redirect } from "next/navigation";
@@ -60,6 +61,8 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Control Plane</h1>
         <p className="text-zinc-500 font-medium">System overview and active workforce telemetry.</p>
       </div>
+
+      <GoalHub />
 
       {totalAgents === 0 && <GettingStartedHero />}
 

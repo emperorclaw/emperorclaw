@@ -404,6 +404,26 @@ class EmperorBridge {
     });
   }
 
+  /**
+   * Signaling: Tell the UI that we are thinking or reading.
+   * Useful for Long-Running processes.
+   * 
+   * @param {string} threadId - The thread ID to update.
+   * @param {boolean} typing - Set to true to show the typing indicator.
+   * @param {boolean} markRead - Set to true to clear unread counts.
+   */
+  async updateChatStatus(threadId, typing = null, markRead = false) {
+    return http("/api/mcp/chat/status/", {
+      method: "POST",
+      body: {
+        threadId,
+        agentId: this.agent.id,
+        typing,
+        markRead,
+      },
+    });
+  }
+
   async end(summary = "Bridge shutdown") {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.syncTimer) clearInterval(this.syncTimer);
@@ -420,29 +440,43 @@ class EmperorBridge {
 }
 
 async function main() {
+  console.log("[bridge] starting emperor bridge adapter...");
   const bridge = new EmperorBridge();
-  await bridge.start();
+  
+  try {
+    await bridge.bootstrap();
+    
+    // Wire up the realtime listeners
+    bridge.startHeartbeatLoop();
+    bridge.connectWebSocket();
+    
+    await bridge.sendMessage(`Bridge online. Agent ${bridge.agent.name} ready for mission.`);
+    
+    // Example: Signal typing before we start a "heavy" mock task
+    // await bridge.updateChatStatus("team", true, true);
+    // setTimeout(() => bridge.updateChatStatus("team", false), 5000);
 
-  process.on("SIGINT", async () => {
-    console.log("\n[bridge] shutting down...");
-    try {
-      await bridge.end("Bridge interrupted");
-    } finally {
-      process.exit(0);
-    }
-  });
+    process.on("SIGINT", async () => {
+      console.log("\n[bridge] shutting down...");
+      try {
+        await bridge.end("Bridge interrupted");
+      } finally {
+        process.exit(0);
+      }
+    });
 
-  process.on("SIGTERM", async () => {
-    console.log("\n[bridge] terminating...");
-    try {
-      await bridge.end("Bridge terminated");
-    } finally {
-      process.exit(0);
-    }
-  });
+    process.on("SIGTERM", async () => {
+      console.log("\n[bridge] terminating...");
+      try {
+        await bridge.end("Bridge terminated");
+      } finally {
+        process.exit(0);
+      }
+    });
+  } catch (err) {
+    console.error("[bridge] fatal error during setup:", err.message);
+    process.exit(1);
+  }
 }
 
-main().catch((error) => {
-  console.error("[bridge] fatal:", error);
-  process.exit(1);
-});
+main();
