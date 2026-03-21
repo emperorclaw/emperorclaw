@@ -2,18 +2,20 @@ import 'dotenv/config';
 import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { db } from './src/db';
 import { companyTokens } from './src/db/schema';
 import { eq } from 'drizzle-orm';
 import * as crypto from 'crypto';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
 const port = parseInt(process.env.PORT || '3000', 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
+
+type CompanySocket = WebSocket & { companyId?: string };
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -55,9 +57,9 @@ app.prepare().then(() => {
             }
 
             wss.handleUpgrade(request, socket, head, (ws) => {
-                // Attach companyId to the client socket
-                (ws as any).companyId = companyToken.companyId;
-                wss.emit('connection', ws, request);
+                const companySocket = ws as CompanySocket;
+                companySocket.companyId = companyToken.companyId;
+                wss.emit('connection', companySocket, request);
             });
         } catch(e) {
             console.error("Token verification error during WS upgrade:", e);
@@ -77,27 +79,69 @@ app.prepare().then(() => {
   
   // Setup Postgres LISTEN/NOTIFY for ws broadcasts
   const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING });
-  
-  pool.connect().then(client => {
+  let listenerClient: PoolClient | null = null;
+  let reconnectTimer: NodeJS.Timeout | null = null;
+
+  const scheduleListenerReconnect = () => {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      void attachPubsubListener();
+    }, 5000);
+  };
+
+  const attachPubsubListener = async () => {
+    try {
+      const client = await pool.connect();
+      listenerClient = client;
       console.log('PostgreSQL Pub/Sub linked. Listening for mcp_events...');
-      client.query('LISTEN mcp_events');
+      await client.query('LISTEN mcp_events');
+
+      const handleDisconnect = (error?: unknown) => {
+        if (error) {
+          console.error('PostgreSQL Pub/Sub listener dropped:', error);
+        } else {
+          console.warn('PostgreSQL Pub/Sub listener ended. Reconnecting...');
+        }
+
+        if (listenerClient === client) {
+          listenerClient = null;
+        }
+
+        client.removeAllListeners('notification');
+        client.removeAllListeners('error');
+        client.removeAllListeners('end');
+        client.release();
+        scheduleListenerReconnect();
+      };
+
       client.on('notification', (msg) => {
-          if (!msg.payload) return;
-          try {
-              const data = JSON.parse(msg.payload);
-              const targetCompanyId = data.companyId;
-              const payload = data.payload;
-              
-              wss.clients.forEach(client => {
-                  if (client.readyState === 1 && (client as any).companyId === targetCompanyId) {
-                      client.send(JSON.stringify(payload));
-                  }
-              });
-          } catch(e) {
-              console.error("Error parsing NOTIFY payload", e);
-          }
+        if (!msg.payload) return;
+        try {
+          const data = JSON.parse(msg.payload);
+          const targetCompanyId = data.companyId;
+          const payload = data.payload;
+
+          wss.clients.forEach((client) => {
+            const companySocket = client as CompanySocket;
+            if (companySocket.readyState === WebSocket.OPEN && companySocket.companyId === targetCompanyId) {
+              companySocket.send(JSON.stringify(payload));
+            }
+          });
+        } catch (e) {
+          console.error("Error parsing NOTIFY payload", e);
+        }
       });
-  }).catch(console.error);
+
+      client.once('error', handleDisconnect);
+      client.once('end', () => handleDisconnect());
+    } catch (error) {
+      console.error('Failed to attach PostgreSQL Pub/Sub listener:', error);
+      scheduleListenerReconnect();
+    }
+  };
+
+  void attachPubsubListener();
 
   wss.on('connection', (ws) => {
       // Send an initial connected ping payload

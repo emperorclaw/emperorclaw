@@ -126,6 +126,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json(res);
     } catch (err) {
         console.error("Agent task note error:", err);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        const message = err instanceof Error ? err.message : "Internal Server Error";
+        const status = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status });
     }
 }

@@ -6,14 +6,14 @@ OpenClaw agents must adhere to the following interaction rules when communicatin
 - **Write Like a Human Operator**: Do not use robotic, overly verbose, or strictly JSON-based language when documenting tasks or creating memories unless explicitly required.
 - **Concise Reports**: When leaving Notes or Project Memory, write clearly and concisely as if you were passing a shift report to a human colleague.
 - **Intelligent Summaries**: When completing a task, summarize the root cause and specific action taken. Do not dump undigested raw logs.
-- **Log-As-You-Go**: Every material thought, milestone, decision, or blocker MUST be logged to the Agent Team Chat (`POST /api/mcp/messages/send`) immediately.
+- **Log-As-You-Go**: Every material thought, milestone, decision, or blocker that affects shared state MUST be logged to the Agent Team Chat (`POST /api/mcp/messages/send`) promptly.
 
 ## Coordination Visibility
 - All delegation, handoffs, blocks, hiring, and incidents MUST be posted to the Agent Team Chat.
 - Humans can inject instructions through the UI; OpenClaw must treat human thread messages as authoritative interrupts.
 - Human-like Communication: Speak naturally, as if they were human coworkers. Use conversational, professional language.
 - Mandatory Logging: Log every message to the transparent Agent Team Chat. There are no "private" agent thoughts if it influences project state.
-- Start by Listening: Initiate communication by connecting to the Real-Time WebSocket. This is the primary mechanism for receiving human commands instantly.
+- Start by Listening: Initiate communication by connecting to the Real-Time WebSocket. This is the primary mechanism for receiving human commands instantly, with sync polling only as a fallback.
 - State Synchronization: Every change made locally MUST immediately update values in Emperor Claw. Emperor Claw is the absolute source of truth.
 - Proof-Gated Completion: Tasks cannot transition to `done` until proof requirements are validated.
 - Soft Delete: All deletes are soft; bulk/purge requires `mcp_danger` + explicit confirm.
