@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const rawLimit = parseInt(searchParams.get("limit") || "100", 10);
     const rawPage = parseInt(searchParams.get("page") || "1", 10);
-    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 100;
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 2000) : 200;
     const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
     const offset = (page - 1) * limit;
 
@@ -91,20 +91,50 @@ export async function POST(req: NextRequest) {
 
         const nextRunDate = nextRunAt ? new Date(nextRunAt) : null;
 
-        const [newSchedule] = await db.insert(schedules).values({
-            id: randomUUID(),
-            companyId,
-            name,
-            playbookId: playbookId || null,
-            cronExpression,
-            targetProjectId: targetProjectId || null,
-            targetCustomerId: targetCustomerId || null,
-            nextRunAt: nextRunDate,
-            agentPattern: agentPattern || null,
-            status: scheduleStatus,
-        }).returning();
+        // Check for existing schedule with same name and company to prevent duplication
+        const [existing] = await db.select().from(schedules).where(
+            and(
+                eq(schedules.companyId, companyId), 
+                eq(schedules.name, name),
+                isNull(schedules.deletedAt)
+            )
+        ).limit(1);
 
-        const res = { message: "Schedule registered", schedule: newSchedule };
+        let registeredSchedule;
+        if (existing) {
+            // Update existing instead of creating a new one (UPSERT behavior)
+            const [updated] = await db.update(schedules).set({
+                cronExpression,
+                playbookId: playbookId || existing.playbookId,
+                targetProjectId: targetProjectId || existing.targetProjectId,
+                targetCustomerId: targetCustomerId || existing.targetCustomerId,
+                nextRunAt: nextRunDate || existing.nextRunAt,
+                agentPattern: agentPattern || existing.agentPattern,
+                status: scheduleStatus,
+                updatedAt: new Date()
+            }).where(eq(schedules.id, existing.id)).returning();
+            registeredSchedule = updated;
+        } else {
+            // Insert new
+            const [inserted] = await db.insert(schedules).values({
+                id: randomUUID(),
+                companyId,
+                name,
+                playbookId: playbookId || null,
+                cronExpression,
+                targetProjectId: targetProjectId || null,
+                targetCustomerId: targetCustomerId || null,
+                nextRunAt: nextRunDate,
+                agentPattern: agentPattern || null,
+                status: scheduleStatus,
+            }).returning();
+            registeredSchedule = inserted;
+        }
+
+        const res = { 
+            message: existing ? "Schedule updated" : "Schedule registered", 
+            schedule: registeredSchedule 
+        };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
     } catch (e: unknown) {
