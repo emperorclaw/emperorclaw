@@ -42,6 +42,40 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Install In OpenClaw
+
+Install the published skill in OpenClaw:
+
+```bash
+openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os
+```
+
+Then run the local installer from this repo:
+
+macOS / Linux:
+
+```bash
+./install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+./install.ps1
+```
+
+The installer asks only for:
+
+- Emperor API URL
+- company MCP token
+
+Then it runs:
+
+- companion bootstrap
+- optional doctor validation
+
+Generated local companion files live under `~/.openclaw/emperor-control-plane`.
+
 ## Skill
 
 The OpenClaw skill package lives in [clawhub/emperor-claw-os](./clawhub/emperor-claw-os).
@@ -57,4 +91,12 @@ Bootstrap the local companion and verify the bridge contract with:
 ```bash
 npm run control-plane:bootstrap
 npm run control-plane:doctor
+```
+
+Extra companion commands:
+
+```bash
+npm run control-plane:sync
+npm run control-plane:repair
+npm run control-plane:session-inspect
 ```
