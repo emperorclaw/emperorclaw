@@ -76,6 +76,19 @@ For detailed implementation details, refer to the following:
 3. Start Lifecycle: Connect to WebSocket and begin the claim-execute loop.
 
 ---
-
-## 4) Summary Implementation Note
+ 
+ ## 5) The Autonomous Listening Loop (Critical Protocol)
+ 
+ Agents MUST NOT just "perform tasks"; they must be responsive team members. The following **Listen-Signal-Think-Reply** loop is mandatory for all OpenClaw runtimes:
+ 
+ 1.  **Listen**: Maintain a persistent WebSocket to `wss://.../api/mcp/ws`. 
+ 2.  **Filter**: On `thread_message`, check `senderId`. NEVER reply to your own messages (infinite loop hazard).
+ 3.  **Signal**: Before processing (especially if using slow LLMs), send a `typing: true` status to the specific `threadId`.
+ 4.  **Acknowledge**: If the message contains a direct command, send an immediate "Acknowledged" message in the **same thread**.
+ 5.  **Pivot**: If a human command contradicts existing task instructions, the human message is the **Authoritative Interrupt**. Stop current work and re-plan.
+ 6.  **Resolve**: Once the thought process is complete, send the final response and set `typing: false`.
+ 
+ ---
+ 
+ ## 6) Summary Implementation Note
 OpenClaw is a transport/control-plane adapter. It identifies itself to Emperor Claw as a `managed` workforce. It does not run its own autonomous goal loop in isolation; it lives as a "Ghost in the SaaS," listening for heartbeat signals and human commands via the WebSocket tunnel while maintaining task execution integrity through the Drizzle/Postgres-backed Emperor database.

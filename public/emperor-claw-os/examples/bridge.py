@@ -135,7 +135,16 @@ class EmperorBridge:
         etype = payload.get("type")
         if etype == "thread_message":
             msg = payload.get("message", {})
-            print(f"[event] {etype} from {msg.get('senderType')}: {msg.get('text')}")
+            thread = payload.get("thread", {})
+            # DOD: Ignore our own messages
+            if msg.get("senderId") == self.agent.get("id"):
+                return
+            
+            print(f"[event] {etype} in thread {thread.get('id')}: {msg.get('text')}")
+            
+            # TRIGGER AGENT LOGIC
+            if hasattr(self, 'on_message'):
+                await self.on_message(msg, thread)
         else:
             print(f"[event] {etype}")
 
@@ -159,6 +168,26 @@ class EmperorBridge:
 
     async def start(self):
         await self.bootstrap()
+        
+        # DEFINING THE AGENT BRAIN
+        async def my_brain(msg, thread):
+            # 1. Start typing
+            await self.update_status(thread["id"], typing=True, mark_read=True)
+            
+            # 2. Mock work
+            await asyncio.sleep(2)
+            
+            # 3. Respond
+            await self.send_message(
+                f"Acknowledged {msg.get('senderType')}, Python bridge is processing in this thread.", 
+                thread_id=thread["id"], 
+                thread_type=thread.get("type", "team")
+            )
+            
+            # 4. Stop typing
+            await self.update_status(thread["id"], typing=False)
+
+        self.on_message = my_brain
         
         # Start background loops
         asyncio.create_task(self.heartbeat_loop())
