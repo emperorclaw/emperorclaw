@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
-import { agents, tasks } from "@/db/schema";
+import { agentSessions, agents, tasks } from "@/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { TASK_STATES } from "@/lib/task-state";
+import { nextCheckinDeadline } from "@/lib/lifecycle";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -55,6 +56,20 @@ export async function POST(req: NextRequest) {
                 eq(tasks.state, TASK_STATES.inProgress),
                 isNull(tasks.deletedAt)
             )
+        );
+
+        await db.update(agentSessions).set({
+            lastHeartbeatAt: new Date(),
+            checkinDeadlineAt: nextCheckinDeadline(),
+            wakeAttempts: 0,
+            lastProvisionError: null,
+            status: "active",
+        }).where(
+            and(
+                eq(agentSessions.companyId, companyId),
+                eq(agentSessions.agentId, internalAgentId),
+                isNull(agentSessions.endedAt),
+            ),
         );
 
         return NextResponse.json({ message: "Heartbeat acknowledged", lastSeenAt: agent.lastSeenAt });

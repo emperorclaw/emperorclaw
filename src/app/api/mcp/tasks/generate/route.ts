@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
-import { tasks, taskEvents } from "@/db/schema";
+import { projects, tasks, taskEvents } from "@/db/schema";
 import { randomUUID } from "crypto";
+import { and, eq } from "drizzle-orm";
 import { TASK_STATES } from "@/lib/task-state";
 
 export async function POST(req: NextRequest) {
@@ -19,24 +20,49 @@ export async function POST(req: NextRequest) {
     if (cachedResponse) return NextResponse.json(cachedResponse);
 
     const body = await req.json();
-    const { projectId, taskType, templateVersion, contractVersion, inputJson, priority = 0, proofRequired = false, humanApprovalRequired = false, proofTypesJson = "[]", blockedByTaskIds = [] } = body;
+    const {
+        projectId,
+        taskType,
+        templateVersion,
+        contractVersion,
+        inputJson,
+        priority = 0,
+        proofRequired = false,
+        humanApprovalRequired,
+        proofTypesJson = "[]",
+        blockedByTaskIds = [],
+        taskKind = "standard",
+        recurringTaskDefinitionId = null,
+    } = body;
 
     if (!projectId || !taskType) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
     }
 
     try {
+        const [existingProject] = await db.select().from(projects).where(
+            and(eq(projects.id, projectId), eq(projects.companyId, companyId))
+        ).limit(1);
+
+        if (!existingProject) {
+            return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
+        }
+
         const [newTask] = await db.insert(tasks).values({
             id: randomUUID(),
             companyId,
             projectId,
+            recurringTaskDefinitionId,
+            taskKind,
             taskType,
             templateVersion,
             contractVersion,
-            state: TASK_STATES.queued,
+            state: TASK_STATES.inbox,
             priority,
             proofRequired,
-            humanApprovalRequired,
+            humanApprovalRequired: typeof humanApprovalRequired === "boolean"
+                ? humanApprovalRequired
+                : Boolean(existingProject.requireApprovalForDone),
             proofTypesJson,
             inputJson: inputJson || {},
             blockedByTaskIds,

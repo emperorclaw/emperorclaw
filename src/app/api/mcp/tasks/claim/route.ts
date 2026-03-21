@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     WHERE id = (
       SELECT t.id FROM tasks t
       WHERE t.company_id = ${companyId}
-        AND t.state = ${TASK_STATES.queued}
+        AND t.state = ${TASK_STATES.inbox}
         AND t.deleted_at IS NULL
         AND (
           ${strictOwnerRole === false} = true
@@ -74,6 +74,20 @@ export async function POST(req: NextRequest) {
             JOIN tasks b ON b.id = blocked_id::uuid
             WHERE b.state != 'done'
           )
+        )
+        AND (
+          COALESCE((
+            SELECT COUNT(DISTINCT t2.assigned_agent_id)
+            FROM tasks t2
+            WHERE t2.company_id = t.company_id
+              AND t2.project_id = t.project_id
+              AND t2.state = ${TASK_STATES.inProgress}
+              AND t2.assigned_agent_id IS NOT NULL
+          ), 0) < COALESCE((
+            SELECT p.max_active_agents
+            FROM projects p
+            WHERE p.id = t.project_id
+          ), 9999)
         )
       ORDER BY t.priority DESC, t.created_at ASC
       FOR UPDATE SKIP LOCKED

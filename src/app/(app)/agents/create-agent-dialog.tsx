@@ -13,12 +13,11 @@ export function CreateAgentDialog() {
     const handleCreate = async () => {
         console.log("Sending agent creation request to OpenClaw chat:", roleDescription);
         try {
-            const res = await fetch("/api/mcp/messages/send", {
+            const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     text: `/register-agent name="${name || 'Unnamed Agent'}" capabilities="${roleDescription}"`,
-                    senderType: "human"
                 })
             });
             if (res.ok) {
