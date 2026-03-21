@@ -277,8 +277,19 @@ class EmperorBridge {
     }
 
     if (payload.type === "thread_message") {
-      this.lastSeenAt = payload.message?.createdAt || this.lastSeenAt;
-      console.log(`[bridge] thread_message thread=${payload.thread?.id || "unknown"} sender=${payload.message?.senderType || "unknown"}`);
+      const message = payload.message;
+      const thread = payload.thread;
+      this.lastSeenAt = message?.createdAt || this.lastSeenAt;
+
+      // DOD: Ignore our own messages to avoid loops
+      if (message.senderId === this.agent?.id) return;
+
+      console.log(`[bridge] incoming message in thread ${thread.id}: "${message.text}"`);
+      
+      // TRIGGER AGENT BRAIN
+      if (this.onMessage) {
+        await this.onMessage(message, thread);
+      }
       return;
     }
 
@@ -446,6 +457,26 @@ async function main() {
   try {
     await bridge.bootstrap();
     
+    // THE LISTENING LOOP: How OpenClaw "reasons and replies"
+    bridge.onMessage = async (message, thread) => {
+      console.log(`[agent-brain] answering ${message.senderType}...`);
+      
+      // 1. Signal "typing" immediately to show we are listening
+      await bridge.updateChatStatus(thread.id, true, true);
+      
+      // 2. [ACTUAL WORK HAPPENS HERE]
+      await new Promise(r => setTimeout(r, 2000));
+      
+      // 3. Respond in the SAME thread
+      await bridge.sendMessage(`Acknowledged. I'm processing your request in this thread. Result: OK.`, {
+        thread_id: thread.id,
+        thread_type: thread.type
+      });
+
+      // 4. Stop typing
+      await bridge.updateChatStatus(thread.id, false);
+    };
+
     // Wire up the realtime listeners
     bridge.startHeartbeatLoop();
     bridge.connectWebSocket();
