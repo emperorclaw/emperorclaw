@@ -17,6 +17,7 @@ export default function SetupPage() {
                             Install the published skill, run the local installer, validate with doctor, and start the generated bridge launcher.
                             This is the supported path for connecting OpenClaw to Emperor without taking over local OpenClaw ownership.
                             The companion keeps a local state journal so reconnects can resume without replaying the same work.
+                            Customer and project credentials should be managed in Emperor Resources, not as hardcoded per-agent mailboxes.
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -90,6 +91,7 @@ export default function SetupPage() {
                             </div>
                             <div className="rounded-md border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
                                 The installer does not take over full OpenClaw config ownership. It writes a conservative overlay, local launchers, and a bridge state journal only.
+                                After install, manage shared mailboxes, identities, and templates in the authenticated Resources workspace.
                             </div>
                         </CardContent>
                     </Card>

@@ -5,6 +5,14 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.15] - 2026-03-22
+
+### Changed
+- Reframed agent integrations as optional runtime-local payloads instead of a primary home for customer mailboxes or project identities.
+- Documented scoped Resources as the preferred place for shared mailboxes, identities, billing data, templates, and generic external accounts.
+- Marked the old playbook/pipeline surface as legacy guidance and pushed new recurring automation toward projects and recurring-task definitions.
+- Updated public install guidance so the setup path teaches Resources plus Runtime Integrations instead of SMTP-per-agent assumptions.
+
 ## [1.14.14] - 2026-03-22
 
 ### Changed

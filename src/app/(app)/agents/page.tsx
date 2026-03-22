@@ -2,15 +2,30 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { ManageIntegrationsDialog } from "./manage-integrations-dialog";
-import { eq, and, sql, isNull, inArray } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { tasks } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { Mail, Github, Zap } from "lucide-react";
+import { Github, Mail, Settings2, Zap } from "lucide-react";
 import Link from "next/link";
 import { listAgentIntegrationsForAgents } from "@/lib/agent-integrations";
 
 export const dynamic = "force-dynamic";
+
+type AgentIntegrationRow = Awaited<ReturnType<typeof listAgentIntegrationsForAgents>>[number];
+type AgentCardProps = {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+    role: string;
+    status: string;
+    uptime: string;
+    tasksCompleted: number;
+    currentLoad: number;
+    skills: string[];
+    memory: string | null;
+    integrations: AgentIntegrationRow[];
+};
 
 export default async function AgentsPage() {
     const companyId = await getCompanyId();
@@ -38,14 +53,14 @@ export default async function AgentsPage() {
         if (!acc[curr.agentId]) acc[curr.agentId] = [];
         acc[curr.agentId].push(curr);
         return acc;
-    }, {} as Record<string, any[]>);
+    }, {} as Record<string, AgentIntegrationRow[]>);
 
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
                 <div className="flex flex-col space-y-1">
                     <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Agent Fleet</h1>
-                    <p className="text-sm text-zinc-500 font-medium">Manage and monitor your OpenClaw execution muscle.</p>
+                    <p className="text-sm text-zinc-500 font-medium">Manage OpenClaw workers and their machine-local runtime integrations. Customer and project credentials belong in Resources.</p>
                 </div>
 
                 <CreateAgentDialog />
@@ -79,15 +94,14 @@ export default async function AgentsPage() {
     );
 }
 
-function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, currentLoad, skills, memory, integrations }: any) {
+function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, currentLoad, skills, memory, integrations }: AgentCardProps) {
     const statusColor = {
         online: "bg-emerald-500",
         degraded: "bg-amber-500",
         offline: "bg-zinc-600"
     }[status as string] || "bg-zinc-600";
 
-    const emailIntegrations = integrations.filter((i: any) => i.provider.startsWith('email'));
-    const toolIntegrations = integrations.filter((i: any) => !i.provider.startsWith('email'));
+    const visibleIntegrations = integrations.slice(0, 5);
 
     return (
         <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-6 relative overflow-hidden group hover:border-zinc-700 transition-colors">
@@ -118,14 +132,13 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
 
                 {integrations.length > 0 && (
                     <div className="flex -space-x-1.5 overflow-hidden">
-                        {emailIntegrations.slice(0, 3).map((i: any, idx: number) => (
-                            <div key={i.id} className="w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 ring-4 ring-zinc-950" title={i.configJson?.username || i.name}>
-                                <Mail className="w-3 h-3" />
-                            </div>
-                        ))}
-                        {toolIntegrations.slice(0, 2).map((i: any, idx: number) => (
-                            <div key={i.id} className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 ring-4 ring-zinc-950" title={i.name}>
-                                {i.provider === 'github' ? <Github className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
+                        {visibleIntegrations.map((integration) => (
+                            <div key={integration.id} className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 ring-4 ring-zinc-950" title={`${integration.name} (${integration.provider})`}>
+                                {integration.provider === "github"
+                                    ? <Github className="w-3 h-3" />
+                                    : integration.provider.startsWith("email")
+                                        ? <Mail className="w-3 h-3" />
+                                        : <Settings2 className="w-3 h-3" />}
                             </div>
                         ))}
                     </div>
@@ -149,15 +162,22 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
 
             {integrations.length > 0 && (
                 <div className="mb-6">
-                    <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Connected Channels</div>
+                    <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Runtime Integrations</div>
                     <div className="flex flex-wrap gap-2">
-                        {integrations.map((i: any) => (
+                        {integrations.map((i) => (
                             <div key={i.id} className="inline-flex items-center px-2 py-1 rounded-md bg-zinc-950 border border-zinc-800 text-[10px] text-zinc-400 font-medium">
-                                {i.provider.includes('email') ? <Mail className="w-2.5 h-2.5 mr-1.5 text-indigo-400" /> : <Zap className="w-2.5 h-2.5 mr-1.5 text-zinc-500" />}
-                                <span>{i.configJson?.username || i.name}</span>
+                                {i.provider === "github"
+                                    ? <Github className="w-2.5 h-2.5 mr-1.5 text-zinc-500" />
+                                    : i.provider.includes("email")
+                                        ? <Mail className="w-2.5 h-2.5 mr-1.5 text-indigo-400" />
+                                        : <Zap className="w-2.5 h-2.5 mr-1.5 text-zinc-500" />}
+                                <span>{i.name}</span>
                             </div>
                         ))}
                     </div>
+                    <p className="mt-2 text-[11px] text-zinc-600">
+                        Keep customer mailboxes, identities, and templates in Resources unless they truly belong to this worker only.
+                    </p>
                 </div>
             )}
 
