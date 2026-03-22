@@ -5,6 +5,13 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.14] - 2026-03-22
+
+### Changed
+- Aligned the skill and installers with the next-wave scoped resource and artifact hygiene model.
+- Documented bridge-local state journaling, bounded reconnect backoff, and dedupe requirements so reconnects do not replay the same writes.
+- Updated the public install path to surface the companion state journal alongside the generated launchers.
+
 ## [1.14.12] - 2026-03-21
 
 ### Changed

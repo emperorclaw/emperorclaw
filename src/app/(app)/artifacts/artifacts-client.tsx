@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { FileBox, FileJson, Clock, Target, CalendarDays, ExternalLink, Activity, ScanLine, X, Folder, ChevronRight, File, ArrowLeft } from "lucide-react";
+import { FileBox, FileJson, Target, CalendarDays, ExternalLink, Activity, ScanLine, Folder, ChevronRight, File, ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -10,22 +10,45 @@ import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 type PathNode = {
-    type: 'customer' | 'project' | 'kind';
+    type: 'customer' | 'project' | 'artifactClass';
     id: string;
     name: string;
 };
 
+type ArtifactRow = {
+    id: string;
+    title: string | null;
+    kind: string;
+    artifactClass: string;
+    importance: string;
+    contentType: string;
+    contentText: string | null;
+    storageUrl: string | null;
+    originalFilename: string | null;
+    sizeBytes: number;
+    isCanonical: boolean;
+    createdAt: string | Date;
+    projectId: string | null;
+    projectGoal: string | null;
+    customerId: string | null;
+    customerName: string | null;
+    taskType: string | null;
+};
+
+type FolderItem = {
+    type: PathNode["type"];
+    id: string;
+    name: string;
+    count: number;
+};
+
 export default function ArtifactsClient({
-    initialArtifacts,
-    projects,
-    customers
+    initialArtifacts
 }: {
-    initialArtifacts: any[],
-    projects: any[],
-    customers: any[]
+    initialArtifacts: ArtifactRow[]
 }) {
     const [artifacts, setArtifacts] = useState(initialArtifacts);
-    const [selectedArtifact, setSelectedArtifact] = useState<any | null>(null);
+    const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRow | null>(null);
     const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
     const [currentPath, setCurrentPath] = useState<PathNode[]>([]);
 
@@ -82,7 +105,7 @@ export default function ArtifactsClient({
 
     // Derived view data
     const viewData = useMemo(() => {
-        let items: any[] = [];
+        let items: Array<FolderItem | ArtifactRow> = [];
         let viewType: 'folders' | 'files' = 'folders';
 
         if (currentPath.length === 0) {
@@ -115,17 +138,17 @@ export default function ArtifactsClient({
             viewType = 'folders';
 
         } else if (currentPath.length === 2) {
-            // Project Level: Group by Kind
+            // Project Level: Group by Artifact Class
             const customerId = currentPath[0].id;
             const projectId = currentPath[1].id;
             const kindMap = new Map();
             artifacts
                 .filter(a => (a.customerId || 'unassigned') === customerId && (a.projectId || 'unassigned') === projectId)
                 .forEach(a => {
-                    const kId = a.kind || 'data';
-                    const kName = kId.charAt(0).toUpperCase() + kId.slice(1);
+                    const kId = a.artifactClass || 'working_file';
+                    const kName = kId.replace(/_/g, ' ').replace(/\b\w/g, (char: string) => char.toUpperCase());
                     if (!kindMap.has(kId)) {
-                        kindMap.set(kId, { id: kId, name: kName, count: 0, type: 'kind' });
+                        kindMap.set(kId, { id: kId, name: kName, count: 0, type: 'artifactClass' });
                     }
                     kindMap.get(kId).count++;
                 });
@@ -133,14 +156,14 @@ export default function ArtifactsClient({
             viewType = 'folders';
 
         } else if (currentPath.length >= 3) {
-            // Kind Level: Show Files
+            // Artifact Class Level: Show Files
             const customerId = currentPath[0].id;
             const projectId = currentPath[1].id;
             const kindId = currentPath[2].id;
             items = artifacts.filter(a =>
                 (a.customerId || 'unassigned') === customerId &&
                 (a.projectId || 'unassigned') === projectId &&
-                (a.kind || 'data') === kindId
+                (a.artifactClass || 'working_file') === kindId
             ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             viewType = 'files';
         }
@@ -218,7 +241,7 @@ export default function ArtifactsClient({
                             <ScrollArea className="h-[600px] w-full">
                                 {viewData.viewType === 'folders' ? (
                                     <div className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                        {viewData.items.map((folder: any) => (
+                                        {(viewData.items as FolderItem[]).map((folder) => (
                                             <div
                                                 key={folder.id}
                                                 onClick={() => navigateTo({ type: folder.type, id: folder.id, name: folder.name })}
@@ -239,7 +262,7 @@ export default function ArtifactsClient({
                                         <table className="w-full text-sm text-left">
                                             <thead className="text-xs text-zinc-400 uppercase bg-zinc-900/80 border-b border-zinc-800/50 sticky top-0 z-10 backdrop-blur-md">
                                                 <tr>
-                                                    <th className="px-6 py-4 font-medium tracking-wider w-[20%]">Artifact Kind</th>
+                                                    <th className="px-6 py-4 font-medium tracking-wider w-[20%]">Artifact</th>
                                                     <th className="px-6 py-4 font-medium tracking-wider w-[35%]">Context Task</th>
                                                     <th className="px-6 py-4 font-medium tracking-wider w-[10%]">Size</th>
                                                     <th className="px-6 py-4 font-medium tracking-wider w-[20%]">Date Created</th>
@@ -247,13 +270,25 @@ export default function ArtifactsClient({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-zinc-800/50 text-zinc-300">
-                                                {viewData.items.map((artifact: any) => (
+                                                {(viewData.items as ArtifactRow[]).map((artifact) => (
                                                     <tr key={artifact.id} className="hover:bg-zinc-800/30 transition-colors group">
                                                         <td className="px-6 py-4 font-medium flex items-center gap-3">
                                                             <File className="w-5 h-5 text-indigo-500/70" />
                                                             <div className="flex flex-col">
-                                                                <span className="text-zinc-200 capitalize">{artifact.kind || "Data"}</span>
-                                                                <span className="text-xs text-zinc-500 font-mono mt-0.5 max-w-[150px] truncate" title={artifact.contentType}>{artifact.contentType || "text/plain"}</span>
+                                                                <span className="text-zinc-200" title={artifact.title || artifact.originalFilename || artifact.kind}>
+                                                                    {artifact.title || artifact.originalFilename || artifact.kind || "Artifact"}
+                                                                </span>
+                                                                <div className="flex items-center gap-2 mt-0.5">
+                                                                    <span className="text-xs text-zinc-500 font-mono max-w-[150px] truncate" title={artifact.contentType}>{artifact.contentType || "text/plain"}</span>
+                                                                    <Badge variant="outline" className="border-zinc-700 text-zinc-300 capitalize">
+                                                                        {(artifact.artifactClass || "working_file").replace(/_/g, " ")}
+                                                                    </Badge>
+                                                                    {artifact.isCanonical ? (
+                                                                        <Badge className="bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                                                                            canonical
+                                                                        </Badge>
+                                                                    ) : null}
+                                                                </div>
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-4">
@@ -317,7 +352,7 @@ export default function ArtifactsClient({
                         <div className="flex flex-col">
                             <DialogTitle className="text-lg font-semibold tracking-tight">Artifact Payload</DialogTitle>
                             <DialogDescription className="text-zinc-400 mt-1">
-                                {selectedArtifact?.kind || "Data"} — {selectedArtifact?.contentType || "text/plain"}
+                                {selectedArtifact?.title || selectedArtifact?.kind || "Data"} | {selectedArtifact?.contentType || "text/plain"}
                             </DialogDescription>
                         </div>
                         <div className="flex items-center gap-2 mr-6">

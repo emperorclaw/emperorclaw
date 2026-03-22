@@ -134,6 +134,21 @@ export const projectRuns = pgTable("project_runs", {
     deletedAt: timestamp("deleted_at"),
 });
 
+export const projectAgentProfiles = pgTable("project_agent_profiles", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    roleType: text("role_type").default('worker').notNull(),
+    displayName: text("display_name"),
+    signature: text("signature"),
+    memorySeed: text("memory_seed"),
+    resourcePolicyJson: jsonb("resource_policy_json").default('{}').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
 export const agents = pgTable("agents", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -317,15 +332,26 @@ export const artifacts = pgTable("artifacts", {
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
     taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    title: text("title"),
     kind: text("kind").notNull(),
+    artifactClass: text("artifact_class").default("working_file").notNull(),
+    importance: text("importance").default("operational").notNull(),
     contentType: text("content_type").notNull(),
     contentText: text("content_text"),
     storageUrl: text("storage_url"),
+    storageProvider: text("storage_provider"),
+    storageKey: text("storage_key"),
+    originalFilename: text("original_filename"),
+    sourceKind: text("source_kind"),
+    sourceRef: text("source_ref"),
     sha256: text("sha256").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
     createdByType: text("created_by_type").notNull(),
     createdById: uuid("created_by_id"),
     visibility: text("visibility").default('private').notNull(),
+    isCanonical: boolean("is_canonical").default(false).notNull(),
+    promotedAt: timestamp("promoted_at"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
     retentionPolicy: text("retention_policy"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
@@ -342,6 +368,41 @@ export const proofs = pgTable("proofs", {
     validatedAt: timestamp("validated_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
+});
+
+export const scopedResources = pgTable("scoped_resources", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    scopeType: text("scope_type").notNull(),
+    scopeId: uuid("scope_id"),
+    provider: text("provider").notNull(),
+    resourceType: text("resource_type").notNull(),
+    name: text("name").notNull(),
+    displayName: text("display_name"),
+    configJson: jsonb("config_json").default('{}').notNull(),
+    secretJson: jsonb("secret_json").default('{}').notNull(),
+    status: text("status").default('active').notNull(),
+    ownership: text("ownership").default('managed').notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+    lastFailureAt: timestamp("last_failure_at"),
+    lastFailureReason: text("last_failure_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
+export const resourceAccessLogs = pgTable("resource_access_logs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    resourceId: uuid("resource_id").notNull().references(() => scopedResources.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: 'set null' }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
+    action: text("action").default('lease').notNull(),
+    status: text("status").default('success').notNull(),
+    reason: text("reason"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const incidents = pgTable("incidents", {

@@ -16,6 +16,7 @@ export default function SetupPage() {
                         <p className="max-w-3xl text-sm leading-6 text-zinc-400">
                             Install the published skill, run the local installer, validate with doctor, and start the generated bridge launcher.
                             This is the supported path for connecting OpenClaw to Emperor without taking over local OpenClaw ownership.
+                            The companion keeps a local state journal so reconnects can resume without replaying the same work.
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -88,7 +89,7 @@ export default function SetupPage() {
                                 </div>
                             </div>
                             <div className="rounded-md border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
-                                The installer does not take over full OpenClaw config ownership. It writes a conservative overlay and local launchers only.
+                                The installer does not take over full OpenClaw config ownership. It writes a conservative overlay, local launchers, and a bridge state journal only.
                             </div>
                         </CardContent>
                     </Card>
@@ -109,8 +110,12 @@ export default function SetupPage() {
   sync.sh / sync.cmd
   repair.sh / repair.cmd
   session-inspect.sh / session-inspect.cmd
+  state/bridge-state.json
   openclaw.control-plane.json`}</pre>
                             </div>
+                            <p className="mt-3 text-sm text-zinc-500">
+                                `bridge-state.json` keeps reconnect cursors, dedupe state, and backoff metadata so temporary disconnects do not replay the same work.
+                            </p>
                         </CardContent>
                     </Card>
                 </div>

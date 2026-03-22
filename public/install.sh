@@ -21,6 +21,8 @@ DEFAULT_API_URL="${EMPEROR_CLAW_API_URL:-http://localhost:3000}"
 OPENCLAW_HOME="${HOME}/.openclaw"
 COMPANION_DIR="${OPENCLAW_HOME}/emperor-control-plane"
 RUNTIME_DIR="${COMPANION_DIR}/runtime"
+STATE_DIR="${COMPANION_DIR}/state"
+BRIDGE_STATE_PATH="${STATE_DIR}/bridge-state.json"
 
 prompt_default() {
   local prompt="$1"
@@ -45,6 +47,22 @@ echo "Emperor Control Plane installer"
 echo "This will run the local companion bootstrap and optionally doctor."
 echo
 
+download_with_retry() {
+  local url="$1"
+  local target="$2"
+  local attempt=1
+  local max_attempts=3
+  while [[ $attempt -le $max_attempts ]]; do
+    if curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$url" -o "$target"; then
+      return 0
+    fi
+    echo "[warn] Download failed for $url (attempt $attempt/$max_attempts)." >&2
+    sleep $attempt
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
 API_URL="${EMPEROR_CLAW_API_URL:-}"
 if [[ -z "$API_URL" ]]; then
   API_URL="$(prompt_default "Emperor API URL" "$DEFAULT_API_URL")"
@@ -62,11 +80,15 @@ fi
 
 export EMPEROR_CLAW_API_URL="$API_URL"
 export EMPEROR_CLAW_API_TOKEN="$TOKEN"
+export EMPEROR_CLAW_COMPANION_DIR="$COMPANION_DIR"
+export EMPEROR_CLAW_STATE_DIR="$STATE_DIR"
+export EMPEROR_CLAW_BRIDGE_STATE_PATH="$BRIDGE_STATE_PATH"
 
 mkdir -p "$RUNTIME_DIR"
+mkdir -p "$STATE_DIR"
 echo "[setup] Downloading companion runtime files..."
-curl -fsSL "${INSTALL_BASE_URL}/downloads/control-plane.js" -o "${RUNTIME_DIR}/control-plane.js"
-curl -fsSL "${INSTALL_BASE_URL}/downloads/bridge.js" -o "${RUNTIME_DIR}/bridge.js"
+download_with_retry "${INSTALL_BASE_URL}/downloads/control-plane.js" "${RUNTIME_DIR}/control-plane.js"
+download_with_retry "${INSTALL_BASE_URL}/downloads/bridge.js" "${RUNTIME_DIR}/bridge.js"
 
 echo
 echo "[1/2] Running bootstrap..."
@@ -85,5 +107,6 @@ fi
 echo
 echo "Install complete."
 echo "Companion directory: $COMPANION_DIR"
+echo "State journal: $BRIDGE_STATE_PATH"
 echo "Bridge launcher: $COMPANION_DIR/run-bridge.sh"
 echo "Diagnostics: $COMPANION_DIR/doctor.sh"

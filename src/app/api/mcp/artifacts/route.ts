@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { artifacts, projects, tasks } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit, resolveAgentId } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { createHash } from "crypto";
+import { prepareArtifactRecord } from "@/lib/artifacts";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -16,6 +16,9 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
     const projectId = searchParams.get("projectId");
     const taskId = searchParams.get("taskId");
+    const artifactClass = searchParams.get("artifactClass");
+    const importance = searchParams.get("importance");
+    const isCanonical = searchParams.get("isCanonical");
 
     try {
         const conditions = [
@@ -28,6 +31,15 @@ export async function GET(req: NextRequest) {
         if (taskId) {
             conditions.push(eq(artifacts.taskId, taskId));
         }
+        if (artifactClass) {
+            conditions.push(eq(artifacts.artifactClass, artifactClass));
+        }
+        if (importance) {
+            conditions.push(eq(artifacts.importance, importance));
+        }
+        if (isCanonical === "true" || isCanonical === "false") {
+            conditions.push(eq(artifacts.isCanonical, isCanonical === "true"));
+        }
 
         const rows = await db.select()
             .from(artifacts)
@@ -36,9 +48,10 @@ export async function GET(req: NextRequest) {
             .limit(limit);
 
         return NextResponse.json({ artifacts: rows });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("MCP Artifacts GET Error:", e);
-        return NextResponse.json({ error: "Internal server error", details: e.message }, { status: 500 });
+        const details = e instanceof Error ? e.message : "Unknown error";
+        return NextResponse.json({ error: "Internal server error", details }, { status: 500 });
     }
 }
 
@@ -68,11 +81,21 @@ export async function POST(req: NextRequest) {
             contentType,
             contentText,
             storageUrl,
+            storageProvider,
+            storageKey,
+            originalFilename,
+            sourceKind,
+            sourceRef,
             sha256,
             sizeBytes,
             visibility,
             retentionPolicy,
             agentId,
+            title,
+            artifactClass,
+            importance,
+            isCanonical,
+            metadataJson,
         } = body;
 
         let internalAgentId = null;
@@ -82,9 +105,6 @@ export async function POST(req: NextRequest) {
 
         if (!projectId || !taskId || !kind || !contentType) {
             return NextResponse.json({ error: "Missing required fields (projectId, taskId, kind, contentType)" }, { status: 400 });
-        }
-        if (!contentText && !storageUrl) {
-            return NextResponse.json({ error: "Either contentText or storageUrl is required" }, { status: 400 });
         }
 
         const [project] = await db.select({ id: projects.id }).from(projects)
@@ -104,25 +124,30 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Task does not belong to the specified project." }, { status: 400 });
         }
 
-        const computedSha256 = sha256 || createHash("sha256")
-            .update(contentText ?? storageUrl ?? "")
-            .digest("hex");
-
-        const computedSizeBytes =
-            typeof sizeBytes === "number"
-                ? sizeBytes
-                : (contentText ? Buffer.byteLength(contentText, "utf8") : 0);
+        const preparedArtifact = prepareArtifactRecord({
+            kind,
+            artifactClass,
+            importance,
+            title,
+            contentType,
+            contentText,
+            storageUrl,
+            storageProvider,
+            storageKey,
+            originalFilename,
+            sourceKind,
+            sourceRef,
+            sha256,
+            sizeBytes,
+            isCanonical,
+            metadataJson,
+        });
 
         const [artifact] = await db.insert(artifacts).values({
             companyId,
             projectId,
             taskId,
-            kind,
-            contentType,
-            contentText: contentText || null,
-            storageUrl: storageUrl || null,
-            sha256: computedSha256,
-            sizeBytes: computedSizeBytes,
+            ...preparedArtifact,
             createdByType: "agent",
             createdById: internalAgentId || null,
             visibility: visibility || "private",
@@ -131,6 +156,9 @@ export async function POST(req: NextRequest) {
 
         await logAudit(companyId, "agent", internalAgentId || null, "create_artifact", "artifact", artifact.id, {
             kind,
+            artifactClass: artifact.artifactClass,
+            importance: artifact.importance,
+            title: artifact.title,
             contentType,
             taskId,
             projectId,
@@ -140,8 +168,9 @@ export async function POST(req: NextRequest) {
         await saveIdempotencyResponse(companyId, "/api/mcp/artifacts", requestHash, responseObj);
 
         return NextResponse.json(responseObj, { status: 201 });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("MCP Artifacts Error:", e);
-        return NextResponse.json({ error: "Internal server error", details: e.message }, { status: 500 });
+        const details = e instanceof Error ? e.message : "Unknown error";
+        return NextResponse.json({ error: "Internal server error", details }, { status: 500 });
     }
 }

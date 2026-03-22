@@ -9,13 +9,13 @@ import ArtifactsClient from "./artifacts-client";
 export const dynamic = "force-dynamic";
 
 export default async function ArtifactsPage() {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user || !(session.user as any).id) {
+    const sessionUser = (await getServerSession(authOptions))?.user as { id?: string } | undefined;
+    if (!sessionUser?.id) {
         redirect("/api/auth/signin");
     }
 
     const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, (session.user as any).id))
+        .where(eq(companyMembers.userId, sessionUser.id))
         .limit(1);
 
     if (!membership) {
@@ -26,11 +26,16 @@ export default async function ArtifactsPage() {
 
     const initialArtifacts = await db.select({
         id: artifacts.id,
+        title: artifacts.title,
         kind: artifacts.kind,
+        artifactClass: artifacts.artifactClass,
+        importance: artifacts.importance,
         contentType: artifacts.contentType,
         contentText: artifacts.contentText,
         storageUrl: artifacts.storageUrl,
+        originalFilename: artifacts.originalFilename,
         sizeBytes: artifacts.sizeBytes,
+        isCanonical: artifacts.isCanonical,
         createdAt: artifacts.createdAt,
         projectId: projects.id,
         projectGoal: projects.goal,
@@ -44,11 +49,5 @@ export default async function ArtifactsPage() {
         .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)))
         .orderBy(desc(artifacts.createdAt));
 
-    const allProjects = await db.select({ id: projects.id, goal: projects.goal, customerId: projects.customerId })
-        .from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
-
-    const allCustomers = await db.select({ id: customers.id, name: customers.name })
-        .from(customers).where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
-
-    return <ArtifactsClient initialArtifacts={initialArtifacts} projects={allProjects} customers={allCustomers} />;
+    return <ArtifactsClient initialArtifacts={initialArtifacts} />;
 }
