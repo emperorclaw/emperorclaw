@@ -38,6 +38,9 @@ test("workflow, approval, and lifecycle services expose the expected API shape",
   const openclawTasks = read("src/lib/openclaw/tasks.ts");
   const openclawRuntime = read("src/lib/openclaw/runtime.ts");
   const openclawMessaging = read("src/lib/openclaw/messaging.ts");
+  const resources = read("src/lib/resources.ts");
+  const artifacts = read("src/lib/artifacts.ts");
+  const projectAgentProfiles = read("src/lib/project-agent-profiles.ts");
 
   [
     "validateTaskStateTransition",
@@ -87,5 +90,34 @@ test("workflow, approval, and lifecycle services expose the expected API shape",
 
   ["sendThreadMessageFromMcp"].forEach((name) => {
     assert.ok(hasExport(openclawMessaging, name), `openclaw/messaging.ts should export ${name}`);
+  });
+
+  [
+    "listScopedResources",
+    "getScopedResource",
+    "createScopedResource",
+    "updateScopedResource",
+    "archiveScopedResource",
+    "leaseScopedResource",
+  ].forEach((name) => {
+    assert.ok(hasExport(resources, name), `resources.ts should export ${name}`);
+  });
+
+  [
+    "normalizeArtifactClass",
+    "normalizeArtifactImportance",
+    "prepareArtifactRecord",
+  ].forEach((name) => {
+    assert.ok(hasExport(artifacts, name), `artifacts.ts should export ${name}`);
+  });
+
+  [
+    "listProjectAgentProfiles",
+    "getProjectAgentProfile",
+    "createProjectAgentProfile",
+    "updateProjectAgentProfile",
+    "archiveProjectAgentProfile",
+  ].forEach((name) => {
+    assert.ok(hasExport(projectAgentProfiles, name), `project-agent-profiles.ts should export ${name}`);
   });
 });

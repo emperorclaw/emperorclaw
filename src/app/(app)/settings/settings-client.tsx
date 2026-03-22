@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Save, ScrollText, Cable } from "lucide-react";
+import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Save, ScrollText, Cable, Trash2 } from "lucide-react";
 
 type SettingsToken = {
     id: string;
@@ -21,6 +21,7 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
     const [generating, setGenerating] = useState(false);
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
     const [copied, setCopied] = useState(false);
+    const [revokingTokenId, setRevokingTokenId] = useState<string | null>(null);
 
     const handleGenerate = async () => {
         if (!newTokenName.trim() || generating) return;
@@ -72,6 +73,30 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
             console.error(error);
         } finally {
             setIsSavingNotes(false);
+        }
+    };
+
+    const handleRevokeToken = async (tokenId: string) => {
+        if (revokingTokenId) return;
+        setRevokingTokenId(tokenId);
+
+        try {
+            const res = await fetch(`/api/settings/tokens/${tokenId}`, {
+                method: "DELETE",
+            });
+
+            if (res.ok) {
+                setTokens(tokens.filter((token) => token.id !== tokenId));
+                if (activeSecret?.id === tokenId) {
+                    setActiveSecret(null);
+                }
+            } else {
+                console.error("Failed to revoke token");
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setRevokingTokenId(null);
         }
     };
 
@@ -211,11 +236,21 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
                                         ID: {token.id} • Created: {new Date(token.createdAt).toLocaleDateString()}
                                     </p>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-xs font-medium text-zinc-400">Last Used</p>
-                                    <p className="text-sm text-zinc-500">
-                                        {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}
-                                    </p>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right">
+                                        <p className="text-xs font-medium text-zinc-400">Last Used</p>
+                                        <p className="text-sm text-zinc-500">
+                                            {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => handleRevokeToken(token.id)}
+                                        disabled={revokingTokenId === token.id}
+                                        className="inline-flex items-center rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        {revokingTokenId === token.id ? "Revoking..." : "Revoke"}
+                                    </button>
                                 </div>
                             </div>
                         ))

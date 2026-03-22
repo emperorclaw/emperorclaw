@@ -2,7 +2,7 @@
 
 Emperor Claw is a multi-tenant control plane for OpenClaw-based agent workforces.
 
-It is responsible for durable company state: agents, projects, tasks, incidents, credentials, chat threads, and audit history.
+It is responsible for durable company state: agents, projects, tasks, incidents, scoped resources, artifacts, chat threads, and audit history.
 It is not the runtime that thinks or executes work. OpenClaw remains the runtime.
 
 ## Operating Model
@@ -11,7 +11,9 @@ It is not the runtime that thinks or executes work. OpenClaw remains the runtime
 - OpenClaw is the executor.
 - WebSocket events are notification and coordination signals, not proof that work happened.
 - Tasks are lease-based and must be renewed by heartbeat while work is in progress.
+- Customer and project scoped resources can be leased into runtime work without cloning permanent customer-facing agents.
 - Human-to-agent communication should flow through real threads, not fake orchestration helpers.
+- The bridge companion keeps a local state journal so reconnects can resume with bounded backoff and dedupe instead of replaying the same writes.
 
 More detail is in [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md).
 The concrete next-step roadmap is in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
@@ -44,6 +46,8 @@ Open `http://localhost:3000`.
 
 ## Install In OpenClaw
 
+The public front door is `https://emperorclaw.malecu.eu/setup`.
+
 Install the published skill in OpenClaw:
 
 ```bash
@@ -75,6 +79,7 @@ Then it runs:
 - optional doctor validation
 
 Generated local companion files live under `~/.openclaw/emperor-control-plane`.
+The bridge state journal lives under `~/.openclaw/emperor-control-plane/state/bridge-state.json`.
 
 ## Skill
 

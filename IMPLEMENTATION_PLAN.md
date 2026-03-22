@@ -358,6 +358,10 @@ Newly completed since the original status block:
 
 - `sync`, `repair`, and `session-inspect` now exist in the local companion alongside `bootstrap` and `doctor`.
 - Core MCP runtime routes now delegate into `src/lib/openclaw/` instead of owning task claim, result, heartbeat, and message-send behavior inline.
+- Scoped resources now exist for `company`, `customer`, `project`, and `agent` contexts, with MCP routes for customer/project/global resource management and explicit lease logging.
+- Project agent profiles now exist as a first-class MCP surface so a shared worker can still assume project-specific customer identity, signature, memory seed, and resource policy.
+- Artifact storage now carries explicit classification and importance fields so source documents, proofs, templates, working files, and canonical deliverables stop collapsing into one generic bucket.
+- The public install flow and shipped skill now describe persisted bridge state, reconnect backoff, dedupe behavior, scoped resources, and artifact hygiene, and the published skill is at `1.14.13`.
 - Architecture tests now enforce those route boundaries.
 - MCP recurring-task definition CRUD and manual spawn routes now exist per project.
 - The recurrent lane is now backed by recurring-task definitions so spawned execution tasks can stay in the normal workflow lanes.
@@ -369,3 +373,383 @@ Still intentionally minimal:
 - Legacy `chat_messages` mirroring remains for compatibility and inbound webhook flow.
 - Recurring-task support includes definitions plus manual spawn, but not an automatic scheduler loop yet.
 - Lead/worker behavior is enforced more strongly in the backend than in every human-facing UI surface.
+
+## Next Architecture Wave
+
+This section captures the next set of changes discussed after the initial Mission Control alignment work.
+These are not optional polish items. They are the changes needed to make Emperor reliable for customer-facing operational use cases like invoice inboxes, customer-specific identities, mailbox access, durable thread history, and clean file handling.
+
+## New Product Assumptions
+
+1. Emperor must persist durable operational history.
+   - Human-to-agent threads
+   - Agent-to-agent threads
+   - Task notes and handoffs
+   - Task results
+   - Approvals
+   - Artifacts
+   - Agent memory checkpoints
+   - Session and lifecycle records
+
+2. OpenClaw remains transient runtime.
+   Emperor remains the durable control plane.
+
+3. Not every agent should be shared.
+   Customer-facing or project-facing identities often need dedicated context, credentials, and memory boundaries.
+
+4. Shared workers are still useful.
+   Generic capability agents can be reused across customers and projects as long as their resource access is scoped safely.
+
+5. Artifact storage must distinguish important business files from temporary runtime exhaust.
+
+6. Every control-plane contract change must update:
+   - the skill package
+   - the bridge examples
+   - the public installer path
+   - the public `/setup` page
+
+## Customer / Project Scoped Identity and Resources
+
+The current agent-centric integration model is not enough for customer-facing operations.
+For examples like invoice inbox processing, customer-specific email access, and company-specific sender identity, resources should not live only on generic agents.
+
+### Target model
+
+- `company`
+- `customer`
+- `project`
+- `project_lead_agent`
+- `shared_worker_pool`
+- scoped resources
+
+### Resource scopes to support
+
+- `company`
+- `customer`
+- `project`
+- `agent`
+
+### Resource examples
+
+- mailbox credentials
+- sender name / signature
+- billing identity
+- invoice templates
+- external account credentials
+- policy presets
+- compliance instructions
+
+### Recommended operating pattern
+
+- One Emperor/OpenClaw runtime installation per company
+- One or more dedicated lead identities per customer-facing project or stable customer function
+- Shared workers for generic capability work
+- Customer/project-scoped resources leased into the active lead/worker context when needed
+
+### Schema / API additions
+
+Add new tables or equivalent models for:
+
+- `resource_scopes`
+- `customer_resources`
+- `project_resources`
+- `resource_leases`
+- `project_agent_profiles`
+
+Where:
+
+- `project_agent_profiles` defines the identity/persona/role for the lead in that workflow
+- `customer_resources` and `project_resources` hold scoped credentials, templates, and business settings
+- `resource_leases` records every runtime access to those scoped resources
+
+### UI additions
+
+- customer-level resource management
+- project-level resource management
+- lead identity/profile editor
+- resource access audit history
+
+### Success criteria
+
+- a customer finance lead can use that customer's invoice mailbox and signature without cloning every worker
+- a worker can execute under customer/project context without permanently owning those credentials
+- customer identity, mailbox, and memory boundaries remain isolated
+
+## Durable Persistence Rules
+
+The system must be explicit about what gets persisted where.
+
+### Canonical persistence rules
+
+- `thread_messages`
+  - what was said
+  - human-to-agent, agent-to-agent, project/task/incident threads
+
+- `task_events`
+  - what happened
+  - state transitions
+  - handoffs
+  - notes
+  - retries
+  - approval triggers
+
+- `agent_memory_entries` / `agent_memory_snapshots`
+  - what should persist as reusable memory or checkpoints
+
+- `artifacts`
+  - actual business files and documents
+
+- `action_runs` / `action_steps`
+  - runtime process telemetry
+
+### Rules to enforce
+
+- chat history must not be stored as artifacts
+- task logs must not be stored as artifacts
+- working memory must not be reconstructed only from chat
+- reconnect logic must resume from durable Emperor state, not from hopeful local memory
+
+### Success criteria
+
+- all important conversations and operational records survive runtime restarts
+- a dropped OpenClaw session does not erase customer/project context
+
+## Reconnect, Retry, and Idempotency Plan
+
+The bridge and client path must become more defensive against dropped connections and duplicate work.
+
+### Runtime reconnect policy
+
+- bounded backoff
+  - 2s
+  - 5s
+  - 10s
+  - 20s
+  - cap at 60s
+- do not spin in tight reconnect loops
+- reconnect must always trigger state sync before resuming active work
+
+### Reconnect flow
+
+1. detect websocket drop
+2. back off
+3. reconnect runtime channel
+4. revalidate runtime/session state
+5. run `sync`
+6. compare local checkpoint against Emperor state
+7. resume or abandon stale work explicitly
+
+### Idempotent write paths to harden
+
+- task claim
+- task result
+- approval request
+- thread send
+- task note
+- handoff note
+- checkpoint writes
+- artifact create
+
+### Safety rules
+
+- websocket is signal, not truth
+- Emperor state is truth
+- one active processing loop per claimed task
+- no automatic duplicate claim on reconnect if the task is already owned by the same session lineage
+- heartbeats renew leases but do not create duplicate execution loops
+
+### Client / bridge updates required
+
+- persist local runtime state file under the companion directory
+- record active tasks, last checkpoint ids, last seen thread markers, and reconnect generation
+- add dedupe markers for thread sends and task notes when reconnecting
+
+### Success criteria
+
+- dropped connections recover without task duplication
+- runtime loops do not spiral into repeated messages/results/checkpoints
+- a bridge reconnect does not create fake extra work or flood the control plane
+
+## Artifact and File Management Cleanup
+
+The current artifact model is useful but too loose for serious multi-customer use.
+
+### Current problem
+
+`artifacts` mixes:
+
+- inline text payloads
+- external file pointers
+- working outputs
+- final deliverables
+- proof/evidence
+- templates
+
+This will create pollution over time.
+
+### Target principles
+
+- logs are not artifacts
+- chat is not artifacts
+- runtime telemetry is not artifacts
+- proofs reference artifacts but are not the same thing
+- important business files must be easy to distinguish from temporary exhaust
+
+### Proposed refactor
+
+Keep or evolve toward these layers:
+
+1. `blob` / `file_object`
+   - immutable stored payload metadata
+   - hash
+   - size
+   - mime
+   - storage key/provider
+   - original filename
+
+2. `artifact`
+   - business meaning
+   - title
+   - role/classification
+   - scope
+   - visibility
+   - retention
+   - source
+   - promoted/canonical flag
+
+3. `artifact_version`
+   - revision chain for important docs
+
+4. `artifact_collection`
+   - bundles/manifests such as monthly invoice packs
+
+### Required classifications
+
+- `source_document`
+- `working_file`
+- `proof`
+- `deliverable`
+- `template`
+- `export_bundle`
+
+And an importance dimension:
+
+- `temporary`
+- `operational`
+- `record`
+- `canonical`
+
+### Required behavior changes
+
+- stop hashing `storageUrl` as if it were file content
+- store real content hashes from bytes
+- prefer object storage for large files
+- keep only small text/json/markdown inline in DB
+- expose a promoted/canonical view in the UI
+- hide temporary exhaust by default
+
+### Success criteria
+
+- invoice PDFs, merged bundles, ledgers, templates, and proofs remain organized
+- temporary OCR/intermediate outputs do not pollute the main document surface
+- operators can tell what is final vs transient without opening every record
+
+## Concrete Use-Case Pattern: Invoice Inbox
+
+This is the recommended structure for the invoice scenario discussed.
+
+### Modeling
+
+- Customer: real business customer
+- Project: `Accounts Payable` or equivalent workflow surface
+- Lead agent: dedicated finance/project lead identity
+- Shared workers:
+  - invoice extraction
+  - reconciliation
+  - document generation
+  - classification
+
+### Scoped resources
+
+- customer/project mailbox
+- billing information
+- invoice templates
+- sender identity
+
+### Recurring workflow
+
+- collect invoice emails
+- ingest attachments
+- classify and extract
+- reconcile / group
+- create merged package
+- create ledger document
+- optionally request approval
+
+### File outputs
+
+- source invoices: `source_document`
+- extracted JSON/OCR: `working_file`
+- validation evidence: `proof`
+- merged invoice pack: `deliverable`
+- ledger/export: `canonical`
+
+## Public Install and Skill Update Policy
+
+Every architecture change above has external integration implications.
+The plan must explicitly keep the public install and skill contract in sync.
+
+### Files that must be updated whenever runtime/control-plane semantics change
+
+- `clawhub/emperor-claw-os/SKILL.md`
+- `clawhub/emperor-claw-os/examples/bridge.js`
+- `clawhub/emperor-claw-os/examples/bridge.py`
+- `clawhub/emperor-claw-os/references/*`
+- `scripts/control-plane.js`
+- `public/install.sh`
+- `public/install.ps1`
+- `src/app/setup/page.tsx`
+
+### Public install requirements
+
+The default public path should remain:
+
+1. install skill from ClawHub
+2. visit `/setup`
+3. download `install.sh` or `install.ps1`
+4. run installer
+5. run doctor
+6. start generated bridge launcher
+
+### Contract update rule
+
+If resource scope, artifact semantics, reconnect behavior, or session behavior changes:
+
+- bump the skill version
+- publish to ClawHub
+- refresh mirrored public files
+- verify `/setup` and public installer downloads still match the shipped bridge behavior
+
+## Execution Order For This Next Wave
+
+This is the recommended order.
+
+1. Add scoped resource models and lease logs
+2. Add project/customer lead identity profiles
+3. Harden bridge reconnect + dedupe + local state reconciliation
+4. Formalize canonical persistence rules in code and docs
+5. Refactor artifact/file model for classification and canonical promotion
+6. Update public setup/install flow and companion state handling
+7. Update skill package, examples, and references
+8. Publish skill
+
+## Definition Of Done For This Wave
+
+This wave is done when:
+
+- customer/project-specific identities and mailbox access are modeled cleanly
+- durable thread/task/memory state survives reconnects and restarts
+- reconnects do not duplicate work
+- artifacts distinguish final business documents from temporary exhaust
+- public install/setup flow still works and matches the actual bridge contract
+- the skill package documents the real behavior and has been republished

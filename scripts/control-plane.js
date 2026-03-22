@@ -62,6 +62,8 @@ Options:
   --config <path>        Companion config path. Default: ${DEFAULT_CONFIG_PATH}
   --openclaw-home <dir>  OpenClaw home directory. Default: ${DEFAULT_OPENCLAW_HOME}
   --workspace <dir>      OpenClaw workspace path. Default: <openclaw-home>/workspace
+  --bridge-state-path <path>
+                         Explicit bridge state file path. Default: <openclaw-home>/emperor-control-plane/state/bridge-state.json
   --agent-name <name>    Diagnostic/bridge agent name. Default: emperor-doctor
   --agent-id <id>        Optional agent UUID for session-inspect and doctor flows.
   --runtime-id <id>      Runtime id. Default: emperor-doctor-<hostname>
@@ -170,8 +172,12 @@ function bootstrapPayload(args) {
     args["openclaw-home"] || DEFAULT_OPENCLAW_HOME,
   );
   const companionDir = path.join(openclawHome, "emperor-control-plane");
+  const stateDir = path.join(companionDir, "state");
   const configPath = path.resolve(
     args.config || path.join(companionDir, "bridge.config.json"),
+  );
+  const bridgeStatePath = path.resolve(
+    args["bridge-state-path"] || path.join(stateDir, "bridge-state.json"),
   );
   const workspace = path.resolve(
     args.workspace || path.join(openclawHome, "workspace"),
@@ -194,6 +200,8 @@ function bootstrapPayload(args) {
     apiBaseUrl,
     wsUrl,
     bridgeEntry,
+    stateDir,
+    bridgeStatePath,
     doctorAgentName,
     runtimeId,
   };
@@ -207,6 +215,12 @@ export EMPEROR_CLAW_API_URL="\${EMPEROR_CLAW_API_URL:-${config.apiBaseUrl}}"
 export EMPEROR_CLAW_API_TOKEN="\${EMPEROR_CLAW_API_TOKEN:-}"
 export EMPEROR_AGENT_NAME="\${EMPEROR_AGENT_NAME:-${config.doctorAgentName}}"
 export EMPEROR_RUNTIME_ID="\${EMPEROR_RUNTIME_ID:-${config.runtimeId}}"
+export EMPEROR_CLAW_COMPANION_DIR="${config.companionDir}"
+export EMPEROR_CLAW_STATE_DIR="${config.stateDir}"
+export EMPEROR_CLAW_BRIDGE_STATE_PATH="${config.bridgeStatePath}"
+export EMPEROR_CLAW_CONFIG_PATH="${config.configPath}"
+export EMPEROR_CLAW_RECONNECT_BASE_MS="\${EMPEROR_CLAW_RECONNECT_BASE_MS:-2000}"
+export EMPEROR_CLAW_RECONNECT_MAX_MS="\${EMPEROR_CLAW_RECONNECT_MAX_MS:-60000}"
 
 if [[ -z "\${EMPEROR_CLAW_API_TOKEN}" ]]; then
   echo "EMPEROR_CLAW_API_TOKEN is required." >&2
@@ -223,6 +237,12 @@ set "EMPEROR_CLAW_API_URL=${config.apiBaseUrl}"
 if defined EMPEROR_CLAW_API_URL_OVERRIDE set "EMPEROR_CLAW_API_URL=%EMPEROR_CLAW_API_URL_OVERRIDE%"
 if not defined EMPEROR_AGENT_NAME set "EMPEROR_AGENT_NAME=${config.doctorAgentName}"
 if not defined EMPEROR_RUNTIME_ID set "EMPEROR_RUNTIME_ID=${config.runtimeId}"
+set "EMPEROR_CLAW_COMPANION_DIR=${config.companionDir}"
+set "EMPEROR_CLAW_STATE_DIR=${config.stateDir}"
+set "EMPEROR_CLAW_BRIDGE_STATE_PATH=${config.bridgeStatePath}"
+set "EMPEROR_CLAW_CONFIG_PATH=${config.configPath}"
+if not defined EMPEROR_CLAW_RECONNECT_BASE_MS set "EMPEROR_CLAW_RECONNECT_BASE_MS=2000"
+if not defined EMPEROR_CLAW_RECONNECT_MAX_MS set "EMPEROR_CLAW_RECONNECT_MAX_MS=60000"
 if not defined EMPEROR_CLAW_API_TOKEN (
   echo EMPEROR_CLAW_API_TOKEN is required.
   exit /b 1
@@ -239,6 +259,12 @@ export EMPEROR_CLAW_API_URL="\${EMPEROR_CLAW_API_URL:-${config.apiBaseUrl}}"
 export EMPEROR_CLAW_API_TOKEN="\${EMPEROR_CLAW_API_TOKEN:-}"
 export EMPEROR_CLAW_AGENT_NAME="\${EMPEROR_CLAW_AGENT_NAME:-${config.doctorAgentName}}"
 export EMPEROR_CLAW_RUNTIME_ID="\${EMPEROR_CLAW_RUNTIME_ID:-${config.runtimeId}}"
+export EMPEROR_CLAW_COMPANION_DIR="${config.companionDir}"
+export EMPEROR_CLAW_STATE_DIR="${config.stateDir}"
+export EMPEROR_CLAW_BRIDGE_STATE_PATH="${config.bridgeStatePath}"
+export EMPEROR_CLAW_CONFIG_PATH="${config.configPath}"
+export EMPEROR_CLAW_RECONNECT_BASE_MS="\${EMPEROR_CLAW_RECONNECT_BASE_MS:-2000}"
+export EMPEROR_CLAW_RECONNECT_MAX_MS="\${EMPEROR_CLAW_RECONNECT_MAX_MS:-60000}"
 
 if [[ -z "\${EMPEROR_CLAW_API_TOKEN}" ]]; then
   echo "EMPEROR_CLAW_API_TOKEN is required." >&2
@@ -255,6 +281,12 @@ set "EMPEROR_CLAW_API_URL=${config.apiBaseUrl}"
 if defined EMPEROR_CLAW_API_URL_OVERRIDE set "EMPEROR_CLAW_API_URL=%EMPEROR_CLAW_API_URL_OVERRIDE%"
 if not defined EMPEROR_CLAW_AGENT_NAME set "EMPEROR_CLAW_AGENT_NAME=${config.doctorAgentName}"
 if not defined EMPEROR_CLAW_RUNTIME_ID set "EMPEROR_CLAW_RUNTIME_ID=${config.runtimeId}"
+set "EMPEROR_CLAW_COMPANION_DIR=${config.companionDir}"
+set "EMPEROR_CLAW_STATE_DIR=${config.stateDir}"
+set "EMPEROR_CLAW_BRIDGE_STATE_PATH=${config.bridgeStatePath}"
+set "EMPEROR_CLAW_CONFIG_PATH=${config.configPath}"
+if not defined EMPEROR_CLAW_RECONNECT_BASE_MS set "EMPEROR_CLAW_RECONNECT_BASE_MS=2000"
+if not defined EMPEROR_CLAW_RECONNECT_MAX_MS set "EMPEROR_CLAW_RECONNECT_MAX_MS=60000"
 if not defined EMPEROR_CLAW_API_TOKEN (
   echo EMPEROR_CLAW_API_TOKEN is required.
   exit /b 1
@@ -276,6 +308,7 @@ Files:
 - repair.sh / repair.cmd: rewrite companion files from the saved config
 - session-inspect.sh / session-inspect.cmd: inspect the current runtime/session context
 - openclaw.control-plane.json: conservative OpenClaw config overlay to merge manually
+- state/bridge-state.json: local journal for cursors, reconnect backoff, and dedupe
 
 Recommended flow:
 1. Export EMPEROR_CLAW_API_TOKEN in your shell.
@@ -292,7 +325,11 @@ Current values:
 - API base URL: ${config.apiBaseUrl}
 - WS URL: ${config.wsUrl}
 - Workspace: ${config.workspace}
+- State directory: ${config.stateDir}
+- Bridge state path: ${config.bridgeStatePath}
 - Bridge entry: ${config.bridgeEntry}
+- Resource scopes: company, customer, project, agent
+- Artifact kinds: source_document, working_file, proof, deliverable, template, export_bundle
 `;
 }
 
@@ -330,6 +367,7 @@ async function runBootstrap(args) {
 
   ensureDir(config.openclawHome);
   ensureDir(config.companionDir);
+  ensureDir(config.stateDir);
   ensureDir(config.workspace);
   ensureDir(path.dirname(config.configPath));
 
@@ -347,11 +385,26 @@ async function runBootstrap(args) {
     apiBaseUrl: config.apiBaseUrl,
     wsUrl: config.wsUrl,
     bridgeEntry: config.bridgeEntry,
+    stateDir: config.stateDir,
+    bridgeStatePath: config.bridgeStatePath,
     workspace: config.workspace,
     doctorAgentName: config.doctorAgentName,
     runtimeId: config.runtimeId,
     openclawHome: config.openclawHome,
     companionDir: config.companionDir,
+    resourceScopes: ["company", "customer", "project", "agent"],
+    artifactKinds: [
+      "source_document",
+      "working_file",
+      "proof",
+      "deliverable",
+      "template",
+      "export_bundle",
+    ],
+    reconnectPolicy: {
+      baseDelayMs: 2000,
+      maxDelayMs: 60000,
+    },
   };
 
   writeTextFile(config.configPath, `${JSON.stringify(payload, null, 2)}\n`);
@@ -369,9 +422,24 @@ async function runBootstrap(args) {
 EMPEROR_CLAW_API_TOKEN=replace_me
 EMPEROR_AGENT_NAME=${config.doctorAgentName}
 EMPEROR_RUNTIME_ID=${config.runtimeId}
+EMPEROR_CLAW_COMPANION_DIR=${config.companionDir}
+EMPEROR_CLAW_STATE_DIR=${config.stateDir}
+EMPEROR_CLAW_BRIDGE_STATE_PATH=${config.bridgeStatePath}
 `);
   writeTextFile(path.join(config.companionDir, "openclaw.control-plane.json"), `${renderOpenClawOverlay(config)}\n`);
   writeTextFile(path.join(config.companionDir, "README.txt"), renderCompanionReadme(config));
+  if (!fs.existsSync(config.bridgeStatePath)) {
+    writeTextFile(config.bridgeStatePath, `${JSON.stringify({
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      backoffMs: 2000,
+      reconnectAttempt: 0,
+      recentMessageIds: [],
+      recentTaskFingerprints: [],
+      pendingOperationIds: [],
+    }, null, 2)}\n`);
+  }
 
   console.log(`[ok] Companion config written to ${config.configPath}`);
   console.log(`[ok] Launch wrappers written to ${config.companionDir}`);
@@ -496,6 +564,7 @@ function printSnapshotSummary(snapshot) {
 function rewriteCompanionFiles(config) {
   ensureDir(config.openclawHome || DEFAULT_OPENCLAW_HOME);
   ensureDir(config.companionDir || path.dirname(config.configPath));
+  ensureDir(config.stateDir || path.join(config.companionDir || path.dirname(config.configPath), "state"));
   ensureDir(config.workspace || path.join(config.openclawHome || DEFAULT_OPENCLAW_HOME, "workspace"));
   ensureDir(path.dirname(config.configPath));
 
@@ -506,22 +575,38 @@ function rewriteCompanionFiles(config) {
     apiBaseUrl: config.apiBaseUrl,
     wsUrl: config.wsUrl,
     bridgeEntry: config.bridgeEntry || DEFAULT_BRIDGE_ENTRY,
+    stateDir: config.stateDir || path.join(config.companionDir || path.dirname(config.configPath), "state"),
+    bridgeStatePath:
+      config.bridgeStatePath ||
+      path.join(
+        config.stateDir || path.join(config.companionDir || path.dirname(config.configPath), "state"),
+        "bridge-state.json",
+      ),
     workspace: config.workspace,
     doctorAgentName: config.doctorAgentName,
     runtimeId: config.runtimeId,
     openclawHome: config.openclawHome,
     companionDir: config.companionDir,
+    resourceScopes: config.resourceScopes || ["company", "customer", "project", "agent"],
+    artifactKinds: config.artifactKinds || [
+      "source_document",
+      "working_file",
+      "proof",
+      "deliverable",
+      "template",
+      "export_bundle",
+    ],
   };
 
   writeTextFile(config.configPath, `${JSON.stringify(payload, null, 2)}\n`);
   writeTextFile(
     path.join(config.companionDir, "run-bridge.sh"),
-    renderPosixCommandLauncher(config, "bootstrap"),
+    renderPosixBridgeLauncher(config),
     0o755,
   );
   writeTextFile(
     path.join(config.companionDir, "run-bridge.cmd"),
-    renderWindowsCommandLauncher(config, "bootstrap"),
+    renderWindowsBridgeLauncher(config),
   );
   writeTextFile(
     path.join(config.companionDir, "doctor.sh"),
@@ -565,6 +650,9 @@ function rewriteCompanionFiles(config) {
 EMPEROR_CLAW_API_TOKEN=replace_me
 EMPEROR_AGENT_NAME=${config.doctorAgentName}
 EMPEROR_RUNTIME_ID=${config.runtimeId}
+EMPEROR_CLAW_COMPANION_DIR=${config.companionDir}
+EMPEROR_CLAW_STATE_DIR=${config.stateDir}
+EMPEROR_CLAW_BRIDGE_STATE_PATH=${config.bridgeStatePath}
 `,
   );
   writeTextFile(
@@ -575,6 +663,25 @@ EMPEROR_RUNTIME_ID=${config.runtimeId}
     path.join(config.companionDir, "README.txt"),
     renderCompanionReadme(config),
   );
+  if (!fs.existsSync(config.bridgeStatePath)) {
+    writeTextFile(
+      config.bridgeStatePath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          backoffMs: 2000,
+          reconnectAttempt: 0,
+          recentMessageIds: [],
+          recentTaskFingerprints: [],
+          pendingOperationIds: [],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
 
   return payload;
 }

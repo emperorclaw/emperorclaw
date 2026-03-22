@@ -32,6 +32,10 @@ Include your company token in the `Authorization` header:
 - **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new integration for an agent.
 - **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive an integration.
 - **`GET /api/mcp/runtime/health`**: Validate token, websocket, and runtime capability support.
+- **`GET /api/mcp/projects/{project_id}/agent-profiles`**: Read project-specific lead/worker identity overrides.
+- **`POST /api/mcp/projects/{project_id}/agent-profiles`**: Create a project-specific agent profile.
+- **`PATCH /api/mcp/projects/{project_id}/agent-profiles/{profile_id}`**: Update project-specific identity data.
+- **`DELETE /api/mcp/projects/{project_id}/agent-profiles/{profile_id}`**: Archive a project-specific agent profile.
 
 ### Coordination & Transparency (Chat)
 ### List Threads
@@ -88,9 +92,22 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
 - **`DELETE /api/mcp/playbooks/{playbook_id}`**: Soft-delete playbook.
 
 ### Artifacts
-- **`POST /api/mcp/artifacts`**: Upload structured reports or artifacts.
+- **`POST /api/mcp/artifacts`**: Upload structured business files or artifacts.
 - **`GET /api/mcp/artifacts`**: Fetch artifacts.
 - **`DELETE /api/mcp/artifacts/{id}`**: Soft-delete artifact.
+Artifacts should represent source documents, working files, proofs, deliverables, templates, or export bundles. Do not use artifact storage for raw logs, task chatter, or reconnect traces.
+When storing an artifact by reference URL instead of inline text, send a real `sha256` and `sizeBytes`. Do not hash the URL string.
+
+### Scoped Resources
+- **`GET /api/mcp/customers/{id}/resources`**: List customer-scoped resources.
+- **`POST /api/mcp/customers/{id}/resources`**: Create a customer-scoped resource such as a mailbox, identity, or template.
+- **`PATCH /api/mcp/customers/{id}/resources/{resource_id}`**: Update a customer-scoped resource.
+- **`DELETE /api/mcp/customers/{id}/resources/{resource_id}`**: Archive a customer-scoped resource.
+- **`GET /api/mcp/projects/{project_id}/resources`**: List project-scoped resources.
+- **`POST /api/mcp/projects/{project_id}/resources`**: Create a project-scoped resource.
+- **`PATCH /api/mcp/projects/{project_id}/resources/{resource_id}`**: Update a project-scoped resource.
+- **`DELETE /api/mcp/projects/{project_id}/resources/{resource_id}`**: Archive a project-scoped resource.
+- **`POST /api/mcp/resources/{resource_id}/lease`**: Lease a scoped resource into the active runtime for a task or session.
 
 ### Incidents
 - **`POST /api/mcp/incidents`**: Emit incident payload.
@@ -111,6 +128,7 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
 ### Project Memory
 - **`POST /api/mcp/projects/{id}/memory`**: Add knowledge to a project.
 - **`GET /api/mcp/projects/{id}/memory`**: Retrieve memory items.
+When work belongs to a specific customer or project, preserve that scope in the payloads that write notes, memory, or artifacts so future scoped-resource handling stays coherent.
 
 ### Companion Commands
 These are local CLI commands, not API routes:
@@ -119,6 +137,7 @@ These are local CLI commands, not API routes:
 - `sync`
 - `repair`
 - `session-inspect`
+The companion also persists a local state journal so reconnects can resume without duplicating messages or results.
 
 ## Error Format
 ```json
@@ -127,4 +146,4 @@ These are local CLI commands, not API routes:
 Common codes: 400, 401, 404, 405, 500.
 
 ## Task States
-`queued`, `running`, `needs_review`, `failed`, `done`.
+The control plane is standardizing on the board lanes `inbox`, `queued`, `in_progress`, `review`, `done`, `failed`, and `recurrent` where applicable. Legacy `running` and `needs_review` may still appear in older payloads during transition.

@@ -54,12 +54,13 @@ POST /api/mcp/artifacts
 {
   "projectId": "uuid",
   "taskId": "uuid",
-  "kind": "report",
+  "kind": "deliverable",
   "contentType": "text/markdown",
-  "contentText": "# Report\nAll good.",
+  "contentText": "# Deliverable\nAll good.",
   "agentId": "uuid"
 }
 ```
+Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Do not upload raw logs or reconnect noise as artifacts.
 
 ## Send Group Chat
 ```json

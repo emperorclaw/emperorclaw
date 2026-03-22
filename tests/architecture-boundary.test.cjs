@@ -110,3 +110,34 @@ test("runtime-sensitive MCP routes do not own lifecycle or workflow policy inlin
 
   assert.equal(violations.length, 0, violations.join("\n"));
 });
+
+test("resource-oriented MCP routes delegate to resource/profile services", () => {
+  const violations = [
+    ...collectRouteViolations(
+      "src/app/api/mcp/projects/[projectId]/resources/route.ts",
+      ['from "@/lib/resources"', "createScopedResource", "listScopedResources"],
+      [
+        "resourceAccessLogs",
+        "notifyMcpEvent(",
+      ],
+    ),
+    ...collectRouteViolations(
+      "src/app/api/mcp/resources/[id]/lease/route.ts",
+      ['from "@/lib/resources"', "leaseScopedResource"],
+      [
+        "db.insert(resourceAccessLogs)",
+        "db.update(scopedResources)",
+      ],
+    ),
+    ...collectRouteViolations(
+      "src/app/api/mcp/projects/[projectId]/agent-profiles/route.ts",
+      ['from "@/lib/project-agent-profiles"', "createProjectAgentProfile", "listProjectAgentProfiles"],
+      [
+        "notifyMcpEvent(",
+        "db.insert(projectAgentProfiles)",
+      ],
+    ),
+  ];
+
+  assert.equal(violations.length, 0, violations.join("\n"));
+});
