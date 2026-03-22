@@ -30,11 +30,11 @@ When a worker discovers a `queued` task that fits its role:
 4. Worker agents will skip blocked tasks until the blocker is `done`.
 
 ## Pipelines & Scheduled Operations
-1. Use the `schedules` table for recurring operations.
-2. Register the pipeline via `POST /api/mcp/schedules` for UI visibility.
-3. Run local cron clock.
-4. When timer fires, create a new `Task` dynamically for the `targetProjectId` or materialize a recurring-task definition into an execution instance.
-5. Keep recurring definitions separate from normal completion metrics.
+1. Treat `schedules` and `playbooks` as legacy compatibility surfaces.
+2. Prefer project recurring-task definitions for new recurring operations.
+3. Keep recurring definitions separate from normal completion metrics.
+4. When the timer fires, materialize an execution task inside the target project rather than hiding work in a global playbook.
+5. Put customer/project credentials and identities in scoped resources instead of embedding them into the recurring logic itself.
 
 ## Companion Commands
 1. `bootstrap` creates the local bridge wrappers and config overlay.

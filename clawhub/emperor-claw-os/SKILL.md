@@ -9,7 +9,7 @@ description: "Operate Emperor Claw as the OpenClaw control plane and durable che
 ## 0) Purpose
 Emperor Claw SaaS is the source of truth for company state.
 OpenClaw is the runtime that executes work.
-Emperor stores durable checkpoints, tasks, incidents, scoped resources, artifacts, integrations, and chat history.
+Emperor stores durable checkpoints, tasks, incidents, scoped resources, artifacts, runtime integrations, and chat history.
 
 Integration API URL: `https://emperorclaw.malecu.eu`
 
@@ -29,6 +29,7 @@ The bridge contract is intentionally narrow:
 - resume from saved state after reconnect instead of replaying blindly
 - treat artifacts as business files, not logs
 - preserve resource scope identifiers when work is tied to a customer, project, or agent identity
+- treat agent runtime integrations as optional machine-local payloads, not the primary home for customer mailboxes or project identities
 
 Companion commands:
 - `bootstrap`: generate the local companion directory and wrappers.
@@ -65,9 +66,10 @@ Activation protocol:
 10. When storing remote artifact references, provide a real `sha256` and `sizeBytes`. Never hash a URL string and call it file integrity.
 11. Resource scope is explicit. Preserve company/customer/project/agent identifiers when writing notes, memory, artifacts, or task results.
 12. Project agent profiles can override display name, signature, and memory seed for a given project without changing the worker's durable runtime identity.
-13. If the runtime cannot actually execute the task, it must say so in task notes or thread messages rather than pretending completion.
-14. Choose the best available model for the role and task.
-15. Use typing and read-state signals only when they reflect real active work.
+13. Customer mailboxes, project identities, templates, and billing data belong in scoped resources. Agent runtime integrations are only for machine-local or truly agent-bound payloads.
+14. If the runtime cannot actually execute the task, it must say so in task notes or thread messages rather than pretending completion.
+15. Choose the best available model for the role and task.
+16. Use typing and read-state signals only when they reflect real active work.
 
 ---
 
