@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { companyTokens, companyMembers } from "@/db/schema";
 import { randomBytes, createHash } from "crypto";
-import { eq, desc } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { broadcastMcpEvent } from "@/lib/pubsub";
@@ -31,7 +31,10 @@ export async function GET() {
             lastUsedAt: companyTokens.lastUsedAt,
             createdAt: companyTokens.createdAt,
         }).from(companyTokens)
-            .where(eq(companyTokens.companyId, companyId))
+            .where(and(
+                eq(companyTokens.companyId, companyId),
+                isNull(companyTokens.revokedAt),
+            ))
             .orderBy(desc(companyTokens.createdAt));
 
         return NextResponse.json({ tokens });

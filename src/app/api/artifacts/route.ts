@@ -10,12 +10,13 @@ import { eq, desc, and, isNull } from "drizzle-orm";
 export async function GET() {
     try {
         const session = await getServerSession(authOptions);
-        if (!session?.user || !(session.user as any).id) {
+        const user = session?.user as { id?: string } | undefined;
+        if (!user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const [membership] = await db.select().from(companyMembers)
-            .where(eq(companyMembers.userId, (session.user as any).id))
+            .where(eq(companyMembers.userId, user.id))
             .limit(1);
 
         if (!membership) {
@@ -26,11 +27,16 @@ export async function GET() {
 
         const results = await db.select({
             id: artifacts.id,
+            title: artifacts.title,
             kind: artifacts.kind,
+            artifactClass: artifacts.artifactClass,
+            importance: artifacts.importance,
             contentType: artifacts.contentType,
             contentText: artifacts.contentText,
             storageUrl: artifacts.storageUrl,
+            originalFilename: artifacts.originalFilename,
             sizeBytes: artifacts.sizeBytes,
+            isCanonical: artifacts.isCanonical,
             createdAt: artifacts.createdAt,
             projectId: projects.id,
             projectGoal: projects.goal,
@@ -45,7 +51,7 @@ export async function GET() {
             .orderBy(desc(artifacts.createdAt));
 
         return NextResponse.json({ artifacts: results });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Error fetching artifacts:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

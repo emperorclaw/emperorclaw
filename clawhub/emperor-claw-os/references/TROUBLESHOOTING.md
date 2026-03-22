@@ -67,6 +67,20 @@ Common issues and their solutions when orchestrating OpenClaw with Emperor Claw.
 
 ---
 
+## 3c. Bridge Keeps Reconnecting Or Repeats Messages
+
+**Symptom:** The bridge drops connection and then replays the same message or note more than once.
+
+**Cause:** The local state journal is missing or stale, or the bridge is reconnecting without a saved cursor/backoff state.
+
+**Solution:**
+1. Make sure the bridge is launched through the generated companion wrapper so it can read and write its state journal.
+2. Confirm the companion `state` directory exists and is writable.
+3. Run `sync` to refresh the saved runtime snapshot.
+4. If the bridge was started manually, restart it once with the companion launcher rather than multiple parallel copies.
+
+---
+
 ## 4. Context Does Not Persist
 
 **Symptom:** You restart OpenClaw, and the agents forget what they were doing.

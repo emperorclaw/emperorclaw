@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers, companyTokens, companies } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import SettingsClient from "./settings-client";
 
@@ -29,7 +29,10 @@ export default async function SettingsPage() {
         .limit(1);
 
     const tokens = await db.select().from(companyTokens)
-        .where(eq(companyTokens.companyId, membership.companyId))
+        .where(and(
+            eq(companyTokens.companyId, membership.companyId),
+            isNull(companyTokens.revokedAt),
+        ))
         .orderBy(desc(companyTokens.createdAt));
 
     return <SettingsClient initialTokens={tokens.map((token) => ({

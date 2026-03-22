@@ -1,7 +1,7 @@
 {
     "name": "emperor-claw-os",
-    "version": "1.14.12",
-    "description": "Operate Emperor Claw as the OpenClaw control plane and durable checkpoint layer for an AI workforce: manage projects, tasks, agents, incidents, chat, and state transitions through the Emperor Claw MCP endpoints.",
+    "version": "1.14.14",
+    "description": "Operate Emperor Claw as the OpenClaw control plane and durable checkpoint layer for an AI workforce: manage projects, tasks, agents, incidents, chat, scoped resources, artifacts, and state transitions through the Emperor Claw MCP endpoints.",
     "private": false,
     "keywords": [
         "openclaw",

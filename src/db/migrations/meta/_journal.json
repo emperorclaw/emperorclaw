@@ -64,6 +64,13 @@
       "when": 1774099200000,
       "tag": "0008_control_plane_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774185600000,
+      "tag": "0009_scoped_resources_and_artifact_hygiene",
+      "breakpoints": true
     }
   ]
 }
