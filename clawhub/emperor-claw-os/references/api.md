@@ -28,9 +28,9 @@ Include your company token in the `Authorization` header:
 - **`PATCH /api/mcp/agents/{agent_id}`**: Update agent metadata or legacy memory.
 - **`DELETE /api/mcp/agents/{agent_id}`**: Soft-delete an agent.
 - **`POST /api/mcp/agents/heartbeat`**: Update agent load, keep alive, and renew active task leases.
-- **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch dynamic configuration and credentials.
-- **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new integration for an agent.
-- **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive an integration.
+- **`GET /api/mcp/agents/{agent_id}/integrations`**: Fetch agent runtime integrations.
+- **`POST /api/mcp/agents/{agent_id}/integrations`**: Register a new runtime-local payload for an agent.
+- **`DELETE /api/mcp/agents/{agent_id}/integrations?integrationId={id}`**: Archive a runtime integration.
 - **`GET /api/mcp/runtime/health`**: Validate token, websocket, and runtime capability support.
 - **`GET /api/mcp/projects/{project_id}/agent-profiles`**: Read project-specific lead/worker identity overrides.
 - **`POST /api/mcp/projects/{project_id}/agent-profiles`**: Create a project-specific agent profile.
@@ -90,6 +90,7 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
 - **`DELETE /api/mcp/schedules/{id}`**: Soft-delete schedule.
 - **`GET /api/mcp/playbooks`**: Read instruction templates.
 - **`DELETE /api/mcp/playbooks/{playbook_id}`**: Soft-delete playbook.
+These endpoints are legacy compatibility surfaces. Prefer project recurring-task definitions, scoped resources, and project agent profiles for new automation.
 
 ### Artifacts
 - **`POST /api/mcp/artifacts`**: Upload structured business files or artifacts.
@@ -108,6 +109,7 @@ When storing an artifact by reference URL instead of inline text, send a real `s
 - **`PATCH /api/mcp/projects/{project_id}/resources/{resource_id}`**: Update a project-scoped resource.
 - **`DELETE /api/mcp/projects/{project_id}/resources/{resource_id}`**: Archive a project-scoped resource.
 - **`POST /api/mcp/resources/{resource_id}/lease`**: Lease a scoped resource into the active runtime for a task or session.
+Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Do not force those into per-agent SMTP records.
 
 ### Incidents
 - **`POST /api/mcp/incidents`**: Emit incident payload.

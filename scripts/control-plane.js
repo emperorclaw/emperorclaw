@@ -320,6 +320,8 @@ Recommended flow:
    ${process.platform === "win32" ? "sync.cmd" : "./sync.sh"}
 5. If you need a live runtime snapshot without mutating Emperor, run session-inspect:
    ${process.platform === "win32" ? "session-inspect.cmd" : "./session-inspect.sh"}
+6. Manage shared mailboxes, identities, templates, and billing data in Emperor Resources.
+7. Use agent runtime integrations only for machine-local payloads.
 
 Current values:
 - API base URL: ${config.apiBaseUrl}

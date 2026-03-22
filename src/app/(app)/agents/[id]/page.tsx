@@ -119,7 +119,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                                 </span>
                             </div>
                             <p className="text-sm text-zinc-500 font-medium">
-                                Durable session, memory, message, and integration state for this OpenClaw agent.
+                                Durable session, memory, message, and machine-local runtime state for this OpenClaw agent.
                             </p>
                         </div>
                     </div>
@@ -139,7 +139,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                     <TabsTrigger value="chat">Direct Chat</TabsTrigger>
                     <TabsTrigger value="threads">Threads</TabsTrigger>
                     <TabsTrigger value="runs">Runs</TabsTrigger>
-                    <TabsTrigger value="integrations">Integrations</TabsTrigger>
+                    <TabsTrigger value="integrations">Runtime Integrations</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="memory">
@@ -255,10 +255,10 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                             <div>
                                 <div className="flex items-center gap-2">
                                     <KeyRound className="w-5 h-5 text-indigo-400" />
-                                    <h2 className="text-lg font-medium text-zinc-200">Integrations</h2>
+                                    <h2 className="text-lg font-medium text-zinc-200">Runtime Integrations</h2>
                                 </div>
                                 <p className="text-xs text-zinc-500 mt-1">
-                                    Credentials are scoped per agent and leased back to OpenClaw when the runtime asks for them.
+                                    Keep only machine-local or truly agent-bound payloads here. Customer and project mailboxes, identities, and templates should live in Resources.
                                 </p>
                             </div>
                             <div className="w-full max-w-[220px]">
@@ -267,7 +267,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                         </div>
                         <div className="space-y-3">
                             {integrations.length === 0 ? (
-                                <EmptyState text="No integrations configured for this agent." />
+                                <EmptyState text="No runtime integrations configured for this agent." />
                             ) : integrations.map(integration => (
                                 <div key={integration.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
                                     <div className="flex items-center justify-between gap-3 mb-2">

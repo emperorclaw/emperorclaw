@@ -6,22 +6,27 @@ import { eq } from "drizzle-orm";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
-import { listScopedResources, resolveResourceScope } from "@/lib/resources";
+import { createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
+
+async function getMembership() {
+  const session = await getServerSession(authOptions);
+  const user = session?.user as { id?: string } | undefined;
+  if (!user?.id) {
+    return null;
+  }
+
+  const [membership] = await db.select().from(companyMembers)
+    .where(eq(companyMembers.userId, user.id))
+    .limit(1);
+
+  return membership || null;
+}
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string } | undefined;
-    if (!user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const [membership] = await db.select().from(companyMembers)
-      .where(eq(companyMembers.userId, user.id))
-      .limit(1);
-
+    const membership = await getMembership();
     if (!membership) {
-      return NextResponse.json({ error: "Company not found" }, { status: 404 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const rows = await listScopedResources({
@@ -37,6 +42,50 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error fetching scoped resources:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const membership = await getMembership();
+    if (!membership) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid resource payload" }, { status: 400 });
+    }
+
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) {
+      return NextResponse.json({ error: "Resource name is required" }, { status: 400 });
+    }
+
+    const resource = await createScopedResource({
+      companyId: membership.companyId,
+      scopeType: typeof body.scopeType === "string" ? body.scopeType : "company",
+      scopeId: typeof body.scopeId === "string" ? body.scopeId : null,
+      provider: typeof body.provider === "string" ? body.provider.trim() || "generic" : "generic",
+      resourceType: typeof body.resourceType === "string" ? body.resourceType : "external_account",
+      name,
+      displayName: typeof body.displayName === "string" ? body.displayName.trim() : null,
+      configJson: body.configJson && typeof body.configJson === "object" && !Array.isArray(body.configJson) ? body.configJson : {},
+      secretJson: body.secretJson && typeof body.secretJson === "object" && !Array.isArray(body.secretJson) ? body.secretJson : {},
+      status: "active",
+      ownership: "managed",
+    });
+
+    return NextResponse.json({
+      resource: {
+        ...resource,
+        ...resolveResourceScope(resource),
+        secretJson: undefined,
+      },
+    }, { status: 201 });
+  } catch (error) {
+    console.error("Error creating scoped resource:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

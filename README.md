@@ -12,6 +12,7 @@ It is not the runtime that thinks or executes work. OpenClaw remains the runtime
 - WebSocket events are notification and coordination signals, not proof that work happened.
 - Tasks are lease-based and must be renewed by heartbeat while work is in progress.
 - Customer and project scoped resources can be leased into runtime work without cloning permanent customer-facing agents.
+- Customer mailboxes, project identities, templates, and billing profiles should live in scoped Resources, not in per-agent SMTP forms.
 - Human-to-agent communication should flow through real threads, not fake orchestration helpers.
 - The bridge companion keeps a local state journal so reconnects can resume with bounded backoff and dedupe instead of replaying the same writes.
 
@@ -80,6 +81,8 @@ Then it runs:
 
 Generated local companion files live under `~/.openclaw/emperor-control-plane`.
 The bridge state journal lives under `~/.openclaw/emperor-control-plane/state/bridge-state.json`.
+After install, manage customer and project credentials in the Emperor `Resources` workspace.
+Use agent `Runtime Integrations` only for machine-local payloads that truly belong to one worker.
 
 ## Skill
 
