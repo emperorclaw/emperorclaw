@@ -60,6 +60,11 @@ const VIKTOR_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || "
 const VIKTOR_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
 const VIKTOR_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
 const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH || "/home/jose/.npm-global/bin/openclaw";
+const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "false").toLowerCase() === "true";
+const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
+  || ((String(AGENT_NAME).toLowerCase() === "manager" || String(VIKTOR_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
+const EMPEROR_CLAW_MANAGER_REVIEW_MS = Number(process.env.EMPEROR_CLAW_MANAGER_REVIEW_MS || 1800000);
+const IS_MANAGER_PROFILE = EMPEROR_CLAW_AGENT_PROFILE === "manager";
 
 if (!API_TOKEN) {
   console.error("EMPEROR_CLAW_API_TOKEN is required");
@@ -188,6 +193,30 @@ function getWebSocketCtor() {
   return require("ws");
 }
 
+function stripCodeFences(text) {
+  const value = String(text || "").trim();
+  if (value.startsWith("```") && value.endsWith("```")) {
+    return value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  }
+  return value;
+}
+
+function parseStructuredEnvelope(text) {
+  const cleaned = stripCodeFences(text);
+  if (!cleaned || (!cleaned.startsWith("{") && !cleaned.startsWith("["))) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 class EmperorBridge {
   constructor() {
     this.agent = null;
@@ -230,6 +259,7 @@ class EmperorBridge {
       lastRuntimeId: null,
       lastSessionId: null,
       lastAgentId: null,
+      lastManagerReviewAt: null,
       recentMessageIds: [],
       recentTaskFingerprints: [],
       pendingOperationIds: [],
@@ -708,6 +738,8 @@ class EmperorBridge {
       return;
     }
 
+    const explicitClaimRequest = /\b(claim|take|start working on|work on|pick up)\b.*\b(task|ticket|job)\b|\b(next task)\b/.test(lowered);
+
     await this.updateChatStatus(thread.id, true, true);
     await this.writeMemory(
       `Observed thread ${thread.id} message mentioning ${agentName} from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
@@ -725,15 +757,39 @@ class EmperorBridge {
       },
     );
 
+    let liveContext = null;
+    try {
+      liveContext = await this.buildLiveContextForMessage(text);
+    } catch (error) {
+      console.error("[bridge] live context fetch failed:", error.message);
+    }
+
+    let claimedTask = null;
+    if (explicitClaimRequest) {
+      try {
+        claimedTask = await this.claimNextTask("explicit-thread-command");
+        if (claimedTask) {
+          const claimSummary = `Explicitly claimed task ${claimedTask.id} [type=${claimedTask.taskType || "unknown"}, state=${claimedTask.state || "unknown"}]`;
+          liveContext = liveContext ? `${liveContext}\n\n${claimSummary}` : claimSummary;
+        }
+      } catch (error) {
+        console.error("[bridge] explicit task claim failed:", error.message);
+      }
+    }
+
     const prompt = [
       `You are ${agentName}, replying to an Emperor Claw thread as a helpful assistant.`,
       `Reply naturally and helpfully as ${agentName}.`,
       `Only answer the user's latest message; do not mention internal bridges, hooks, or routing.`,
+      `If you want Emperor state changed, return raw JSON only with this schema: {"reply_text":"string","summary":"optional","status":"observed|working|blocked|done|failed|needs_human","actions":[...]}.`,
+      `Supported actions are: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, thread_reply {thread_id?,thread_type?,text}, project_memory {project_id,content,summary?}.`,
+      `If no Emperor mutation is needed, you may reply with plain natural language text instead of JSON. Do not wrap JSON in markdown fences.`,
+      liveContext ? `Live Emperor context:\n${liveContext}` : null,
       `Thread ID: ${thread.id}`,
       `Thread type: ${thread.type}`,
       `Sender type: ${message.senderType || "unknown"}`,
       `Latest message: ${text}`,
-    ].join("\n\n");
+    ].filter(Boolean).join("\n\n");
 
     let replyText = null;
     try {
@@ -748,7 +804,18 @@ class EmperorBridge {
         this.bridgeState.viktorBrainSessionId = nextSessionId;
         this.schedulePersistBridgeState();
       }
-      replyText = agentResult?.text || null;
+      const structured = parseStructuredEnvelope(agentResult?.text || "");
+      if (structured) {
+        const executed = await this.executeStructuredEnvelope(structured, {
+          threadId: thread.id,
+          threadType: thread.type,
+          taskId: claimedTask?.id || message.taskId || null,
+          projectId: claimedTask?.projectId || null,
+        });
+        replyText = executed.replyText || null;
+      } else {
+        replyText = agentResult?.text || null;
+      }
     } catch (error) {
       console.error("[bridge] viktor brain handoff failed:", error.message);
       replyText = "I hit a local brain handoff issue just now. Please try again in a moment.";
@@ -823,7 +890,7 @@ class EmperorBridge {
         console.warn("[bridge] control-plane health reported not ok");
       }
 
-      if (this.activeTasks.size < CLAIM_LIMIT) {
+      if (EMPEROR_CLAW_AUTO_CLAIM && this.activeTasks.size < CLAIM_LIMIT) {
         const claimable = tasks.filter((task) => {
           const state = String(task.state || task.status || "").toLowerCase();
           return state === "inbox" || state === "queued";
@@ -832,7 +899,16 @@ class EmperorBridge {
           await this.claimNextTask(reason);
         }
       }
-      return { tasks, teamThreads };
+
+      const snapshot = { tasks, teamThreads };
+      if (IS_MANAGER_PROFILE) {
+        try {
+          await this.maybeRunManagerReview(snapshot, reason);
+        } catch (error) {
+          console.error("[bridge] manager review failed:", error.message);
+        }
+      }
+      return snapshot;
     } finally {
       this.syncInFlight = false;
     }
@@ -961,6 +1037,234 @@ class EmperorBridge {
     });
     this.memory = payload;
     return payload;
+  }
+
+  async addProjectMemory(projectId, content, summary = null) {
+    return http(`/api/mcp/projects/${projectId}/memory`, {
+      method: "POST",
+      idempotencyKey: `project-memory:${stableHash({ projectId, content, summary })}`,
+      body: {
+        content,
+        summary,
+      },
+    });
+  }
+
+  async executeStructuredEnvelope(envelope, context = {}) {
+    if (!envelope || typeof envelope !== "object") {
+      return { replyText: null, executed: [] };
+    }
+
+    const executed = [];
+    const actions = Array.isArray(envelope.actions) ? envelope.actions : [];
+    for (const action of actions) {
+      if (!action || typeof action !== "object") continue;
+      const type = String(action.type || "").trim();
+      try {
+        if (type === "task_note") {
+          const taskId = action.task_id || action.taskId || context.taskId || null;
+          const note = String(action.note || "").trim();
+          if (!taskId || !note) continue;
+          await this.writeTaskNote(taskId, note, action.handoff || null);
+          executed.push({ type, taskId });
+          continue;
+        }
+
+        if (type === "task_result") {
+          const taskId = action.task_id || action.taskId || context.taskId || null;
+          const state = String(action.state || "").trim();
+          if (!taskId || !["done", "failed", "review"].includes(state)) continue;
+          await this.reportTaskResult(taskId, {
+            state,
+            comment: action.comment || null,
+            outputJson: action.output_json || action.outputJson || null,
+            confidence: typeof action.confidence === "number" ? action.confidence : 0,
+          });
+          executed.push({ type, taskId, state });
+          continue;
+        }
+
+        if (type === "thread_reply") {
+          const text = String(action.text || "").trim();
+          if (!text) continue;
+          await this.sendMessage(text, {
+            thread_id: action.thread_id || action.threadId || context.threadId || null,
+            thread_type: action.thread_type || action.threadType || context.threadType || null,
+            targetAgentId: action.target_agent_id || action.targetAgentId || null,
+            chat_id: action.chat_id || action.chatId || context.chatId || null,
+          });
+          executed.push({ type, threadId: action.thread_id || action.threadId || context.threadId || null });
+          continue;
+        }
+
+        if (type === "project_memory") {
+          const projectId = action.project_id || action.projectId || context.projectId || null;
+          const content = String(action.content || "").trim();
+          if (!projectId || !content) continue;
+          await this.addProjectMemory(projectId, content, action.summary || null);
+          executed.push({ type, projectId });
+          continue;
+        }
+      } catch (error) {
+        console.error(`[bridge] structured action ${type} failed:`, error.message);
+      }
+    }
+
+    return {
+      replyText: typeof envelope.reply_text === "string" ? envelope.reply_text.trim() : null,
+      status: typeof envelope.status === "string" ? envelope.status.trim() : null,
+      summary: typeof envelope.summary === "string" ? envelope.summary.trim() : null,
+      executed,
+    };
+  }
+
+  async fetchCustomers() {
+    const payload = await http("/api/mcp/customers", { method: "GET" });
+    return Array.isArray(payload?.customers) ? payload.customers : Array.isArray(payload) ? payload : [];
+  }
+
+  async fetchProjects() {
+    const payload = await http("/api/mcp/projects", { method: "GET" });
+    return Array.isArray(payload?.projects) ? payload.projects : Array.isArray(payload) ? payload : [];
+  }
+
+  async fetchTasks(projectId = null) {
+    const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+    const payload = await http(`/api/mcp/tasks${suffix}`, { method: "GET" });
+    return Array.isArray(payload?.tasks) ? payload.tasks : Array.isArray(payload) ? payload : [];
+  }
+
+  async buildLiveContextForMessage(text) {
+    const lowered = String(text || "").toLowerCase();
+    const wantsCustomers = /\bcustomer\b|\bcustomers\b|\bclient\b|\bclients\b/.test(lowered);
+    const wantsProjects = /\bproject\b|\bprojects\b/.test(lowered);
+    const wantsTasks = /\btask\b|\btasks\b|\bto do\b|\btodo\b|\bbacklog\b/.test(lowered);
+    const wantsResources = /\bresource\b|\bresources\b|\btemplate\b|\btemplates\b/.test(lowered);
+    const wantsEmperorOverview = /\bemperor\b|\bhere\b|\bwhat do we have\b|\bwhat's here\b|\bcheck here\b|\blist\b|\bshow me\b/.test(lowered);
+    const wantsNorthstar = /northstar forge|northstar/.test(lowered);
+
+    if (!wantsCustomers && !wantsProjects && !wantsTasks && !wantsResources && !wantsEmperorOverview && !wantsNorthstar) {
+      return null;
+    }
+
+    return this.composeLiveContext({
+      includeCustomers: wantsCustomers || wantsNorthstar || wantsEmperorOverview,
+      includeProjects: wantsProjects || wantsNorthstar || wantsEmperorOverview,
+      includeTasks: wantsTasks || wantsNorthstar || wantsEmperorOverview,
+      includeResources: wantsResources || wantsNorthstar || wantsEmperorOverview,
+      focusName: wantsNorthstar ? "northstar" : null,
+      includeOverview: wantsEmperorOverview,
+    });
+  }
+
+  async composeLiveContext(options = {}) {
+    const sections = [];
+    const customers = await this.fetchCustomers();
+    const projects = await this.fetchProjects();
+
+    if (options.includeOverview) {
+      sections.push(`Emperor snapshot: customers=${customers.length}, projects=${projects.length}, activeTasks=${(await this.fetchTasks()).length}`);
+    }
+
+    if (options.includeCustomers) {
+      const customerLines = customers.slice(0, 10).map((customer) => {
+        const parts = [customer.name || customer.displayName || customer.id];
+        if (customer.notes) parts.push(`notes: ${customer.notes}`);
+        return `- ${parts.join(" — ")}`;
+      });
+      if (customerLines.length > 0) sections.push(`Customers in Emperor:\n${customerLines.join("\n")}`);
+    }
+
+    let matchedCustomer = null;
+    if (options.focusName) {
+      matchedCustomer = customers.find((customer) => String(customer.name || "").toLowerCase().includes(String(options.focusName).toLowerCase())) || null;
+    }
+
+    let matchedProject = null;
+    if (options.focusName) {
+      matchedProject = projects.find((project) => String(project.goal || "").toLowerCase().includes("developer portal") || String(project.customerId || "") === String(matchedCustomer?.id || "")) || null;
+    }
+
+    if (options.includeProjects) {
+      const projectLines = projects.slice(0, 10).map((project) => `- ${project.goal || project.name || project.id} [status=${project.status || "unknown"}]`);
+      if (projectLines.length > 0) sections.push(`Projects in Emperor:\n${projectLines.join("\n")}`);
+    }
+
+    const tasks = options.includeTasks
+      ? await this.fetchTasks(matchedProject?.id || null)
+      : [];
+    if (tasks.length > 0) {
+      const taskLines = tasks.slice(0, 12).map((task) => `- ${task.title || task.goal || task.id} [type=${task.taskType || "unknown"}, state=${task.state || "unknown"}]`);
+      sections.push(`Tasks in scope:\n${taskLines.join("\n")}`);
+    }
+
+    if (options.includeResources) {
+      if (options.focusName) {
+        sections.push("Known scoped resource: Northstar Product Brief [type=template, provider=emperor-demo]");
+      } else {
+        sections.push("Known scoped resources may include project templates, identities, mailboxes, or other project/customer assets.");
+      }
+    }
+
+    return sections.length > 0 ? sections.join("\n\n") : null;
+  }
+
+  async maybeRunManagerReview(snapshot, reason = "timer") {
+    if (!IS_MANAGER_PROFILE) return null;
+    const now = Date.now();
+    const lastAt = this.bridgeState.lastManagerReviewAt ? Date.parse(this.bridgeState.lastManagerReviewAt) : 0;
+    if (lastAt && Number.isFinite(lastAt) && now - lastAt < EMPEROR_CLAW_MANAGER_REVIEW_MS) {
+      return null;
+    }
+
+    const liveContext = await this.composeLiveContext({
+      includeOverview: true,
+      includeCustomers: true,
+      includeProjects: true,
+      includeTasks: true,
+      includeResources: true,
+    });
+
+    const prompt = [
+      "You are Manager, an Emperor oversight agent.",
+      "Review the live Emperor state and decide whether anything actually needs attention.",
+      "Use these thresholds unless the data clearly suggests otherwise: inbox > 24h is stale, queued > 24h is stale, in_progress > 6h without visible update is at risk, active project with no movement > 72h is idle.",
+      "Do not create drama. If nothing actionable needs attention, return raw JSON only: {\"reply_text\":\"\",\"status\":\"observed\",\"actions\":[]}",
+      "If something needs attention, return raw JSON only with schema {\"reply_text\":\"string\",\"summary\":\"optional\",\"status\":\"observed|working|blocked|done|failed|needs_human\",\"actions\":[...]}",
+      "Supported actions are: task_note {task_id,note,handoff?}, thread_reply {thread_id?,thread_type?,text}, project_memory {project_id,content,summary?}.",
+      liveContext ? `Live Emperor context:\n${liveContext}` : null,
+      `Review reason: ${reason}`,
+      `Current sync snapshot: tasks=${Array.isArray(snapshot?.tasks) ? snapshot.tasks.length : 0}, teamThreads=${Array.isArray(snapshot?.teamThreads) ? snapshot.teamThreads.length : 0}`,
+    ].filter(Boolean).join("\n\n");
+
+    const knownSessionId = this.bridgeState.viktorBrainSessionId || null;
+    const agentResult = await callLocalOpenClawAgent(prompt, {
+      sessionId: knownSessionId,
+      thinking: VIKTOR_BRAIN_THINKING,
+      timeoutSeconds: 120,
+    });
+    const nextSessionId = agentResult?.sessionId || null;
+    if (nextSessionId) {
+      this.bridgeState.viktorBrainSessionId = nextSessionId;
+    }
+    this.bridgeState.lastManagerReviewAt = new Date(now).toISOString();
+    this.schedulePersistBridgeState();
+
+    const envelope = parseStructuredEnvelope(agentResult?.text || "");
+    if (!envelope) {
+      console.log("[bridge] manager review returned plain text; skipping proactive post");
+      return null;
+    }
+    const executed = await this.executeStructuredEnvelope(envelope, {
+      threadType: "team",
+      chatId: "team",
+    });
+
+    if (executed.replyText) {
+      await this.sendMessage(executed.replyText, { chat_id: "team", thread_type: "team" });
+    }
+
+    return executed;
   }
 
   async startAction(metadata = {}) {
