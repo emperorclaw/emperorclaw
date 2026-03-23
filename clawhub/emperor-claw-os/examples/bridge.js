@@ -51,6 +51,15 @@ const CONFIG_PATH =
 const RECONNECT_BASE_MS = Number(process.env.EMPEROR_CLAW_RECONNECT_BASE_MS || 2000);
 const RECONNECT_MAX_MS = Number(process.env.EMPEROR_CLAW_RECONNECT_MAX_MS || 60000);
 const DEDUPE_WINDOW = Number(process.env.EMPEROR_CLAW_DEDUPE_WINDOW || 1000);
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+const execFileAsync = promisify(execFile);
+const OPENCLAW_GATEWAY_PORT = Number(process.env.OPENCLAW_GATEWAY_PORT || 18789);
+const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "***REMOVED***";
+const VIKTOR_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || "hook:viktor:emperor-brain";
+const VIKTOR_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
+const VIKTOR_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
+const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH || "/home/jose/.npm-global/bin/openclaw";
 
 if (!API_TOKEN) {
   console.error("EMPEROR_CLAW_API_TOKEN is required");
@@ -111,6 +120,67 @@ async function http(path, options = {}) {
 
   if (response.status === 204) return null;
   return response.json();
+}
+
+async function callLocalOpenClawAgent(message, options = {}) {
+  const args = [
+    "agent",
+    "--agent",
+    options.agentId || VIKTOR_BRAIN_AGENT_ID,
+    "--message",
+    message,
+    "--thinking",
+    options.thinking || VIKTOR_BRAIN_THINKING,
+    "--timeout",
+    String(options.timeoutSeconds || 120),
+    "--json",
+  ];
+
+  if (options.sessionId) {
+    args.push("--session-id", options.sessionId);
+  }
+
+  const { stdout, stderr } = await execFileAsync(OPENCLAW_CLI_PATH, args, {
+    cwd: "/home/jose/.openclaw/workspace",
+    timeout: (options.timeoutSeconds || 120) * 1000 + 5000,
+    env: {
+      ...process.env,
+      OPENCLAW_GATEWAY_PORT: String(OPENCLAW_GATEWAY_PORT),
+    },
+    maxBuffer: 1024 * 1024,
+  });
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    parsed = { raw: stdout, stderr };
+  }
+
+  const result = parsed?.result && typeof parsed.result === "object" ? parsed.result : parsed;
+
+  const payloadTexts = Array.isArray(result?.payloads)
+    ? result.payloads
+        .map((item) => (item && typeof item.text === "string" ? item.text.trim() : ""))
+        .filter(Boolean)
+    : [];
+
+  const extractedText = payloadTexts.length > 0
+    ? payloadTexts.join("\n\n")
+    : typeof result?.reply === "string" && result.reply.trim()
+      ? result.reply.trim()
+      : typeof result?.text === "string" && result.text.trim()
+        ? result.text.trim()
+        : typeof result?.message === "string" && result.message.trim()
+          ? result.message.trim()
+          : null;
+
+  return {
+    raw: parsed,
+    stderr,
+    text: extractedText,
+    sessionId: result?.meta?.agentMeta?.sessionId || result?.sessionId || result?.session?.id || result?.session_id || parsed?.sessionId || null,
+  };
 }
 
 function getWebSocketCtor() {
@@ -625,9 +695,22 @@ class EmperorBridge {
   }
 
   async defaultMessageHandler(message, thread) {
+    const text = String(message?.text || "");
+    const agentName = String(this.agent?.name || AGENT_NAME || "Viktor").trim();
+    const lowered = text.toLowerCase();
+    const mentionsAgent = agentName
+      ? lowered.includes(`@${agentName.toLowerCase()}`) || lowered.includes(agentName.toLowerCase())
+      : false;
+    const isDirectThread = String(thread?.type || "").toLowerCase() === "direct";
+
+    if (!isDirectThread && !mentionsAgent) {
+      console.log(`[bridge] ignoring thread ${thread.id} message without explicit ${agentName} mention`);
+      return;
+    }
+
     await this.updateChatStatus(thread.id, true, true);
     await this.writeMemory(
-      `Observed thread ${thread.id} message from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
+      `Observed thread ${thread.id} message mentioning ${agentName} from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
       {
         kind: "thread_observation",
         taskId: message.taskId || null,
@@ -636,10 +719,46 @@ class EmperorBridge {
           threadId: thread.id,
           threadType: thread.type,
           senderId: message.senderId || null,
+          agentName,
+          matchedByMention: true,
         },
       },
     );
-    await this.sendMessage("Acknowledged. I recorded this thread and will keep the session alive.", {
+
+    const prompt = [
+      `You are ${agentName}, replying to an Emperor Claw thread as a helpful assistant.`,
+      `Reply naturally and helpfully as ${agentName}.`,
+      `Only answer the user's latest message; do not mention internal bridges, hooks, or routing.`,
+      `Thread ID: ${thread.id}`,
+      `Thread type: ${thread.type}`,
+      `Sender type: ${message.senderType || "unknown"}`,
+      `Latest message: ${text}`,
+    ].join("\n\n");
+
+    let replyText = null;
+    try {
+      const knownSessionId = this.bridgeState.viktorBrainSessionId || null;
+      const agentResult = await callLocalOpenClawAgent(prompt, {
+        sessionId: knownSessionId,
+        thinking: VIKTOR_BRAIN_THINKING,
+        timeoutSeconds: 120,
+      });
+      const nextSessionId = agentResult?.sessionId || null;
+      if (nextSessionId) {
+        this.bridgeState.viktorBrainSessionId = nextSessionId;
+        this.schedulePersistBridgeState();
+      }
+      replyText = agentResult?.text || null;
+    } catch (error) {
+      console.error("[bridge] viktor brain handoff failed:", error.message);
+      replyText = "I hit a local brain handoff issue just now. Please try again in a moment.";
+    }
+
+    if (!replyText || !String(replyText).trim()) {
+      replyText = "I saw your message, but I don't have a usable reply yet.";
+    }
+
+    await this.sendMessage(String(replyText).trim(), {
       thread_id: thread.id,
       thread_type: thread.type,
     });
@@ -650,6 +769,7 @@ class EmperorBridge {
         threadId: thread.id,
         threadType: thread.type,
         lastSeenMessageId: message.id || null,
+        brainSessionKey: VIKTOR_BRAIN_SESSION_KEY,
       },
       `Processed thread ${thread.id}`,
     );
