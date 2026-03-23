@@ -8,13 +8,18 @@ RUNTIME_ID="${EMPEROR_CLAW_RUNTIME_ID:-${AGENT_NAME,,}-$(hostname -s 2>/dev/null
 LOCAL_AGENT_ID="${EMPEROR_CLAW_BRAIN_AGENT_ID:-${AGENT_NAME,,}}"
 BRAIN_THINKING="${EMPEROR_CLAW_BRAIN_THINKING:-medium}"
 OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
-COMPANION_DIR="${EMPEROR_CLAW_COMPANION_DIR:-$OPENCLAW_HOME/emperor-control-plane}"
+COMPANION_SLUG_DEFAULT="${EMPEROR_CLAW_BRAIN_AGENT_ID:-${EMPEROR_CLAW_AGENT_NAME:-Viktor}}"
+COMPANION_SLUG_DEFAULT="$(printf '%s' "$COMPANION_SLUG_DEFAULT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+COMPANION_SLUG_DEFAULT="${COMPANION_SLUG_DEFAULT#-}"
+COMPANION_SLUG_DEFAULT="${COMPANION_SLUG_DEFAULT%-}"
+COMPANION_DIR="${EMPEROR_CLAW_COMPANION_DIR:-$OPENCLAW_HOME/emperor-control-plane-${COMPANION_SLUG_DEFAULT}}"
 RUNTIME_DIR="$COMPANION_DIR/runtime"
 STATE_DIR="${EMPEROR_CLAW_STATE_DIR:-$COMPANION_DIR/state}"
 BRIDGE_STATE_PATH="${EMPEROR_CLAW_BRIDGE_STATE_PATH:-$STATE_DIR/bridge-state.json}"
 ENV_FILE="$COMPANION_DIR/.env"
 SERVICE_DIR="$HOME/.config/systemd/user"
-SERVICE_FILE="$SERVICE_DIR/emperor-claw-bridge.service"
+SERVICE_NAME="${EMPEROR_CLAW_SERVICE_NAME:-emperor-claw-bridge-${COMPANION_SLUG_DEFAULT}}"
+SERVICE_FILE="$SERVICE_DIR/${SERVICE_NAME}.service"
 WORKSPACE_DIR="${OPENCLAW_WORKSPACE:-$OPENCLAW_HOME/workspace}"
 CONTROL_PLANE_JS_URL="${EMPEROR_CLAW_CONTROL_PLANE_JS_URL:-$API_URL/control-plane.js}"
 BRIDGE_JS_URL="${EMPEROR_CLAW_BRIDGE_JS_URL:-$API_URL/bridge.js}"
@@ -86,6 +91,9 @@ fi
 
 npm --prefix "$RUNTIME_DIR" install --silent
 
+EMPEROR_CLAW_COMPANION_DIR="$COMPANION_DIR" \
+EMPEROR_CLAW_STATE_DIR="$STATE_DIR" \
+EMPEROR_CLAW_BRIDGE_STATE_PATH="$BRIDGE_STATE_PATH" \
 node "$RUNTIME_DIR/control-plane.js" bootstrap \
   --openclaw-home "$OPENCLAW_HOME" \
   --api-base-url "$API_URL" \
@@ -93,12 +101,19 @@ node "$RUNTIME_DIR/control-plane.js" bootstrap \
   --agent-name "$AGENT_NAME" \
   --runtime-id "$RUNTIME_ID"
 
-python3 - <<PY
-from pathlib import Path
-p = Path(r"$ENV_FILE")
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(f'''EMPEROR_CLAW_API_URL={API_URL}\nEMPEROR_CLAW_API_TOKEN={TOKEN}\nEMPEROR_CLAW_AGENT_NAME={AGENT_NAME}\nEMPEROR_CLAW_RUNTIME_ID={RUNTIME_ID}\nEMPEROR_CLAW_COMPANION_DIR={COMPANION_DIR}\nEMPEROR_CLAW_STATE_DIR={STATE_DIR}\nEMPEROR_CLAW_BRIDGE_STATE_PATH={BRIDGE_STATE_PATH}\nEMPEROR_CLAW_BRAIN_AGENT_ID={LOCAL_AGENT_ID}\nEMPEROR_CLAW_BRAIN_THINKING={BRAIN_THINKING}\nOPENCLAW_CLI_PATH={OPENCLAW_CLI_PATH}\nOPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}\n''')
-PY
+cat > "$ENV_FILE" <<EOF
+EMPEROR_CLAW_API_URL=$API_URL
+EMPEROR_CLAW_API_TOKEN=$TOKEN
+EMPEROR_CLAW_AGENT_NAME=$AGENT_NAME
+EMPEROR_CLAW_RUNTIME_ID=$RUNTIME_ID
+EMPEROR_CLAW_COMPANION_DIR=$COMPANION_DIR
+EMPEROR_CLAW_STATE_DIR=$STATE_DIR
+EMPEROR_CLAW_BRIDGE_STATE_PATH=$BRIDGE_STATE_PATH
+EMPEROR_CLAW_BRAIN_AGENT_ID=$LOCAL_AGENT_ID
+EMPEROR_CLAW_BRAIN_THINKING=$BRAIN_THINKING
+OPENCLAW_CLI_PATH=$OPENCLAW_CLI_PATH
+OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
+EOF
 chmod 600 "$ENV_FILE"
 
 if ! "$OPENCLAW_CLI_PATH" agents list --json | python3 - "$LOCAL_AGENT_ID" <<'PY'
@@ -289,7 +304,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=%h/.openclaw/emperor-control-plane/.env
+EnvironmentFile=$ENV_FILE
 ExecStart=$COMPANION_DIR/run-bridge.sh
 WorkingDirectory=$COMPANION_DIR
 Restart=always
@@ -301,7 +316,7 @@ EOF
 
 if systemctl --user status >/dev/null 2>&1; then
   systemctl --user daemon-reload
-  systemctl --user enable --now emperor-claw-bridge.service >/dev/null
+  systemctl --user enable --now "${SERVICE_NAME}.service" >/dev/null
 fi
 
 EMPEROR_CLAW_API_TOKEN="$TOKEN" "$COMPANION_DIR/doctor.sh" >/dev/null
@@ -311,5 +326,5 @@ echo "Installed Emperor Claw companion v2"
 echo "- API URL: $API_URL"
 echo "- Companion dir: $COMPANION_DIR"
 echo "- Local brain agent: $LOCAL_AGENT_ID"
-echo "- Service: emperor-claw-bridge.service"
+echo "- Service: ${SERVICE_NAME}.service"
 echo "- Env file: $ENV_FILE"
