@@ -1,6 +1,6 @@
 {
     "name": "emperor-claw-os",
-    "version": "1.14.15",
+    "version": "1.15.0",
     "description": "Operate Emperor Claw as the OpenClaw control plane and durable checkpoint layer for an AI workforce: manage projects, tasks, agents, incidents, chat, scoped resources, artifacts, and state transitions through the Emperor Claw MCP endpoints.",
     "private": false,
     "keywords": [
@@ -16,6 +16,7 @@
     },
     "homepage": "https://emperorclaw.malecu.eu",
     "scripts": {
-        "bridge": "node scripts/ec-bridge.js"
+        "bridge": "node scripts/ec-bridge.js",
+    "install:v2": "bash scripts/install.sh"
     }
 }
