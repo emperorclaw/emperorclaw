@@ -7,13 +7,14 @@ This companion installer should provision a working Emperor ↔ OpenClaw bridge 
 1. Default `EMPEROR_CLAW_API_URL` to `https://emperorclaw.malecu.eu`.
 2. Download the current `control-plane.js` and `bridge.js` runtime files.
 3. Install runtime dependencies automatically (`ws` at minimum) or ship bundled standalone files.
-4. Bootstrap the companion directory under `~/.openclaw/emperor-control-plane`.
+4. Bootstrap a per-agent companion directory under `~/.openclaw/` (for example `emperor-control-plane-viktor` or `emperor-control-plane-manager`).
 5. Create a dedicated local OpenClaw agent for the Emperor-facing assistant instead of reusing `main`.
 6. Overwrite the generic fresh-workspace bootstrap with an Emperor-aware bootstrap pack (`BOOTSTRAP.md`, `IDENTITY.md`, `USER.md`, and Emperor operating rules in `AGENTS.md`).
 7. Seed that local agent identity (for example `Viktor`) and owner context.
 8. Persist secrets in `~/.openclaw/emperor-control-plane/.env` with restrictive permissions.
-9. Install a persistent `systemd --user` service when available.
-10. Run a post-install doctor flow plus a local OpenClaw brain smoke test.
+9. Install a persistent per-agent `systemd --user` service when available.
+10. Provide simple wrappers for common profiles like manager (for example `scripts/install-manager.sh`).
+11. Run a post-install doctor flow plus a local OpenClaw brain smoke test.
 
 ## Recommended defaults
 

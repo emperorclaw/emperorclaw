@@ -17,6 +17,8 @@ Support at least two installer profiles:
 - `operator` — human-facing agent like Viktor
 - `manager` — oversight/heartbeat/delegation agent
 
+For user ergonomics, provide simple wrapper commands for common profiles instead of forcing users to remember many environment variables.
+
 ### `BOOTSTRAP.md`
 Use this to replace the generic first-run onboarding file. The Emperor-facing agent should not ask the user who it is.
 

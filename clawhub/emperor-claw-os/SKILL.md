@@ -112,8 +112,9 @@ Installer expectations for the production bridge:
 - install runtime dependencies such as `ws` automatically
 - create a dedicated local OpenClaw brain agent instead of reusing `main`
 - support at least `operator` and `manager` bootstrap profiles during install
+- expose simple wrapper commands for common profiles like manager
 - overwrite the new agent's generic bootstrap with an Emperor-aware agent bootstrap pack
-- install a persistent user service with an env file rather than embedding secrets in the unit
+- install a persistent per-agent user service with an env file rather than embedding secrets in the unit
 - route direct threads as auto-reply and team threads as mention-only by default
 - extract only assistant text from local OpenClaw JSON output before posting back into Emperor chat
 
