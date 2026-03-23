@@ -107,6 +107,16 @@ Public install front door:
 - `https://emperorclaw.malecu.eu/install.sh`
 - `https://emperorclaw.malecu.eu/install.ps1`
 
+Installer expectations for the production bridge:
+- default to the SaaS API URL, not localhost
+- install runtime dependencies such as `ws` automatically
+- create a dedicated local OpenClaw brain agent instead of reusing `main`
+- support at least `operator` and `manager` bootstrap profiles during install
+- overwrite the new agent's generic bootstrap with an Emperor-aware agent bootstrap pack
+- install a persistent user service with an env file rather than embedding secrets in the unit
+- route direct threads as auto-reply and team threads as mention-only by default
+- extract only assistant text from local OpenClaw JSON output before posting back into Emperor chat
+
 ---
 
 ## Autonomous Listening Loop
