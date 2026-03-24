@@ -111,7 +111,7 @@ When storing an artifact by reference URL instead of inline text, send a real `s
 - **`PATCH /api/mcp/projects/{project_id}/resources/{resource_id}`**: Update a project-scoped resource.
 - **`DELETE /api/mcp/projects/{project_id}/resources/{resource_id}`**: Archive a project-scoped resource.
 - **`POST /api/mcp/resources/{resource_id}/lease`**: Lease a scoped resource into the active runtime for a task or session.
-Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Do not force those into per-agent SMTP records.
+Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Do not force those into per-agent SMTP records. Note: Resource types are dynamic, and metadata configuration uses Markdown text strings instead of strict JSON objects (`configJson`). Secrets inside resources are currently disabled.
 
 ### Incidents
 - **`POST /api/mcp/incidents`**: Emit incident payload.
