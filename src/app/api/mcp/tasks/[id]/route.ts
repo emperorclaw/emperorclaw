@@ -4,6 +4,51 @@ import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { updateTaskForCompany } from "@/lib/openclaw/tasks";
+
+export async function PATCH(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { id: taskId } = await params;
+    const endpoint = `/api/mcp/tasks/${taskId}`;
+
+    const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
+    if (error) return NextResponse.json({ error }, { status });
+    if (cachedResponse) return NextResponse.json(cachedResponse);
+
+    try {
+        const body = await req.json();
+        const result = await updateTaskForCompany({
+            companyId,
+            taskId,
+            title: typeof body.title === "string" ? body.title : undefined,
+            goal: typeof body.goal === "string" ? body.goal : undefined,
+            priority: typeof body.priority === "number" ? body.priority : undefined,
+            assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
+            state: body.state,
+            inputJson: body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined,
+        });
+
+        if ("error" in result) {
+            return NextResponse.json({ error: result.error }, { status: result.status });
+        }
+
+        const res = { message: `Task ${taskId} updated successfully`, task: result.task };
+        await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
+        return NextResponse.json(res, { status: 200 });
+    } catch (err) {
+        const message = err instanceof Error ? err.message : "Internal Server Error";
+        const routeStatus = message.startsWith("Agent not found") ? 404 : 500;
+        return NextResponse.json({ error: message }, { status: routeStatus });
+    }
+}
 
 export async function DELETE(
     req: NextRequest,

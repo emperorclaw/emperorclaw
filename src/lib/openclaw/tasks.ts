@@ -49,6 +49,24 @@ type FinalizeTaskInput = {
   confidence?: number;
 };
 
+type AssignTaskInput = {
+  companyId: string;
+  taskId: string;
+  agentId: string;
+  mode?: "assign" | "claim";
+};
+
+type UpdateTaskInput = {
+  companyId: string;
+  taskId: string;
+  title?: string;
+  goal?: string;
+  priority?: number;
+  assignedAgentId?: string | null;
+  state?: unknown;
+  inputJson?: Record<string, unknown> | null;
+};
+
 export async function claimNextTaskForAgent(input: ClaimTaskInput) {
   const strictOwnerRole = input.strictOwnerRole !== false;
   const allowedRoles = Array.isArray(input.allowedRoles) ? input.allowedRoles : [];
@@ -133,6 +151,109 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
   return { message: "Task claimed successfully", task };
+}
+
+export async function assignTaskToAgent(input: AssignTaskInput) {
+  const internalAgentId = await resolveAgentId(input.companyId, input.agentId);
+  const mode = input.mode === "claim" ? "claim" : "assign";
+
+  const [existingTask] = await db.select().from(tasks).where(
+    and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId), isNull(tasks.deletedAt)),
+  ).limit(1);
+
+  if (!existingTask) {
+    return { status: 404 as const, error: "Task not found" };
+  }
+
+  const state = mode === "claim" ? TASK_STATES.inProgress : existingTask.state;
+  const now = new Date();
+  const leaseUntil = mode === "claim" ? new Date(now.getTime() + 10 * 60 * 1000) : existingTask.leaseUntil;
+
+  const [task] = await db.update(tasks).set({
+    assignedAgentId: internalAgentId,
+    state,
+    leaseOwner: mode === "claim" ? input.agentId : existingTask.leaseOwner,
+    leaseUntil,
+    processingStartedAt: mode === "claim" ? (existingTask.processingStartedAt || now) : existingTask.processingStartedAt,
+    updatedAt: now,
+  }).where(
+    and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId)),
+  ).returning();
+
+  await db.insert(taskEvents).values({
+    companyId: input.companyId,
+    taskId: input.taskId,
+    eventType: mode === "claim" ? "task_claimed" : "task_assigned",
+    actorType: "agent",
+    actorId: internalAgentId,
+    payloadJson: {
+      mode,
+      assignedAgentId: internalAgentId,
+      previousState: existingTask.state,
+      nextState: task.state,
+    },
+  });
+
+  await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
+  return { status: 200 as const, task };
+}
+
+export async function updateTaskForCompany(input: UpdateTaskInput) {
+  const [existingTask] = await db.select().from(tasks).where(
+    and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId), isNull(tasks.deletedAt)),
+  ).limit(1);
+
+  if (!existingTask) {
+    return { status: 404 as const, error: "Task not found" };
+  }
+
+  let resolvedAssignedAgentId = existingTask.assignedAgentId;
+  if (typeof input.assignedAgentId === "string" && input.assignedAgentId.trim()) {
+    resolvedAssignedAgentId = await resolveAgentId(input.companyId, input.assignedAgentId.trim());
+  } else if (input.assignedAgentId === null) {
+    resolvedAssignedAgentId = null;
+  }
+
+  const normalizedState = input.state === undefined ? existingTask.state : normalizeTaskState(input.state);
+  if (input.state !== undefined && !normalizedState) {
+    return { status: 400 as const, error: "Invalid state" };
+  }
+
+  const currentInput = (existingTask.inputJson && typeof existingTask.inputJson === "object") ? existingTask.inputJson as Record<string, unknown> : {};
+  const nextInputJson = input.inputJson ? { ...currentInput, ...input.inputJson } : currentInput;
+  const nextTitle = input.title ?? (typeof currentInput.title === "string" ? currentInput.title : null);
+  const nextGoal = input.goal ?? (typeof currentInput.goal === "string" ? currentInput.goal : null);
+
+  const [task] = await db.update(tasks).set({
+    priority: typeof input.priority === "number" ? input.priority : existingTask.priority,
+    assignedAgentId: resolvedAssignedAgentId,
+    state: normalizedState || existingTask.state,
+    inputJson: {
+      ...nextInputJson,
+      ...(nextTitle ? { title: nextTitle } : {}),
+      ...(nextGoal ? { goal: nextGoal } : {}),
+    },
+    updatedAt: new Date(),
+  }).where(
+    and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId)),
+  ).returning();
+
+  await db.insert(taskEvents).values({
+    companyId: input.companyId,
+    taskId: input.taskId,
+    eventType: "task_updated",
+    actorType: "system",
+    payloadJson: {
+      title: input.title,
+      goal: input.goal,
+      priority: input.priority,
+      assignedAgentId: input.assignedAgentId,
+      state: normalizedState,
+    },
+  });
+
+  await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
+  return { status: 200 as const, task };
 }
 
 export async function createTaskForProject(input: CreateTaskInput) {
