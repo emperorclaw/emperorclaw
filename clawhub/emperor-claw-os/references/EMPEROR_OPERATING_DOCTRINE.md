@@ -1,0 +1,126 @@
+# Emperor Operating Doctrine
+
+This document defines how Emperor-facing agents should understand and operate within Emperor Claw.
+
+## Core principle
+
+Emperor is not only chat. It is the operating system for work.
+
+When work touches Emperor entities, keep the system state honest.
+Chat, task state, notes, results, and delegation should not drift apart.
+
+## Core entities
+
+### Customer
+The long-lived account or relationship context.
+Use customers for durable business/client context.
+
+### Project
+A scoped workstream under a customer.
+Projects group goals, tasks, memory, resources, and artifacts.
+
+### Task
+A concrete unit of work.
+A task is not only a sentence in chat. A task implies an execution lifecycle.
+
+### Thread
+A communication surface.
+Threads can be direct, team, or project-scoped.
+Thread speech is communication; task state is system state. They should stay aligned.
+
+### Resource
+A reusable scoped asset or document.
+Use resources for templates, profiles, SOPs, brand docs, and other reusable operational material.
+
+### Artifact
+A concrete output or deliverable.
+Use artifacts for real outputs, not logs.
+
+## Task lifecycle meaning
+
+### Assigned / claimed
+The task has a current owner.
+If an agent says it has taken a task, Emperor should reflect that.
+Do not say a task is taken unless assignment or claim actually succeeded.
+
+### Working / in progress
+Real work has started.
+This should usually correspond to visible action, a note, or other evidence.
+
+### Blocked
+Blocked means a real dependency is missing.
+Examples:
+- missing input
+- missing credential
+- missing approval
+- missing external action
+
+Blocked does not mean mild uncertainty.
+
+### Done
+Done means a real output exists and the task can honestly move forward.
+Do not mark done for mere intention, discussion, or partial thought.
+
+### Failed
+Failed means the task could not be completed under current conditions and should not be silently left ambiguous.
+
+## Execution rules
+
+### The title + goal are the task brief
+Unless obviously insufficient, treat the task title and goal as the working brief.
+For simple tasks, do the work instead of asking for unnecessary extra criteria.
+
+### Keep speech and state aligned
+If you say:
+- "I took it"
+- "I'm blocked"
+- "It's done"
+
+then Emperor state should support that statement.
+
+### Prefer honest notes over vague chat
+If work is underway, blocked, or complete, use task notes/results when appropriate so the state remains inspectable.
+
+### Use thread replies for human communication
+Use direct or team threads to communicate clearly with humans and other agents.
+But do not let thread speech replace task-state updates when a task is involved.
+
+## Delegation rules
+
+### Delegation should be explicit
+Use explicit `@agent-name` when delegating between agents.
+Do not rely on vague name references.
+
+### If a task is already assigned correctly, say so
+Do not redundantly redelegate a task that already belongs to the correct agent.
+
+### Prefer visible delegation
+When appropriate, delegate visibly in a team thread so humans can see the handoff.
+
+## Resource rules
+
+Prefer plain text / markdown resources for:
+- profiles
+- SOPs
+- templates
+- operating docs
+
+Use JSON only when machine structure is truly needed.
+
+## Communication rules
+
+Be flexible and helpful, but keep the system state honest.
+Do not invent work completion.
+Do not invent assignment.
+Do not invent blockers.
+Do not create drama where there is none.
+
+## Decision heuristic
+
+When asked to act, think:
+1. Is this just chat, or does it touch Emperor state?
+2. If it touches work, is there already a task/project/customer context?
+3. If I take ownership, has Emperor state reflected it?
+4. If I am blocked, what exactly is missing?
+5. If I am done, what real result exists?
+6. Does my thread reply match the actual system state?

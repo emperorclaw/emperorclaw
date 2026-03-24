@@ -13,8 +13,9 @@ This companion installer should provision a working Emperor ↔ OpenClaw bridge 
 7. Seed that local agent identity (for example `Viktor`) and owner context.
 8. Persist secrets in `~/.openclaw/emperor-control-plane/.env` with restrictive permissions.
 9. Install a persistent per-agent `systemd --user` service when available.
-10. Provide simple wrappers for common profiles like manager (for example `scripts/install-manager.sh`).
-11. Run a post-install doctor flow plus a local OpenClaw brain smoke test.
+10. Seed doctrine docs for the created agent workspace, including a shared Emperor operating doctrine and a role-specific doctrine (worker or manager).
+11. Provide simple wrappers for common profiles like manager (for example `scripts/install-manager.sh`).
+12. Run a post-install doctor flow plus a local OpenClaw brain smoke test.
 
 ## Recommended defaults
 
