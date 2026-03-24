@@ -13,6 +13,7 @@ import { resolveAgentId } from "@/lib/mcp";
 import { validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeTaskState, TASK_STATES, type TaskState } from "@/lib/task-state";
+import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 
 type ClaimTaskInput = {
   companyId: string;
@@ -220,19 +221,19 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   }
 
   const currentInput = (existingTask.inputJson && typeof existingTask.inputJson === "object") ? existingTask.inputJson as Record<string, unknown> : {};
-  const nextInputJson = input.inputJson ? { ...currentInput, ...input.inputJson } : currentInput;
-  const nextTitle = input.title ?? (typeof currentInput.title === "string" ? currentInput.title : null);
-  const nextGoal = input.goal ?? (typeof currentInput.goal === "string" ? currentInput.goal : null);
+  const mergedInputJson = input.inputJson ? { ...currentInput, ...input.inputJson } : currentInput;
+  const normalizedSpec = normalizeTaskSpec({
+    taskType: existingTask.taskType,
+    title: input.title,
+    goal: input.goal,
+    inputJson: mergedInputJson,
+  });
 
   const [task] = await db.update(tasks).set({
     priority: typeof input.priority === "number" ? input.priority : existingTask.priority,
     assignedAgentId: resolvedAssignedAgentId,
     state: normalizedState || existingTask.state,
-    inputJson: {
-      ...nextInputJson,
-      ...(nextTitle ? { title: nextTitle } : {}),
-      ...(nextGoal ? { goal: nextGoal } : {}),
-    },
+    inputJson: normalizedSpec.inputJson,
     updatedAt: new Date(),
   }).where(
     and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId)),
@@ -249,6 +250,8 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
       priority: input.priority,
       assignedAgentId: input.assignedAgentId,
       state: normalizedState,
+      readiness: normalizedSpec.readiness,
+      missingFields: normalizedSpec.missingFields,
     },
   });
 
@@ -264,6 +267,11 @@ export async function createTaskForProject(input: CreateTaskInput) {
   if (!project) {
     throw new Error("RELATIONSHIP_VIOLATION");
   }
+
+  const normalizedSpec = normalizeTaskSpec({
+    taskType: input.taskType,
+    inputJson: input.inputJson || {},
+  });
 
   const [task] = await db.insert(tasks).values({
     id: randomUUID(),
@@ -281,7 +289,7 @@ export async function createTaskForProject(input: CreateTaskInput) {
       ? input.humanApprovalRequired
       : Boolean(project.requireApprovalForDone),
     proofTypesJson: input.proofTypesJson ?? [],
-    inputJson: input.inputJson || {},
+    inputJson: normalizedSpec.inputJson,
     blockedByTaskIds: input.blockedByTaskIds || [],
   }).returning();
 
@@ -293,6 +301,8 @@ export async function createTaskForProject(input: CreateTaskInput) {
     payloadJson: {
       source: input.source || "mcp_api",
       recurringTaskDefinitionId: input.recurringTaskDefinitionId || null,
+      readiness: normalizedSpec.readiness,
+      missingFields: normalizedSpec.missingFields,
     },
   });
 
