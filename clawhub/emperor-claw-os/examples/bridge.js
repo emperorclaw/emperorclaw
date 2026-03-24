@@ -217,6 +217,28 @@ function parseStructuredEnvelope(text) {
   }
 }
 
+function appendDebugLog(baseDir, entry) {
+  try {
+    const path = `${baseDir}/delegation-debug.log`;
+    const line = JSON.stringify({ at: new Date().toISOString(), ...entry });
+    fs.appendFileSync(path, `${line}\n`, "utf8");
+  } catch (error) {
+    console.error("[bridge] debug log write failed:", error.message);
+  }
+}
+
+function extractTaskRef(text) {
+  const value = String(text || "");
+  const match = value.match(/TASK-([A-F0-9]{8})/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function extractExplicitAgentMention(text) {
+  const value = String(text || "");
+  const match = value.match(/@([a-z0-9_-]+)/i);
+  return match ? match[1] : null;
+}
+
 class EmperorBridge {
   constructor() {
     this.agent = null;
@@ -725,20 +747,43 @@ class EmperorBridge {
   }
 
   async defaultMessageHandler(message, thread) {
-    const text = String(message?.text || "");
+    const text = String(message?.text || "").trim();
     const agentName = String(this.agent?.name || AGENT_NAME || "Viktor").trim();
     const lowered = text.toLowerCase();
     const mentionsAgent = agentName
       ? lowered.includes(`@${agentName.toLowerCase()}`) || lowered.includes(agentName.toLowerCase())
       : false;
     const isDirectThread = String(thread?.type || "").toLowerCase() === "direct";
+    const senderType = String(message?.senderType || "unknown").toLowerCase();
+    const isHuman = senderType === "human" || senderType === "user";
+    const isAgentSender = senderType === "agent";
+    const lowSignal = !text || text.length < 4;
+    const taskRef = extractTaskRef(text);
+    const explicitAtMention = agentName ? lowered.includes(`@${agentName.toLowerCase()}`) : false;
 
-    if (!isDirectThread && !mentionsAgent) {
-      console.log(`[bridge] ignoring thread ${thread.id} message without explicit ${agentName} mention`);
+    if (IS_MANAGER_PROFILE) {
+      if (!isHuman || lowSignal || !explicitAtMention) {
+        console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
+        return;
+      }
+    } else if (isAgentSender) {
+      const actionableDelegation = explicitAtMention && /\b(take|claim|work on|handle|pick up|start)\b/.test(lowered);
+      if (!actionableDelegation) {
+        console.log(`[bridge] ignoring non-actionable agent message in thread ${thread.id}`);
+        return;
+      }
+    } else if (!isDirectThread && !explicitAtMention) {
+      console.log(`[bridge] ignoring thread ${thread.id} message without explicit @${agentName} mention`);
       return;
     }
 
-    const explicitClaimRequest = /\b(claim|take|start working on|work on|pick up)\b.*\b(task|ticket|job)\b|\b(next task)\b/.test(lowered);
+    const explicitClaimRequest = /\b(claim|take|start working on|work on|pick up|handle)\b.*\b(task|ticket|job)\b|\b(next task)\b/.test(lowered);
+    const explicitDelegationRequest = /\b(delegate|assign)\b/.test(lowered) && Boolean(taskRef);
+    const mentionedAgentRef = extractExplicitAgentMention(text.replace(new RegExp(`@${agentName}`, 'ig'), '').trim()) || null;
+    if (explicitDelegationRequest) {
+      console.log(`[bridge] delegation-request detected thread=${thread.id} senderType=${senderType} taskRef=${taskRef} text=${JSON.stringify(text)}`);
+      appendDebugLog(COMPANION_DIR, { kind: "delegation-request", bridgeAgent: agentName, threadId: thread.id, senderType, taskRef, text });
+    }
 
     await this.updateChatStatus(thread.id, true, true);
     await this.writeMemory(
@@ -765,6 +810,37 @@ class EmperorBridge {
     }
 
     let claimedTask = null;
+    let referencedTask = null;
+    if (taskRef) {
+      try {
+        referencedTask = await this.findTaskByRef(taskRef);
+        if (referencedTask) {
+          console.log(`[bridge] task-ref resolved TASK-${taskRef} -> ${referencedTask.id} assignedAgentId=${referencedTask.assignedAgentId || 'null'} state=${referencedTask.state || 'unknown'}`);
+          appendDebugLog(COMPANION_DIR, { kind: "task-ref-resolved", bridgeAgent: agentName, taskRef, taskId: referencedTask.id, assignedAgentId: referencedTask.assignedAgentId || null, state: referencedTask.state || null });
+          const taskSummary = `Referenced task: TASK-${taskRef} => ${referencedTask.title || referencedTask.goal || referencedTask.id} [state=${referencedTask.state || "unknown"}, type=${referencedTask.taskType || "unknown"}]`;
+          liveContext = liveContext ? `${liveContext}\n\n${taskSummary}` : taskSummary;
+        } else {
+          console.log(`[bridge] task-ref TASK-${taskRef} did not resolve`);
+        }
+      } catch (error) {
+        console.error("[bridge] task ref lookup failed:", error.message);
+      }
+    }
+    if (IS_MANAGER_PROFILE && explicitDelegationRequest && referencedTask && mentionedAgentRef) {
+      try {
+        const targetAgent = await this.resolveAgentRef(mentionedAgentRef);
+        if (targetAgent?.id && referencedTask.assignedAgentId && String(referencedTask.assignedAgentId) === String(targetAgent.id)) {
+          const alreadyAssignedReply = `TASK-${taskRef} is already assigned to ${targetAgent.name || mentionedAgentRef}. No new delegation needed.`;
+          appendDebugLog(COMPANION_DIR, { kind: 'delegation-already-assigned', bridgeAgent: agentName, taskId: referencedTask.id, targetAgentId: targetAgent.id, targetAgentName: targetAgent.name || mentionedAgentRef });
+          await this.sendMessage(alreadyAssignedReply, { thread_id: thread.id, thread_type: thread.type });
+          await this.updateChatStatus(thread.id, false);
+          return;
+        }
+      } catch (error) {
+        console.error('[bridge] delegation precheck failed:', error.message);
+      }
+    }
+
     if (explicitClaimRequest) {
       try {
         claimedTask = await this.claimNextTask("explicit-thread-command");
@@ -782,8 +858,14 @@ class EmperorBridge {
       `Reply naturally and helpfully as ${agentName}.`,
       `Only answer the user's latest message; do not mention internal bridges, hooks, or routing.`,
       `If you want Emperor state changed, return raw JSON only with this schema: {"reply_text":"string","summary":"optional","status":"observed|working|blocked|done|failed|needs_human","actions":[...]}.`,
-      `Supported actions are: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, thread_reply {thread_id?,thread_type?,text}, project_memory {project_id,content,summary?}.`,
-      `If no Emperor mutation is needed, you may reply with plain natural language text instead of JSON. Do not wrap JSON in markdown fences.`,
+      `Supported actions are: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, task_assign {task_id,agent_id,mode?}, thread_reply {thread_id?,thread_type?,text,chat_id?,target_agent_id?}, project_memory {project_id,content,summary?}.`,
+      `When another agent delegates work, only treat it as actionable if it explicitly uses @${agentName} and includes a concrete task/work verb. If a TASK-XXXXXXXX reference is present, use that specific task as the intended target.`,
+      explicitDelegationRequest && IS_MANAGER_PROFILE
+        ? `This is an explicit task delegation/assignment request. Return JSON only. Do not reply with plain text. Use task_assign for the referenced task and, if helpful, a separate thread_reply with a visible @Viktor handoff.`
+        : `If no Emperor mutation is needed, you may reply with plain natural language text instead of JSON. Do not wrap JSON in markdown fences.`,
+      IS_MANAGER_PROFILE
+        ? `Use the Agent profiles in Emperor to delegate intentionally. When execution work should go to a worker like Viktor, prefer a visible team-thread delegation via thread_reply tagging @Viktor with a concrete instruction. Use explicit @agent-name mentions for agent-to-agent delegation. If the human references a TASK-XXXXXXXX id, include that exact task reference in the delegation. If you are assigning a specific task to a worker, prefer task_assign first, then the visible delegation message. Keep your human-facing reply generic (for example: "I’m delegating that now.") and avoid mentioning the worker name there if you also send a separate delegation message.`
+        : `If another agent such as Manager delegates execution work to you, treat a concrete @${agentName} instruction about taking or working on a task as actionable and stay honest about progress, blockers, and results. If you accept a specific task, prefer structured actions so Emperor stays consistent: assign or claim the task if needed, add a start note, and later add a blocker note or task_result instead of only chatting about it. Never say you took a task unless the assignment/claim succeeded.`,
       liveContext ? `Live Emperor context:\n${liveContext}` : null,
       `Thread ID: ${thread.id}`,
       `Thread type: ${thread.type}`,
@@ -805,23 +887,55 @@ class EmperorBridge {
         this.schedulePersistBridgeState();
       }
       const structured = parseStructuredEnvelope(agentResult?.text || "");
+      if (explicitDelegationRequest) {
+        console.log(`[bridge] delegation brain-output structured=${Boolean(structured)} text=${JSON.stringify((agentResult?.text || '').slice(0, 800))}`);
+        appendDebugLog(COMPANION_DIR, { kind: "delegation-brain-output", bridgeAgent: agentName, structured: Boolean(structured), text: (agentResult?.text || '').slice(0, 800) });
+      }
       if (structured) {
         const executed = await this.executeStructuredEnvelope(structured, {
           threadId: thread.id,
           threadType: thread.type,
-          taskId: claimedTask?.id || message.taskId || null,
-          projectId: claimedTask?.projectId || null,
+          taskId: referencedTask?.id || claimedTask?.id || message.taskId || null,
+          projectId: referencedTask?.projectId || claimedTask?.projectId || null,
         });
+        if (explicitDelegationRequest) {
+          console.log(`[bridge] delegation executed actions=${JSON.stringify(executed.executed || [])} replyText=${JSON.stringify(executed.replyText || '')}`);
+          appendDebugLog(COMPANION_DIR, { kind: "delegation-executed", bridgeAgent: agentName, actions: executed.executed || [], replyText: executed.replyText || '' });
+        }
         replyText = executed.replyText || null;
       } else {
-        replyText = agentResult?.text || null;
+        if (!IS_MANAGER_PROFILE && referencedTask && !referencedTask.assignedAgentId && isAgentSender && explicitAtMention && /\b(take|claim|work on|handle|pick up|start)\b/.test(lowered)) {
+          try {
+            console.log(`[bridge] self-assign attempt taskId=${referencedTask.id} agentId=${this.agent?.id || VIKTOR_BRAIN_AGENT_ID}`);
+            appendDebugLog(COMPANION_DIR, { kind: "self-assign-attempt", bridgeAgent: agentName, taskId: referencedTask.id, agentId: this.agent?.id || VIKTOR_BRAIN_AGENT_ID });
+            await http(`/api/mcp/tasks/${referencedTask.id}/assign`, {
+              method: "POST",
+              idempotencyKey: `self-assign:${stableHash({ taskId: referencedTask.id, agentId: this.agent?.id || VIKTOR_BRAIN_AGENT_ID })}`,
+              body: { agentId: this.agent?.id || VIKTOR_BRAIN_AGENT_ID, mode: "assign" },
+            });
+            console.log(`[bridge] self-assign success taskId=${referencedTask.id}`);
+            appendDebugLog(COMPANION_DIR, { kind: "self-assign-success", bridgeAgent: agentName, taskId: referencedTask.id });
+            replyText = agentResult?.text || null;
+          } catch (error) {
+            console.error("[bridge] self-assign failed:", error.message);
+            appendDebugLog(COMPANION_DIR, { kind: "self-assign-failed", bridgeAgent: agentName, taskId: referencedTask.id, error: error.message });
+            replyText = agentResult?.text || null;
+          }
+        } else {
+          replyText = agentResult?.text || null;
+        }
       }
     } catch (error) {
       console.error("[bridge] viktor brain handoff failed:", error.message);
-      replyText = "I hit a local brain handoff issue just now. Please try again in a moment.";
+      replyText = IS_MANAGER_PROFILE ? null : "I hit a local brain handoff issue just now. Please try again in a moment.";
     }
 
     if (!replyText || !String(replyText).trim()) {
+      if (IS_MANAGER_PROFILE || explicitDelegationRequest) {
+        console.log("[bridge] suppressing unusable reply");
+        await this.updateChatStatus(thread.id, false);
+        return;
+      }
       replyText = "I saw your message, but I don't have a usable reply yet.";
     }
 
@@ -1097,6 +1211,29 @@ class EmperorBridge {
           continue;
         }
 
+        if (type === "task_assign") {
+          const taskId = action.task_id || action.taskId || context.taskId || null;
+          const agentRef = action.agent_id || action.agentId || null;
+          const mode = action.mode === "claim" ? "claim" : "assign";
+          if (!taskId || !agentRef) continue;
+          const resolvedAgent = await this.resolveAgentRef(agentRef);
+          console.log(`[bridge] task_assign requested taskId=${taskId} agentRef=${agentRef} resolvedAgentId=${resolvedAgent?.id || 'null'} resolvedAgentName=${resolvedAgent?.name || 'null'} mode=${mode}`);
+          appendDebugLog(COMPANION_DIR, { kind: "task-assign-requested", taskId, agentRef, resolvedAgentId: resolvedAgent?.id || null, resolvedAgentName: resolvedAgent?.name || null, mode });
+          if (!resolvedAgent?.id) {
+            console.error(`[bridge] task_assign could not resolve agent ref: ${agentRef}`);
+            continue;
+          }
+          const payload = await http(`/api/mcp/tasks/${taskId}/assign`, {
+            method: "POST",
+            idempotencyKey: `task-assign:${stableHash({ taskId, agentId: resolvedAgent.id, mode })}`,
+            body: { agentId: resolvedAgent.id, mode },
+          });
+          console.log(`[bridge] task_assign success taskId=${taskId} assignedAgentId=${resolvedAgent.id} mode=${mode}`);
+          appendDebugLog(COMPANION_DIR, { kind: "task-assign-success", taskId, assignedAgentId: resolvedAgent.id, mode });
+          executed.push({ type, taskId, agentId: resolvedAgent.id, mode, payload });
+          continue;
+        }
+
         if (type === "project_memory") {
           const projectId = action.project_id || action.projectId || context.projectId || null;
           const content = String(action.content || "").trim();
@@ -1134,6 +1271,40 @@ class EmperorBridge {
     return Array.isArray(payload?.tasks) ? payload.tasks : Array.isArray(payload) ? payload : [];
   }
 
+  async findTaskByRef(taskRef) {
+    if (!taskRef) return null;
+    const tasks = await this.fetchTasks();
+    return tasks.find((task) => String(task.id || "").slice(0, 8).toUpperCase() === String(taskRef).toUpperCase()) || null;
+  }
+
+  async fetchResources() {
+    const payload = await http("/api/mcp/resources", { method: "GET" });
+    return Array.isArray(payload?.resources) ? payload.resources : Array.isArray(payload) ? payload : [];
+  }
+
+  async fetchAgents() {
+    const payload = await http("/api/mcp/agents", { method: "GET" });
+    return Array.isArray(payload?.agents) ? payload.agents : Array.isArray(payload) ? payload : [];
+  }
+
+  async resolveAgentRef(agentRef) {
+    if (!agentRef) return null;
+    const agents = await this.fetchAgents();
+    const ref = String(agentRef).trim().toLowerCase();
+    return agents.find((agent) => String(agent.id || "").toLowerCase() === ref || String(agent.name || "").toLowerCase() === ref) || null;
+  }
+
+  async fetchAgentProfiles(scopeId = null) {
+    const resources = await this.fetchResources();
+    return resources.filter((resource) => {
+      const profileText = resource?.configJson?.profileText;
+      if (!profileText || typeof profileText !== "string") return false;
+      if (!/Agent Profile:/i.test(profileText) && !/^Agent Profile - /i.test(String(resource?.name || ""))) return false;
+      if (!scopeId) return true;
+      return String(resource.scopeId || "") === String(scopeId);
+    });
+  }
+
   async buildLiveContextForMessage(text) {
     const lowered = String(text || "").toLowerCase();
     const wantsCustomers = /\bcustomer\b|\bcustomers\b|\bclient\b|\bclients\b/.test(lowered);
@@ -1152,6 +1323,7 @@ class EmperorBridge {
       includeProjects: wantsProjects || wantsNorthstar || wantsEmperorOverview,
       includeTasks: wantsTasks || wantsNorthstar || wantsEmperorOverview,
       includeResources: wantsResources || wantsNorthstar || wantsEmperorOverview,
+      includeAgents: wantsEmperorOverview || /\bagent\b|\bagents\b|\bviktor\b|\bmanager\b|\bdelegate\b|\bdelegation\b/.test(lowered),
       focusName: wantsNorthstar ? "northstar" : null,
       includeOverview: wantsEmperorOverview,
     });
@@ -1206,6 +1378,18 @@ class EmperorBridge {
       }
     }
 
+    if (options.includeResources || options.includeOverview || options.includeAgents) {
+      const profiles = await this.fetchAgentProfiles(matchedCustomer?.id || null);
+      if (profiles.length > 0) {
+        const profileBlocks = profiles.slice(0, 10).map((resource) => {
+          const name = resource?.name || resource?.configJson?.agentId || resource?.id;
+          const text = String(resource?.configJson?.profileText || "").trim();
+          return `## ${name}\n${text}`;
+        });
+        sections.push(`Agent profiles in Emperor:\n${profileBlocks.join("\n\n")}`);
+      }
+    }
+
     return sections.length > 0 ? sections.join("\n\n") : null;
   }
 
@@ -1223,6 +1407,7 @@ class EmperorBridge {
       includeProjects: true,
       includeTasks: true,
       includeResources: true,
+      includeAgents: true,
     });
 
     const prompt = [
@@ -1231,7 +1416,8 @@ class EmperorBridge {
       "Use these thresholds unless the data clearly suggests otherwise: inbox > 24h is stale, queued > 24h is stale, in_progress > 6h without visible update is at risk, active project with no movement > 72h is idle.",
       "Do not create drama. If nothing actionable needs attention, return raw JSON only: {\"reply_text\":\"\",\"status\":\"observed\",\"actions\":[]}",
       "If something needs attention, return raw JSON only with schema {\"reply_text\":\"string\",\"summary\":\"optional\",\"status\":\"observed|working|blocked|done|failed|needs_human\",\"actions\":[...]}",
-      "Supported actions are: task_note {task_id,note,handoff?}, thread_reply {thread_id?,thread_type?,text}, project_memory {project_id,content,summary?}.",
+      "Supported actions are: task_note {task_id,note,handoff?}, task_assign {task_id,agent_id,mode?}, thread_reply {thread_id?,thread_type?,text,chat_id?,target_agent_id?}, project_memory {project_id,content,summary?}.",
+      "Use Agent profiles from Emperor to decide delegation. If the human references a specific TASK-XXXXXXXX and asks you to delegate or assign it to a worker, prefer a task_assign action first (agent_id should be the worker, usually viktor), then a visible team-thread handoff using thread_reply with chat_id=team, thread_type=team, and a concrete @Viktor instruction.",
       liveContext ? `Live Emperor context:\n${liveContext}` : null,
       `Review reason: ${reason}`,
       `Current sync snapshot: tasks=${Array.isArray(snapshot?.tasks) ? snapshot.tasks.length : 0}, teamThreads=${Array.isArray(snapshot?.teamThreads) ? snapshot.teamThreads.length : 0}`,
@@ -1260,8 +1446,15 @@ class EmperorBridge {
       chatId: "team",
     });
 
-    if (executed.replyText) {
+    const hasActions = Array.isArray(executed.executed) && executed.executed.length > 0;
+    const shouldPostSummary = Boolean(executed.replyText)
+      && ["blocked", "failed", "needs_human", "working", "done"].includes(String(executed.status || "").trim())
+      && hasActions;
+
+    if (shouldPostSummary) {
       await this.sendMessage(executed.replyText, { chat_id: "team", thread_type: "team" });
+    } else if (executed.replyText) {
+      console.log("[bridge] manager review produced non-actionable reply; suppressing proactive post");
     }
 
     return executed;
