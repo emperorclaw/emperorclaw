@@ -6,7 +6,7 @@ function sanitizeResource(resource: any) {
   return {
     ...resource,
     ...resolveResourceScope(resource),
-    secretJson: undefined,
+    secretText: undefined,
   };
 }
 
@@ -52,7 +52,11 @@ export async function PATCH(
     const resource = await updateScopedResource({
       companyId,
       resourceId: id,
-      patch: patch as any,
+      patch: {
+        ...patch,
+        configText: (patch.configJson || patch.configText) as string,
+        secretText: (patch.secretJson || patch.secretText) as string,
+      } as any,
     });
 
     if (!resource) {

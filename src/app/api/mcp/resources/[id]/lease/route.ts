@@ -36,8 +36,8 @@ export async function POST(
         ...leasedResource,
         ...resolveResourceScope(resource),
       },
-      configJson: resource.configJson || {},
-      secretJson: resource.secretJson || {},
+      configText: resource.configText || "",
+      secretText: resource.secretText || "",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal Server Error";

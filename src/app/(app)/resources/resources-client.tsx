@@ -1,9 +1,9 @@
 "use client";
-
 import { useMemo, useState } from "react";
-import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search } from "lucide-react";
+import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 type ResourceRecord = {
     id: string;
@@ -15,7 +15,8 @@ type ResourceRecord = {
     displayName: string | null;
     ownership: string;
     status: string;
-    configJson: any;
+    configText: string;
+    secretText: string;
     createdAt: string | Date;
     updatedAt: string | Date;
 };
@@ -101,6 +102,7 @@ export default function ResourcesClient({
     const [configText, setConfigText] = useState(RESOURCE_TEMPLATES.external_account.configText);
     const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
+    const [isPreview, setIsPreview] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
 
     const scopeOptions = useMemo(() => ({
@@ -158,7 +160,7 @@ export default function ResourcesClient({
         setProvider(resource.provider);
         setName(resource.name);
         setDisplayName(resource.displayName || "");
-        setConfigText(typeof resource.configJson === "string" ? resource.configJson : JSON.stringify(resource.configJson || {}, null, 2));
+        setConfigText(resource.configText || "");
     };
 
     const toggleGroup = (groupId: string) => {
@@ -204,8 +206,8 @@ export default function ResourcesClient({
                 resourceType,
                 name: name.trim(),
                 displayName: displayName.trim() || null,
-                configJson: configText,
-                secretJson: {},
+                configText: configText,
+                secretText: "",
             };
 
             let res;
@@ -558,14 +560,44 @@ export default function ResourcesClient({
                                 
                                 <div className="space-y-2 flex-1 flex flex-col min-h-[400px]">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Configuration (Markdown)</span>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Configuration (Markdown)</span>
+                                            <div className="flex rounded-md border border-zinc-800 bg-zinc-900/50 p-0.5">
+                                                <button
+                                                    onClick={() => setIsPreview(false)}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
+                                                        !isPreview ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                    )}
+                                                >
+                                                    <Code className="h-3 w-3" />
+                                                    Raw
+                                                </button>
+                                                <button
+                                                    onClick={() => setIsPreview(true)}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
+                                                        isPreview ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                    )}
+                                                >
+                                                    <Eye className="h-3 w-3" />
+                                                    Preview
+                                                </button>
+                                            </div>
+                                        </div>
                                         <span className="text-[10px] font-mono text-zinc-600">Updated: {new Date(selectedResource.updatedAt).toLocaleString()}</span>
                                     </div>
-                                    <textarea
-                                        value={configText}
-                                        onChange={(e) => setConfigText(e.target.value)}
-                                        className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
-                                    />
+                                    {isPreview ? (
+                                        <div className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none">
+                                            <MarkdownRenderer content={configText || "*No content*"} />
+                                        </div>
+                                    ) : (
+                                        <textarea
+                                            value={configText}
+                                            onChange={(e) => setConfigText(e.target.value)}
+                                            className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
+                                        />
+                                    )}
                                 </div>
                                 
                                 {error && (

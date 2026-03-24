@@ -23,11 +23,8 @@ export default async function ResourcesPage() {
         <ResourcesClient
             initialResources={initialResources.map((resource) => ({
                 ...resource,
-                configJson: resource.configJson && typeof resource.configJson === "object" && !Array.isArray(resource.configJson)
-                    ? resource.configJson as Record<string, unknown>
-                    : {},
                 ...resolveResourceScope(resource),
-                secretJson: undefined,
+                secretText: resource.secretText || "",
             }))}
             customers={customerRows}
             projects={projectRows.map((project) => ({ id: project.id, name: project.goal }))}
