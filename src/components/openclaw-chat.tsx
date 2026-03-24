@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { MessageSquare, X, Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 
 export function OpenClawChat() {
@@ -15,11 +16,14 @@ export function OpenClawChat() {
     const [initialized, setInitialized] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const baseTitleRef = useRef<string | null>(null);
+    const [participants, setParticipants] = useState<any[]>([]);
+    const [threadId, setThreadId] = useState<string | null>(null);
+    const [isTyping, setIsTyping] = useState(false);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const buildChatUrl = (since?: string | null) => {
         const params = new URLSearchParams();
         if (since) params.set("since", since);
-        if (selectedAgentId) params.set("targetAgentId", selectedAgentId);
         const query = params.toString();
         return query ? `/api/chat?${query}` : "/api/chat";
     };
@@ -32,6 +36,17 @@ export function OpenClawChat() {
                 const res = await fetch(buildChatUrl());
                 if (res.ok) {
                     const data = await res.json();
+                    if (data.thread && data.thread.id) {
+                        setThreadId(data.thread.id);
+                        void fetch("/api/chat/status", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ threadId: data.thread.id, markRead: true }),
+                        });
+                    }
+                    if (data.participants) {
+                        setParticipants(data.participants);
+                    }
                     if (data.messages && data.messages.length > 0) {
                         setHistory(data.messages);
                         setLastSeenAt(data.messages[data.messages.length - 1].createdAt);
@@ -60,6 +75,9 @@ export function OpenClawChat() {
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
+                if (data.participants) {
+                    setParticipants(data.participants);
+                }
                 if (data.messages && data.messages.length > 0) {
                     setHistory((prev) => {
                         const existingIds = new Set(prev.map(m => m.id));
@@ -95,11 +113,7 @@ export function OpenClawChat() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, initialized, selectedAgentId, lastSeenAt]);
 
-    useEffect(() => {
-        setHistory([]);
-        setLastSeenAt(null);
-        setInitialized(false);
-    }, [selectedAgentId]);
+
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -124,6 +138,31 @@ export function OpenClawChat() {
         }
     }, [isOpen]);
 
+    const handleTyping = (text: string) => {
+        setMessage(text);
+        if (!isTyping && text.trim().length > 0) {
+            setIsTyping(true);
+            if (threadId) {
+                void fetch("/api/chat/status", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ threadId, typing: true }),
+                });
+            }
+        }
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+            setIsTyping(false);
+            if (threadId) {
+                void fetch("/api/chat/status", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ threadId, typing: false }),
+                });
+            }
+        }, 3000);
+    };
+
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         const textToSend = message;
@@ -133,7 +172,7 @@ export function OpenClawChat() {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: textToSend, targetAgentId: selectedAgentId })
+                body: JSON.stringify({ text: textToSend })
             });
             if (res.ok) {
                 const data = await res.json();
@@ -188,11 +227,11 @@ export function OpenClawChat() {
                             </div>
                             <div className="flex flex-col">
                                 <span className="text-sm font-semibold text-zinc-100 leading-tight">
-                                    {selectedAgentId ? agents.find(a => a.id === selectedAgentId)?.name || "Direct Agent Thread" : "OpenClaw Base"}
+                                    Team Chat
                                 </span>
                                 <span className="text-[10px] text-zinc-500 flex items-center space-x-1">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    <span>{selectedAgentId ? "Direct Thread" : "Team Thread"}</span>
+                                    <span>Team Thread</span>
                                 </span>
                             </div>
                         </div>
@@ -220,7 +259,13 @@ export function OpenClawChat() {
                         {agents.map(agent => (
                             <button
                                 key={agent.id}
-                                onClick={() => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
+                                onClick={() => {
+                                    const isSelect = selectedAgentId !== agent.id;
+                                    setSelectedAgentId(isSelect ? agent.id : null);
+                                    if (isSelect && agent.name) {
+                                        setMessage(prev => prev.includes(`@${agent.name}`) ? prev : `@${agent.name} ${prev}`);
+                                    }
+                                }}
                                 className={cn(
                                     "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center space-x-1",
                                     selectedAgentId === agent.id
@@ -272,19 +317,39 @@ export function OpenClawChat() {
                                             {new Date(msg.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                                         </div>
                                     </div>
-                                    <div className="whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                                    <ReactMarkdown className="whitespace-pre-wrap leading-relaxed prose prose-invert prose-sm max-w-none">{msg.text}</ReactMarkdown>
                                 </div>
                             </div>
                         ))}
                     </div>
+
+                                        {/* Typing Indicators */}
+                    {(() => {
+                        const typingAgents = participants.filter(p => p.participantType === 'agent' && p.typingUntil && new Date(p.typingUntil).getTime() > Date.now());
+                        if (typingAgents.length === 0) return null;
+                        const names = typingAgents.map(p => {
+                            const agent = agents.find(a => a.id === (p.userId || p.agentId));
+                            return agent ? agent.name : 'Unknown';
+                        });
+                        return (
+                            <div className="flex justify-start px-4 text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2">
+                                <div className="flex gap-1 items-center mr-2">
+                                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
+                                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
+                                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce" />
+                                </div>
+                                {names.join(', ')} {names.length > 1 ? 'are' : 'is'} typing...
+                            </div>
+                        );
+                    })()}
 
                     {/* Input Area */}
                     <form onSubmit={handleSend} className="p-4 border-t border-zinc-800 bg-zinc-900/30 flex items-center space-x-2">
                         <input
                             type="text"
                             value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            placeholder={selectedAgentId ? "Message selected agent..." : "Message OpenClaw Manager..."}
+                            onChange={(e) => handleTyping(e.target.value)}
+                            placeholder="Message OpenClaw Team..."
                             className="flex-1 bg-zinc-950 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                         />
                         <button
