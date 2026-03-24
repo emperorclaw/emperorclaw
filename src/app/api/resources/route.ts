@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       resourceType: typeof body.resourceType === "string" ? body.resourceType : "external_account",
       name,
       displayName: typeof body.displayName === "string" ? body.displayName.trim() : null,
-      configJson: body.configJson && typeof body.configJson === "object" && !Array.isArray(body.configJson) ? body.configJson : {},
+      configJson: body.configJson !== undefined ? body.configJson : {},
       secretJson: body.secretJson && typeof body.secretJson === "object" && !Array.isArray(body.secretJson) ? body.secretJson : {},
       status: "active",
       ownership: "managed",
