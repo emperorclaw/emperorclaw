@@ -15,6 +15,8 @@ Include your company token in the `Authorization` header:
 ### Task Management
 - **`POST /api/mcp/tasks/claim`**: Atomic transaction to claim queued tasks. Claims are lease-based.
 - **`POST /api/mcp/tasks`**: Create a new queued task.
+- **`GET /api/mcp/tasks/{task_id}`**: Fetch canonical task detail, including project/customer context and normalized task fields derived from `inputJson`.
+- **`GET /api/mcp/tasks/{task_id}/context`**: Fetch a task context bundle with task detail, task notes/events, recent project memory, relevant scoped resources, related threads, and project-specific agent profile when available.
 - **`POST /api/mcp/tasks/{task_id}/result`**: Update task completion or failure.
 - **`POST /api/mcp/tasks/{task_id}/notes`**: Add a note/comment to the task's timeline.
 - **`GET /api/mcp/tasks/{task_id}/notes`**: Retrieve the full history of notes for a task.

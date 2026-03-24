@@ -5,6 +5,32 @@ import { tasks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
+import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
+
+export async function GET(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { id: taskId } = await params;
+
+    try {
+        const task = await getTaskDetailForCompany(companyId, taskId);
+        if (!task) {
+            return NextResponse.json({ error: "Task not found" }, { status: 404 });
+        }
+
+        return NextResponse.json({ task }, { status: 200 });
+    } catch (err) {
+        console.error(`Error fetching task ${taskId}:`, err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
 
 export async function PATCH(
     req: NextRequest,
