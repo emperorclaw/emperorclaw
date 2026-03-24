@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { MessageSquare, X, Send } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { MarkdownRenderer } from "./markdown-renderer";
 import { cn } from "@/lib/utils";
 
 export function OpenClawChat() {
@@ -317,7 +317,10 @@ export function OpenClawChat() {
                                             {new Date(msg.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                                         </div>
                                     </div>
-                                    <ReactMarkdown className="whitespace-pre-wrap leading-relaxed prose prose-invert prose-sm max-w-none">{msg.text}</ReactMarkdown>
+                                    <MarkdownRenderer 
+                                        content={msg.text} 
+                                        className="whitespace-pre-wrap leading-relaxed prose-sm" 
+                                    />
                                 </div>
                             </div>
                         ))}
