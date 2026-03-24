@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { resourceAccessLogs, scopedResources } from "@/db/schema";
 
@@ -36,6 +36,9 @@ export async function listScopedResources(input: {
   provider?: string | null;
   resourceType?: string | null;
   status?: string | null;
+  name?: string | null;
+  displayName?: string | null;
+  search?: string | null;
 }) {
   const conditions = [
     eq(scopedResources.companyId, input.companyId),
@@ -47,6 +50,14 @@ export async function listScopedResources(input: {
   if (input.provider) conditions.push(eq(scopedResources.provider, input.provider));
   if (input.resourceType) conditions.push(eq(scopedResources.resourceType, normalizeResourceType(input.resourceType)));
   if (input.status) conditions.push(eq(scopedResources.status, input.status));
+  if (input.name) conditions.push(ilike(scopedResources.name, `%${input.name}%`));
+  if (input.displayName) conditions.push(ilike(scopedResources.displayName, `%${input.displayName}%`));
+  if (input.search) {
+    conditions.push(or(
+      ilike(scopedResources.name, `%${input.search}%`),
+      ilike(scopedResources.displayName, `%${input.search}%`)
+    ) as any);
+  }
 
   return db.select().from(scopedResources)
     .where(and(...conditions))
@@ -71,8 +82,8 @@ export async function createScopedResource(input: {
   resourceType: string;
   name: string;
   displayName?: string | null;
-  configJson?: Record<string, unknown> | null;
-  secretJson?: Record<string, unknown> | null;
+  configText?: string | null;
+  secretText?: string | null;
   status?: string | null;
   ownership?: string | null;
 }) {
@@ -85,8 +96,8 @@ export async function createScopedResource(input: {
     resourceType: normalizeResourceType(input.resourceType),
     name: input.name,
     displayName: input.displayName || null,
-    configJson: input.configJson || {},
-    secretJson: input.secretJson || {},
+    configText: input.configText || "",
+    secretText: input.secretText || "",
     status: input.status || "active",
     ownership: input.ownership || "managed",
   }).returning();
@@ -104,8 +115,8 @@ export async function updateScopedResource(input: {
     resourceType: string;
     name: string;
     displayName: string | null;
-    configJson: Record<string, unknown>;
-    secretJson: Record<string, unknown>;
+    configText: string;
+    secretText: string;
     status: string;
     ownership: string;
   }>;
@@ -120,8 +131,8 @@ export async function updateScopedResource(input: {
     resourceType: input.patch.resourceType ? normalizeResourceType(input.patch.resourceType) : existing.resourceType,
     name: input.patch.name ?? existing.name,
     displayName: input.patch.displayName === undefined ? existing.displayName : input.patch.displayName,
-    configJson: input.patch.configJson ?? existing.configJson,
-    secretJson: input.patch.secretJson ?? existing.secretJson,
+    configText: input.patch.configText ?? existing.configText,
+    secretText: input.patch.secretText ?? existing.secretText,
     status: input.patch.status ?? existing.status,
     ownership: input.patch.ownership ?? existing.ownership,
     updatedAt: new Date(),

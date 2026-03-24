@@ -1297,7 +1297,8 @@ class EmperorBridge {
   async fetchAgentProfiles(scopeId = null) {
     const resources = await this.fetchResources();
     return resources.filter((resource) => {
-      const profileText = resource?.configJson?.profileText;
+      // In the new Markdown-first system, Agent Profiles are stored as raw text in configText
+      const profileText = resource?.configText;
       if (!profileText || typeof profileText !== "string") return false;
       if (!/Agent Profile:/i.test(profileText) && !/^Agent Profile - /i.test(String(resource?.name || ""))) return false;
       if (!scopeId) return true;
@@ -1382,8 +1383,8 @@ class EmperorBridge {
       const profiles = await this.fetchAgentProfiles(matchedCustomer?.id || null);
       if (profiles.length > 0) {
         const profileBlocks = profiles.slice(0, 10).map((resource) => {
-          const name = resource?.name || resource?.configJson?.agentId || resource?.id;
-          const text = String(resource?.configJson?.profileText || "").trim();
+          const name = resource?.displayName || resource?.name || resource?.id;
+          const text = String(resource?.configText || "").trim();
           return `## ${name}\n${text}`;
         });
         sections.push(`Agent profiles in Emperor:\n${profileBlocks.join("\n\n")}`);

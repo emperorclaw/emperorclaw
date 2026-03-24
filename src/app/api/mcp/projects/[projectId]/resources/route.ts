@@ -7,7 +7,7 @@ function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
   return {
     ...resource,
     ...resolveResourceScope(resource),
-    secretJson: undefined,
+    secretText: undefined,
   };
 }
 
@@ -31,6 +31,11 @@ export async function GET(
       scopeType: "project",
       scopeId: projectId,
       resourceType,
+      provider: searchParams.get("provider"),
+      name: searchParams.get("name"),
+      displayName: searchParams.get("displayName"),
+      search: searchParams.get("search") || searchParams.get("q"),
+      status: searchParams.get("status"),
     });
     return NextResponse.json({ resources: resources.map(sanitizeResource) });
   } catch (error) {
@@ -66,8 +71,8 @@ export async function POST(
       displayName: body.displayName || null,
       resourceType: body.resourceType,
       provider: body.provider,
-      configJson: body.configJson || {},
-      secretJson: body.secretJson || {},
+      configText: body.configJson || body.configText || "",
+      secretText: body.secretJson || body.secretText || "",
       status: body.status || "active",
       ownership: body.ownership || "managed",
     });

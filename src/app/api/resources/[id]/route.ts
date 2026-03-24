@@ -64,7 +64,10 @@ export async function PATCH(
     if (body.displayName !== undefined) patch.displayName = typeof body.displayName === "string" ? body.displayName.trim() : null;
     if (body.resourceType !== undefined) patch.resourceType = typeof body.resourceType === "string" ? body.resourceType : "external_account";
     if (body.provider !== undefined) patch.provider = typeof body.provider === "string" ? body.provider.trim() || "generic" : "generic";
-    if (body.configJson !== undefined) patch.configJson = body.configJson;
+    if (body.configJson !== undefined) patch.configText = body.configJson;
+    if (body.configText !== undefined) patch.configText = body.configText;
+    if (body.secretText !== undefined) patch.secretText = body.secretText;
+    if (body.secretJson !== undefined) patch.secretText = body.secretJson;
 
     const updated = await updateScopedResource({
       companyId: membership.companyId,

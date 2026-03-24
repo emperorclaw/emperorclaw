@@ -7,7 +7,7 @@ function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
   return {
     ...resource,
     ...resolveResourceScope(resource),
-    secretJson: undefined,
+    secretText: undefined,
   };
 }
 
@@ -34,6 +34,10 @@ export async function GET(req: NextRequest) {
       scopeType: internalAgentId ? "agent" : scopeType || (projectId ? "project" : customerId ? "customer" : null),
       scopeId: internalAgentId || projectId || customerId || scopeId,
       resourceType,
+      provider: searchParams.get("provider"),
+      name: searchParams.get("name"),
+      displayName: searchParams.get("displayName"),
+      search: searchParams.get("search") || searchParams.get("q"),
       status,
     });
 
@@ -80,8 +84,8 @@ export async function POST(req: NextRequest) {
       displayName: body.displayName || null,
       resourceType,
       provider,
-      configJson: configJson || {},
-      secretJson: secretJson || {},
+      configText: configJson || body.configText || "",
+      secretText: secretJson || body.secretText || "",
       status: status || "active",
       ownership: leaseMode === "local-runtime" ? "local-runtime" : body.ownership || "managed",
     });

@@ -27,10 +27,17 @@ export async function GET(
         return NextResponse.json({ error: "Customer not found" }, { status: 404 });
     }
 
+    const { searchParams } = new URL(req.url);
     const resources = await listScopedResources({
         companyId,
         scopeType: "customer",
         scopeId: id,
+        resourceType: searchParams.get("resourceType"),
+        provider: searchParams.get("provider"),
+        name: searchParams.get("name"),
+        displayName: searchParams.get("displayName"),
+        search: searchParams.get("search") || searchParams.get("q"),
+        status: searchParams.get("status"),
     });
     return NextResponse.json({ resources });
 }
@@ -78,8 +85,8 @@ export async function POST(
             resourceType,
             name,
             displayName: displayName || null,
-            configJson: configJson || {},
-            secretJson: secretJson || {},
+            configText: configJson || body.configText || "",
+            secretText: secretJson || body.secretText || "",
             ownership: ownership || null,
         });
 
