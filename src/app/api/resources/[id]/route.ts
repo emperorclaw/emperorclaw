@@ -6,7 +6,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
-import { archiveScopedResource } from "@/lib/resources";
+import { archiveScopedResource, updateScopedResource } from "@/lib/resources";
 
 async function getMembership() {
   const session = await getServerSession(authOptions);
@@ -41,6 +41,44 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Error archiving scoped resource:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const membership = await getMembership();
+    if (!membership) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+
+    const patch: any = {};
+    if (body.name !== undefined) patch.name = typeof body.name === "string" ? body.name.trim() : "";
+    if (body.displayName !== undefined) patch.displayName = typeof body.displayName === "string" ? body.displayName.trim() : null;
+    if (body.resourceType !== undefined) patch.resourceType = typeof body.resourceType === "string" ? body.resourceType : "external_account";
+    if (body.provider !== undefined) patch.provider = typeof body.provider === "string" ? body.provider.trim() || "generic" : "generic";
+    if (body.configJson !== undefined) patch.configJson = body.configJson;
+
+    const updated = await updateScopedResource({
+      companyId: membership.companyId,
+      resourceId: id,
+      patch
+    });
+
+    if (!updated) {
+      return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ resource: updated });
+  } catch (error) {
+    console.error("Error updating scoped resource:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

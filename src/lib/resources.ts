@@ -24,12 +24,9 @@ export function normalizeScopeType(input: unknown): ResourceScopeType {
   return "company";
 }
 
-export function normalizeResourceType(input: unknown): ResourceType {
+export function normalizeResourceType(input: unknown): string {
   const value = typeof input === "string" ? input.trim().toLowerCase() : "";
-  if (RESOURCE_TYPES.includes(value as ResourceType)) {
-    return value as ResourceType;
-  }
-  return "external_account";
+  return value || "external_account";
 }
 
 export async function listScopedResources(input: {

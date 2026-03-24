@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon } from "lucide-react";
+import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type ResourceRecord = {
@@ -89,6 +89,7 @@ export default function ResourcesClient({
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [editingResource, setEditingResource] = useState<ResourceRecord | null>(null);
 
     const [scopeType, setScopeType] = useState("project");
     const [scopeId, setScopeId] = useState(projects[0]?.id || "");
@@ -113,6 +114,28 @@ export default function ResourcesClient({
     }, [resources]);
 
     const selectedTemplate = RESOURCE_TEMPLATES[resourceType] || RESOURCE_TEMPLATES.external_account;
+
+    const openModalForEdit = (resource: ResourceRecord) => {
+        setEditingResource(resource);
+        setScopeType(resource.scopeType);
+        setScopeId(resource.scopeId || "");
+        setResourceType(resource.resourceType);
+        setProvider(resource.provider);
+        setName(resource.name);
+        setDisplayName(resource.displayName || "");
+        setConfigText(typeof resource.configJson === "string" ? resource.configJson : JSON.stringify(resource.configJson || {}, null, 2));
+        setIsCreateOpen(true);
+    };
+
+    const openModalForCreate = () => {
+        setEditingResource(null);
+        setName("");
+        setDisplayName("");
+        setProvider("generic");
+        updateScopeType("project");
+        applyTemplate("external_account");
+        setIsCreateOpen(true);
+    };
 
     const applyTemplate = (nextType: string) => {
         const template = RESOURCE_TEMPLATES[nextType] || RESOURCE_TEMPLATES.external_account;
@@ -144,24 +167,30 @@ export default function ResourcesClient({
                 secretJson: {},
             };
 
-            const res = await fetch("/api/resources", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
+            let res;
+            if (editingResource) {
+                res = await fetch(`/api/resources/${editingResource.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+            } else {
+                res = await fetch("/api/resources", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+            }
 
             const body = await res.json().catch(() => ({}));
             if (!res.ok) {
                 throw new Error(typeof body.error === "string" ? body.error : "Failed to create resource.");
             }
 
-            setResources((current) => [body.resource as ResourceRecord, ...current]);
+            setResources((current) => editingResource 
+                ? current.map(r => r.id === editingResource.id ? (body.resource as ResourceRecord) : r)
+                : [body.resource as ResourceRecord, ...current]);
             setIsCreateOpen(false);
-            setName("");
-            setDisplayName("");
-            setProvider("generic");
-            updateScopeType("project");
-            applyTemplate("external_account");
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Failed to create resource.");
         } finally {
@@ -203,13 +232,13 @@ export default function ResourcesClient({
                 </div>
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogTrigger asChild>
-                        <button className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500">
+                        <button onClick={openModalForCreate} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500">
                             Add Resource
                         </button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[720px] border-zinc-800 bg-zinc-950 text-zinc-200">
                         <DialogHeader>
-                            <DialogTitle className="text-xl font-medium tracking-tight">Create Scoped Resource</DialogTitle>
+                            <DialogTitle className="text-xl font-medium tracking-tight">{editingResource ? "Edit Scoped Resource" : "Create Scoped Resource"}</DialogTitle>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <p className="text-sm text-zinc-400">
@@ -222,6 +251,7 @@ export default function ResourcesClient({
                                     <select
                                         value={scopeType}
                                         onChange={(event) => updateScopeType(event.target.value)}
+                                        disabled={!!editingResource}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                     >
                                         <option value="company">Company</option>
@@ -235,7 +265,7 @@ export default function ResourcesClient({
                                     <select
                                         value={scopeType === "company" ? "company" : scopeId}
                                         onChange={(event) => setScopeId(event.target.value)}
-                                        disabled={scopeType === "company"}
+                                        disabled={scopeType === "company" || !!editingResource}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-60"
                                     >
                                         {scopeType === "company" ? (
@@ -251,15 +281,23 @@ export default function ResourcesClient({
                             <div className="grid gap-4 md:grid-cols-3">
                                 <label className="space-y-1.5 text-sm">
                                     <span className="text-zinc-500">Resource Type</span>
-                                    <select
+                                    <input
+                                        list="resource-types-list"
                                         value={resourceType}
-                                        onChange={(event) => applyTemplate(event.target.value)}
+                                        onChange={(event) => {
+                                            setResourceType(event.target.value);
+                                            if (RESOURCE_TEMPLATES[event.target.value]) {
+                                                applyTemplate(event.target.value);
+                                            }
+                                        }}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                    >
+                                        placeholder="mailbox, identity..."
+                                    />
+                                    <datalist id="resource-types-list">
                                         {RESOURCE_TYPE_OPTIONS.map((option) => (
-                                            <option key={option} value={option}>{option}</option>
+                                            <option key={option} value={option} />
                                         ))}
-                                    </select>
+                                    </datalist>
                                 </label>
                                 <label className="space-y-1.5 text-sm md:col-span-2">
                                     <span className="text-zinc-500">Provider</span>
@@ -316,7 +354,7 @@ export default function ResourcesClient({
                                 disabled={!name.trim() || isSaving}
                                 className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-indigo-500"
                             >
-                                {isSaving ? "Saving..." : "Create Resource"}
+                                {isSaving ? "Saving..." : editingResource ? "Save Changes" : "Create Resource"}
                             </button>
                         </div>
                     </DialogContent>
