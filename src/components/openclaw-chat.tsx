@@ -166,7 +166,13 @@ export function OpenClawChat() {
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         const textToSend = message;
-        setMessage("");
+        
+        const agent = selectedAgentId ? agents.find(a => a.id === selectedAgentId) : null;
+        if (agent && agent.name) {
+            setMessage(`@${agent.name} `);
+        } else {
+            setMessage("");
+        }
 
         try {
             const res = await fetch('/api/chat', {
