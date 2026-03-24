@@ -491,25 +491,59 @@ export default function ResourcesClient({
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                                 <div className="grid gap-6 md:grid-cols-2">
                                     <div className="space-y-4">
-                                        <label className="block space-y-1.5">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Display Name</span>
-                                            <input
-                                                value={displayName}
-                                                onChange={(e) => setDisplayName(e.target.value)}
-                                                className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-200 outline-none focus:border-indigo-500/50"
-                                            />
-                                        </label>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <label className="block space-y-1.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource Name (Key)</span>
+                                                <input
+                                                    value={name}
+                                                    onChange={(e) => setName(e.target.value)}
+                                                    className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-2 text-sm text-zinc-200 outline-none focus:border-indigo-500/50 font-mono"
+                                                />
+                                            </label>
+                                            <label className="block space-y-1.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Display Name</span>
+                                                <input
+                                                    value={displayName}
+                                                    onChange={(e) => setDisplayName(e.target.value)}
+                                                    className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-2 text-sm text-zinc-200 outline-none focus:border-indigo-500/50"
+                                                />
+                                            </label>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <label className="block space-y-1.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource Type</span>
+                                                <input
+                                                    list="resource-types-list-editor"
+                                                    value={resourceType}
+                                                    onChange={(e) => setResourceType(e.target.value)}
+                                                    className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-2 text-sm text-zinc-200 outline-none focus:border-indigo-500/50"
+                                                />
+                                                <datalist id="resource-types-list-editor">
+                                                    {RESOURCE_TYPE_OPTIONS.map((option) => (
+                                                        <option key={option} value={option} />
+                                                    ))}
+                                                </datalist>
+                                            </label>
+                                            <label className="block space-y-1.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Provider</span>
+                                                <input
+                                                    value={provider}
+                                                    onChange={(e) => setProvider(e.target.value)}
+                                                    className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-2 text-sm text-zinc-200 outline-none focus:border-indigo-500/50"
+                                                />
+                                            </label>
+                                        </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Provider</span>
-                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-400 font-mono">
-                                                    {selectedResource.provider}
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Ownership</span>
+                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-sm text-zinc-500 font-mono">
+                                                    {selectedResource.ownership}
                                                 </div>
                                             </div>
                                             <div className="space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Ownership</span>
-                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-400 font-mono">
-                                                    {selectedResource.ownership}
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Scope Type</span>
+                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-sm text-zinc-500 font-mono">
+                                                    {selectedResource.scopeType}
                                                 </div>
                                             </div>
                                         </div>
@@ -558,25 +592,3 @@ export default function ResourcesClient({
     );
 }
 
-function SummaryCard({
-    label,
-    value,
-    hint,
-    icon: Icon,
-}: {
-    label: string;
-    value: number;
-    hint: string;
-    icon: LucideIcon;
-}) {
-    return (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                <Icon className="h-4 w-4 text-indigo-400" />
-                <span>{label}</span>
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-zinc-100">{value}</div>
-            <div className="mt-1 text-xs text-zinc-500">{hint}</div>
-        </div>
-    );
-}
