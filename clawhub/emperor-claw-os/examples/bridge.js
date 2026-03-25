@@ -876,8 +876,9 @@ class EmperorBridge {
     let replyText = null;
     try {
       const knownSessionId = this.bridgeState.viktorBrainSessionId || null;
+      const useFreshSession = false;
       const agentResult = await callLocalOpenClawAgent(prompt, {
-        sessionId: knownSessionId,
+        sessionId: useFreshSession ? null : knownSessionId,
         thinking: VIKTOR_BRAIN_THINKING,
         timeoutSeconds: 120,
       });
