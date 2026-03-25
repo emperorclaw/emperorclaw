@@ -1,14 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_URL="${EMPEROR_CLAW_API_URL:-https://emperorclaw.malecu.eu}"
+API_URL_DEFAULT="https://emperorclaw.malecu.eu"
+AGENT_NAME_DEFAULT="Viktor"
+OWNER_NAME_DEFAULT="Jose"
+OWNER_TZ_DEFAULT="UTC"
+
+API_URL="${EMPEROR_CLAW_API_URL:-$API_URL_DEFAULT}"
 TOKEN="${EMPEROR_CLAW_API_TOKEN:-}"
-AGENT_NAME="${EMPEROR_CLAW_AGENT_NAME:-Viktor}"
-RUNTIME_ID="${EMPEROR_CLAW_RUNTIME_ID:-${AGENT_NAME,,}-$(hostname -s 2>/dev/null || hostname)}"
+AGENT_NAME="${EMPEROR_CLAW_AGENT_NAME:-$AGENT_NAME_DEFAULT}"
 LOCAL_AGENT_ID="${EMPEROR_CLAW_BRAIN_AGENT_ID:-${AGENT_NAME,,}}"
+AGENT_PROFILE="${EMPEROR_CLAW_AGENT_PROFILE:-operator}"
+OWNER_NAME="${EMPEROR_CLAW_OWNER_NAME:-$OWNER_NAME_DEFAULT}"
+OWNER_TIMEZONE="${EMPEROR_CLAW_OWNER_TIMEZONE:-$OWNER_TZ_DEFAULT}"
 BRAIN_THINKING="${EMPEROR_CLAW_BRAIN_THINKING:-medium}"
 OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
-COMPANION_SLUG_DEFAULT="${EMPEROR_CLAW_BRAIN_AGENT_ID:-${EMPEROR_CLAW_AGENT_NAME:-Viktor}}"
+AGENT_EMOJI="${EMPEROR_CLAW_AGENT_EMOJI:-🧠}"
+
+print_help() {
+  cat <<EOF
+Emperor Claw OpenClaw bridge installer
+
+Usage:
+  ./install.sh [--agent-name NAME] [--local-id ID] [--profile operator|manager] [--owner-name NAME] [--owner-tz TZ] [--api-url URL]
+
+Flags override defaults; environment variables still take precedence when set.
+
+Defaults:
+  agent name : $AGENT_NAME_DEFAULT
+  profile    : operator
+  api url    : $API_URL_DEFAULT
+  owner name : $OWNER_NAME_DEFAULT
+  owner tz   : $OWNER_TZ_DEFAULT
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent-name)
+      AGENT_NAME="$2"; shift 2 ;;
+    --local-id)
+      LOCAL_AGENT_ID="$2"; shift 2 ;;
+    --profile)
+      AGENT_PROFILE="$2"; shift 2 ;;
+    --owner-name)
+      OWNER_NAME="$2"; shift 2 ;;
+    --owner-tz)
+      OWNER_TIMEZONE="$2"; shift 2 ;;
+    --api-url)
+      API_URL="$2"; shift 2 ;;
+    -h|--help)
+      print_help; exit 0 ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      print_help >&2
+      exit 1 ;;
+  esac
+done
+
+RUNTIME_ID="${EMPEROR_CLAW_RUNTIME_ID:-${AGENT_NAME,,}-$(hostname -s 2>/dev/null || hostname)}"
+COMPANION_SLUG_DEFAULT="${EMPEROR_CLAW_BRAIN_AGENT_ID:-$AGENT_NAME}"
 COMPANION_SLUG_DEFAULT="$(printf '%s' "$COMPANION_SLUG_DEFAULT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
 COMPANION_SLUG_DEFAULT="${COMPANION_SLUG_DEFAULT#-}"
 COMPANION_SLUG_DEFAULT="${COMPANION_SLUG_DEFAULT%-}"
@@ -24,10 +75,6 @@ WORKSPACE_DIR="${OPENCLAW_WORKSPACE:-$OPENCLAW_HOME/workspace}"
 CONTROL_PLANE_JS_URL="${EMPEROR_CLAW_CONTROL_PLANE_JS_URL:-$API_URL/control-plane.js}"
 BRIDGE_JS_URL="${EMPEROR_CLAW_BRIDGE_JS_URL:-$API_URL/bridge.js}"
 OPENCLAW_CLI_PATH="${OPENCLAW_CLI_PATH:-}"
-OWNER_NAME="${EMPEROR_CLAW_OWNER_NAME:-Jose}"
-OWNER_TIMEZONE="${EMPEROR_CLAW_OWNER_TIMEZONE:-UTC}"
-AGENT_PROFILE="${EMPEROR_CLAW_AGENT_PROFILE:-operator}"
-AGENT_EMOJI="${EMPEROR_CLAW_AGENT_EMOJI:-🧠}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -105,12 +152,16 @@ cat > "$ENV_FILE" <<EOF
 EMPEROR_CLAW_API_URL=$API_URL
 EMPEROR_CLAW_API_TOKEN=$TOKEN
 EMPEROR_CLAW_AGENT_NAME=$AGENT_NAME
+EMPEROR_CLAW_AGENT_PROFILE=$AGENT_PROFILE
 EMPEROR_CLAW_RUNTIME_ID=$RUNTIME_ID
 EMPEROR_CLAW_COMPANION_DIR=$COMPANION_DIR
 EMPEROR_CLAW_STATE_DIR=$STATE_DIR
 EMPEROR_CLAW_BRIDGE_STATE_PATH=$BRIDGE_STATE_PATH
 EMPEROR_CLAW_BRAIN_AGENT_ID=$LOCAL_AGENT_ID
 EMPEROR_CLAW_BRAIN_THINKING=$BRAIN_THINKING
+EMPEROR_CLAW_AUTO_CLAIM=false
+EMPEROR_CLAW_USE_EXECUTOR=false
+EMPEROR_CLAW_DEBUG_PROMPTS=false
 OPENCLAW_CLI_PATH=$OPENCLAW_CLI_PATH
 OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
 EOF
