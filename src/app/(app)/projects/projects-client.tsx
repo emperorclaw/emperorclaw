@@ -28,6 +28,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
+    const [customerFilter, setCustomerFilter] = useState("All Customers");
     const [searchQuery, setSearchQuery] = useState("");
     const [comment, setComment] = useState("");
     const [events, setEvents] = useState<any[]>(taskEvents);
@@ -36,6 +37,27 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [newContext, setNewContext] = useState("");
     const [isSubmittingContext, setIsSubmittingContext] = useState(false);
 
+    // Initial load from localStorage
+    useEffect(() => {
+        const savedProject = localStorage.getItem("projects-board-project-filter");
+        const savedAgent = localStorage.getItem("projects-board-agent-filter");
+        const savedCustomer = localStorage.getItem("projects-board-customer-filter");
+        const savedSearch = localStorage.getItem("projects-board-search-query");
+
+        if (savedProject) setProjectFilter(savedProject);
+        if (savedAgent) setAgentFilter(savedAgent);
+        if (savedCustomer) setCustomerFilter(savedCustomer);
+        if (savedSearch) setSearchQuery(savedSearch);
+    }, []);
+
+    // Save to localStorage when filters change
+    useEffect(() => {
+        localStorage.setItem("projects-board-project-filter", projectFilter);
+        localStorage.setItem("projects-board-agent-filter", agentFilter);
+        localStorage.setItem("projects-board-customer-filter", customerFilter);
+        localStorage.setItem("projects-board-search-query", searchQuery);
+    }, [projectFilter, agentFilter, customerFilter, searchQuery]);
+
     useEffect(() => setEvents(taskEvents), [taskEvents]);
 
     const filteredTasks = useMemo(() => {
@@ -43,6 +65,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         return initialTasks.filter((task) => {
             if (projectFilter !== "All Projects" && task.projectId !== projectFilter) return false;
             if (agentFilter !== "All Agents" && task.assignedAgentId !== agentFilter) return false;
+            
+            if (customerFilter !== "All Customers") {
+                const project = projects.find((p) => p.id === task.projectId);
+                if (!project || project.customerId !== customerFilter) return false;
+            }
+
             if (!query) return true;
 
             const project = projects.find((item) => item.id === task.projectId);
@@ -50,10 +78,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const agent = task.assignedAgentId ? agents.find((item) => item.id === task.assignedAgentId) : null;
             return [task.taskType, task.state, project?.goal, customer?.name, agent?.name, task.templateVersion, task.contractVersion].filter(Boolean).join(" ").toLowerCase().includes(query);
         });
-    }, [agentFilter, customers, initialTasks, projectFilter, projects, searchQuery, agents]);
+    }, [agentFilter, customers, initialTasks, projectFilter, projects, searchQuery, agents, customerFilter]);
 
     const recurrentTasks = filteredTasks.filter(isRecurring);
-    const recurrentDefinitions = recurringDefinitions.filter((definition) => projectFilter === "All Projects" ? true : definition.projectId === projectFilter);
+    const recurrentDefinitions = recurringDefinitions.filter((definition) => {
+        if (projectFilter !== "All Projects" && definition.projectId !== projectFilter) return false;
+        if (customerFilter !== "All Customers") {
+            const project = projects.find((p) => p.id === definition.projectId);
+            if (!project || project.customerId !== customerFilter) return false;
+        }
+        return true;
+    });
     const workflowTasks = filteredTasks.filter((task) => !isRecurring(task) && task.state !== "failed" && task.state !== "dead_letter");
     const exceptionTasks = filteredTasks.filter((task) => task.state === "failed" || task.state === "dead_letter");
     const byState = {
@@ -138,9 +173,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                         <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-72 rounded-lg border border-zinc-800 bg-zinc-900/50 py-2 pl-9 pr-4 text-sm text-zinc-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60" />
                     </div>
+                    <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
+                        <option value="All Customers">All Customers</option>
+                        {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                    </select>
                     <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
                         <option value="All Projects">All Projects</option>
-                        {projects.map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)}
+                        {projects
+                            .filter(p => customerFilter === "All Customers" ? true : p.customerId === customerFilter)
+                            .map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)
+                        }
                     </select>
                     <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
                         <option value="All Agents">All Agents</option>
