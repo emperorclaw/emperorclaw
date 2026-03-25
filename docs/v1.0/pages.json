@@ -1,0 +1,11 @@
+{
+  "overview": {
+    "title": "Overview",
+    "file": "overview.md"
+  },
+  "mcp": {
+    "title": "MCP Endpoints",
+    "file": "mcp.md"
+  },
+  "default": "overview"
+}

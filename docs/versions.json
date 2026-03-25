@@ -1,0 +1,14 @@
+[
+  {
+    "version": "v1.1",
+    "label": "v1.1 (Latest)",
+    "default": true,
+    "description": "Includes isShared injection, agent‑to‑agent replies, sync‑loop disabled"
+  },
+  {
+    "version": "v1.0",
+    "label": "v1.0",
+    "default": false,
+    "description": "Initial release"
+  }
+]

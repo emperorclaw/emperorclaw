@@ -84,6 +84,10 @@
             color: oklch(var(--primary));
             font-weight: 500;
         }
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -96,8 +100,8 @@
                         <span class="text-primary-foreground font-bold text-xl">E</span>
                     </div>
                     <div>
-                        <h1 class="text-3xl font-bold tracking-tight">Emperor Web</h1>
-                        <p class="text-muted-foreground">Command your AI workforce</p>
+                        <h1 class="text-3xl font-bold tracking-tight">Emperor Web Docs</h1>
+                        <p class="text-muted-foreground">Versioned documentation for the control‑plane UI</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
@@ -105,9 +109,20 @@
                     <a href="https://github.com/josezuma/emperorclaw" target="_blank" class="px-4 py-2 border border-border rounded-lg font-medium hover:bg-accent transition">GitHub</a>
                 </div>
             </div>
+            <div class="flex flex-wrap items-center gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Version</label>
+                    <select id="versionSelect" class="px-3 py-2 border border-border rounded-lg bg-card">
+                        <!-- filled by JS -->
+                    </select>
+                </div>
+                <div class="text-sm text-muted-foreground max-w-2xl">
+                    <span id="versionDescription">Select a version to see its documentation.</span>
+                </div>
+            </div>
             <p class="text-lg text-muted-foreground max-w-3xl">
                 Emperor Web is the control‑plane UI for coordinating AI agents, projects, and resources. 
-                This documentation covers the skill version, MCP endpoints, configuration, and usage.
+                This documentation is versioned – choose a version above to see relevant endpoints, configuration, and usage.
             </p>
         </header>
 
@@ -115,15 +130,9 @@
             <!-- Sidebar Navigation -->
             <aside class="lg:col-span-1">
                 <div class="sticky top-8">
-                    <nav class="space-y-2">
+                    <nav id="sidebarNav" class="space-y-2">
                         <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contents</h3>
-                        <a href="#overview" class="block nav-link active">Overview</a>
-                        <a href="#getting-started" class="block nav-link">Getting Started</a>
-                        <a href="#mcp-endpoints" class="block nav-link">MCP Endpoints</a>
-                        <a href="#configuration" class="block nav-link">Configuration</a>
-                        <a href="#usage" class="block nav-link">Usage Examples</a>
-                        <a href="#troubleshooting" class="block nav-link">Troubleshooting</a>
-                        <a href="#skill-version" class="block nav-link">Skill Version</a>
+                        <!-- filled by JS -->
                     </nav>
                     <div class="mt-8 pt-6 border-t border-border">
                         <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick Links</h3>
@@ -135,322 +144,15 @@
             </aside>
 
             <!-- Main Content -->
-            <main class="lg:col-span-3 space-y-12">
-                <!-- Overview -->
-                <section id="overview" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">Overview</h2>
-                    <p class="mb-4">
-                        Emperor Web is a <strong>control‑plane UI</strong> built for OpenClaw operators who manage multiple AI agents, projects, customers, and resources.
-                    </p>
-                    <p class="mb-4">
-                        It provides a centralized interface for:
-                    </p>
-                    <ul class="list-disc pl-6 space-y-2 mb-6">
-                        <li>Creating and tracking projects with goals, status, and deadlines</li>
-                        <li>Managing customers and their associated resources</li>
-                        <li>Assigning tasks to agents (Viktor, Manager, or custom operators)</li>
-                        <li>Storing and injecting shared resources (templates, identities, mailboxes) with <code class="bg-muted px-1 rounded">isShared=true</code> flag</li>
-                        <li>Team‑thread conversations between humans and agents</li>
-                        <li>Real‑time coordination via WebSocket events</li>
-                    </ul>
-                    <div class="bg-accent/30 border border-accent rounded-lg p-4">
-                        <p class="text-sm">
-                            <strong>Skill version:</strong> This documentation corresponds to the <code>emperor-claw-os</code> skill available on ClawHub. 
-                            The skill includes the bridge runtime, installer, and example configurations.
-                        </p>
-                    </div>
-                </section>
-
-                <!-- Getting Started -->
-                <section id="getting-started" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">Getting Started</h2>
-                    <p class="mb-6">
-                        To connect OpenClaw to Emperor Web, install the skill and run the bridge.
-                    </p>
-                    <h3 class="text-xl font-semibold mb-3">1. Install the Skill</h3>
-                    <pre class="code-block p-4 rounded-lg mb-6 overflow-x-auto"><code># From your OpenClaw workspace
-openclaw skills install emperor-claw-os</code></pre>
-                    <h3 class="text-xl font-semibold mb-3">2. Run the Installer</h3>
-                    <pre class="code-block p-4 rounded-lg mb-6 overflow-x-auto"><code>cd ~/.openclaw/workspace/skills/control-plane/scripts
-./install.sh --agent-name Viktor --profile operator</code></pre>
-                    <p class="mb-4">
-                        The installer will:
-                    </p>
-                    <ul class="list-disc pl-6 space-y-2 mb-6">
-                        <li>Create a systemd user service for the bridge</li>
-                        <li>Generate a bridge configuration file</li>
-                        <li>Set up environment variables (see Configuration)</li>
-                        <li>Enable and start the bridge service</li>
-                    </ul>
-                    <h3 class="text-xl font-semibold mb-3">3. Verify Connection</h3>
-                    <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>systemctl --user status emperor-claw-bridge.service
-journalctl --user -u emperor-claw-bridge.service -f</code></pre>
-                    <p class="mt-4 text-sm text-muted-foreground">
-                        Once the bridge is online, you can log into <a href="https://emperorclaw.malecu.eu" class="text-primary underline" target="_blank">Emperor Web</a> and see your agent appear in the team thread.
-                    </p>
-                </section>
-
-                <!-- MCP Endpoints -->
-                <section id="mcp-endpoints" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">MCP Endpoints</h2>
-                    <p class="mb-6">
-                        Emperor exposes a Model Context Protocol (MCP) API for programmatic access. All endpoints require a Bearer token (found in your bridge configuration).
-                    </p>
-                    <div class="space-y-6">
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Health Check</h3>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>GET /api/mcp/runtime/health
-Authorization: Bearer &lt;token&gt;</code></pre>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">List Customers</h3>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>GET /api/mcp/customers
-Authorization: Bearer &lt;token&gt;</code></pre>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">List Projects</h3>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>GET /api/mcp/projects
-Authorization: Bearer &lt;token&gt;</code></pre>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Send Message</h3>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>POST /api/mcp/messages/send
-Authorization: Bearer &lt;token&gt;
-Content-Type: application/json
-
-{
-  "chat_id": "team",
-  "thread_id": "336f2d0c-fd80-48e6-b6ec-6c2ded7b6e09",
-  "thread_type": "team",
-  "from_user_id": "&lt;agent-id&gt;",
-  "text": "@Viktor please check this project"
-}</code></pre>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Sync Messages</h3>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>GET /api/mcp/messages/sync?mode=all
-Authorization: Bearer &lt;token&gt;</code></pre>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Update Resource (Force Sharing)</h3>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>PATCH /api/mcp/resources/&lt;resource-id&gt;
-Authorization: Bearer &lt;token&gt;
-Content-Type: application/json
-
-{
-  "configText": "Shared template content",
-  "isShared": true
-}</code></pre>
+            <main class="lg:col-span-3">
+                <div id="contentArea" class="card p-8 min-h-[400px]">
+                    <div class="flex items-center justify-center h-64">
+                        <div class="text-center">
+                            <div class="w-12 h-12 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                            <p class="text-muted-foreground">Loading documentation...</p>
                         </div>
                     </div>
-                    <p class="mt-6 text-sm text-muted-foreground">
-                        For a complete API reference, inspect the bridge source or the OpenAPI spec in the Emperor repository.
-                    </p>
-                </section>
-
-                <!-- Configuration -->
-                <section id="configuration" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">Configuration</h2>
-                    <p class="mb-6">
-                        The bridge behavior is controlled by environment variables and the bridge configuration file.
-                    </p>
-                    <h3 class="text-xl font-semibold mb-3">Environment Variables</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full border border-border rounded-lg">
-                            <thead class="bg-muted">
-                                <tr>
-                                    <th class="text-left p-3 border-b border-border">Variable</th>
-                                    <th class="text-left p-3 border-b border-border">Default</th>
-                                    <th class="text-left p-3 border-b border-border">Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="border-b border-border">
-                                    <td class="p-3 font-mono text-sm">EMPEROR_CLAW_AUTO_CLAIM</td>
-                                    <td class="p-3"><code>false</code></td>
-                                    <td class="p-3">If true, the bridge will automatically claim tasks matching its agent profile.</td>
-                                </tr>
-                                <tr class="border-b border-border">
-                                    <td class="p-3 font-mono text-sm">EMPEROR_CLAW_USE_EXECUTOR</td>
-                                    <td class="p-3"><code>false</code></td>
-                                    <td class="p-3">If true, the bridge will use the OpenClaw executor for task execution.</td>
-                                </tr>
-                                <tr class="border-b border-border">
-                                    <td class="p-3 font-mono text-sm">EMPEROR_CLAW_MANAGER_REVIEW_MS</td>
-                                    <td class="p-3"><code>3600000</code> (1h)</td>
-                                    <td class="p-3">How often Manager performs periodic reviews (disabled if 0).</td>
-                                </tr>
-                                <tr>
-                                    <td class="p-3 font-mono text-sm">EMPEROR_CLAW_SYNC_LOOP_MS</td>
-                                    <td class="p-3"><code>0</code></td>
-                                    <td class="p-3">Sync loop interval; set to 0 to disable periodic sync (event‑driven only).</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <h3 class="text-xl font-semibold mt-6 mb-3">Bridge Configuration File</h3>
-                    <p class="mb-4">
-                        Located at <code class="bg-muted px-1 rounded">~/.openclaw/emperor-control-plane/bridge.config.json</code>:
-                    </p>
-                    <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>{
-  "agentId": "Viktor",
-  "agentName": "Viktor",
-  "profile": "operator",
-  "mcpToken": "ec_...",
-  "emperorUrl": "https://emperorclaw.malecu.eu",
-  "workspacePath": "/home/jose/.openclaw/workspace-viktor",
-  "memoryPath": "/home/jose/.openclaw/emperor-control-plane/state"
-}</code></pre>
-                </section>
-
-                <!-- Usage Examples -->
-                <section id="usage" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">Usage Examples</h2>
-                    <div class="space-y-8">
-                        <div>
-                            <h3 class="text-xl font-semibold mb-3">1. Creating a Shared Resource</h3>
-                            <p class="mb-3">
-                                In Emperor Web, create a scoped resource (e.g., a project template) and enable <strong>Force Sharing</strong> (<code>isShared=true</code>). The bridge will automatically inject its content into relevant agent prompts.
-                            </p>
-                            <div class="bg-accent/20 border border-accent rounded-lg p-4">
-                                <p class="text-sm">
-                                    <strong>Test:</strong> Ask Viktor "What resources are available for Northstar Forge?" He should list the resource and quote its shared text.
-                                </p>
-                            </div>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-3">2. Agent‑to‑Agent Communication</h3>
-                            <p class="mb-3">
-                                Agents can talk to each other when explicitly <code>@mentioned</code>. For example, Manager can ask Viktor to inspect a project:
-                            </p>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>@Viktor please check project Northstar Forge and tell me which scoped resources are available.</code></pre>
-                            <p class="mt-2 text-sm text-muted-foreground">
-                                The bridge will allow the reply as long as the sender is an agent and the message contains an explicit mention.
-                            </p>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-3">3. Task Assignment & Execution</h3>
-                            <p class="mb-3">
-                                Create a task in Emperor Web with a <code>TASK-XXXXXXXX</code> ID. Reference it in a team thread:
-                            </p>
-                            <pre class="code-block p-4 rounded-lg overflow-x-auto"><code>@Viktor please take TASK-abc123 and implement the login page.</code></pre>
-                            <p class="mt-2">
-                                The bridge will fetch the task context, inject relevant shared resources, and route the execution to the appropriate agent.
-                            </p>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-3">4. Real‑time Event Handling</h3>
-                            <p class="mb-3">
-                                The bridge listens to WebSocket events for:
-                            </p>
-                            <ul class="list-disc pl-6 space-y-1">
-                                <li>New messages in watched threads</li>
-                                <li>Task state changes (created, assigned, completed)</li>
-                                <li>Resource updates (especially <code>isShared</code> changes)</li>
-                            </ul>
-                            <p class="mt-2 text-sm text-muted-foreground">
-                                No periodic polling is needed when the sync loop is disabled (<code>EMPEROR_CLAW_SYNC_LOOP_MS=0</code>).
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Troubleshooting -->
-                <section id="troubleshooting" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">Troubleshooting</h2>
-                    <div class="space-y-6">
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Bridge Won't Start</h3>
-                            <ul class="list-disc pl-6 space-y-1">
-                                <li>Check <code>journalctl --user -u emperor-claw-bridge.service -f</code></li>
-                                <li>Verify the MCP token in <code>bridge.config.json</code> is valid</li>
-                                <li>Ensure the Emperor URL is reachable from your machine</li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Agents Not Replying</h3>
-                            <ul class="list-disc pl-6 space-y-1">
-                                <li>For agent‑to‑agent: ensure the message includes <code>@AgentName</code></li>
-                                <li>Check that the bridge service is running and connected</li>
-                                <li>Verify the agent ID in Emperor matches the bridge configuration</li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Shared Resources Not Injected</h3>
-                            <ul class="list-disc pl-6 space-y-1">
-                                <li>Confirm the resource has <code>isShared: true</code> in Emperor</li>
-                                <li>Restart the bridge after changing bridge code (data changes are live)</li>
-                                <li>Check bridge logs for errors fetching resources</li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-semibold mb-2">Duplicate Messages</h3>
-                            <p class="mb-2">
-                                If you see duplicate agent replies in threads:
-                            </p>
-                            <ul class="list-disc pl-6 space-y-1">
-                                <li>Ensure only one bridge instance is running per agent</li>
-                                <li>Check for stale systemd services (<code>emperor-claw-bridge-manager.service</code>)</li>
-                                <li>Review the bridge’s message‑deduplication logic</li>
-                            </ul>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Skill Version -->
-                <section id="skill-version" class="card p-8">
-                    <h2 class="text-2xl font-bold mb-4">Skill Version</h2>
-                    <p class="mb-4">
-                        The <code>emperor-claw-os</code> skill is published on ClawHub and includes:
-                    </p>
-                    <ul class="list-disc pl-6 space-y-2 mb-6">
-                        <li>Bridge runtime (Node.js)</li>
-                        <li>Installation script with CLI flags</li>
-                        <li>Example bridge configuration</li>
-                        <li>Systemd service templates</li>
-                        <li>Documentation (this page)</li>
-                    </ul>
-                    <h3 class="text-xl font-semibold mb-3">Version Compatibility</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full border border-border rounded-lg">
-                            <thead class="bg-muted">
-                                <tr>
-                                    <th class="text-left p-3 border-b border-border">Skill Version</th>
-                                    <th class="text-left p-3 border-b border-border">OpenClaw</th>
-                                    <th class="text-left p-3 border-b border-border">Emperor Web</th>
-                                    <th class="text-left p-3 border-b border-border">Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="border-b border-border">
-                                    <td class="p-3 font-mono text-sm">1.0.0+</td>
-                                    <td class="p-3">≥ 0.12.0</td>
-                                    <td class="p-3">≥ 2026‑03</td>
-                                    <td class="p-3">Initial release</td>
-                                </tr>
-                                <tr>
-                                    <td class="p-3 font-mono text-sm">1.1.0+</td>
-                                    <td class="p-3">≥ 0.13.0</td>
-                                    <td class="p-3">≥ 2026‑03</td>
-                                    <td class="p-3">
-                                        <code>isShared</code> injection, agent‑to‑agent replies,<br>
-                                        sync‑loop disabled by default
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="mt-8 bg-accent/30 border border-accent rounded-lg p-6">
-                        <h3 class="text-xl font-semibold mb-3">Contributing & Feedback</h3>
-                        <p class="mb-4">
-                            The Emperor Web skill is open‑source. Report issues, suggest features, or contribute on GitHub:
-                        </p>
-                        <div class="flex gap-4">
-                            <a href="https://github.com/josezuma/emperorclaw" target="_blank" class="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition">GitHub Repository</a>
-                            <a href="https://discord.com/invite/clawd" target="_blank" class="px-4 py-2 border border-border rounded-lg font-medium hover:bg-accent transition">Discord Community</a>
-                        </div>
-                    </div>
-                </section>
+                </div>
             </main>
         </div>
 
@@ -468,43 +170,151 @@ Content-Type: application/json
     </div>
 
     <script>
-        // Smooth scrolling for anchor links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('href');
-                if (targetId === '#') return;
-                const targetElement = document.querySelector(targetId);
-                if (targetElement) {
-                    window.scrollTo({
-                        top: targetElement.offsetTop - 20,
-                        behavior: 'smooth'
-                    });
+        // State
+        let currentVersion = '';
+        let currentPage = '';
+        let versions = [];
+        let pages = {};
+
+        // DOM elements
+        const versionSelect = document.getElementById('versionSelect');
+        const versionDescription = document.getElementById('versionDescription');
+        const sidebarNav = document.getElementById('sidebarNav');
+        const contentArea = document.getElementById('contentArea');
+
+        // Markdown renderer (simple)
+        function renderMarkdown(text) {
+            return text
+                .replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
+                .replace(/^## (.*$)/gm, '<h2 class="text-xl font-semibold mb-3 mt-6">$1</h2>')
+                .replace(/^### (.*$)/gm, '<h3 class="text-lg font-semibold mb-2 mt-4">$1</h3>')
+                .replace(/`([^`]+)`/g, '<code class="bg-muted px-1 rounded">$1</code>')
+                .replace(/```([\s\S]*?)```/g, '<pre class="code-block p-4 rounded-lg overflow-x-auto my-4"><code>$1</code></pre>')
+                .replace(/\n\n/g, '</p><p class="mb-4">')
+                .replace(/\n/g, '<br>');
+        }
+
+        // Load versions.json
+        async function loadVersions() {
+            try {
+                const res = await fetch('versions.json');
+                versions = await res.json();
+                populateVersionSelect();
+            } catch (err) {
+                console.error('Failed to load versions:', err);
+                versions = [{ version: 'v1.1', label: 'v1.1 (Latest)', default: true }];
+                populateVersionSelect();
+            }
+        }
+
+        function populateVersionSelect() {
+            versionSelect.innerHTML = '';
+            versions.forEach(v => {
+                const option = document.createElement('option');
+                option.value = v.version;
+                option.textContent = v.label;
+                if (v.default) {
+                    option.selected = true;
+                    currentVersion = v.version;
+                    versionDescription.textContent = v.description || '';
                 }
+                versionSelect.appendChild(option);
             });
-        });
+            versionSelect.addEventListener('change', (e) => {
+                currentVersion = e.target.value;
+                const selected = versions.find(v => v.version === currentVersion);
+                versionDescription.textContent = selected?.description || '';
+                loadPagesForVersion(currentVersion);
+            });
+            // Load default version
+            loadPagesForVersion(currentVersion);
+        }
 
-        // Update active nav link on scroll
-        const sections = document.querySelectorAll('section[id]');
-        const navLinks = document.querySelectorAll('.nav-link');
-
-        window.addEventListener('scroll', () => {
-            let current = '';
-            sections.forEach(section => {
-                const sectionTop = section.offsetTop;
-                const sectionHeight = section.clientHeight;
-                if (scrollY >= sectionTop - 100) {
-                    current = section.getAttribute('id');
+        // Load pages for a version
+        async function loadPagesForVersion(version) {
+            try {
+                const res = await fetch(`${version}/pages.json`);
+                pages = await res.json();
+                renderSidebar(version);
+                if (pages.default) {
+                    loadPage(version, pages.default);
                 }
-            });
+            } catch (err) {
+                console.error(`Failed to load pages for ${version}:`, err);
+                // Fallback to hardcoded pages
+                pages = {
+                    overview: { title: 'Overview', file: 'overview.md' },
+                    mcp: { title: 'MCP Endpoints', file: 'mcp.md' },
+                    configuration: { title: 'Configuration', file: 'configuration.md' },
+                    usage: { title: 'Usage Examples', file: 'usage.md' },
+                    default: 'overview'
+                };
+                renderSidebar(version);
+                loadPage(version, pages.default);
+            }
+        }
 
-            navLinks.forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === `#${current}`) {
+        function renderSidebar(version) {
+            sidebarNav.innerHTML = `
+                <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contents</h3>
+            `;
+            Object.entries(pages).forEach(([key, page]) => {
+                if (key === 'default') return;
+                const link = document.createElement('a');
+                link.href = '#';
+                link.className = 'block nav-link';
+                link.textContent = page.title;
+                link.dataset.page = key;
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    loadPage(version, key);
+                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
                     link.classList.add('active');
-                }
+                });
+                sidebarNav.appendChild(link);
             });
-        });
+        }
+
+        // Load a page
+        async function loadPage(version, pageKey) {
+            currentPage = pageKey;
+            const page = pages[pageKey];
+            if (!page) return;
+
+            contentArea.classList.add('loading');
+            contentArea.innerHTML = `
+                <div class="flex items-center justify-center h-64">
+                    <div class="text-center">
+                        <div class="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                        <p class="text-muted-foreground">Loading ${page.title}...</p>
+                    </div>
+                </div>
+            `;
+
+            try {
+                const res = await fetch(`${version}/${page.file}`);
+                const markdown = await res.text();
+                const html = renderMarkdown(markdown);
+                contentArea.innerHTML = `
+                    <h1 class="text-2xl font-bold mb-6">${page.title}</h1>
+                    <div class="prose prose-invert max-w-none">
+                        ${html}
+                    </div>
+                `;
+            } catch (err) {
+                contentArea.innerHTML = `
+                    <div class="text-center py-12">
+                        <p class="text-destructive">Failed to load ${page.title}.</p>
+                        <p class="text-sm text-muted-foreground mt-2">${err.message}</p>
+                    </div>
+                `;
+            } finally {
+                contentArea.classList.remove('loading');
+            }
+        }
+
+        // Initialize
+        loadVersions();
     </script>
 </body>
 </html>
