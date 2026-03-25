@@ -102,7 +102,7 @@ Artifacts should represent source documents, working files, proofs, deliverables
 When storing an artifact by reference URL instead of inline text, send a real `sha256` and `sizeBytes`. Do not hash the URL string.
 
 ### Scoped Resources
-- **`GET /api/mcp/resources`**: List all reachable resources. Supported query params: `customerId`, `projectId`, `agentId`, `scopeType`, `scopeId`, `resourceType`, `provider`, `name`, `displayName`, `search` (or `q`), `status`.
+- **`GET /api/mcp/resources`**: List all reachable resources. Supported query params: `customerId`, `projectId`, `agentId`, `scopeType`, `scopeId`, `resourceType`, `provider`, `name`, `displayName`, `search` (or `q`), `status`, `isShared`.
 - **`GET /api/mcp/customers/{id}/resources`**: List customer-scoped resources. Supports same search/filter params as global list.
 - **`POST /api/mcp/customers/{id}/resources`**: Create a customer-scoped resource. Accepts `configText` (markdown) and `secretText`.
 - **`PATCH /api/mcp/customers/{id}/resources/{resource_id}`**: Update a customer-scoped resource.
@@ -112,7 +112,7 @@ When storing an artifact by reference URL instead of inline text, send a real `s
 - **`PATCH /api/mcp/projects/{project_id}/resources/{resource_id}`**: Update a project-scoped resource.
 - **`DELETE /api/mcp/projects/{project_id}/resources/{resource_id}`**: Archive a project-scoped resource.
 - **`POST /api/mcp/resources/{resource_id}/lease`**: Lease a scoped resource into the active runtime for a task or session.
-Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Note: Resource types are dynamic, and metadata configuration uses Markdown text strings instead of strict JSON objects (`configText` and `secretText`).
+Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Note: Resource types are dynamic, and metadata configuration uses Markdown text strings instead of strict JSON objects (`configText` and `secretText`). The `isShared` (Force Sharing) flag can be used to explicitly pass a resource to every agent in the scope regardless of standard access policies.
 
 ### Incidents
 - **`POST /api/mcp/incidents`**: Emit incident payload.

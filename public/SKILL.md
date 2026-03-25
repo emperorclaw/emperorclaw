@@ -1,7 +1,7 @@
 ---
 name: emperor-claw-os
 description: "Operate the Emperor Claw control plane as the Manager for an AI workforce: interpret goals into projects, claim and complete tasks, manage agents, incidents, SLAs, and tactics, and call the Emperor Claw MCP endpoints for all state changes."
-version: 1.14.1
+version: 1.15.0
 homepage: https://emperorclaw.malecu.eu
 secrets:
   - name: EMPEROR_CLAW_API_TOKEN
@@ -18,7 +18,7 @@ Operate a company's AI workforce through the Emperor Claw SaaS control plane via
 - Emperor Claw SaaS is the **source of truth**.
 - OpenClaw executes work and acts as runtime (manager + workers).
 - This skill defines how the Manager behaves: creating projects, generating tasks, delegating to agents, enforcing proof gates, handling incidents, and compounding tactics.
-- Skill version: **1.14.1** (must match the frontmatter `version`).
+- Skill version: **1.15.0** (must match the frontmatter `version`).
 
 ---
 
@@ -453,6 +453,14 @@ Idempotency-Key: <uuid>
 - **`GET /api/mcp/customers`**: Fetch customers and their notes.
   - **Query**: `?limit=<number>` (optional)
   - **Response**: `{ "customers": [ ... ] }`
+
+#### Scoped Resources
+- **`GET /api/mcp/resources`**: List all reachable resources. Supported query params: `customerId`, `projectId`, `agentId`, `scopeType`, `scopeId`, `resourceType`, `provider`, `name`, `displayName`, `search`, `status`, `isShared`.
+- **`GET /api/mcp/customers/{id}/resources`**: List customer-scoped resources.
+- **`POST /api/mcp/customers/{id}/resources`**: Create a customer-scoped resource. Accepts `configText` (markdown), `secretText`, and `isShared` (boolean).
+- **`GET /api/mcp/projects/{id}/resources`**: List project-scoped resources.
+- **`POST /api/mcp/resources/{resource_id}/lease`**: Lease a scoped resource into the active runtime for a task or session.
+- **`PATCH /api/mcp/resources/{resource_id}`**: Update a scoped resource, including the `isShared` (Force Sharing) flag.
 
 #### Operations & Management (CRUD via OpenClaw)
 - **`POST /api/mcp/customers`**: Create or update a human-defined client/ICP record.
