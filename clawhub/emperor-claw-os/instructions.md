@@ -132,6 +132,18 @@ Good first targets:
 
 Do this conditionally, not on every message.
 
+### Force Sharing / `isShared`
+
+When Emperor resources have `isShared=true` (Force Sharing enabled), the bridge should treat them as prompt-injectable context when they are relevant to the current scope.
+
+Recommended behavior:
+- list all relevant scoped resources with a mode marker such as `inject` vs `manual`
+- automatically inline `configText` for relevant `isShared=true` resources
+- keep `isShared=false` resources discoverable by name/metadata, but do not dump their full text into every prompt
+- apply this rule both in task-context bundles and in general project/customer live-context lookups
+
+This way, if a user marks a resource as shared in the Emperor web UI, the bridge will begin injecting that resource on the next relevant turn without requiring any data migration.
+
 ## Long-term direction
 
 Stable doctrine should live in workspace bootstrap files.
