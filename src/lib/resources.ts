@@ -39,6 +39,7 @@ export async function listScopedResources(input: {
   name?: string | null;
   displayName?: string | null;
   search?: string | null;
+  isShared?: boolean | null;
 }) {
   const conditions = [
     eq(scopedResources.companyId, input.companyId),
@@ -50,6 +51,7 @@ export async function listScopedResources(input: {
   if (input.provider) conditions.push(eq(scopedResources.provider, input.provider));
   if (input.resourceType) conditions.push(eq(scopedResources.resourceType, normalizeResourceType(input.resourceType)));
   if (input.status) conditions.push(eq(scopedResources.status, input.status));
+  if (input.isShared !== undefined && input.isShared !== null) conditions.push(eq(scopedResources.isShared, input.isShared));
   if (input.name) conditions.push(ilike(scopedResources.name, `%${input.name}%`));
   if (input.displayName) conditions.push(ilike(scopedResources.displayName, `%${input.displayName}%`));
   if (input.search) {
@@ -86,6 +88,7 @@ export async function createScopedResource(input: {
   secretText?: string | null;
   status?: string | null;
   ownership?: string | null;
+  isShared?: boolean;
 }) {
   const [resource] = await db.insert(scopedResources).values({
     id: randomUUID(),
@@ -100,6 +103,7 @@ export async function createScopedResource(input: {
     secretText: input.secretText || "",
     status: input.status || "active",
     ownership: input.ownership || "managed",
+    isShared: input.isShared ?? false,
   }).returning();
 
   return resource;
@@ -119,6 +123,7 @@ export async function updateScopedResource(input: {
     secretText: string;
     status: string;
     ownership: string;
+    isShared: boolean;
   }>;
 }) {
   const existing = await getScopedResource(input.companyId, input.resourceId);
@@ -135,6 +140,7 @@ export async function updateScopedResource(input: {
     secretText: input.patch.secretText ?? existing.secretText,
     status: input.patch.status ?? existing.status,
     ownership: input.patch.ownership ?? existing.ownership,
+    isShared: input.patch.isShared ?? existing.isShared,
     updatedAt: new Date(),
   }).where(eq(scopedResources.id, existing.id)).returning();
 
