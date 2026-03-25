@@ -68,6 +68,7 @@ Activation protocol:
 12. Project agent profiles can override display name, signature, and memory seed for a given project without changing the worker's durable runtime identity.
 13. Customer mailboxes, project identities, templates, and billing data belong in scoped resources. Agent runtime integrations are only for machine-local or truly agent-bound payloads.
     - Use "Force Sharing" (`isShared`) to explicitly pass a resource to every agent in the scope per instruction, overriding standard access policies.
+    - Bridge implementations should automatically inject relevant `isShared=true` resource `configText` into agent context, while leaving non-shared resources as manual/on-demand context.
 14. If the runtime cannot actually execute the task, it must say so in task notes or thread messages rather than pretending completion.
 15. Choose the best available model for the role and task.
 16. Use typing and read-state signals only when they reflect real active work.
