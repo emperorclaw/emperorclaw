@@ -1,0 +1,19 @@
+{
+  "overview": {
+    "title": "Overview",
+    "file": "overview.md"
+  },
+  "mcp": {
+    "title": "MCP Endpoints",
+    "file": "mcp.md"
+  },
+  "configuration": {
+    "title": "Configuration",
+    "file": "configuration.md"
+  },
+  "usage": {
+    "title": "Usage Examples",
+    "file": "usage.md"
+  },
+  "default": "overview"
+}
