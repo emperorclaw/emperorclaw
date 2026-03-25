@@ -767,9 +767,9 @@ class EmperorBridge {
         return;
       }
     } else if (isAgentSender) {
-      const actionableDelegation = explicitAtMention && /\b(take|claim|work on|handle|pick up|start)\b/.test(lowered);
-      if (!actionableDelegation) {
-        console.log(`[bridge] ignoring non-actionable agent message in thread ${thread.id}`);
+      const explicitAgentInstruction = explicitAtMention;
+      if (!explicitAgentInstruction) {
+        console.log(`[bridge] ignoring agent message in thread ${thread.id} without explicit @${agentName} mention`);
         return;
       }
     } else if (!isDirectThread && !explicitAtMention) {
@@ -1283,6 +1283,14 @@ class EmperorBridge {
     return Array.isArray(payload?.resources) ? payload.resources : Array.isArray(payload) ? payload : [];
   }
 
+  isInjectableResource(resource) {
+    if (!resource || typeof resource !== "object") return false;
+    // Force Sharing (`isShared`) is the control-plane signal that this resource
+    // should be injected into agent context by default rather than only
+    // discovered on-demand.
+    return Boolean(resource.isShared);
+  }
+
   async fetchAgents() {
     const payload = await http("/api/mcp/agents", { method: "GET" });
     return Array.isArray(payload?.agents) ? payload.agents : Array.isArray(payload) ? payload : [];
@@ -1373,8 +1381,48 @@ class EmperorBridge {
     }
 
     if (options.includeResources) {
-      if (options.focusName) {
-        sections.push("Known scoped resource: Northstar Product Brief [type=template, provider=emperor-demo]");
+      let resources = [];
+      try {
+        if (matchedProject?.id) {
+          resources = await this.fetchResourcesByProject(matchedProject.id);
+        } else if (matchedCustomer?.id) {
+          resources = await this.fetchResourcesByCustomer(matchedCustomer.id);
+        } else {
+          resources = await this.fetchResources();
+        }
+      } catch (error) {
+        console.error("[bridge] live resource fetch failed:", error.message);
+      }
+
+      const filteredResources = options.focusName
+        ? resources.filter((resource) => {
+            const haystack = [resource?.name, resource?.displayName, resource?.configText]
+              .map((value) => String(value || "").toLowerCase())
+              .join(" ");
+            return haystack.includes(String(options.focusName).toLowerCase())
+              || String(resource?.scopeId || "") === String(matchedProject?.id || matchedCustomer?.id || "");
+          })
+        : resources;
+
+      const visibleResources = filteredResources.slice(0, 12);
+      if (visibleResources.length > 0) {
+        const resourceLines = visibleResources.map((resource) => {
+          const marker = this.isInjectableResource(resource) ? "inject" : "manual";
+          return `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || 'unknown'}, provider=${resource.provider || 'unknown'}, scope=${resource.scopeType || 'unknown'}, mode=${marker}]`;
+        });
+        sections.push(`Relevant scoped resources:\n${resourceLines.join("\n")}`);
+
+        const sharedBlocks = visibleResources
+          .filter((resource) => this.isInjectableResource(resource))
+          .filter((resource) => typeof resource.configText === 'string' && resource.configText.trim())
+          .slice(0, 4)
+          .map((resource) => `### Resource: ${resource.displayName || resource.name || resource.id}\n\n${String(resource.configText || '').trim()}`);
+
+        if (sharedBlocks.length > 0) {
+          sections.push(`Auto-injected resource context (isShared=true):\n\n${sharedBlocks.join("\n\n")}`);
+        }
+      } else if (options.focusName) {
+        sections.push("No scoped resources matched the requested project/customer focus.");
       } else {
         sections.push("Known scoped resources may include project templates, identities, mailboxes, or other project/customer assets.");
       }
