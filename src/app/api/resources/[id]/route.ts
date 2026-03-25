@@ -68,6 +68,7 @@ export async function PATCH(
     if (body.configText !== undefined) patch.configText = body.configText;
     if (body.secretText !== undefined) patch.secretText = body.secretText;
     if (body.secretJson !== undefined) patch.secretText = body.secretJson;
+    if (body.isShared !== undefined) patch.isShared = typeof body.isShared === "boolean" ? body.isShared : false;
 
     const updated = await updateScopedResource({
       companyId: membership.companyId,

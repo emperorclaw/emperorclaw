@@ -75,6 +75,7 @@ export async function POST(request: Request) {
       secretText: typeof body.secretJson === "string" ? body.secretJson : body.secretText || "",
       status: "active",
       ownership: "managed",
+      isShared: typeof body.isShared === "boolean" ? body.isShared : false,
     });
 
     return NextResponse.json({
