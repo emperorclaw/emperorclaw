@@ -19,6 +19,8 @@ type ResourceRecord = {
     secretText: string;
     createdAt: string | Date;
     updatedAt: string | Date;
+    deletedAt?: string | Date | null;
+    isShared: boolean;
 };
 
 type ScopeOption = { id: string; name: string };
@@ -100,6 +102,7 @@ export default function ResourcesClient({
     const [name, setName] = useState("");
     const [displayName, setDisplayName] = useState("");
     const [configText, setConfigText] = useState(RESOURCE_TEMPLATES.external_account.configText);
+    const [isShared, setIsShared] = useState(false);
     const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [isPreview, setIsPreview] = useState(false);
@@ -161,6 +164,7 @@ export default function ResourcesClient({
         setName(resource.name);
         setDisplayName(resource.displayName || "");
         setConfigText(resource.configText || "");
+        setIsShared(resource.isShared || false);
     };
 
     const toggleGroup = (groupId: string) => {
@@ -177,6 +181,7 @@ export default function ResourcesClient({
         setProvider("generic");
         updateScopeType("project");
         applyTemplate("external_account");
+        setIsShared(false);
         setIsCreateOpen(true);
     };
 
@@ -208,6 +213,7 @@ export default function ResourcesClient({
                 displayName: displayName.trim() || null,
                 configText: configText,
                 secretText: "",
+                isShared: isShared,
             };
 
             let res;
@@ -375,6 +381,27 @@ export default function ResourcesClient({
                                         className="h-32 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                     />
                                 </label>
+                            </div>
+                            <div className="flex items-center justify-between py-2 px-1">
+                                <div className="flex items-center gap-2 group relative">
+                                    <span className="text-sm font-medium text-zinc-300">Force Sharing</span>
+                                    <div className="h-4 w-4 rounded-full border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-500 cursor-help">?</div>
+                                    <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
+                                        When enabled, this resource will be explicitly passed to every agent in the scope per instruction, regardless of standard access policies.
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setIsShared(!isShared)}
+                                    className={cn(
+                                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none",
+                                        isShared ? "bg-indigo-600" : "bg-zinc-800"
+                                    )}
+                                >
+                                    <span className={cn(
+                                        "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+                                        isShared ? "translate-x-5" : "translate-x-0.5"
+                                    )} />
+                                </button>
                             </div>
                         </div>
                         <div className="flex justify-end border-t border-zinc-900 pt-2">
@@ -554,6 +581,28 @@ export default function ResourcesClient({
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource Info</div>
                                         <div className="rounded-xl border border-indigo-500/10 bg-indigo-500/5 p-4 text-xs leading-relaxed text-indigo-300/80">
                                             {(RESOURCE_TEMPLATES[selectedResource.resourceType] || RESOURCE_TEMPLATES.external_account).helper}
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-between pt-2">
+                                            <div className="flex items-center gap-2 group relative">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Force Sharing</span>
+                                                <div className="h-3.5 w-3.5 rounded-full border border-zinc-800 flex items-center justify-center text-[9px] text-zinc-600 cursor-help">?</div>
+                                                <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
+                                                    When enabled, this resource will be explicitly passed to every agent in the scope per instruction, regardless of standard access policies.
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => setIsShared(!isShared)}
+                                                className={cn(
+                                                    "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none",
+                                                    isShared ? "bg-indigo-600" : "bg-zinc-800"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+                                                    isShared ? "translate-x-5" : "translate-x-0.5"
+                                                )} />
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
