@@ -382,6 +382,7 @@ export const scopedResources = pgTable("scoped_resources", {
     configText: text("config_text").default('').notNull(),
     secretText: text("secret_text").default('').notNull(),
     status: text("status").default('active').notNull(),
+    isShared: boolean("is_shared").default(false).notNull(),
     ownership: text("ownership").default('managed').notNull(),
     lastUsedAt: timestamp("last_used_at"),
     lastFailureAt: timestamp("last_failure_at"),
