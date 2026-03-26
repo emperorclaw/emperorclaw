@@ -1,5 +1,6 @@
 import { DocsViewer } from '@/components/docs-viewer';
 import { versions } from '@/content/docs/versions';
+import type { DocVersion, DocPage } from '@/content/docs/types';
 
 export default async function DocsPage({ params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug: rawSlug } = await params;
@@ -17,13 +18,13 @@ export async function generateStaticParams() {
   paths.push({ slug: [] });
 
   // Each version root
-  versions.forEach(version => {
+  versions.forEach((version: DocVersion) => {
     paths.push({ slug: [version.id] });
   });
 
   // Each page in each version
-  versions.forEach(version => {
-    version.pages.forEach(page => {
+  versions.forEach((version: DocVersion) => {
+    version.pages.forEach((page: DocPage) => {
       paths.push({ slug: [version.id, page.slug] });
     });
   });
