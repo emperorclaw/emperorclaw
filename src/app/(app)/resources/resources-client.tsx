@@ -4,6 +4,7 @@ import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type Luci
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { toast } from "sonner";
 
 type ResourceRecord = {
     id: string;
@@ -172,6 +173,7 @@ export default function ResourcesClient({
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         setCopied(true);
+        toast.success("Resource ID copied to clipboard");
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -248,8 +250,11 @@ export default function ResourcesClient({
                 ? current.map(r => r.id === editingResource.id ? (body.resource as ResourceRecord) : r)
                 : [body.resource as ResourceRecord, ...current]);
             setIsCreateOpen(false);
+            toast.success(editingResource ? "Resource updated successfully" : "Resource created successfully");
         } catch (createError) {
-            setError(createError instanceof Error ? createError.message : "Failed to create resource.");
+            const msg = createError instanceof Error ? createError.message : "Failed to save resource.";
+            setError(msg);
+            toast.error(msg);
         } finally {
             setIsSaving(false);
         }
@@ -266,8 +271,10 @@ export default function ResourcesClient({
                 throw new Error("Failed to archive resource.");
             }
             setResources((current) => current.filter((resource) => resource.id !== resourceId));
+            toast.success("Resource archived successfully");
         } catch (deleteError) {
             console.error(deleteError);
+            toast.error("Failed to archive resource");
         }
     };
 
