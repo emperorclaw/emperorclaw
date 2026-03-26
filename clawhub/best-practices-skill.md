@@ -26,8 +26,13 @@ Deployed agents require specialized `.md` configs:
 - `MEMORY.md` (durable scratchpad)
 - `USER.md` (human stakeholder prefs)
 
-## 4. Updates for Credentials/Integrations
-When building tasks that require external credentials (like email `smtp`/`imap`):
-- Do NOT hardcode secrets in `.md` files.
-- Document in `TOOLS.md` or `SKILL.md` that the agent expects to fetch integrations via `/api/mcp/agents/[id]/integrations`.
-- Ensure the runtime uses these dynamic credentials seamlessly.
+## 5. Resource Scoping & Configuration
+- **Use the correct Scope**:
+    - `company`: Global infrastructure/identities.
+    - `customer`: Client-specific assets (e.g., mailboxes).
+    - `project`: Workflow-specific data (strict isolation).
+    - `agent`: Identity-specific credentials/prefs.
+- **No JSON for Configuration**: 
+    - `configText` should be treated as human-readable Markdown or YAML.
+    - Avoid JSON strings for configurations to ensure agents and humans can easily interpret the content.
+- **Force Sharing**: Use `isShared: true` to inject instructions/templates into all agent contexts within a scope (replaces manual polling).
