@@ -562,16 +562,22 @@ export default function ResourcesClient({
                                                 />
                                             </label>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div className="space-y-1.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource ID</span>
+                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-[11px] text-zinc-500 font-mono truncate">
+                                                    {selectedResource.id}
+                                                </div>
+                                            </div>
                                             <div className="space-y-1.5">
                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Ownership</span>
-                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-sm text-zinc-500 font-mono">
+                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-[11px] text-zinc-500 font-mono">
                                                     {selectedResource.ownership}
                                                 </div>
                                             </div>
                                             <div className="space-y-1.5">
                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Scope Type</span>
-                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-sm text-zinc-500 font-mono">
+                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-[11px] text-zinc-500 font-mono">
                                                     {selectedResource.scopeType}
                                                 </div>
                                             </div>
