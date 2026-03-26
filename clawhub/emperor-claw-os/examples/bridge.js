@@ -1291,6 +1291,53 @@ class EmperorBridge {
     return Boolean(resource.isShared);
   }
 
+  getResourceText(resource) {
+    // First check configText
+    const configText = resource?.configText;
+    if (configText && typeof configText === "string") {
+      // Try to parse as JSON (for agent profiles with profileText)
+      try {
+        const parsed = JSON.parse(configText);
+        if (parsed && typeof parsed === "object") {
+          // Return profileText if it exists in JSON
+          if (parsed.profileText && typeof parsed.profileText === "string") {
+            return parsed.profileText.trim();
+          }
+          // Or return markdown if it exists
+          if (parsed.markdown && typeof parsed.markdown === "string") {
+            return parsed.markdown.trim();
+          }
+          // Or stringify the JSON if no known fields
+          return JSON.stringify(parsed, null, 2);
+        }
+      } catch {
+        // Not JSON, use as plain text
+        return configText.trim();
+      }
+    }
+    
+    // Fallback to configJson fields (legacy)
+    const text = resource?.configJson?.markdown || resource?.configJson?.profileText || "";
+    return typeof text === "string" ? text.trim() : "";
+  }
+
+  getResourceJson(resource) {
+    // Parse configText as JSON if possible
+    const configText = resource?.configText;
+    if (configText && typeof configText === "string") {
+      try {
+        const parsed = JSON.parse(configText);
+        if (parsed && typeof parsed === "object") {
+          return parsed;
+        }
+      } catch {
+        // Not JSON
+      }
+    }
+    // Fallback to configJson (legacy)
+    return resource?.configJson || {};
+  }
+
   async fetchAgents() {
     const payload = await http("/api/mcp/agents", { method: "GET" });
     return Array.isArray(payload?.agents) ? payload.agents : Array.isArray(payload) ? payload : [];
@@ -1414,9 +1461,12 @@ class EmperorBridge {
 
         const sharedBlocks = visibleResources
           .filter((resource) => this.isInjectableResource(resource))
-          .filter((resource) => typeof resource.configText === 'string' && resource.configText.trim())
+          .filter((resource) => {
+            const text = this.getResourceText(resource);
+            return typeof text === 'string' && text.trim();
+          })
           .slice(0, 4)
-          .map((resource) => `### Resource: ${resource.displayName || resource.name || resource.id}\n\n${String(resource.configText || '').trim()}`);
+          .map((resource) => `### Resource: ${resource.displayName || resource.name || resource.id}\n\n${this.getResourceText(resource)}`);
 
         if (sharedBlocks.length > 0) {
           sections.push(`Auto-injected resource context (isShared=true):\n\n${sharedBlocks.join("\n\n")}`);
@@ -1433,7 +1483,7 @@ class EmperorBridge {
       if (profiles.length > 0) {
         const profileBlocks = profiles.slice(0, 10).map((resource) => {
           const name = resource?.displayName || resource?.name || resource?.id;
-          const text = String(resource?.configText || "").trim();
+          const text = this.getResourceText(resource);
           return `## ${name}\n${text}`;
         });
         sections.push(`Agent profiles in Emperor:\n${profileBlocks.join("\n\n")}`);
