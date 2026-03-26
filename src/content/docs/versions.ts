@@ -1,39 +1,29 @@
-export interface DocVersion {
-  id: string;
-  label: string;
-  default?: boolean;
-  description: string;
-  pages: DocPage[];
-}
-
-export interface DocPage {
-  slug: string;
-  title: string;
-  file: string;
-}
+import { DocVersion } from "./types";
 
 export const versions: DocVersion[] = [
   {
     id: 'v1.1',
-    label: 'v1.1 (Latest)',
-    default: true,
-    description: 'Includes isShared injection, agent‑to‑agent replies, sync‑loop disabled',
+    label: 'v1.1 (Stable)',
+    description: 'Includes isShared injection, agent‑to‑agent replies, and durable checkpoints.',
     pages: [
-      { slug: 'overview', title: 'Overview', file: 'overview.md' },
-      { slug: 'installation', title: 'Installation', file: 'installation.md' },
+      { slug: 'overview', title: 'Architecture Overview', file: 'overview.md' },
+      { slug: 'installation', title: 'Installation Guide', file: 'installation.md' },
+      { slug: 'activation', title: 'Activation Protocol', file: 'activation.md' },
+      { slug: 'concepts', title: 'Core Concepts', file: 'concepts.md' },
+      { slug: 'configuration', title: 'Configuration Reference', file: 'configuration.md' },
       { slug: 'mcp', title: 'MCP Endpoints', file: 'mcp.md' },
-      { slug: 'configuration', title: 'Configuration', file: 'configuration.md' },
+      { slug: 'api-reference', title: 'API Reference', file: 'api-reference.md' },
+      { slug: 'best-practices', title: 'Doctrine & Best Practices', file: 'best-practices.md' },
       { slug: 'usage', title: 'Usage Examples', file: 'usage.md' },
-    ],
+    ]
   },
   {
     id: 'v1.0',
-    label: 'v1.0',
-    default: false,
-    description: 'Initial release',
+    label: 'v1.0 (Legacy)',
+    description: 'Initial release with basic task management.',
     pages: [
       { slug: 'overview', title: 'Overview', file: 'overview.md' },
       { slug: 'mcp', title: 'MCP Endpoints', file: 'mcp.md' },
-    ],
-  },
+    ]
+  }
 ];
