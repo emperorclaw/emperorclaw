@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import packageJson from "@/../package.json" assert { type: "json" };
 
 export async function GET(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -18,12 +19,20 @@ export async function GET(req: NextRequest) {
     serverTime: new Date().toISOString(),
     apiBaseUrl: baseUrl,
     wsUrl,
+    emperorVersion: packageJson.version,
+    docsUrl: `${baseUrl}/docs`,
+    recommendedSkillVersion: "1.1.0",
+    minimumBridgeVersion: "1.0.0",
     capabilities: {
       runtimeRegister: true,
       sessions: true,
       heartbeat: true,
       threads: true,
       checkpoints: true,
+      resourcesIsShared: true,
+      messagesAgentMentionsReply: true,
+      docsVersioned: true,
+      forceSharingInjection: true,
     },
   });
 }

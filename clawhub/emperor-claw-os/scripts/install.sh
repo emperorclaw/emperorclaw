@@ -35,6 +35,9 @@ Defaults:
 EOF
 }
 
+UPGRADE_MODE=false
+CHECK_COMPATIBILITY=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --agent-name)
@@ -49,6 +52,10 @@ while [[ $# -gt 0 ]]; do
       OWNER_TIMEZONE="$2"; shift 2 ;;
     --api-url)
       API_URL="$2"; shift 2 ;;
+    --upgrade)
+      UPGRADE_MODE=true; shift ;;
+    --check-compatibility)
+      CHECK_COMPATIBILITY=true; shift ;;
     -h|--help)
       print_help; exit 0 ;;
     *)
@@ -81,6 +88,26 @@ need_cmd() {
     echo "Missing required command: $1" >&2
     exit 1
   }
+}
+
+check_server_compatibility() {
+  echo "[emperor-claw] Checking server compatibility..."
+  if ! HEALTH_RESPONSE=$(curl -fsSL -H "Authorization: Bearer $TOKEN" "$API_URL/api/mcp/runtime/health" 2>/dev/null); then
+    echo "  ⚠️  Could not fetch server health endpoint"
+    return 1
+  fi
+  EMPEROR_VERSION=$(echo "$HEALTH_RESPONSE" | grep -o '"emperorVersion":"[^"]*"' | cut -d'"' -f4)
+  RECOMMENDED_SKILL_VERSION=$(echo "$HEALTH_RESPONSE" | grep -o '"recommendedSkillVersion":"[^"]*"' | cut -d'"' -f4)
+  MIN_BRIDGE_VERSION=$(echo "$HEALTH_RESPONSE" | grep -o '"minimumBridgeVersion":"[^"]*"' | cut -d'"' -f4)
+  DOCS_URL=$(echo "$HEALTH_RESPONSE" | grep -o '"docsUrl":"[^"]*"' | cut -d'"' -f4)
+  echo "  ✅ Emperor version: ${EMPEROR_VERSION:-unknown}"
+  echo "  📘 Docs: ${DOCS_URL:-$API_URL/docs}"
+  if [[ -n "$RECOMMENDED_SKILL_VERSION" ]]; then
+    echo "  🔧 Recommended skill version: $RECOMMENDED_SKILL_VERSION"
+  fi
+  if [[ -n "$MIN_BRIDGE_VERSION" ]]; then
+    echo "  ⚙️  Minimum bridge version: $MIN_BRIDGE_VERSION"
+  fi
 }
 
 need_cmd node
@@ -117,6 +144,17 @@ if [[ "$AGENT_PROFILE" == "manager" && -z "${EMPEROR_CLAW_RUNTIME_ID:-}" ]]; the
 fi
 
 mkdir -p "$RUNTIME_DIR" "$STATE_DIR"
+
+if [[ "$CHECK_COMPATIBILITY" == true ]]; then
+  check_server_compatibility
+  exit 0
+fi
+
+check_server_compatibility
+
+if [[ "$UPGRADE_MODE" == true ]]; then
+  echo "[emperor-claw] Upgrading bridge runtime..."
+fi
 
 curl -fsSL "$CONTROL_PLANE_JS_URL" -o "$RUNTIME_DIR/control-plane.js"
 curl -fsSL "$BRIDGE_JS_URL" -o "$RUNTIME_DIR/bridge.js"
@@ -367,7 +405,12 @@ EOF
 
 if systemctl --user status >/dev/null 2>&1; then
   systemctl --user daemon-reload
-  systemctl --user enable --now "${SERVICE_NAME}.service" >/dev/null
+  if [[ "$UPGRADE_MODE" == true ]] && systemctl --user is-active "${SERVICE_NAME}.service" >/dev/null 2>&1; then
+    echo "[emperor-claw] Upgrading, restarting bridge service..."
+    systemctl --user restart "${SERVICE_NAME}.service"
+  else
+    systemctl --user enable --now "${SERVICE_NAME}.service" >/dev/null
+  fi
 fi
 
 EMPEROR_CLAW_API_TOKEN="$TOKEN" "$COMPANION_DIR/doctor.sh" >/dev/null
