@@ -91,6 +91,9 @@ export async function POST(req: NextRequest) {
       
       // Validate agent scope
       if (finalScopeType === "agent") {
+        if (!finalScopeId) {
+          return NextResponse.json({ error: "scopeId is required for agent scope" }, { status: 400 });
+        }
         finalScopeId = await resolveAgentId(companyId, finalScopeId);
       }
       // Note: customer/project scope validation would happen in createScopedResource
@@ -99,6 +102,11 @@ export async function POST(req: NextRequest) {
       const internalAgentId = agentId ? await resolveAgentId(companyId, agentId) : null;
       finalScopeType = internalAgentId ? "agent" : projectId ? "project" : customerId ? "customer" : "company";
       finalScopeId = internalAgentId || projectId || customerId || null;
+    }
+
+    // Validate agent scope requires a scopeId
+    if (finalScopeType === "agent" && !finalScopeId) {
+      return NextResponse.json({ error: "scopeId is required for agent scope" }, { status: 400 });
     }
 
     const resource = await createScopedResource({
