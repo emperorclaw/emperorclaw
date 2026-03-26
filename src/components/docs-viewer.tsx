@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { versions, type DocVersion } from '@/content/docs/versions';
+import { versions, type DocVersion, type DocPage } from '@/content/docs/versions';
 import { DocsMarkdownRenderer } from './docs-markdown-renderer';
 import { ChevronRight, BookOpen, FileText, Menu, X, ArrowLeft, ExternalLink } from 'lucide-react';
 import { CustomLogo } from './custom-logo';
@@ -21,16 +21,16 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const selectedVersion = versions.find(v => v.id === currentVersion) || versions[0];
+  const selectedVersion = versions.find((v: DocVersion) => v.id === currentVersion) || versions[0];
   const currentPageSlug = slug.length > 0 ? slug.join('/') : 'overview';
-  const currentPage = selectedVersion.pages.find(p => p.slug === currentPageSlug) || selectedVersion.pages[0];
+  const currentPage = selectedVersion.pages.find((p: DocPage) => p.slug === currentPageSlug) || selectedVersion.pages[0];
 
   // Group pages by category (heuristic: use sections or just list them)
-  const introPages = selectedVersion.pages.filter(p => ['overview', 'installation', 'activation'].includes(p.slug));
-  const conceptPages = selectedVersion.pages.filter(p => ['concepts', 'mcp', 'configuration'].includes(p.slug));
-  const referencePages = selectedVersion.pages.filter(p => ['api-reference', 'best-practices', 'usage'].includes(p.slug));
+  const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'installation', 'activation'].includes(p.slug));
+  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'mcp', 'configuration'].includes(p.slug));
+  const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'best-practices', 'usage'].includes(p.slug));
 
-  const filteredPages = selectedVersion.pages.filter(p => 
+  const filteredPages = selectedVersion.pages.filter((p: DocPage) => 
     p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     p.slug.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -163,7 +163,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                       Search Results
                     </h3>
                     <div className="space-y-1">
-                      {filteredPages.map(page => <SidebarLink key={page.slug} page={page} />)}
+                      {filteredPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       {filteredPages.length === 0 && (
                         <p className="px-3 py-2 text-xs text-zinc-600 italic">No pages found</p>
                       )}
@@ -176,7 +176,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                         Getting Started
                       </h3>
                       <div className="space-y-1">
-                        {introPages.map(page => <SidebarLink key={page.slug} page={page} />)}
+                        {introPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       </div>
                     </div>
 
@@ -185,7 +185,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                         Core Concepts
                       </h3>
                       <div className="space-y-1">
-                        {conceptPages.map(page => <SidebarLink key={page.slug} page={page} />)}
+                        {conceptPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       </div>
                     </div>
 
@@ -194,7 +194,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                         Resources
                       </h3>
                       <div className="space-y-1">
-                        {referencePages.map(page => <SidebarLink key={page.slug} page={page} />)}
+                        {referencePages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       </div>
                     </div>
                   </>
