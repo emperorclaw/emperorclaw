@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { versions, type DocVersion } from '@/content/docs/versions';
-import { MarkdownRenderer } from './markdown-renderer';
+import { DocsMarkdownRenderer } from './docs-markdown-renderer';
 import { ChevronRight, BookOpen, FileText } from 'lucide-react';
 
 interface DocsViewerProps {
@@ -142,7 +142,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               </div>
             </div>
           ) : (
-            <MarkdownRenderer content={content} />
+            <DocsMarkdownRenderer content={content} />
           )}
         </div>
 
