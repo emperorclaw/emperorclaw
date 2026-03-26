@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code } from "lucide-react";
+import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -106,6 +106,7 @@ export default function ResourcesClient({
     const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [isPreview, setIsPreview] = useState(false);
+    const [copied, setCopied] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
 
     const scopeOptions = useMemo(() => ({
@@ -165,6 +166,13 @@ export default function ResourcesClient({
         setDisplayName(resource.displayName || "");
         setConfigText(resource.configText || "");
         setIsShared(resource.isShared || false);
+        setCopied(false);
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
 
     const toggleGroup = (groupId: string) => {
@@ -562,11 +570,20 @@ export default function ResourcesClient({
                                                 />
                                             </label>
                                         </div>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <div className="space-y-1.5">
+                                        <div className="grid grid-cols-4 gap-4">
+                                            <div className="space-y-1.5 col-span-2">
                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource ID</span>
-                                                <div className="rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-[11px] text-zinc-500 font-mono truncate">
-                                                    {selectedResource.id}
+                                                <div className="flex gap-2">
+                                                    <div className="flex-1 rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-[11px] text-zinc-500 font-mono truncate">
+                                                        {selectedResource.id}
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => copyToClipboard(selectedResource.id)}
+                                                        className="flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/10 px-2.5 py-2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                                                        title="Copy to clipboard"
+                                                    >
+                                                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                                                    </button>
                                                 </div>
                                             </div>
                                             <div className="space-y-1.5">
