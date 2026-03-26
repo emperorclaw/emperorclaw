@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -75,7 +75,16 @@ export async function getTaskContextForCompany(companyId: string, taskId: string
   const detail = await getTaskDetailForCompany(companyId, taskId);
   if (!detail) return null;
 
-  const [notes, projectMemoryItems, projectResources, customerResources, relatedThreads, relatedProfile] = await Promise.all([
+  const [
+    notes,
+    projectMemoryItems,
+    projectResources,
+    customerResources,
+    sharedAndCompanyResources,
+    agentResources,
+    relatedThreads,
+    relatedProfile
+  ] = await Promise.all([
     db.select().from(taskEvents).where(and(
       eq(taskEvents.companyId, companyId),
       eq(taskEvents.taskId, taskId),
@@ -95,6 +104,22 @@ export async function getTaskContextForCompany(companyId: string, taskId: string
           eq(scopedResources.companyId, companyId),
           eq(scopedResources.scopeType, "customer"),
           eq(scopedResources.scopeId, detail.customer.id),
+          isNull(scopedResources.deletedAt),
+        )).orderBy(desc(scopedResources.updatedAt)).limit(20)
+      : Promise.resolve([]),
+    db.select().from(scopedResources).where(and(
+      eq(scopedResources.companyId, companyId),
+      or(
+        eq(scopedResources.isShared, true),
+        eq(scopedResources.scopeType, "company")
+      ),
+      isNull(scopedResources.deletedAt),
+    )).orderBy(desc(scopedResources.updatedAt)).limit(20),
+    detail.assignedAgentId
+      ? db.select().from(scopedResources).where(and(
+          eq(scopedResources.companyId, companyId),
+          eq(scopedResources.scopeType, "agent"),
+          eq(scopedResources.scopeId, detail.assignedAgentId),
           isNull(scopedResources.deletedAt),
         )).orderBy(desc(scopedResources.updatedAt)).limit(20)
       : Promise.resolve([]),
@@ -144,6 +169,9 @@ export async function getTaskContextForCompany(companyId: string, taskId: string
     resources: {
       project: projectResources,
       customer: customerResources,
+      shared: sharedAndCompanyResources.filter(r => r.isShared),
+      company: sharedAndCompanyResources.filter(r => r.scopeType === "company"),
+      agent: agentResources,
     },
     relatedThreads: Array.from(threadMap.values()),
     agentProfile: relatedProfile,
