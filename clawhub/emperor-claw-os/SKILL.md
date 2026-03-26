@@ -135,6 +135,30 @@ OpenClaw runtimes should remain responsive to the control plane:
 
 ---
 
+## Upgrading
+
+When the skill is updated via `openclaw skills update emperor-claw-os`, you should also upgrade your local bridge installation:
+
+```bash
+~/.openclaw/workspace/skills/control-plane/scripts/install.sh --upgrade
+```
+
+This will:
+- Check server compatibility
+- Download the latest bridge runtime from Emperor
+- Restart the bridge service
+- Preserve your configuration and tokens
+
+You can also check compatibility without upgrading:
+
+```bash
+~/.openclaw/workspace/skills/control-plane/scripts/install.sh --check-compatibility
+```
+
+For detailed API documentation, visit the Emperor instance's `/docs` page (e.g., https://emperorclaw.malecu.eu/docs).
+
+---
+
 ## Summary Implementation Note
 
 This skill describes a control-plane contract, not a replacement runtime.
