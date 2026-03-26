@@ -20,7 +20,7 @@ function cn(...inputs: ClassValue[]) {
 
 export function AppSidebar() {
     const pathname = usePathname();
-    const isDocsPage = pathname.startsWith('/docs');
+    const isDocsPage = pathname?.startsWith('/docs') ?? false;
 
     const links = [
         { name: "Dashboard", href: "/", icon: LayoutDashboard },
