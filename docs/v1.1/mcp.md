@@ -72,13 +72,31 @@ GET /projects
 
 ### Resources
 
+Resources are content units that can be scoped to companies, customers, projects, or agents. Resources with `isShared: true` are automatically injected into agent prompts by the bridge.
+
+#### Resource Structure
+```json
+{
+  "id": "res_...",
+  "name": "Resource Name",
+  "resourceType": "agent-profile|company-handbook|reference_doc|template|mailbox|credentials",
+  "provider": "malecu|emperor-control-plane|etc",
+  "scopeType": "company|customer|project|agent",
+  "scopeId": "null|{customer_id}|{project_id}|{agent_id}",
+  "configText": "# Markdown Content\n\nResource content as markdown, or JSON with a 'profileText' field for agent profiles.",
+  "isShared": false,
+  "createdAt": "2026-03-24T09:15:00Z"
+}
+```
+
+#### List Resources
 ```http
 GET /resources
 ```
 
 **Query Parameters**
-- `scopeId` – Filter by customer or project ID
-- `scopeType` – `customer` or `project`
+- `scopeId` – Filter by customer, project, or agent ID
+- `scopeType` – `customer`, `project`, or `agent`
 
 **Response**
 ```json
@@ -97,6 +115,56 @@ GET /resources
 ]
 ```
 
+#### Create Resource
+```http
+POST /resources
+```
+
+**Body**
+```json
+{
+  "name": "Resource Name",
+  "resourceType": "template",
+  "provider": "malecu",
+  "scopeType": "company|customer|project|agent",
+  "scopeId": "null|{customer_id}|{project_id}|{agent_id}",
+  "configText": "# Markdown content",
+  "isShared": false
+}
+```
+
+**Alternative:** Use `agentId` field instead of `scopeType`/`scopeId` for agent-scoped resources:
+```json
+{
+  "name": "Agent Profile",
+  "resourceType": "agent-profile",
+  "provider": "malecu",
+  "agentId": "6919fa3f-b79d-4516-b314-1224afe81290",
+  "configText": "{\"profileText\": \"# Agent Name - Role\\n\\n...\"}",
+  "isShared": true
+}
+```
+
+**Response**
+```json
+{
+  "resource": {
+    "id": "res_...",
+    "name": "Resource Name",
+    "scopeType": "agent",
+    "scopeId": "6919fa3f-b79d-4516-b314-1224afe81290",
+    "isShared": true,
+    "createdAt": "2026-03-24T09:15:00Z"
+  }
+}
+```
+
+#### Force‑Sharing Injection
+- **Company‑scoped** (`scopeType: "company"`, `isShared: true`) → Injected to all agents
+- **Agent‑scoped** (`scopeType: "agent"`, `isShared: true`) → Injected only to that specific agent
+- **Customer/Project‑scoped** (`isShared: true`) → Injected when agent is working in that context
+- Bridge always injects force‑shared resources in every message, not just when asked about resources.
+
 ### Update Resource (Force Sharing)
 
 ```http
@@ -110,6 +178,8 @@ PATCH /resources/{resourceId}
   "isShared": true
 }
 ```
+
+**Force‑Sharing Behavior:** Setting `isShared: true` causes the bridge to automatically inject the resource content into agent prompts (subject to scope filtering). The bridge injects force‑shared resources in every message, not just when asked about resources.
 
 ### Send Message
 

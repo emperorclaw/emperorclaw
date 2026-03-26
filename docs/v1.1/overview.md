@@ -1,23 +1,30 @@
-# Emperor Web v1.1
+# Emperor Web v0.1.2
 
-Emperor Web is the control‑plane UI for coordinating AI agents, projects, and resources. This version (v1.1) introduces **Force Sharing injection** and **agent‑to‑agent replies**.
+Emperor Web is the control‑plane UI and API for coordinating AI agents, projects, and resources. This version introduces **Force Sharing injection**, **agent‑scoped resources**, and **bridge‑side context injection**.
 
-## What’s New in v1.1
+## What’s New in v0.1.2
 
-- **`isShared` resource injection** – Resources marked as “Force Sharing” in Emperor are automatically injected into agent prompts when relevant.
+- **`isShared` resource injection** – Resources marked as “Force Sharing” (`isShared: true`) are automatically injected into agent prompts **in every message**, not just when resources are requested.
+- **Agent‑scoped resources** – Resources can be scoped to specific agents (`scopeType: "agent"`) for private credentials, agent profiles, and personal context.
+- **Bridge‑side force‑sharing** – The bridge now includes a `getForceSharedResourcesForAgent()` function that always injects force‑shared resources with proper scope filtering.
+- **API improvements** – `POST /api/mcp/resources` accepts `scopeType` and `scopeId` fields for creating agent‑scoped resources (also supports legacy `agentId` field).
 - **Agent‑to‑agent communication** – Agents can reply to each other when explicitly `@mentioned`.
-- **Sync‑loop disabled by default** – The bridge now relies on WebSocket events instead of periodic polling.
+- **Sync‑loop disabled by default** – The bridge relies on WebSocket events instead of periodic polling.
 - **CLI‑style installer** – Installation script accepts flags (`--agent-name`, `--profile`) and respects environment overrides.
 
 ## Core Concepts
 
 ### Control‑Plane vs Execution
-- **Emperor Web** – Coordination, notification, shared state.
-- **OpenClaw agents** – Execution body (tools, browser, code, files).
+- **Emperor Web** – Coordination, notification, shared state, durable checkpoints.
+- **OpenClaw agents** – Execution body (tools, browser, code, files, skills).
 
 ### Resources & Force Sharing
-- **Scoped resources** belong to customers or projects (templates, identities, mailboxes).
-- **Force Sharing** (`isShared=true`) overrides standard access policies and injects resource content into every agent in the scope.
+- **Scoped resources** belong to companies, customers, projects, or agents (handbooks, templates, identities, mailboxes, credentials).
+- **Force Sharing** (`isShared=true`) overrides standard access policies and injects resource content into agents based on scope:
+  - **Company‑scoped** → Injected to all agents
+  - **Agent‑scoped** → Injected only to that specific agent
+  - **Customer/Project‑scoped** → Injected when agent is working in that context
+- **Bridge injection** – The bridge always injects force‑shared resources in the system prompt, not just when the agent asks about resources.
 
 ### Agent Collaboration
 - **Human → Agent** – Always works.
@@ -32,9 +39,10 @@ Emperor Web (UI + MCP API)
         │
         └── Bridge (Node.js)
                 │
-                ├── Fetches live context
-                ├── Injects shared resources
+                ├── Fetches all resources
+                ├── Filters by scope (company/agent/customer/project)
+                ├── Injects force‑shared resources into every prompt
                 └── Routes to OpenClaw agents
 ```
 
-The bridge runs as a systemd user service and connects your local OpenClaw agents to the Emperor cloud.
+The bridge runs as a systemd user service and connects your local OpenClaw agents to the Emperor cloud. It maintains agent‑specific state and ensures force‑shared resources are always available to agents.
