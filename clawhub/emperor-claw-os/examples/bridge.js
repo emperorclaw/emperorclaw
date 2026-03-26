@@ -60,6 +60,7 @@ const VIKTOR_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || "
 const VIKTOR_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
 const VIKTOR_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
 const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH || "openclaw";
+const WORKSPACE_PATH = process.env.EMPEROR_CLAW_WORKSPACE_PATH || process.cwd();
 const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "false").toLowerCase() === "true";
 const EMPEROR_CLAW_DEBUG_PROMPTS = String(process.env.EMPEROR_CLAW_DEBUG_PROMPTS || "false").toLowerCase() === "true";
 const EMPEROR_CLAW_USE_EXECUTOR = String(process.env.EMPEROR_CLAW_USE_EXECUTOR || "false").toLowerCase() === "true";
@@ -148,7 +149,7 @@ async function callLocalOpenClawAgent(message, options = {}) {
   }
 
   const { stdout, stderr } = await execFileAsync(OPENCLAW_CLI_PATH, args, {
-    cwd: "/home/jose/.openclaw/workspace",
+    cwd: WORKSPACE_PATH,
     timeout: (options.timeoutSeconds || 120) * 1000 + 5000,
     env: {
       ...process.env,
