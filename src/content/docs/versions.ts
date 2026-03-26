@@ -20,6 +20,7 @@ export const versions: DocVersion[] = [
     description: 'Includes isShared injection, agent‑to‑agent replies, sync‑loop disabled',
     pages: [
       { slug: 'overview', title: 'Overview', file: 'overview.md' },
+      { slug: 'installation', title: 'Installation', file: 'installation.md' },
       { slug: 'mcp', title: 'MCP Endpoints', file: 'mcp.md' },
       { slug: 'configuration', title: 'Configuration', file: 'configuration.md' },
       { slug: 'usage', title: 'Usage Examples', file: 'usage.md' },
