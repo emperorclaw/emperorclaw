@@ -34,7 +34,10 @@ Located at `~/.openclaw/emperor-control-plane/bridge.config.json`:
 
 ### Fields
 
-- `agentId` – Must match the agent ID in Emperor.
+- `agentId` – **Required.** Must match the agent ID in Emperor. Used for:
+  - Agent registration and session management
+  - Filtering agent‑scoped resources (`scopeType: "agent"`, `scopeId` must match this ID)
+  - Force‑sharing injection (agent‑scoped resources only inject to this agent)
 - `agentName` – Display name used in logs and messages.
 - `profile` – `operator` (Viktor) or `manager` (Manager).
 - `mcpToken` – Your Emperor MCP API token.
