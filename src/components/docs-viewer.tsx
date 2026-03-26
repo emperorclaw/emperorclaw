@@ -47,7 +47,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
       }
     };
     loadContent();
-  }, [currentVersion, currentPage]);
+  }, [currentVersion, currentPage.file, slug]);
 
   // Update local state if prop changes
   useEffect(() => {
@@ -123,7 +123,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        <div className="card p-8">
+        <div key={`${currentVersion}-${currentPage.slug}`} className="card p-8">
           <div className="mb-6 flex items-center text-sm text-muted-foreground">
             <Link href="/docs" className="hover:text-foreground transition-colors">
               Documentation
