@@ -19,10 +19,21 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const selectedVersion = versions.find(v => v.id === currentVersion) || versions[0];
   const currentPageSlug = slug.length > 0 ? slug.join('/') : 'overview';
   const currentPage = selectedVersion.pages.find(p => p.slug === currentPageSlug) || selectedVersion.pages[0];
+
+  // Group pages by category (heuristic: use sections or just list them)
+  const introPages = selectedVersion.pages.filter(p => ['overview', 'installation', 'activation'].includes(p.slug));
+  const conceptPages = selectedVersion.pages.filter(p => ['concepts', 'mcp', 'configuration'].includes(p.slug));
+  const referencePages = selectedVersion.pages.filter(p => ['api-reference', 'best-practices', 'usage'].includes(p.slug));
+
+  const filteredPages = selectedVersion.pages.filter(p => 
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.slug.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // Change version
   const handleVersionChange = (newVersion: string) => {
@@ -35,16 +46,15 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
     const loadContent = async () => {
       setLoading(true);
       try {
-        // Fix: Use API route instead of public folder
         const res = await fetch(`/api/docs/${currentVersion}/${currentPage.file}`);
         if (res.ok) {
           const text = await res.text();
           setContent(text);
         } else {
-          setContent(`# ${currentPage.title}\n\nContent not found. Check if the file exists in the repository.`);
+          setContent(`# ${currentPage.title}\n\nContent not found.`);
         }
       } catch {
-        setContent(`# ${currentPage.title}\n\nFailed to load content from the server.`);
+        setContent(`# ${currentPage.title}\n\nFailed to load content.`);
       } finally {
         setLoading(false);
         setMobileMenuOpen(false);
@@ -53,14 +63,26 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
     loadContent();
   }, [currentVersion, currentPage.file, slug]);
 
-  // Update local state if prop changes
   useEffect(() => {
     setCurrentVersion(initialVersion);
   }, [initialVersion]);
 
+  const SidebarLink = ({ page }: { page: typeof selectedVersion.pages[0] }) => (
+    <Link
+      href={`/docs/${currentVersion}/${page.slug}`}
+      className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group ${
+        currentPage.slug === page.slug
+          ? 'bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]'
+          : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-transparent'
+      }`}
+    >
+      <FileText className={`w-4 h-4 ${currentPage.slug === page.slug ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
+      {page.title}
+    </Link>
+  );
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 selection:bg-indigo-500/30">
-      {/* Public Header */}
       <header className="sticky top-0 z-50 w-full border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -94,94 +116,93 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
       <div className="max-w-7xl mx-auto px-4 lg:px-6">
         <div className="flex flex-col lg:flex-row gap-0 lg:gap-12 py-8">
-          {/* Sidebar */}
           <aside className={`
             lg:w-64 flex-shrink-0 lg:block
             ${mobileMenuOpen ? 'block mb-8' : 'hidden'}
           `}>
             <div className="sticky top-24 space-y-8">
-              <div>
-                <label className="block text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-3">
-                  Version
-                </label>
-                <div className="relative group">
-                  <select
-                    className="w-full appearance-none px-3 py-2.5 border border-zinc-800 rounded-xl bg-zinc-900/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all hover:bg-zinc-900"
-                    value={currentVersion}
-                    onChange={(e) => handleVersionChange(e.target.value)}
-                  >
-                    {versions.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                    <ChevronRight className="w-4 h-4 rotate-90" />
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">
+                    Version
+                  </label>
+                  <div className="relative group">
+                    <select
+                      className="w-full appearance-none px-3 py-2 border border-zinc-800 rounded-xl bg-zinc-900/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
+                      value={currentVersion}
+                      onChange={(e) => handleVersionChange(e.target.value)}
+                    >
+                      {versions.map(v => (
+                        <option key={v.id} value={v.id}>{v.label}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                      <ChevronRight className="w-4 h-4 rotate-90" />
+                    </div>
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-2 px-1 italic">
-                  {selectedVersion.description}
-                </p>
+
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
+                    <Menu className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search docs..."
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder:text-zinc-600"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <nav className="space-y-6">
-                <div>
-                  <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
-                    Introduction
-                  </h3>
-                  <div className="space-y-1">
-                    {selectedVersion.pages.map(page => (
-                      <Link
-                        key={page.slug}
-                        href={`/docs/${currentVersion}/${page.slug}`}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group ${
-                          currentPage.slug === page.slug
-                            ? 'bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]'
-                            : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-transparent'
-                        }`}
-                      >
-                        <FileText className={`w-4 h-4 ${currentPage.slug === page.slug ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
-                        {page.title}
-                      </Link>
-                    ))}
+              <nav className="space-y-8">
+                {searchQuery ? (
+                  <div>
+                    <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                      Search Results
+                    </h3>
+                    <div className="space-y-1">
+                      {filteredPages.map(page => <SidebarLink key={page.slug} page={page} />)}
+                      {filteredPages.length === 0 && (
+                        <p className="px-3 py-2 text-xs text-zinc-600 italic">No pages found</p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div>
+                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                        Getting Started
+                      </h3>
+                      <div className="space-y-1">
+                        {introPages.map(page => <SidebarLink key={page.slug} page={page} />)}
+                      </div>
+                    </div>
 
-                <div className="pt-6 border-t border-zinc-800/80">
-                  <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
-                    Community
-                  </h3>
-                  <div className="space-y-1">
-                    <a
-                      href="https://clawhub.ai/skills/emperor-claw-os"
-                      target="_blank"
-                      className="flex items-center justify-between px-3 py-2 text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-xl transition-all group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <BookOpen className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300" />
-                        ClawHub Skill
+                    <div>
+                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                        Core Concepts
+                      </h3>
+                      <div className="space-y-1">
+                        {conceptPages.map(page => <SidebarLink key={page.slug} page={page} />)}
                       </div>
-                      <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
-                    <a
-                      href="https://docs.openclaw.ai"
-                      target="_blank"
-                      className="flex items-center justify-between px-3 py-2 text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-xl transition-all group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <BookOpen className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300" />
-                        OpenClaw Docs
+                    </div>
+
+                    <div>
+                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                        Resources
+                      </h3>
+                      <div className="space-y-1">
+                        {referencePages.map(page => <SidebarLink key={page.slug} page={page} />)}
                       </div>
-                      <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </nav>
             </div>
           </aside>
 
-          {/* Main content */}
           <main className="flex-1 min-w-0">
             <div className="mb-8 flex items-center gap-2 text-xs text-zinc-500 font-medium uppercase tracking-wider">
               <Link href="/docs" className="hover:text-indigo-400 transition-colors">Documentation</Link>
@@ -192,7 +213,6 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
             </div>
 
             <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-3xl p-6 md:p-10 shadow-xl backdrop-blur-sm relative overflow-hidden group">
-              {/* Subtle background glow */}
               <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/5 blur-[100px] rounded-full pointer-events-none group-hover:bg-indigo-500/10 transition-colors duration-1000" />
               
               {loading ? (
@@ -214,9 +234,13 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                   Discord community
                 </a>
               </p>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-                <span>© {new Date().getFullYear()} Emperor Claw • Performance v1.1.2</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+                  <span>Emperor Claw v1.1.2</span>
+                </div>
+                <div className="h-4 w-px bg-zinc-800" />
+                <span className="text-zinc-600">© {new Date().getFullYear()}</span>
               </div>
             </footer>
           </main>

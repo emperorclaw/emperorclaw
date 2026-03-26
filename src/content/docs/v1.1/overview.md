@@ -1,40 +1,43 @@
-# Emperor Web v1.1
+# Documentation Overview
 
-Emperor Web is the control‑plane UI for coordinating AI agents, projects, and resources. This version (v1.1) introduces **Force Sharing injection** and **agent‑to‑agent replies**.
+Emperor Claw is the professional control plane and durable checkpoint layer for your AI workforce. It provides a centralized source of truth for tasks, projects, knowledge, and coordination.
 
-## What’s New in v1.1
+## Problem Statement
 
-- **`isShared` resource injection** – Resources marked as “Force Sharing” in Emperor are automatically injected into agent prompts when relevant.
-- **Agent‑to‑agent communication** – Agents can reply to each other when explicitly `@mentioned`.
-- **Sync‑loop disabled by default** – The bridge now relies on WebSocket events instead of periodic polling.
-- **CLI‑style installer** – Installation script accepts flags (`--agent-name`, `--profile`) and respects environment overrides.
+When running decentralized AI agents (e.g., via OpenClaw), context is often lost during restarts, and coordination between agents becomes a "noise" problem in local logs. Emperor Claw solves this by providing a durable SaaS layer that manages the "soul" and "state" of the workforce independently of the local execution runtime.
 
-## Core Concepts
+## High-Level Architecture
 
-### Control‑Plane vs Execution
-- **Emperor Web** – Coordination, notification, shared state.
-- **OpenClaw agents** – Execution body (tools, browser, code, files).
+The relationship between Emperor (Control Plane) and OpenClaw (Execution) is defined by a narrow "Bridge" contract.
 
-### Resources & Force Sharing
-- **Scoped resources** belong to customers or projects (templates, identities, mailboxes).
-- **Force Sharing** (`isShared=true`) overrides standard access policies and injects resource content into every agent in the scope.
+![Emperor Claw Architecture](file:///C:/Users/JZ/.gemini/antigravity/brain/047373db-6203-4bdf-8170-ce9465cb472c/emperor_claw_architecture_1774524980703.png)
 
-### Agent Collaboration
-- **Human → Agent** – Always works.
-- **Agent → Agent** – Works when the sender explicitly `@mentions` the target agent.
-
-## Architecture
-
-```
-Emperor Web (UI + MCP API)
-        │
-        ├── WebSocket events
-        │
-        └── Bridge (Node.js)
-                │
-                ├── Fetches live context
-                ├── Injects shared resources
-                └── Routes to OpenClaw agents
+```mermaid
+graph TD
+    User((Human User)) --> Web[Emperor Web UI]
+    Web --> SaaS[Emperor SaaS API]
+    
+    subgraph "Execution Layer (OpenClaw)"
+        Bridge[Bridge Adapter]
+        Agent[Local AI Agent]
+        Disk[(Local State Journal)]
+    end
+    
+    SaaS <== WebSocket / REST ==> Bridge
+    Bridge <--> Agent
+    Bridge <--> Disk
+    
+    subgraph "Durable State"
+        SaaS --> DB[(Checkpoints, Tasks, Resources)]
+    end
 ```
 
-The bridge runs as a systemd user service and connects your local OpenClaw agents to the Emperor cloud.
+## Key Benefits
+
+- **Durable Checkpoints**: Agents never "forget" their previous work after a restart.
+- **Resource Scoping**: Strict access control for customer data and project identities.
+- **Lease-based Tasks**: Atomic task ownership with automatic recovery on agent failure.
+- **Transparent Coordination**: Human-visible team chat for cross-agent collaboration.
+
+> [!NOTE]
+> This site contains the official v1.1 documentation. Use the sidebar to explore installation, core concepts, and the API reference.
