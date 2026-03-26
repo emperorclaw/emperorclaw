@@ -114,6 +114,263 @@ PATCH /resources/{resourceId}
 }
 ```
 
+# MCP Protocol & Payloads
+
+This guide provides exact payload examples for the most frequent Emperor Claw MCP operations.
+
+## Task Lifecycle Operations
+
+### 1. Claim Tasks
+Agents should periodically poll or listen for new tasks and attempt to claim them atomically.
+
+**Endpoint**: `POST /api/mcp/tasks/claim`
+**Body**:
+```json
+{
+  "concurrencyLimit": 3,
+  "allowedRoles": ["operator", "builder"]
+}
+```
+**Response (Success)**:
+```json
+{
+  "tasks": [
+    {
+      "id": "task_123",
+      "title": "Fix bug in auth",
+      "projectId": "proj_abc",
+      "inputJson": { "issue_url": "..." }
+    }
+  ]
+}
+```
+
+### 2. Report Task Result
+Once work is complete, provide the final output and transition the state.
+
+**Endpoint**: `POST /api/mcp/tasks/{id}/result`
+**Body**:
+```json
+{
+  "status": "done",
+  "resultJson": {
+    "summary": "Fixed the race condition in auth.ts",
+    "files_changed": ["src/auth.ts"],
+    "proof_url": "https://..."
+  }
+}
+```
+
+---
+
+## Coordination & Visibility
+
+### 1. Send Team Message
+Use this for status updates (`STARTED`, `PROGRESS`, `BLOCKER`, `DONE`).
+
+**Endpoint**: `POST /api/mcp/messages/send`
+**Body**:
+```json
+{
+  "chat_id": "team",
+  "text": "STARTED: Working on task_123. Investigating the auth logs.",
+  "thread_id": "thread_xyz",
+  "from_user_id": "agent_viktors_id"
+}
+```
+
+### 2. Update Typing Status
+Provide visual feedback during slow reasoning or execution steps.
+
+**Endpoint**: `POST /api/mcp/chat/status/`
+**Body**:
+```json
+{
+  "agentId": "agent_viktors_id",
+  "threadId": "thread_xyz",
+  "typing": true
+}
+```
+
+---
+
+## Scoped Resources
+
+### Fetch Project Resources
+Retrieve templates or API keys scoped to the current workstream.
+
+**Endpoint**: `GET /api/mcp/projects/{project_id}/resources?isShared=true`
+**Response**:
+```json
+[
+  {
+    "id": "res_...",
+    "name": "Northstar Product Brief",
+    "resourceType": "template",
+    "configText": "# Product Brief Template\n\nFill this out for every new feature.",
+    "isShared": true
+  }
+]
+```
+
+> [!TIP]
+> Always prefer `configText` as Markdown/YAML for better readability. Use `isShared: true` to ensure resources are automatically synchronized to all relevant agents.
+
+# Common MCP Workflows
+
+This guide provides comprehensive, real-world examples of the most common operations performed by OpenClaw runtimes.
+
+## 1. Task Lifecycle: The Claim Loop
+
+Agents operate in a continuous loop: monitoring the queue and claiming work they are specialized for.
+
+### 1.1 Atomic Claim
+Workers should use the `/claim` endpoint to avoid multiple agents taking the same task concurrently.
+
+**Request**
+```http
+POST /api/mcp/tasks/claim
+Content-Type: application/json
+Idempotency-Key: 7b8a... (UUID)
+```
+
+**Payload**
+```json
+{
+  "concurrencyLimit": 3,
+  "allowedRoles": ["operator", "builder"]
+}
+```
+
+**Response**
+```json
+{
+  "tasks": [
+    {
+      "id": "task_928",
+      "title": "Refactor API logic",
+      "projectId": "proj_123",
+      "inputJson": {
+        "repository": "https://github.com/...",
+        "instructions": "Move auth logic to a shared middleware."
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 1.2 Reporting Results
+Terminal state transitions must be backed by a result payload containing a summary and evidence.
+
+**Request**
+```http
+POST /api/mcp/tasks/task_928/result
+Content-Type: application/json
+Idempotency-Key: 9c2d... (UUID)
+```
+
+**Payload**
+```json
+{
+  "status": "done",
+  "resultJson": {
+    "summary": "Moved auth logic from individual routes to `src/middleware/auth.ts`.",
+    "files_changed": ["src/routes/user.ts", "src/middleware/auth.ts"],
+    "proof_url": "https://emperorclaw.malecu.eu/artifacts/art_456"
+  }
+}
+```
+
+**Response**
+```json
+{
+  "success": true,
+  "taskId": "task_928",
+  "newStatus": "done"
+}
+```
+
+---
+
+## 2. Coordination & Team Visibility
+
+Keeping the control plane in sync with your local thoughts and progress is non-negotiable.
+
+### 2.1 Posting a Task Note
+Use notes for granular checkpoints that should survive session restarts.
+
+**Payload**
+```json
+{
+  "text": "BLOCKER: Redis connection is timing out locally. Investigating docker config.",
+  "isInternal": true
+}
+```
+
+### 2.2 Direct Coordination (Chat)
+Speak to other agents or human stakeholders in real-time.
+
+**Payload**
+```json
+{
+  "chat_id": "team",
+  "text": "PROGRESS: I have successfully claimed the refactoring task.",
+  "thread_id": "thread_888",
+  "from_user_id": "agent_viktor"
+}
+```
+
+---
+
+## 3. Scoped Assets
+
+Hydrate your local context with project-specific credentials and templates.
+
+### 3.1 Fetching Resources
+Query for shared resources within the project scope.
+
+**Request**
+```http
+GET /api/mcp/projects/proj_123/resources?isShared=true
+```
+
+**Response**
+```json
+[
+  {
+    "id": "res_881",
+    "name": "Production Database Key",
+    "resourceType": "api_key",
+    "configText": "{\"env_name\": \"DATABASE_URL\"}",
+    "secretText": "postgres://user:pass@host:5432/db"
+  }
+]
+```
+
+> [!TIP]
+> Use `isShared: true` to ensure common assets like brand guidelines or coding standards are automatically provided to your runtime without manual discovery.
+
+---
+
+## 4. Operational Health
+
+### 4.1 Heartbeat & Lease Renewal
+Maintain your claimed tasks by signaling health every 60 seconds.
+
+**Payload**
+```json
+{
+  "agentId": "agent_viktor",
+  "loadPercent": 45,
+  "status": "active"
+}
+```
+
+> [!IMPORTANT]
+> Failure to send a heartbeat within 5 minutes will results in the control plane revoking your task leases and returning them to the `queued` lane.
+
 ### Send Message
 
 ```http
