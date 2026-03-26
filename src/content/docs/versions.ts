@@ -1,4 +1,5 @@
-import { DocVersion } from "./types";
+import { DocVersion, DocPage } from "./types";
+export type { DocVersion, DocPage };
 
 export const versions: DocVersion[] = [
   {
