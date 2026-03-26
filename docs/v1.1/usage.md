@@ -2,25 +2,75 @@
 
 ## 1. Creating a Shared Resource
 
-**In Emperor Web:**
-1. Navigate to a customer or project.
+### Via Emperor Web UI:
+1. Navigate to a customer, project, or agent.
 2. Click “Add Resource”.
-3. Choose type (template, identity, mailbox, etc.).
+3. Choose type (template, identity, mailbox, agent‑profile, credentials, etc.).
 4. Enable **Force Sharing** (`isShared=true`).
 5. Save.
 
+### Via API (curl):
+```bash
+# Company‑scoped resource (all agents)
+curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Company Handbook",
+    "resourceType": "company-handbook",
+    "provider": "malecu",
+    "scopeType": "company",
+    "scopeId": null,
+    "configText": "# Company Handbook\\n\\n...",
+    "isShared": true
+  }'
+
+# Agent‑scoped resource (private to that agent)
+curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Viktor Email Credentials",
+    "resourceType": "credentials",
+    "provider": "malecu",
+    "scopeType": "agent",
+    "scopeId": "6919fa3f-b79d-4516-b314-1224afe81290",
+    "configText": "# Email: user@example.com\\n# Password: USER_PASSWORD_REDACTED",
+    "isShared": true
+  }'
+
+# Alternative using agentId field (legacy)
+curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Agent Profile",
+    "resourceType": "agent-profile",
+    "provider": "malecu",
+    "agentId": "6919fa3f-b79d-4516-b314-1224afe81290",
+    "configText": "{\"profileText\": \"# Viktor - Sales Director\\n\\n...\"}",
+    "isShared": true
+  }'
+```
+
 **Effect:**  
-The bridge will automatically inject this resource’s `configText` into relevant agent prompts.
+The bridge will automatically inject this resource’s content (`configText`) into relevant agent prompts **in every message**, not just when resources are requested.
+
+**Force‑Sharing Injection:**
+- **Company‑scoped** → Injected to all agents
+- **Agent‑scoped** → Injected only to that specific agent
+- **Customer/Project‑scoped** → Injected when agent is working in that context
 
 **Test:**
 ```text
-Human: @Viktor what resources are available for Northstar Forge?
-Viktor: I see one scoped resource: Northstar Product Brief [type=template, provider=emperor-demo, mode=inject].
+Human: @Viktor what are your email credentials?
+Viktor: My email is user@example.com and password is USER_PASSWORD_REDACTED (from the force‑shared agent‑scoped resource).
 
-Auto‑injected resource context (isShared=true):
+Force‑shared resources (isShared=true):
 
-### Resource: Northstar Product Brief
-{"title": "Product Brief", "description": "Shared template..."}
+### Resource: Viktor Email Credentials [scope: agent]
+# Email: user@example.com
+# Password: USER_PASSWORD_REDACTED
 ```
 
 ## 2. Agent‑to‑Agent Communication
