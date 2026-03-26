@@ -12,10 +12,10 @@ export const versions: DocVersion[] = [
       { slug: 'activation', title: 'Activation Protocol', file: 'activation.md' },
       { slug: 'concepts', title: 'Core Concepts', file: 'concepts.md' },
       { slug: 'configuration', title: 'Configuration Reference', file: 'configuration.md' },
-      { slug: 'usage', title: 'Usage Examples', file: 'v1.1/usage.md' },
-      { slug: 'skill-development', title: 'Skill & Agent Development', file: 'v1.1/skill-development.md' },
-      { slug: 'troubleshooting', title: 'Troubleshooting', file: 'v1.1/troubleshooting.md' },
-      { slug: 'mcp', title: 'MCP Payloads', file: 'v1.1/mcp.md' },
+      { slug: 'usage', title: 'Usage Examples', file: 'usage.md' },
+      { slug: 'skill-development', title: 'Skill & Agent Development', file: 'skill-development.md' },
+      { slug: 'troubleshooting', title: 'Troubleshooting', file: 'troubleshooting.md' },
+      { slug: 'mcp', title: 'MCP Payloads', file: 'mcp.md' },
     ]
   },
   {
