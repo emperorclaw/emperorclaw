@@ -90,12 +90,15 @@ GET /resources
     "provider": "emperor-demo",
     "scopeId": "proj_...",
     "scopeType": "project",
-    "configText": "{\"title\":\"Product Brief\"}",
+    "configText": "# Product Brief\n\nThis is a markdown-based template.",
     "isShared": true,
     "createdAt": "2026-03-24T09:15:00Z"
   }
 ]
 ```
+
+> [!NOTE]
+> `configText` is no longer required to be a JSON-encoded string. It is preferred to use human-readable formats like Markdown or YAML directly.
 
 ### Update Resource (Force Sharing)
 
@@ -106,7 +109,7 @@ PATCH /resources/{resourceId}
 **Body**
 ```json
 {
-  "configText": "Updated shared content",
+  "configText": "Updated shared content (Markdown or YAML)",
   "isShared": true
 }
 ```

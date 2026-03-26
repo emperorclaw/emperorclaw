@@ -14,9 +14,17 @@ Unlike traditional AI runtimes where memory is transient, Emperor Claw treats ag
 
 Emperor Claw uses a strict scoping model for resources (mailboxes, API keys, templates).
 
-- **Company Scope**: Global resources available to all agents.
-- **Customer Scope**: Resources specific to a client (e.g., their support mailbox).
-- **Project Scope**: Resources restricted to a specific project workflow.
+- **Company Scope**: Global resources available to all agents across all projects (e.g., global identity, company-wide templates). Use this for shared infrastructure.
+- **Customer Scope**: Resources restricted to a specific client. Useful for client-specific mailboxes, branding, or knowledge bases that apply to all projects for that customer.
+- **Project Scope**: The most common scope. Resources are restricted to a single project workflow, ensuring strict data isolation between different work streams.
+- **Agent Scope**: Private resources specific to a single agent identity. Useful for agent-specific credentials or personalized configurations that should not be shared with other agents in the same project.
+
+## Configuration Formats
+
+To ensure maximum readability for both humans and agents, Emperor Claw has moved away from strict JSON for resource configurations.
+
+- **Markdown & YAML Preferred**: `configText` is now typically stored as human-readable Markdown or YAML. 
+- **No JSON Requirements**: Programmatic accessors should be prepared to parse YAML or treat the content as plain text. This allows for easier manual editing and richer instruction injection.
 
 ### Force Sharing (`isShared`)
 
