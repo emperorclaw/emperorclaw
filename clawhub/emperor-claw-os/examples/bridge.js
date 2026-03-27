@@ -827,15 +827,18 @@ class EmperorBridge {
         console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
         return;
       }
-    } else if (isAgentSender) {
-      const explicitAgentInstruction = explicitAtMention;
-      if (!explicitAgentInstruction) {
-        console.log(`[bridge] ignoring agent message in thread ${thread.id} without explicit @${agentName} mention`);
-        return;
-      }
     } else if (!isDirectThread && !explicitAtMention) {
-      console.log(`[bridge] ignoring thread ${thread.id} message without explicit @${agentName} mention`);
+      // For non-manager profiles, in team threads, require @mention regardless of sender type
+      console.log(`[bridge] ignoring thread ${thread.id} message without explicit @${agentName} mention (senderType=${senderType})`);
       return;
+    }
+    // If we reach here, message is allowed:
+    // - Manager profile: human, non-lowSignal, with @mention
+    // - Non-manager profile: either direct thread OR has @mention
+
+    // Debug log for agent messages
+    if (isAgentSender) {
+      console.log(`[bridge] processing agent message from ${message.senderId} with @mention=${explicitAtMention}`);
     }
 
     const mentionedAgentRef = extractExplicitAgentMention(text.replace(new RegExp(`@${agentName}`, 'ig'), '').trim()) || null;
