@@ -4,10 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { toast } from "sonner";
-import dynamic from "next/dynamic";
-
-const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
 
 type ResourceRecord = {
     id: string;
@@ -656,16 +654,6 @@ export default function ResourcesClient({
                                             <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Configuration</span>
                                             <div className="flex rounded-md border border-zinc-800 bg-zinc-900/50 p-0.5">
                                                 <button
-                                                    onClick={() => setConfigViewMode("raw")}
-                                                    className={cn(
-                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
-                                                        configViewMode === "raw" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
-                                                    )}
-                                                >
-                                                    <Code className="h-3 w-3" />
-                                                    Raw
-                                                </button>
-                                                <button
                                                     onClick={() => setConfigViewMode("preview")}
                                                     className={cn(
                                                         "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
@@ -674,6 +662,16 @@ export default function ResourcesClient({
                                                 >
                                                     <Eye className="h-3 w-3" />
                                                     Preview
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfigViewMode("raw")}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
+                                                        configViewMode === "raw" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                    )}
+                                                >
+                                                    <Code className="h-3 w-3" />
+                                                    Edit source
                                                 </button>
                                             </div>
                                         </div>
@@ -687,17 +685,9 @@ export default function ResourcesClient({
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -8 }}
                                                 transition={{ duration: 0.16, ease: "easeOut" }}
-                                                className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-2"
+                                                className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none"
                                             >
-                                                <div className="w-full" data-color-mode="dark">
-                                                    <MDEditor
-                                                        value={configText}
-                                                        onChange={(value) => setConfigText(value ?? "")}
-                                                        height={320}
-                                                        preview="live"
-                                                        className="[&_textarea]:!bg-zinc-900 [&_.w-md-editor]:!bg-zinc-900 [&_.w-md-editor-toolbar]:!border-zinc-800 [&_.w-md-editor-toolbar]:!bg-zinc-900 [&_.w-md-editor-content]:!bg-zinc-900"
-                                                    />
-                                                </div>
+                                                <MarkdownRenderer content={configText || "*No content*"} />
                                             </motion.div>
                                         ) : (
                                             <motion.textarea
