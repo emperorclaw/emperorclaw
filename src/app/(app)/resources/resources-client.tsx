@@ -108,9 +108,7 @@ export default function ResourcesClient({
     const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [isPreview, setIsPreview] = useState(false);
-    const [configViewMode, setConfigViewMode] = useState<"raw" | "parsed" | "preview">("parsed");
-    const [parsedConfig, setParsedConfig] = useState<any | null>(null);
-    const [parseError, setParseError] = useState<string | null>(null);
+    const [configViewMode, setConfigViewMode] = useState<"raw" | "preview">("preview");
     const [copied, setCopied] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
 
@@ -172,24 +170,7 @@ export default function ResourcesClient({
         setConfigText(resource.configText || "");
         setIsShared(resource.isShared || false);
         setCopied(false);
-
-        // Try to initialise parsed JSON view when configText is valid JSON
-        if (resource.configText) {
-            try {
-                const maybe = JSON.parse(resource.configText);
-                setParsedConfig(maybe);
-                setParseError(null);
-                setConfigViewMode("parsed");
-            } catch {
-                setParsedConfig(null);
-                setParseError(null);
-                setConfigViewMode("raw");
-            }
-        } else {
-            setParsedConfig(null);
-            setParseError(null);
-            setConfigViewMode("raw");
-        }
+        setConfigViewMode("preview");
     };
 
     const copyToClipboard = (text: string) => {
@@ -683,16 +664,6 @@ export default function ResourcesClient({
                                                     Raw
                                                 </button>
                                                 <button
-                                                    onClick={() => setConfigViewMode("parsed")}
-                                                    className={cn(
-                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
-                                                        configViewMode === "parsed" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
-                                                    )}
-                                                >
-                                                    <Eye className="h-3 w-3" />
-                                                    Parsed
-                                                </button>
-                                                <button
                                                     onClick={() => setConfigViewMode("preview")}
                                                     className={cn(
                                                         "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
@@ -714,39 +685,16 @@ export default function ResourcesClient({
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -8 }}
                                                 transition={{ duration: 0.16, ease: "easeOut" }}
-                                                className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none"
-                                            >
-                                                <MarkdownRenderer content={configText || "*No content*"} />
-                                            </motion.div>
-                                        ) : configViewMode === "parsed" ? (
-                                            <motion.div
-                                                key="parsed"
-                                                initial={{ opacity: 0, x: 8 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                exit={{ opacity: 0, x: -8 }}
-                                                transition={{ duration: 0.16, ease: "easeOut" }}
-                                                className="flex-1 flex flex-col space-y-2"
+                                                className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4"
                                             >
                                                 <textarea
-                                                    value={parsedConfig != null ? JSON.stringify(parsedConfig, null, 2) : "// Enter valid JSON here to enable parsed editing"}
-                                                    onChange={(e) => {
-                                                        const value = e.target.value;
-                                                        try {
-                                                            const next = JSON.parse(value);
-                                                            setParsedConfig(next);
-                                                            setParseError(null);
-                                                            setConfigText(JSON.stringify(next));
-                                                        } catch (err) {
-                                                            setParseError("Invalid JSON: " + (err instanceof Error ? err.message : String(err)));
-                                                        }
-                                                    }}
-                                                    className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
+                                                    value={configText}
+                                                    onChange={(e) => setConfigText(e.target.value)}
+                                                    className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner min-h-[260px]"
                                                 />
-                                                {parseError && (
-                                                    <div className="rounded-md border border-rose-500/20 bg-rose-500/5 p-2 text-[11px] text-rose-400">
-                                                        {parseError}
-                                                    </div>
-                                                )}
+                                                <div className="w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none min-h-[260px]">
+                                                    <MarkdownRenderer content={configText || "*No content*"} />
+                                                </div>
                                             </motion.div>
                                         ) : (
                                             <motion.textarea
@@ -756,11 +704,7 @@ export default function ResourcesClient({
                                                 exit={{ opacity: 0, x: -8 }}
                                                 transition={{ duration: 0.16, ease: "easeOut" }}
                                                 value={configText}
-                                                onChange={(e) => {
-                                                    setConfigText(e.target.value);
-                                                    setParsedConfig(null);
-                                                    setParseError(null);
-                                                }}
+                                                onChange={(e) => setConfigText(e.target.value)}
                                                 className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
                                             />
                                         )}
