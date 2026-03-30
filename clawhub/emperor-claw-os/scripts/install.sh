@@ -145,6 +145,12 @@ fi
 
 mkdir -p "$RUNTIME_DIR" "$STATE_DIR"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOCAL_BRIDGE_JS="$SKILL_ROOT/examples/bridge.js"
+LOCAL_CONTROL_PLANE_JS="${EMPEROR_CLAW_LOCAL_CONTROL_PLANE_JS:-}"
+LOCAL_DOCTOR_LOCAL_SH="$SCRIPT_DIR/doctor-local.sh"
+
 if [[ "$CHECK_COMPATIBILITY" == true ]]; then
   check_server_compatibility
   exit 0
@@ -156,8 +162,24 @@ if [[ "$UPGRADE_MODE" == true ]]; then
   echo "[emperor-claw] Upgrading bridge runtime..."
 fi
 
-curl -fsSL "$CONTROL_PLANE_JS_URL" -o "$RUNTIME_DIR/control-plane.js"
-curl -fsSL "$BRIDGE_JS_URL" -o "$RUNTIME_DIR/bridge.js"
+if [[ -n "$LOCAL_CONTROL_PLANE_JS" && -f "$LOCAL_CONTROL_PLANE_JS" ]]; then
+  cp "$LOCAL_CONTROL_PLANE_JS" "$RUNTIME_DIR/control-plane.js"
+elif curl -fsSL "$CONTROL_PLANE_JS_URL" -o "$RUNTIME_DIR/control-plane.js"; then
+  :
+else
+  echo "Failed to download control-plane.js and no local fallback provided via EMPEROR_CLAW_LOCAL_CONTROL_PLANE_JS" >&2
+  exit 1
+fi
+
+if [[ -f "$LOCAL_BRIDGE_JS" ]]; then
+  cp "$LOCAL_BRIDGE_JS" "$RUNTIME_DIR/bridge.js"
+elif curl -fsSL "$BRIDGE_JS_URL" -o "$RUNTIME_DIR/bridge.js"; then
+  :
+else
+  echo "Failed to fetch bridge.js and local skill copy not found at $LOCAL_BRIDGE_JS" >&2
+  exit 1
+fi
+
 chmod 755 "$RUNTIME_DIR/control-plane.js" "$RUNTIME_DIR/bridge.js"
 
 if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
@@ -204,6 +226,23 @@ OPENCLAW_CLI_PATH=$OPENCLAW_CLI_PATH
 OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
 EOF
 chmod 600 "$ENV_FILE"
+
+cat > "$COMPANION_DIR/run-bridge.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/.env"
+export EMPEROR_CLAW_CONFIG_PATH="$SCRIPT_DIR/bridge.config.json"
+export EMPEROR_CLAW_RECONNECT_BASE_MS="${EMPEROR_CLAW_RECONNECT_BASE_MS:-2000}"
+export EMPEROR_CLAW_RECONNECT_MAX_MS="${EMPEROR_CLAW_RECONNECT_MAX_MS:-60000}"
+exec node "$SCRIPT_DIR/runtime/bridge.js"
+EOF
+chmod 755 "$COMPANION_DIR/run-bridge.sh"
+
+if [[ -f "$LOCAL_DOCTOR_LOCAL_SH" ]]; then
+  cp "$LOCAL_DOCTOR_LOCAL_SH" "$COMPANION_DIR/doctor.sh"
+  chmod 755 "$COMPANION_DIR/doctor.sh"
+fi
 
 if ! "$OPENCLAW_CLI_PATH" agents list --json | python3 - "$LOCAL_AGENT_ID" <<'PY'
 import json, sys
@@ -403,17 +442,28 @@ RestartSec=5
 WantedBy=default.target
 EOF
 
-if systemctl --user status >/dev/null 2>&1; then
+if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
   systemctl --user daemon-reload
   if [[ "$UPGRADE_MODE" == true ]] && systemctl --user is-active "${SERVICE_NAME}.service" >/dev/null 2>&1; then
     echo "[emperor-claw] Upgrading, restarting bridge service..."
-    systemctl --user restart "${SERVICE_NAME}.service"
+    systemctl --user restart "${SERVICE_NAME}.service" || true
   else
-    systemctl --user enable --now "${SERVICE_NAME}.service" >/dev/null
+    systemctl --user enable "${SERVICE_NAME}.service" >/dev/null 2>&1 || true
+    systemctl --user restart "${SERVICE_NAME}.service" >/dev/null 2>&1 || true
   fi
+  sleep 2
+  if ! systemctl --user is-active --quiet "${SERVICE_NAME}.service"; then
+    echo "[emperor-claw] systemd user service did not become active; starting bridge directly as fallback." >&2
+    nohup "$COMPANION_DIR/run-bridge.sh" >/dev/null 2>&1 &
+  fi
+else
+  echo "[emperor-claw] systemd --user not available; starting bridge directly." >&2
+  nohup "$COMPANION_DIR/run-bridge.sh" >/dev/null 2>&1 &
 fi
 
-EMPEROR_CLAW_API_TOKEN="$TOKEN" "$COMPANION_DIR/doctor.sh" >/dev/null
+if [[ -x "$COMPANION_DIR/doctor.sh" ]]; then
+  EMPEROR_CLAW_API_TOKEN="$TOKEN" EMPEROR_CLAW_COMPANION_DIR="$COMPANION_DIR" "$COMPANION_DIR/doctor.sh" || true
+fi
 "$OPENCLAW_CLI_PATH" agent --agent "$LOCAL_AGENT_ID" --message "Reply exactly with: ${AGENT_NAME} brain OK" --thinking "$BRAIN_THINKING" --timeout 60 --json >/dev/null
 
 echo "Installed Emperor Claw companion v2"

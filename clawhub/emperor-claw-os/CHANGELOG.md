@@ -5,6 +5,14 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-03-30
+
+### Changed
+- Updated `examples/bridge.js` to the latest OpenClaw bridge with improved doctrine injection, duplicate-suppression, and workspace handling.
+- Hardened `scripts/install.sh` so it prefers the local skill bridge as a fallback when remote bridge downloads fail.
+- Added a local runtime doctor (`scripts/doctor-local.sh`) and wired the installer to copy it into the companion as `doctor.sh` and run it once after setup.
+- Improved service startup: when `systemd --user` is missing or the user service fails to become active, the install script starts the bridge directly via `run-bridge.sh`.
+
 ## [1.14.15] - 2026-03-22
 
 ### Changed
