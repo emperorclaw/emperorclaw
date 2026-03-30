@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -523,7 +524,15 @@ export default function ResourcesClient({
                 {/* Main Content / Editor */}
                 <div className="flex-1 flex flex-col bg-zinc-950/40 overflow-hidden">
                     {selectedResource ? (
-                        <div className="flex-1 flex flex-col overflow-hidden">
+                        <AnimatePresence mode="wait">
+                        <motion.div
+                            key={selectedResource.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.18, ease: "easeOut" }}
+                            className="flex-1 flex flex-col overflow-hidden"
+                        >
                             {/* Editor Header */}
                             <div className="flex flex-wrap items-center justify-between gap-4 p-6 border-b border-zinc-800/50 bg-zinc-900/20">
                                 <div className="space-y-1">
@@ -697,44 +706,65 @@ export default function ResourcesClient({
                                         </div>
                                         <span className="text-[10px] font-mono text-zinc-600">Updated: {new Date(selectedResource.updatedAt).toLocaleString()}</span>
                                     </div>
-                                    {configViewMode === "preview" ? (
-                                        <div className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none">
-                                            <MarkdownRenderer content={configText || "*No content*"} />
-                                        </div>
-                                    ) : configViewMode === "parsed" ? (
-                                        <div className="flex-1 flex flex-col space-y-2">
-                                            <textarea
-                                                value={parsedConfig != null ? JSON.stringify(parsedConfig, null, 2) : "// Enter valid JSON here to enable parsed editing"}
+                                    <AnimatePresence mode="wait">
+                                        {configViewMode === "preview" ? (
+                                            <motion.div
+                                                key="preview"
+                                                initial={{ opacity: 0, x: 8 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: -8 }}
+                                                transition={{ duration: 0.16, ease: "easeOut" }}
+                                                className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none"
+                                            >
+                                                <MarkdownRenderer content={configText || "*No content*"} />
+                                            </motion.div>
+                                        ) : configViewMode === "parsed" ? (
+                                            <motion.div
+                                                key="parsed"
+                                                initial={{ opacity: 0, x: 8 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: -8 }}
+                                                transition={{ duration: 0.16, ease: "easeOut" }}
+                                                className="flex-1 flex flex-col space-y-2"
+                                            >
+                                                <textarea
+                                                    value={parsedConfig != null ? JSON.stringify(parsedConfig, null, 2) : "// Enter valid JSON here to enable parsed editing"}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        try {
+                                                            const next = JSON.parse(value);
+                                                            setParsedConfig(next);
+                                                            setParseError(null);
+                                                            setConfigText(JSON.stringify(next));
+                                                        } catch (err) {
+                                                            setParseError("Invalid JSON: " + (err instanceof Error ? err.message : String(err)));
+                                                        }
+                                                    }}
+                                                    className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
+                                                />
+                                                {parseError && (
+                                                    <div className="rounded-md border border-rose-500/20 bg-rose-500/5 p-2 text-[11px] text-rose-400">
+                                                        {parseError}
+                                                    </div>
+                                                )}
+                                            </motion.div>
+                                        ) : (
+                                            <motion.textarea
+                                                key="raw"
+                                                initial={{ opacity: 0, x: 8 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: -8 }}
+                                                transition={{ duration: 0.16, ease: "easeOut" }}
+                                                value={configText}
                                                 onChange={(e) => {
-                                                    const value = e.target.value;
-                                                    try {
-                                                        const next = JSON.parse(value);
-                                                        setParsedConfig(next);
-                                                        setParseError(null);
-                                                        setConfigText(JSON.stringify(next));
-                                                    } catch (err) {
-                                                        setParseError("Invalid JSON: " + (err instanceof Error ? err.message : String(err)));
-                                                    }
+                                                    setConfigText(e.target.value);
+                                                    setParsedConfig(null);
+                                                    setParseError(null);
                                                 }}
                                                 className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
                                             />
-                                            {parseError && (
-                                                <div className="rounded-md border border-rose-500/20 bg-rose-500/5 p-2 text-[11px] text-rose-400">
-                                                    {parseError}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <textarea
-                                            value={configText}
-                                            onChange={(e) => {
-                                                setConfigText(e.target.value);
-                                                setParsedConfig(null);
-                                                setParseError(null);
-                                            }}
-                                            className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
-                                        />
-                                    )}
+                                        )}
+                                    </AnimatePresence>
                                 </div>
                                 
                                 {error && (
@@ -743,7 +773,8 @@ export default function ResourcesClient({
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
+                        </AnimatePresence>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                             <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-6 shadow-xl">
