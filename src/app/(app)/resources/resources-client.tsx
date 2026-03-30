@@ -4,8 +4,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { toast } from "sonner";
+import dynamic from "next/dynamic";
+
+const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
 
 type ResourceRecord = {
     id: string;
@@ -685,15 +687,16 @@ export default function ResourcesClient({
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -8 }}
                                                 transition={{ duration: 0.16, ease: "easeOut" }}
-                                                className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4"
+                                                className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-2"
                                             >
-                                                <textarea
-                                                    value={configText}
-                                                    onChange={(e) => setConfigText(e.target.value)}
-                                                    className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner min-h-[260px]"
-                                                />
-                                                <div className="w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none min-h-[260px]">
-                                                    <MarkdownRenderer content={configText || "*No content*"} />
+                                                <div className="w-full" data-color-mode="dark">
+                                                    <MDEditor
+                                                        value={configText}
+                                                        onChange={(value) => setConfigText(value ?? "")}
+                                                        height={320}
+                                                        preview="live"
+                                                        className="[&_textarea]:!bg-zinc-900 [&_.w-md-editor]:!bg-zinc-900 [&_.w-md-editor-toolbar]:!border-zinc-800 [&_.w-md-editor-toolbar]:!bg-zinc-900 [&_.w-md-editor-content]:!bg-zinc-900"
+                                                    />
                                                 </div>
                                             </motion.div>
                                         ) : (
