@@ -107,6 +107,9 @@ export default function ResourcesClient({
     const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [isPreview, setIsPreview] = useState(false);
+    const [configViewMode, setConfigViewMode] = useState<"raw" | "parsed" | "preview">("parsed");
+    const [parsedConfig, setParsedConfig] = useState<any | null>(null);
+    const [parseError, setParseError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
 
@@ -168,6 +171,24 @@ export default function ResourcesClient({
         setConfigText(resource.configText || "");
         setIsShared(resource.isShared || false);
         setCopied(false);
+
+        // Try to initialise parsed JSON view when configText is valid JSON
+        if (resource.configText) {
+            try {
+                const maybe = JSON.parse(resource.configText);
+                setParsedConfig(maybe);
+                setParseError(null);
+                setConfigViewMode("parsed");
+            } catch {
+                setParsedConfig(null);
+                setParseError(null);
+                setConfigViewMode("raw");
+            }
+        } else {
+            setParsedConfig(null);
+            setParseError(null);
+            setConfigViewMode("raw");
+        }
     };
 
     const copyToClipboard = (text: string) => {
@@ -640,23 +661,33 @@ export default function ResourcesClient({
                                 <div className="space-y-2 flex-1 flex flex-col min-h-[400px]">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Configuration (Markdown)</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Configuration</span>
                                             <div className="flex rounded-md border border-zinc-800 bg-zinc-900/50 p-0.5">
                                                 <button
-                                                    onClick={() => setIsPreview(false)}
+                                                    onClick={() => setConfigViewMode("raw")}
                                                     className={cn(
                                                         "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
-                                                        !isPreview ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                        configViewMode === "raw" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
                                                     )}
                                                 >
                                                     <Code className="h-3 w-3" />
                                                     Raw
                                                 </button>
                                                 <button
-                                                    onClick={() => setIsPreview(true)}
+                                                    onClick={() => setConfigViewMode("parsed")}
                                                     className={cn(
                                                         "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
-                                                        isPreview ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                        configViewMode === "parsed" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                    )}
+                                                >
+                                                    <Eye className="h-3 w-3" />
+                                                    Parsed
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfigViewMode("preview")}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
+                                                        configViewMode === "preview" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
                                                     )}
                                                 >
                                                     <Eye className="h-3 w-3" />
@@ -666,14 +697,41 @@ export default function ResourcesClient({
                                         </div>
                                         <span className="text-[10px] font-mono text-zinc-600">Updated: {new Date(selectedResource.updatedAt).toLocaleString()}</span>
                                     </div>
-                                    {isPreview ? (
+                                    {configViewMode === "preview" ? (
                                         <div className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/30 p-6 font-sans text-sm text-zinc-300 overflow-y-auto custom-scrollbar prose prose-invert prose-zinc max-w-none">
                                             <MarkdownRenderer content={configText || "*No content*"} />
+                                        </div>
+                                    ) : configViewMode === "parsed" ? (
+                                        <div className="flex-1 flex flex-col space-y-2">
+                                            <textarea
+                                                value={parsedConfig != null ? JSON.stringify(parsedConfig, null, 2) : "// Enter valid JSON here to enable parsed editing"}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    try {
+                                                        const next = JSON.parse(value);
+                                                        setParsedConfig(next);
+                                                        setParseError(null);
+                                                        setConfigText(JSON.stringify(next));
+                                                    } catch (err) {
+                                                        setParseError("Invalid JSON: " + (err instanceof Error ? err.message : String(err)));
+                                                    }
+                                                }}
+                                                className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
+                                            />
+                                            {parseError && (
+                                                <div className="rounded-md border border-rose-500/20 bg-rose-500/5 p-2 text-[11px] text-rose-400">
+                                                    {parseError}
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <textarea
                                             value={configText}
-                                            onChange={(e) => setConfigText(e.target.value)}
+                                            onChange={(e) => {
+                                                setConfigText(e.target.value);
+                                                setParsedConfig(null);
+                                                setParseError(null);
+                                            }}
                                             className="flex-1 w-full rounded-md border border-zinc-800 bg-zinc-900/50 p-4 font-mono text-sm text-zinc-100 outline-none focus:border-indigo-500/50 resize-none shadow-inner"
                                         />
                                     )}
