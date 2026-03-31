@@ -27,6 +27,7 @@ export default async function ArtifactsPage() {
     const projectOptions = await db.select({
         id: projects.id,
         name: projects.goal,
+        customerId: projects.customerId,
     }).from(projects)
         .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)))
         .orderBy(projects.goal);
