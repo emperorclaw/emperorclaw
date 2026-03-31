@@ -1,10 +1,10 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { artifacts, projects, tasks, companyMembers, customers } from "@/db/schema";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { projects, tasks, companyMembers, customers } from "@/db/schema";
+import { eq, and, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import ArtifactsClient from "./artifacts-client";
+import ArtifactsManager from "./artifacts-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -24,30 +24,33 @@ export default async function ArtifactsPage() {
 
     const companyId = membership.companyId;
 
-    const initialArtifacts = await db.select({
-        id: artifacts.id,
-        title: artifacts.title,
-        kind: artifacts.kind,
-        artifactClass: artifacts.artifactClass,
-        importance: artifacts.importance,
-        contentType: artifacts.contentType,
-        contentText: artifacts.contentText,
-        storageUrl: artifacts.storageUrl,
-        originalFilename: artifacts.originalFilename,
-        sizeBytes: artifacts.sizeBytes,
-        isCanonical: artifacts.isCanonical,
-        createdAt: artifacts.createdAt,
-        projectId: projects.id,
-        projectGoal: projects.goal,
-        customerId: customers.id,
-        customerName: customers.name,
-        taskType: tasks.taskType,
-    }).from(artifacts)
-        .leftJoin(projects, eq(artifacts.projectId, projects.id))
-        .leftJoin(customers, eq(projects.customerId, customers.id))
-        .leftJoin(tasks, eq(artifacts.taskId, tasks.id))
-        .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)))
-        .orderBy(desc(artifacts.createdAt));
+    const projectOptions = await db.select({
+        id: projects.id,
+        name: projects.goal,
+    }).from(projects)
+        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)))
+        .orderBy(projects.goal);
 
-    return <ArtifactsClient initialArtifacts={initialArtifacts} />;
+    const taskOptions = await db.select({
+        id: tasks.id,
+        type: tasks.taskType,
+        projectId: tasks.projectId,
+    }).from(tasks)
+        .where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)))
+        .orderBy(tasks.taskType);
+
+    const customerOptions = await db.select({
+        id: customers.id,
+        name: customers.name,
+    }).from(customers)
+        .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+        .orderBy(customers.name);
+
+    return (
+        <ArtifactsManager
+            projects={projectOptions}
+            tasks={taskOptions}
+            customers={customerOptions}
+        />
+    );
 }
