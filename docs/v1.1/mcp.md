@@ -249,3 +249,5 @@ GET /messages/sync
 - `PATCH /api/ui/artifacts/{id}/move` renames a file or moves it to a different folder and keeps the Bunny object key aligned with the DB path.
 - `PATCH /api/ui/artifacts/{id}/replace` uploads new bytes for an existing artifact while preserving the metadata record, making it suitable for document revisions and file replacement flows in the web UI.
 - `POST /api/ui/artifacts/finalize` confirms a Bunny blob exists (download + checksum) before writing the artifact row. Use this when the object is staged in Bunny and you want to separate storage from metadata creation.
+- Artifact creation is customer-first: supply `customerId` or `projectId`; `taskId` is optional and only valid when `projectId` is also present. This matches both the UI upload flow and MCP artifact creation endpoints.
+- The web UI hides advanced metadata during normal uploads, but the backend still supports `kind`, `artifactClass`, `importance`, canonical flags, and `metadataJson` for MCP agents and power-user editing flows.
