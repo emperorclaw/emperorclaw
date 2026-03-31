@@ -8,7 +8,7 @@ import {
     resolveAgentId,
 } from "@/lib/mcp";
 import { db } from "@/db";
-import { artifacts, projects, tasks } from "@/db/schema";
+import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { storageAdapter } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { and, eq, isNull } from "drizzle-orm";
@@ -41,22 +41,35 @@ export async function POST(req: NextRequest) {
 
         const projectId = getFormStringValue(form, "projectId");
         const taskId = getFormStringValue(form, "taskId");
+        const customerId = getFormStringValue(form, "customerId");
         const kind = getFormStringValue(form, "kind");
-        if (!projectId || !taskId || !kind) {
-            return NextResponse.json({ error: "projectId, taskId, and kind are required" }, { status: 400 });
+        if (!kind) {
+            return NextResponse.json({ error: "kind is required" }, { status: 400 });
         }
 
-        const project = await loadProject(companyId, projectId);
-        if (!project) {
+        const project = projectId ? await loadProject(companyId, projectId) : null;
+        if (projectId && !project) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 
-        const task = await loadTask(companyId, taskId);
-        if (!task) {
+        if (taskId && !projectId) {
+            return NextResponse.json({ error: "taskId requires projectId" }, { status: 400 });
+        }
+
+        const task = taskId ? await loadTask(companyId, taskId) : null;
+        if (taskId && !task) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
-        if (task.projectId !== projectId) {
+        if (task && projectId && task.projectId !== projectId) {
             return NextResponse.json({ error: "Task does not belong to the specified project" }, { status: 400 });
+        }
+
+        const customer = customerId ? await loadCustomer(companyId, customerId) : null;
+        if (customerId && !customer) {
+            return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+        }
+        if (!project && !customer) {
+            return NextResponse.json({ error: "customerId or projectId is required" }, { status: 400 });
         }
 
         const folderId = getFormStringValue(form, "folderId");
@@ -110,10 +123,10 @@ export async function POST(req: NextRequest) {
 
         const [artifact] = await db.insert(artifacts).values({
             companyId,
-            projectId,
-            taskId,
+            projectId: project?.id ?? null,
+            taskId: task?.id ?? null,
             folderId: folder ? folder.id : null,
-            customerId: project.customerId,
+            customerId: project?.customerId ?? customer?.id ?? null,
             agentId: internalAgentId,
             path: logicalPath,
             ...preparedArtifact,
@@ -163,6 +176,15 @@ async function loadTask(companyId: string, taskId: string) {
         isNull(tasks.deletedAt),
     )).limit(1);
     return task || null;
+}
+
+async function loadCustomer(companyId: string, customerId: string) {
+    const [customer] = await db.select().from(customers).where(and(
+        eq(customers.id, customerId),
+        eq(customers.companyId, companyId),
+        isNull(customers.deletedAt),
+    )).limit(1);
+    return customer || null;
 }
 
 function mapErrorStatus(error: unknown) {
