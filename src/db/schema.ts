@@ -166,6 +166,24 @@ export const agents = pgTable("agents", {
     deletedAt: timestamp("deleted_at"),
 });
 
+export const artifactFolders = pgTable("artifact_folders", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: 'set null' }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    parentFolderId: uuid("parent_folder_id"),
+    name: text("name").notNull(),
+    path: text("path").notNull(),
+    kind: text("kind").notNull().default("folder"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    createdByType: text("created_by_type").notNull(),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
 export const runtimeNodes = pgTable("runtime_nodes", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -328,18 +346,22 @@ export const taskEvents = pgTable("task_events", {
 });
 
 export const artifacts = pgTable("artifacts", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
-    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
-    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
-    title: text("title"),
-    kind: text("kind").notNull(),
+      id: uuid("id").primaryKey().defaultRandom(),
+      companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+      projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+      taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+      folderId: uuid("folder_id").references(() => artifactFolders.id, { onDelete: 'set null' }),
+      path: text("path"),
+      title: text("title"),
+      kind: text("kind").notNull(),
     artifactClass: text("artifact_class").default("working_file").notNull(),
     importance: text("importance").default("operational").notNull(),
-    contentType: text("content_type").notNull(),
-    contentText: text("content_text"),
-    storageUrl: text("storage_url"),
-    storageProvider: text("storage_provider"),
+      contentType: text("content_type").notNull(),
+      contentText: text("content_text"),
+      previewText: text("preview_text"),
+      searchText: text("search_text"),
+      storageUrl: text("storage_url"),
+      storageProvider: text("storage_provider"),
     storageKey: text("storage_key"),
     originalFilename: text("original_filename"),
     sourceKind: text("source_kind"),
@@ -352,10 +374,11 @@ export const artifacts = pgTable("artifacts", {
     isCanonical: boolean("is_canonical").default(false).notNull(),
     promotedAt: timestamp("promoted_at"),
     metadataJson: jsonb("metadata_json").default('{}').notNull(),
-    retentionPolicy: text("retention_policy"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    deletedAt: timestamp("deleted_at"),
-});
+      retentionPolicy: text("retention_policy"),
+      updatedAt: timestamp("updated_at").defaultNow().notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      deletedAt: timestamp("deleted_at"),
+  });
 
 export const proofs = pgTable("proofs", {
     id: uuid("id").primaryKey().defaultRandom(),
