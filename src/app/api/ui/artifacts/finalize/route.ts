@@ -52,7 +52,8 @@ export async function POST(req: NextRequest) {
         }
 
         const fallbackName = filename || title || "artifact";
-        const defaultPath = folder ? buildChildPath(folder.path, fallbackName) : fallbackName;
+        const folderPathValue = folder && typeof folder.path === "string" ? folder.path : null;
+        const defaultPath = folderPathValue ? buildChildPath(folderPathValue, fallbackName) : fallbackName;
         const resolvedPath = logicalPath || defaultPath;
         if (!resolvedPath) {
             return NextResponse.json({ error: "logicalPath or filename/title is required" }, { status: 400 });

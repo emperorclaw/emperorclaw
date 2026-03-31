@@ -11,13 +11,14 @@ export interface SessionCompany {
 
 export async function requireCompanyFromSession(): Promise<SessionCompany> {
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
+    const user = session?.user as { id?: string } | undefined;
+    const userId = user?.id;
     if (!userId) {
         throw new Error("Unauthorized");
     }
 
     const [membership] = await db.select().from(companyMembers).where(
-        and(eq(companyMembers.userId, userId), isNull(companyMembers.deletedAt))
+        eq(companyMembers.userId, userId)
     ).limit(1);
     if (!membership) {
         throw new Error("Company not found");

@@ -4,16 +4,17 @@ import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
 import { and, eq, isNull, desc, ilike } from "drizzle-orm";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
+    const { id: folderId } = await params;
     const folder = await db.select().from(artifactFolders).where(and(
         eq(artifactFolders.companyId, companyId),
-        eq(artifactFolders.id, params.id),
+        eq(artifactFolders.id, folderId),
         isNull(artifactFolders.deletedAt),
     )).limit(1);
 

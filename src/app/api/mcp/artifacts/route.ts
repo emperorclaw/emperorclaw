@@ -231,8 +231,9 @@ export async function POST(req: NextRequest) {
             visibility: visibility || "private",
             retentionPolicy: retentionPolicy || null,
         }).returning();
+        const artifactIdValue = artifact.id as string;
 
-        await logAudit(companyId, "agent", internalAgentId || null, "create_artifact", "artifact", artifact.id, {
+        await logAudit(companyId, "agent", internalAgentId || null, "create_artifact", "artifact", artifactIdValue, {
             kind,
             artifactClass: artifact.artifactClass,
             importance: artifact.importance,
