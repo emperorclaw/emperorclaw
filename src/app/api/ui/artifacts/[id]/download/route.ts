@@ -34,13 +34,14 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
             (typeof artifact.originalFilename === "string" && artifact.originalFilename) ||
             (typeof artifact.title === "string" && artifact.title) ||
             (artifact.id as string);
+        const disposition = req.nextUrl.searchParams.get("disposition") === "inline" ? "inline" : "attachment";
         const contentTypeValue =
             (typeof artifact.contentType === "string" && artifact.contentType) ||
             "application/octet-stream";
         const headers = new Headers({
             "Content-Type": contentTypeValue,
             "Content-Length": download.sizeBytes.toString(),
-            "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+            "Content-Disposition": `${disposition}; filename="${encodeURIComponent(filename)}"`,
         });
 
         const responseBody = new Uint8Array(download.buffer);

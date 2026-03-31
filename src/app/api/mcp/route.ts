@@ -63,7 +63,12 @@ export async function POST(req: NextRequest) {
                 // params: { id: "probe-agent", name: "Probe", role: "test", model: "openai/gpt-5-mini" }
                 // In Emperor Claw, we have our own UUID IDs, but we can store their native ID in the name or just create it if it doesn't match
                 // For simplicity, we'll just insert a new agent or ignore if we want to map it
-                const agentName = typeof params.name === "string" ? params.name : params.id;
+                const agentName =
+                    typeof params.name === "string" && params.name.trim()
+                        ? params.name.trim()
+                        : typeof params.id === "string" && params.id.trim()
+                            ? params.id.trim()
+                            : "OpenClaw Agent";
                 const agentSkills =
                     Array.isArray(params.skills) ? params.skills :
                     Array.isArray(params.skillsJson) ? params.skillsJson :
@@ -71,7 +76,7 @@ export async function POST(req: NextRequest) {
 
                 await db.insert(agents).values({
                     companyId,
-                    name: agentName || params.id,
+                    name: agentName,
                     role: params.role || "operator",
                     skillsJson: agentSkills,
                     status: "online",
@@ -87,7 +92,12 @@ export async function POST(req: NextRequest) {
             }
 
             if (method === "projects.upsert") {
-                const projectGoal = typeof params.goal === "string" ? params.goal : params.name;
+                const projectGoal =
+                    typeof params.goal === "string" && params.goal.trim()
+                        ? params.goal.trim()
+                        : typeof params.name === "string" && params.name.trim()
+                            ? params.name.trim()
+                            : "OpenClaw Project";
 
                 await db.insert(projects).values({
                     companyId,

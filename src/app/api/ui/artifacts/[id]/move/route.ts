@@ -3,9 +3,9 @@ import { requireCompanyFromSession } from "@/lib/company-session";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
-import { storageAdapter } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
+import { relocateArtifactBlob } from "@/lib/artifact-storage";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/move">) {
     try {
@@ -38,34 +38,20 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             return NextResponse.json({ message: "Artifact already in target location" });
         }
 
-        const download = await storageAdapter.download({
+        const { uploadResult } = await relocateArtifactBlob({
             companyId,
-            logicalPath: currentLogicalPath,
-        });
-
-        const uploadContentType =
-            (typeof artifact.contentType === "string" && artifact.contentType) ||
-            (download.contentType || "application/octet-stream");
-        const uploadResult = await storageAdapter.upload({
-            companyId,
-            logicalPath: newLogicalPath,
-            data: download.buffer,
-            contentType: uploadContentType,
-        });
-
-        await storageAdapter.delete({
-            companyId,
-            logicalPath: currentLogicalPath,
+            artifact,
+            nextLogicalPath: newLogicalPath,
         });
 
         const [updatedArtifact] = await db.update(artifacts).set({
             folderId: targetFolderIdValue,
             path: newLogicalPath,
-            storageKey: uploadResult.storageKey,
-            storageUrl: uploadResult.storageUrl,
-            sizeBytes: uploadResult.sizeBytes,
-            sha256: uploadResult.checksum,
-            contentType: uploadResult.contentType,
+            storageKey: uploadResult?.storageKey ?? artifact.storageKey,
+            storageUrl: uploadResult?.storageUrl ?? artifact.storageUrl,
+            sizeBytes: uploadResult?.sizeBytes ?? artifact.sizeBytes,
+            sha256: uploadResult?.checksum ?? artifact.sha256,
+            contentType: uploadResult?.contentType ?? artifact.contentType,
             originalFilename: nameSegment,
             updatedAt: new Date(),
         }).where(and(

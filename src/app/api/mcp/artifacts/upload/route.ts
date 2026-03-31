@@ -111,6 +111,8 @@ export async function POST(req: NextRequest) {
             projectId,
             taskId,
             folderId: folder ? folder.id : null,
+            customerId: project.customerId,
+            agentId: internalAgentId,
             path: logicalPath,
             ...preparedArtifact,
             createdByType: "agent",

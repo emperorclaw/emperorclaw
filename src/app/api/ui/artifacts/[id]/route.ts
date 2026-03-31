@@ -1,11 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
-import { artifacts } from "@/db/schema";
+import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
 
 type ArtifactRecord = InferModel<typeof artifacts>;
+
+export async function GET(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { companyId } = await requireCompanyFromSession();
+        const { id: artifactId } = await params;
+
+        const [artifact] = await db.select({
+            id: artifacts.id,
+            companyId: artifacts.companyId,
+            projectId: artifacts.projectId,
+            taskId: artifacts.taskId,
+            folderId: artifacts.folderId,
+            customerId: artifacts.customerId,
+            agentId: artifacts.agentId,
+            path: artifacts.path,
+            title: artifacts.title,
+            kind: artifacts.kind,
+            artifactClass: artifacts.artifactClass,
+            importance: artifacts.importance,
+            contentType: artifacts.contentType,
+            contentText: artifacts.contentText,
+            previewText: artifacts.previewText,
+            searchText: artifacts.searchText,
+            storageUrl: artifacts.storageUrl,
+            storageProvider: artifacts.storageProvider,
+            storageKey: artifacts.storageKey,
+            originalFilename: artifacts.originalFilename,
+            sourceKind: artifacts.sourceKind,
+            sourceRef: artifacts.sourceRef,
+            sha256: artifacts.sha256,
+            sizeBytes: artifacts.sizeBytes,
+            visibility: artifacts.visibility,
+            isCanonical: artifacts.isCanonical,
+            promotedAt: artifacts.promotedAt,
+            metadataJson: artifacts.metadataJson,
+            retentionPolicy: artifacts.retentionPolicy,
+            updatedAt: artifacts.updatedAt,
+            createdAt: artifacts.createdAt,
+            projectGoal: projects.goal,
+            customerName: customers.name,
+            taskType: tasks.taskType,
+        }).from(artifacts)
+            .leftJoin(projects, eq(projects.id, artifacts.projectId))
+            .leftJoin(customers, eq(customers.id, artifacts.customerId))
+            .leftJoin(tasks, eq(tasks.id, artifacts.taskId))
+            .where(and(
+                eq(artifacts.id, artifactId),
+                eq(artifacts.companyId, companyId),
+                isNull(artifacts.deletedAt),
+            ))
+            .limit(1);
+
+        if (!artifact) {
+            return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+        }
+
+        return NextResponse.json({ artifact });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
+    }
+}
 
 export async function PATCH(
     req: NextRequest,
@@ -25,10 +90,23 @@ export async function PATCH(
         const artifactRecord = artifact as ArtifactRecord;
 
         const body = await req.json();
+        const selectedProject =
+            body.projectId === undefined
+                ? await getProjectById(companyId, artifactRecord.projectId as string)
+                : await getProjectById(companyId, body.projectId);
+        const projectId = selectedProject.id;
+        const taskId =
+            body.taskId === undefined
+                ? artifactRecord.taskId
+                : await resolveTaskId(companyId, body.taskId, projectId);
+        const customerId =
+            body.customerId === undefined
+                ? selectedProject.customerId ?? artifactRecord.customerId
+                : await resolveCustomerId(companyId, body.customerId);
         const metadataJson = body.metadataJson ?? artifactRecord.metadataJson;
         const contentType = (body.contentType ?? artifactRecord.contentType) as string;
         const prepared = prepareArtifactRecord({
-            kind: artifactRecord.kind as string,
+            kind: (body.kind ?? artifactRecord.kind) as string,
             artifactClass: (body.artifactClass ?? artifactRecord.artifactClass) as string | null,
             importance: (body.importance ?? artifactRecord.importance) as string | null,
             title: (body.title ?? artifactRecord.title) as string | null,
@@ -47,6 +125,10 @@ export async function PATCH(
         });
 
         const [updatedArtifact] = await db.update(artifacts).set({
+            projectId,
+            taskId: taskId as string,
+            customerId: customerId as string | null,
+            kind: prepared.kind,
             title: prepared.title,
             artifactClass: prepared.artifactClass,
             importance: prepared.importance,
@@ -54,6 +136,8 @@ export async function PATCH(
             metadataJson: prepared.metadataJson,
             isCanonical: prepared.isCanonical,
             promotedAt: prepared.promotedAt,
+            visibility: body.visibility ?? artifactRecord.visibility,
+            retentionPolicy: body.retentionPolicy ?? artifactRecord.retentionPolicy,
             updatedAt: new Date(),
         }).where(and(
             eq(artifacts.id, artifactRecord.id),
@@ -63,6 +147,75 @@ export async function PATCH(
         return NextResponse.json({ artifact: updatedArtifact });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
     }
+}
+
+async function getProjectById(companyId: string, projectId: string | null) {
+    if (!projectId) {
+        throw new Error("projectId is required");
+    }
+    const [project] = await db.select({
+        id: projects.id,
+        customerId: projects.customerId,
+    }).from(projects).where(and(
+        eq(projects.id, projectId),
+        eq(projects.companyId, companyId),
+        isNull(projects.deletedAt),
+    )).limit(1);
+    if (!project) {
+        throw new Error("Project not found");
+    }
+    return project;
+}
+
+async function resolveTaskId(companyId: string, taskId: string | null, projectId: string) {
+    if (!taskId) {
+        throw new Error("taskId is required");
+    }
+    const [task] = await db.select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+    }).from(tasks).where(and(
+        eq(tasks.id, taskId),
+        eq(tasks.companyId, companyId),
+        isNull(tasks.deletedAt),
+    )).limit(1);
+    if (!task) {
+        throw new Error("Task not found");
+    }
+    if (task.projectId !== projectId) {
+        throw new Error("Task does not belong to the selected project");
+    }
+    return task.id;
+}
+
+async function resolveCustomerId(companyId: string, customerId: string | null) {
+    if (customerId === null) {
+        return null;
+    }
+    const [customer] = await db.select({
+        id: customers.id,
+    }).from(customers).where(and(
+        eq(customers.id, customerId),
+        eq(customers.companyId, companyId),
+        isNull(customers.deletedAt),
+    )).limit(1);
+    if (!customer) {
+        throw new Error("Customer not found");
+    }
+    return customer.id;
+}
+
+function mapErrorStatus(error: unknown) {
+    if (error instanceof Error) {
+        const normalized = error.message.toLowerCase();
+        if (normalized.includes("not found")) {
+            return 404;
+        }
+        if (normalized.includes("required") || normalized.includes("does not belong")) {
+            return 400;
+        }
+    }
+    return 500;
 }

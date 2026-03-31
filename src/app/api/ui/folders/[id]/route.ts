@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
+import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
@@ -42,6 +43,37 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
 
         const resolvedProjectId = await resolveProjectUpdate(companyId, body.projectId);
         const resolvedCustomerId = await resolveCustomerUpdate(companyId, body.customerId);
+        const affectedArtifacts = pathChanged
+            ? await db.select({
+                id: artifacts.id,
+                path: artifacts.path,
+                storageKey: artifacts.storageKey,
+                storageUrl: artifacts.storageUrl,
+                contentType: artifacts.contentType,
+                sizeBytes: artifacts.sizeBytes,
+                sha256: artifacts.sha256,
+            }).from(artifacts).where(and(
+                eq(artifacts.companyId, companyId),
+                like(artifacts.path, `${folderPathValue}/%`),
+                isNull(artifacts.deletedAt),
+            ))
+            : [];
+        const movedArtifacts = pathChanged
+            ? await moveFolderArtifactBlobs({
+                companyId,
+                artifacts: affectedArtifacts.map((artifact) => ({
+                    id: artifact.id,
+                    path: artifact.path,
+                    storageKey: artifact.storageKey,
+                    storageUrl: artifact.storageUrl,
+                    contentType: artifact.contentType,
+                    sizeBytes: artifact.sizeBytes,
+                    sha256: artifact.sha256,
+                })),
+                fromPrefix: folderPathValue,
+                toPrefix: newPath,
+            })
+            : [];
 
         const updatedFolder = await db.transaction(async (tx) => {
             const [folderRow] = await tx.update(artifactFolders).set({
@@ -66,12 +98,20 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
                     like(artifactFolders.path, matchPattern),
                 ));
 
-                await tx.update(artifacts).set({
-                    path: sql`regexp_replace(${artifacts.path}, ${folderPathValue}, ${newPath}, 'g')`,
-                }).where(and(
-                    eq(artifacts.companyId, companyId),
-                    like(artifacts.path, matchPattern),
-                ));
+                for (const artifact of movedArtifacts) {
+                    await tx.update(artifacts).set({
+                        path: artifact.nextLogicalPath,
+                        storageKey: artifact.storageKey,
+                        storageUrl: artifact.storageUrl,
+                        sizeBytes: artifact.sizeBytes,
+                        sha256: artifact.sha256,
+                        contentType: artifact.contentType,
+                        updatedAt: new Date(),
+                    }).where(and(
+                        eq(artifacts.id, artifact.id),
+                        eq(artifacts.companyId, companyId),
+                    ));
+                }
             }
 
             return folderRow;
@@ -80,8 +120,21 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
         return NextResponse.json({ folder: updatedFolder }, { status: 200 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
     }
+}
+
+function mapErrorStatus(error: unknown) {
+    if (error instanceof Error) {
+        const normalized = error.message.toLowerCase();
+        if (normalized.includes("not found")) {
+            return 404;
+        }
+        if (normalized.includes("subtree")) {
+            return 400;
+        }
+    }
+    return 500;
 }
 
 export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
@@ -115,7 +168,7 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/fo
         return NextResponse.json({ success: true });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
     }
 }
 

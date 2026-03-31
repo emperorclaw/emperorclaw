@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { buildFolderPath, isDescendantPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
+import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/folders/[id]">) {
     const auth = await verifyMcpToken(req);
@@ -65,6 +66,37 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
         const safeNewName = typeof newName === "string" ? newName : "";
         const newPath = buildFolderPath(parentFolderPath, safeNewName);
         const pathChanged = newPath !== folderPathValue;
+        const affectedArtifacts = pathChanged
+            ? await db.select({
+                id: artifacts.id,
+                path: artifacts.path,
+                storageKey: artifacts.storageKey,
+                storageUrl: artifacts.storageUrl,
+                contentType: artifacts.contentType,
+                sizeBytes: artifacts.sizeBytes,
+                sha256: artifacts.sha256,
+            }).from(artifacts).where(and(
+                eq(artifacts.companyId, companyId),
+                like(artifacts.path, `${folderPathValue}/%`),
+                isNull(artifacts.deletedAt),
+            ))
+            : [];
+        const movedArtifacts = pathChanged
+            ? await moveFolderArtifactBlobs({
+                companyId,
+                artifacts: affectedArtifacts.map((artifact) => ({
+                    id: artifact.id,
+                    path: artifact.path,
+                    storageKey: artifact.storageKey,
+                    storageUrl: artifact.storageUrl,
+                    contentType: artifact.contentType,
+                    sizeBytes: artifact.sizeBytes,
+                    sha256: artifact.sha256,
+                })),
+                fromPrefix: folderPathValue,
+                toPrefix: newPath,
+            })
+            : [];
 
         const result = await db.transaction(async (tx) => {
             const [updatedFolder] = await tx.update(artifactFolders).set({
@@ -90,12 +122,20 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
                     like(artifactFolders.path, matchPattern),
                 ));
 
-                await tx.update(artifacts).set({
-                    path: sql`regexp_replace(${artifacts.path}, ${folder.path}, ${newPath}, 'g')`,
-                }).where(and(
-                    eq(artifacts.companyId, companyId),
-                    like(artifacts.path, matchPattern),
-                ));
+                for (const artifact of movedArtifacts) {
+                    await tx.update(artifacts).set({
+                        path: artifact.nextLogicalPath,
+                        storageKey: artifact.storageKey,
+                        storageUrl: artifact.storageUrl,
+                        sizeBytes: artifact.sizeBytes,
+                        sha256: artifact.sha256,
+                        contentType: artifact.contentType,
+                        updatedAt: new Date(),
+                    }).where(and(
+                        eq(artifacts.id, artifact.id),
+                        eq(artifacts.companyId, companyId),
+                    ));
+                }
             }
 
             return updatedFolder;
