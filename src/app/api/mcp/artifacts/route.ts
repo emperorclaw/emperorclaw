@@ -11,6 +11,7 @@ import {
 import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
     const endDateParam = searchParams.get("endDate");
 
     try {
+        await ensureArtifactStorageSchema();
         const conditions: SQL<unknown>[] = [
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
@@ -146,6 +148,7 @@ export async function POST(req: NextRequest) {
     const { requestHash } = idempotencyResult;
 
     try {
+        await ensureArtifactStorageSchema();
         const body = await req.json();
         const {
             projectId,

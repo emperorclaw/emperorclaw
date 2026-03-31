@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/download">) {
     const auth = await verifyMcpToken(req);
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/arti
     }
 
     const companyId = auth.companyToken!.companyId;
+    await ensureArtifactStorageSchema();
     const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
         eq(artifacts.id, artifactId),
