@@ -203,7 +203,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Artifac
     };
 
     const breadcrumbs = useMemo(() => {
-        const trail = [{ id: null, name: "Root" }];
+        const trail: Array<{ id: string | null; name: string }> = [{ id: null, name: "Root" }];
         ancestors.forEach((folder: FolderDto) => {
             trail.push({ id: folder.id, name: folder.name });
         });
@@ -213,11 +213,11 @@ export default function ArtifactsManager({ projects, tasks, customers }: Artifac
         return trail;
     }, [ancestors, currentFolder]);
 
-    const handleSelectFolder = (folder: FolderDto) => {
-        setCurrentFolderId(folder.id);
+    const handleSelectFolder = (folderId: string | null) => {
+        setCurrentFolderId(folderId);
     };
 
-    const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = event.target;
         if (name === "search") {
             setSearchTerm(value);
@@ -255,7 +255,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Artifac
                                 <button
                                     key={folder.id ?? "root"}
                                     className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm rounded ${folder.id === currentFolder?.id ? "bg-indigo-500/10 text-indigo-200" : "text-zinc-300 hover:bg-zinc-800/60"}`}
-                                    onClick={() => handleSelectFolder(folder)}
+                                    onClick={() => handleSelectFolder(folder.id ?? null)}
                                 >
                                     <Folder className="w-4 h-4 text-indigo-400" />
                                     <span className="truncate">{folder.name}</span>

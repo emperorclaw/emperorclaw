@@ -1,44 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
 
+type ArtifactRecord = InferModel<typeof artifacts>;
+
 export async function PATCH(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { companyId } = await requireCompanyFromSession();
+        const { id: artifactId } = await params;
         const [artifact] = await db.select().from(artifacts).where(and(
-            eq(artifacts.id, params.id),
+            eq(artifacts.id, artifactId),
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         )).limit(1);
         if (!artifact) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
+        const artifactRecord = artifact as ArtifactRecord;
 
         const body = await req.json();
-        const metadataJson = body.metadataJson ?? artifact.metadataJson;
-        const contentType = body.contentType || artifact.contentType;
+        const metadataJson = body.metadataJson ?? artifactRecord.metadataJson;
+        const contentType = (body.contentType ?? artifactRecord.contentType) as string;
         const prepared = prepareArtifactRecord({
-            kind: artifact.kind,
-            artifactClass: body.artifactClass ?? artifact.artifactClass,
-            importance: body.importance ?? artifact.importance,
-            title: body.title ?? artifact.title,
+            kind: artifactRecord.kind as string,
+            artifactClass: (body.artifactClass ?? artifactRecord.artifactClass) as string | null,
+            importance: (body.importance ?? artifactRecord.importance) as string | null,
+            title: (body.title ?? artifactRecord.title) as string | null,
             contentType,
-            contentText: artifact.contentText,
-            storageUrl: artifact.storageUrl,
-            storageProvider: artifact.storageProvider,
-            storageKey: artifact.storageKey,
-            originalFilename: artifact.originalFilename,
-            sourceKind: artifact.sourceKind,
-            sourceRef: artifact.sourceRef,
-            sha256: artifact.sha256,
-            sizeBytes: artifact.sizeBytes,
-            isCanonical: body.isCanonical ?? artifact.isCanonical,
+            contentText: (artifactRecord.contentText as string | null) ?? null,
+            storageUrl: (artifactRecord.storageUrl as string | null) ?? null,
+            storageProvider: (artifactRecord.storageProvider as string | null) ?? null,
+            storageKey: (artifactRecord.storageKey as string | null) ?? null,
+            originalFilename: (artifactRecord.originalFilename as string | null) ?? null,
+            sourceKind: (artifactRecord.sourceKind as string | null) ?? null,
+            sourceRef: (artifactRecord.sourceRef as string | null) ?? null,
+            sha256: artifactRecord.sha256 as string,
+            sizeBytes: artifactRecord.sizeBytes as number,
+            isCanonical: body.isCanonical ?? artifactRecord.isCanonical,
             metadataJson,
         });
 
@@ -52,7 +56,7 @@ export async function PATCH(
             promotedAt: prepared.promotedAt,
             updatedAt: new Date(),
         }).where(and(
-            eq(artifacts.id, artifact.id),
+            eq(artifacts.id, artifactRecord.id),
             eq(artifacts.companyId, companyId),
         )).returning();
 

@@ -6,14 +6,14 @@ import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
 import { deriveArtifactLogicalPath } from "@/lib/path-utils";
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/delete">) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
-    const { id: artifactId } = await params;
+    const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
         eq(artifacts.id, artifactId),
         eq(artifacts.companyId, companyId),
@@ -24,6 +24,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
     }
 
+    const artifactIdValue = artifact.id as string;
     const deleteContent = req.nextUrl.searchParams.get("purgeStorage") !== "false";
     if (deleteContent && artifact.storageKey) {
         const logicalPath = deriveArtifactLogicalPath(artifact, companyId);
@@ -38,13 +39,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await db.update(artifacts).set({
         deletedAt: now,
     }).where(and(
-        eq(artifacts.id, artifact.id),
+        eq(artifacts.id, artifactIdValue),
         eq(artifacts.companyId, companyId),
     ));
 
-    await logAudit(companyId, "agent", null, "delete_artifact", "artifact", artifact.id, {
-        purgeStorage: deleteContent,
-    });
+    await logAudit(companyId, "agent", null, "delete_artifact", "artifact", artifactIdValue, {
+            purgeStorage: deleteContent,
+        });
 
     return NextResponse.json({ success: true });
 }

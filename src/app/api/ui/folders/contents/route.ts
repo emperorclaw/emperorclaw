@@ -25,15 +25,16 @@ export async function GET(req: NextRequest) {
             ? await findActiveFolder(companyId, folderId)
             : null;
 
-        const ancestors = folder ? await buildAncestors(companyId, folder.parentFolderId) : [];
+        const parentFolderIdValue = folder && typeof folder.parentFolderId === "string" ? folder.parentFolderId : null;
+        const ancestors = folder ? await buildAncestors(companyId, parentFolderIdValue) : [];
         const folderDto: FolderDto = folder
             ? {
-                id: folder.id,
-                name: folder.name,
-                path: folder.path,
-                projectId: folder.projectId,
-                customerId: folder.customerId,
-                metadataJson: folder.metadataJson,
+                id: folder.id as string,
+                name: folder.name as string,
+                path: folder.path as string,
+                projectId: typeof folder.projectId === "string" ? folder.projectId : null,
+                customerId: typeof folder.customerId === "string" ? folder.customerId : null,
+                metadataJson: folder.metadataJson as Record<string, unknown>,
             }
             : {
                 id: "root",
@@ -137,11 +138,11 @@ async function buildAncestors(companyId: string, parentFolderId: string | null) 
         )).limit(1);
         if (!parent) break;
         ancestors.unshift({
-            id: parent.id,
-            name: parent.name,
-            path: parent.path,
+            id: parent.id as string,
+            name: parent.name as string,
+            path: parent.path as string,
         });
-        cursor = parent.parentFolderId || null;
+        cursor = typeof parent.parentFolderId === "string" ? parent.parentFolderId : null;
     }
     return ancestors;
 }

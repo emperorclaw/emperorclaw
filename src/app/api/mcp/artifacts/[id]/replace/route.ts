@@ -8,15 +8,16 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/replace">) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
+    const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
-        eq(artifacts.id, params.id),
+        eq(artifacts.id, artifactId),
         eq(artifacts.companyId, companyId),
         isNull(artifacts.deletedAt),
     )).limit(1);
@@ -24,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!artifact) {
         return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
     }
+    const artifactIdValue = artifact.id as string;
 
     try {
         const form = await req.formData();
@@ -46,13 +48,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                     fileEntry.name ||
                     artifact.id
             );
-        const newLogicalPath = buildChildPath(folder?.path ?? null, nameSegment);
+        const targetFolderIdValue = folder && typeof folder.id === "string" ? folder.id : null;
+        const parentPath = folder && typeof folder.path === "string" ? folder.path : null;
+        const newLogicalPath = buildChildPath(parentPath, nameSegment);
         const currentLogicalPath = deriveArtifactLogicalPath(artifact, companyId);
 
         const contentType =
             getFormStringValue(form, "contentType") ||
             fileEntry.type ||
-            artifact.contentType ||
+            (typeof artifact.contentType === "string" ? artifact.contentType : undefined) ||
             "application/octet-stream";
 
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
@@ -73,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         const metadataJson = parseJsonMetadata(form.get("metadataJson"));
 
         const [updatedArtifact] = await db.update(artifacts).set({
-            folderId: folder ? folder.id : null,
+            folderId: targetFolderIdValue,
             path: newLogicalPath,
             storageKey: uploadResult.storageKey,
             storageUrl: uploadResult.storageUrl,
@@ -89,9 +93,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             eq(artifacts.companyId, companyId),
         )).returning();
 
-        await logAudit(companyId, "agent", null, "replace_artifact", "artifact", artifact.id, {
+        await logAudit(companyId, "agent", null, "replace_artifact", "artifact", artifactIdValue, {
             path: newLogicalPath,
-            folderId: folder ? folder.id : null,
+            folderId: targetFolderIdValue,
         });
 
         return NextResponse.json({ artifact: updatedArtifact });

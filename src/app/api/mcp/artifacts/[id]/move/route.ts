@@ -7,15 +7,16 @@ import { storageAdapter } from "@/lib/storage";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { findActiveFolder } from "@/lib/artifact-folders";
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/move">) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
+    const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
-        eq(artifacts.id, params.id),
+        eq(artifacts.id, artifactId),
         eq(artifacts.companyId, companyId),
         isNull(artifacts.deletedAt),
     )).limit(1);
@@ -23,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!artifact) {
         return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
     }
+    const artifactIdValue = artifact.id as string;
 
     try {
         const body = await req.json();
@@ -32,11 +34,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
 
+        const targetFolderIdValue = targetFolder && typeof targetFolder.id === "string" ? targetFolder.id : null;
         const nameSegment =
             sanitizePathSegment(body.name || artifact.originalFilename || artifact.title || artifact.id);
-        const newLogicalPath = buildChildPath(targetFolder?.path ?? null, nameSegment);
+        const parentPath = targetFolder && typeof targetFolder.path === "string" ? targetFolder.path : null;
+        const newLogicalPath = buildChildPath(parentPath, nameSegment);
         const currentLogicalPath = deriveArtifactLogicalPath(artifact, companyId);
-        if (newLogicalPath === currentLogicalPath && artifact.folderId === (targetFolder?.id ?? null)) {
+        if (newLogicalPath === currentLogicalPath && artifact.folderId === targetFolderIdValue) {
             return NextResponse.json({ message: "Artifact already in target location" });
         }
 
@@ -45,11 +49,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             logicalPath: currentLogicalPath,
         });
 
+        const uploadContentType =
+            (typeof artifact.contentType === "string" && artifact.contentType) ||
+            (download.contentType || "application/octet-stream");
         const uploadResult = await storageAdapter.upload({
             companyId,
             logicalPath: newLogicalPath,
             data: download.buffer,
-            contentType: artifact.contentType || download.contentType || "application/octet-stream",
+            contentType: uploadContentType,
         });
 
         await storageAdapter.delete({
@@ -58,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         });
 
         const [updatedArtifact] = await db.update(artifacts).set({
-            folderId: targetFolder ? targetFolder.id : null,
+            folderId: targetFolderIdValue,
             path: newLogicalPath,
             storageKey: uploadResult.storageKey,
             storageUrl: uploadResult.storageUrl,
@@ -72,10 +79,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             eq(artifacts.companyId, companyId),
         )).returning();
 
-        await logAudit(companyId, "agent", null, "move_artifact", "artifact", artifact.id, {
+        await logAudit(companyId, "agent", null, "move_artifact", "artifact", artifactIdValue, {
             fromPath: currentLogicalPath,
             toPath: newLogicalPath,
-            folderId: targetFolder ? targetFolder.id : null,
+            folderId: targetFolderIdValue,
         });
 
         return NextResponse.json({ artifact: updatedArtifact });
