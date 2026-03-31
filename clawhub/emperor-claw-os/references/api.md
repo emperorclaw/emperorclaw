@@ -99,6 +99,7 @@ These endpoints are legacy compatibility surfaces. Prefer project recurring-task
 - **`GET /api/mcp/artifacts`**: Fetch artifacts.
 - **`DELETE /api/mcp/artifacts/{id}`**: Soft-delete artifact.
 Artifacts should represent source documents, working files, proofs, deliverables, templates, or export bundles. Do not use artifact storage for raw logs, task chatter, or reconnect traces.
+Artifact scope is customer-first: send either `customerId` or `projectId`. `taskId` is optional and only valid when `projectId` is present.
 When storing an artifact by reference URL instead of inline text, send a real `sha256` and `sizeBytes`. Do not hash the URL string.
 
 ### Scoped Resources

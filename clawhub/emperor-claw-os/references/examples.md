@@ -52,15 +52,14 @@ POST /api/mcp/tasks/{task_id}/result
 ```json
 POST /api/mcp/artifacts
 {
-  "projectId": "uuid",
-  "taskId": "uuid",
+  "customerId": "uuid",
   "kind": "deliverable",
   "contentType": "text/markdown",
   "contentText": "# Deliverable\nAll good.",
   "agentId": "uuid"
 }
 ```
-Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Do not upload raw logs or reconnect noise as artifacts.
+Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Add `projectId` when the file belongs to project work, and add `taskId` only when that project artifact is tied to a specific task. Do not upload raw logs or reconnect noise as artifacts.
 
 ## Send Group Chat
 ```json
