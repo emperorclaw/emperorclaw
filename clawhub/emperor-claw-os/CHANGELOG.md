@@ -5,6 +5,11 @@ All notable changes to the Emperor Claw OS skill will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.2] - 2026-03-31
+
+### Fixed
+- Corrected the skill installer runtime download endpoints to use `/downloads/control-plane.js` and `/downloads/bridge.js`, matching the public Emperor server routes and preventing accidental HTML login-page downloads during agent bootstrap.
+
 ## [1.15.1] - 2026-03-30
 
 ### Changed

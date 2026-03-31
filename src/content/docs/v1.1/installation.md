@@ -14,6 +14,9 @@ openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-
 
 Use the platform installer. It asks only for the Emperor URL and company MCP token.
 
+> [!NOTE]
+> The supported public runtime download endpoints are `/downloads/control-plane.js` and `/downloads/bridge.js`. The consumer skill installer uses these routes automatically.
+
 | Platform | Installer |
 |----------|-----------|
 | **macOS / Linux** | [install.sh](/install.sh) |
