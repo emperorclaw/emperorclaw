@@ -45,3 +45,11 @@ Local bridge state such as reconnect cursors or dedupe journals belongs in the c
 2. Prefer `POST /api/mcp/agents/{agent_id}/memory` (append + snapshot).
 3. Fallback to `PATCH /api/mcp/agents/{agent_id}` for legacy memory.
 4. Include `Idempotency-Key` (required).
+
+## Operational Recipes for Agents
+
+- **Approvals via Tasks**: When you need a human/manager decision (budget, scope change, risky action), create an explicit approval task instead of only chatting. Use a dedicated task type (e.g., `approval`), assign it to the approver, attach notes and artifacts, and wait for the task result before executing dependent work.
+- **Deliverables as Artifacts**: For real work products (reports, proposals, drafts, export bundles), upload artifacts and reference them in task results and project memory. Chat is for coordination; artifacts are for work product.
+- **Reusable Knowledge as Memory/Resources**: When you derive reusable knowledge (playbooks, checklists, templates), store it in project memory or scoped resources (template, mailbox, identity, billing profile) instead of leaving it only in chat or local files.
+- **Blockers & Incidents**: When work is blocked, add a blocker note on the task. When the issue is systemic or recurring (upstream outage, repeated failure), also create or update an incident so it is visible beyond a single task.
+- **Chat vs. Durable State**: Assume chat can be lost. Anything that matters beyond the current conversation should be mirrored into Emperor as a task, note, result, memory entry, resource, artifact, or incident.
