@@ -8,7 +8,7 @@ import {
     logAudit,
     resolveAgentId,
 } from "@/lib/mcp";
-import { and, desc, eq, ilike, isNull, or, gte, lte } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
 
@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get("projectId");
     const taskId = searchParams.get("taskId");
     const folderId = searchParams.get("folderId");
+    const kind = searchParams.get("kind");
     const artifactClass = searchParams.get("artifactClass");
     const importance = searchParams.get("importance");
     const contentType = searchParams.get("contentType");
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     const endDateParam = searchParams.get("endDate");
 
     try {
-        const conditions: any[] = [
+        const conditions: SQL<unknown>[] = [
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         ];
@@ -49,6 +50,9 @@ export async function GET(req: NextRequest) {
         if (folderId) {
             conditions.push(eq(artifacts.folderId, folderId));
         }
+        if (kind) {
+            conditions.push(eq(artifacts.kind, kind));
+        }
         if (artifactClass) {
             conditions.push(eq(artifacts.artifactClass, artifactClass));
         }
@@ -59,7 +63,10 @@ export async function GET(req: NextRequest) {
             conditions.push(eq(artifacts.contentType, contentType));
         }
         if (agentId) {
-            conditions.push(eq(artifacts.createdById, agentId));
+            conditions.push(eq(artifacts.agentId, agentId));
+        }
+        if (customerId) {
+            conditions.push(eq(artifacts.customerId, customerId));
         }
         if (isCanonical === "true" || isCanonical === "false") {
             conditions.push(eq(artifacts.isCanonical, isCanonical === "true"));
@@ -76,13 +83,15 @@ export async function GET(req: NextRequest) {
 
         if (search) {
             const likeValue = `%${search}%`;
-            conditions.push(or(
+            const searchCondition = or(
                 ilike(artifacts.title, likeValue),
-                ilike(artifacts.originalFilename, likeValue)
-            ));
+                ilike(artifacts.originalFilename, likeValue),
+                ilike(artifacts.path, likeValue)
+            );
+            if (searchCondition) {
+                conditions.push(searchCondition);
+            }
         }
-
-        const customerCondition = customerId ? eq(projects.customerId, customerId) : null;
 
         const rows = await db.select({
             id: artifacts.id,
@@ -95,17 +104,19 @@ export async function GET(req: NextRequest) {
             storageKey: artifacts.storageKey,
             sizeBytes: artifacts.sizeBytes,
             folderId: artifacts.folderId,
+            path: artifacts.path,
+            customerId: artifacts.customerId,
+            agentId: artifacts.agentId,
             createdAt: artifacts.createdAt,
             projectId: projects.id,
             projectGoal: projects.goal,
-            customerId: projects.customerId,
             taskId: tasks.id,
             taskType: tasks.taskType,
         })
             .from(artifacts)
             .leftJoin(projects, eq(projects.id, artifacts.projectId))
             .leftJoin(tasks, eq(tasks.id, artifacts.taskId))
-            .where(customerCondition ? and(...conditions, customerCondition) : and(...conditions))
+            .where(and(...conditions))
             .orderBy(desc(artifacts.createdAt))
             .limit(limit);
 
@@ -171,7 +182,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Missing required fields (projectId, taskId, kind, contentType)" }, { status: 400 });
         }
 
-        const [project] = await db.select({ id: projects.id }).from(projects)
+        const [project] = await db.select({ id: projects.id, customerId: projects.customerId }).from(projects)
             .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
             .limit(1);
         if (!project) {
@@ -224,6 +235,8 @@ export async function POST(req: NextRequest) {
             projectId,
             taskId,
             folderId: folder ? folder.id : null,
+            customerId: project.customerId,
+            agentId: internalAgentId || null,
             path: resolvedPath,
             ...preparedArtifact,
             createdByType: "agent",

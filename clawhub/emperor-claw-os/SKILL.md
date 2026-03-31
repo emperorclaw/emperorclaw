@@ -171,4 +171,4 @@ Important files and canonical deliverables should be uploaded as artifacts; raw 
 
 - Upload reports, invoices, and other durable outputs through Emperor's artifact workflow so Bunny owns the bytes and Emperor owns the metadata.
 - Use the `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` folders for finance documents and move/rename via the folder APIs instead of creating duplicates.
-- When agents need to update a document, patch the metadata or call `/api/ui/artifacts/{id}` to keep the record canonical while new bytes land in Bunny.
+- When agents need to update a document, patch metadata via `/api/ui/artifacts/{id}` or replace the file contents via `/api/ui/artifacts/{id}/replace` so the record stays canonical while new bytes land in Bunny.

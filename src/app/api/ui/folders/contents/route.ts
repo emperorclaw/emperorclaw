@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
-import { and, desc, eq, ilike, isNull } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 
 type FolderDto = {
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
             ))
             .orderBy(artifactFolders.createdAt);
 
-        const artifactConditions: any[] = [
+        const artifactConditions: SQL<unknown>[] = [
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         ];
@@ -74,7 +74,14 @@ export async function GET(req: NextRequest) {
         }
         if (search) {
             const likeValue = `%${search}%`;
-            artifactConditions.push(ilike(artifacts.title, likeValue));
+            const searchCondition = or(
+                ilike(artifacts.title, likeValue),
+                ilike(artifacts.originalFilename, likeValue),
+                ilike(artifacts.path, likeValue),
+            );
+            if (searchCondition) {
+                artifactConditions.push(searchCondition);
+            }
         }
 
         const artifactRows = await db.select({
@@ -85,22 +92,28 @@ export async function GET(req: NextRequest) {
             importance: artifacts.importance,
             contentType: artifacts.contentType,
             contentText: artifacts.contentText,
+            previewText: artifacts.previewText,
             storageKey: artifacts.storageKey,
             storageUrl: artifacts.storageUrl,
             originalFilename: artifacts.originalFilename,
             sizeBytes: artifacts.sizeBytes,
+            sha256: artifacts.sha256,
+            metadataJson: artifacts.metadataJson,
+            isCanonical: artifacts.isCanonical,
+            updatedAt: artifacts.updatedAt,
             createdAt: artifacts.createdAt,
             folderId: artifacts.folderId,
             path: artifacts.path,
             projectId: projects.id,
             projectGoal: projects.goal,
-            customerId: customers.id,
+            customerId: artifacts.customerId,
             customerName: customers.name,
+            agentId: artifacts.agentId,
             taskId: tasks.id,
             taskType: tasks.taskType,
         }).from(artifacts)
             .leftJoin(projects, eq(projects.id, artifacts.projectId))
-            .leftJoin(customers, eq(customers.id, projects.customerId))
+            .leftJoin(customers, eq(customers.id, artifacts.customerId))
             .leftJoin(tasks, eq(tasks.id, artifacts.taskId))
             .where(and(...artifactConditions))
             .orderBy(desc(artifacts.createdAt))
