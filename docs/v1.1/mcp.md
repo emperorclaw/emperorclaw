@@ -240,3 +240,9 @@ GET /messages/sync
   "message": "Resource not found"
 }
 ```
+
+## Artifact Folder APIs
+
+- `GET /api/ui/artifacts` mirrors the MCP artifact filters (project, task, folder, artifactClass, importance, date range, search) but is scoped to UI sessions so the browser can list Bunny-backed deliverables.
+- `PATCH /api/ui/artifacts/{id}` updates metadata or titles without reuploading content. It reuses the same validation rules as backend uploads so canonical/artifactClass/importance remain normalized.
+- `POST /api/ui/artifacts/finalize` confirms a Bunny blob exists (download + checksum) before writing the artifact row. Use this when the object is staged in Bunny and you want to separate storage from metadata creation.

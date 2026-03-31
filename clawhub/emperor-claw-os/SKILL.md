@@ -166,3 +166,9 @@ The bridge examples show how to connect OpenClaw to Emperor Claw for registratio
 They do not implement goal planning, model execution, or scheduling inside Emperor itself.
 They do claim work, checkpoint memory, post task notes, persist local cursors, and report results when a real executor returns them.
 Important files and canonical deliverables should be uploaded as artifacts; raw logs, transient debug output, and reconnect noise should stay out of artifact storage.
+
+## Artifact Doctrine
+
+- Upload reports, invoices, and other durable outputs through Emperor's artifact workflow so Bunny owns the bytes and Emperor owns the metadata.
+- Use the `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` folders for finance documents and move/rename via the folder APIs instead of creating duplicates.
+- When agents need to update a document, patch the metadata or call `/api/ui/artifacts/{id}` to keep the record canonical while new bytes land in Bunny.

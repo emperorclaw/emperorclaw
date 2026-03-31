@@ -11,8 +11,12 @@ Set these in your systemd service file or shell before starting the bridge.
 | `EMPEROR_CLAW_AUTO_CLAIM` | `false` | If `true`, the bridge will automatically claim tasks matching its agent profile. |
 | `EMPEROR_CLAW_USE_EXECUTOR` | `false` | If `true`, the bridge will use the OpenClaw executor for task execution. |
 | `EMPEROR_CLAW_MANAGER_REVIEW_MS` | `3600000` (1h) | How often Manager performs periodic reviews. Set to `0` to disable. |
-| `EMPEROR_CLAW_SYNC_LOOP_MS` | `0` | Sync loop interval; set to `0` to disable periodic sync (event‑driven only). |
+| `EMPEROR_CLAW_SYNC_LOOP_MS` | `0` | Sync loop interval; set to `0` to disable periodic sync (event-driven only). |
 | `EMPEROR_CLAW_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error`. |
+| `BUNNY_STORAGE_ZONE` | *(required)* | The Bunny storage zone that holds artifact blobs (e.g., `eu-zone`). |
+| `BUNNY_STORAGE_ACCESS_KEY` | *(required)* | API access key for the Bunny storage zone. |
+| `BUNNY_STORAGE_HOST` | `storage.bunnycdn.com` | Optional host/region override for Bunny (or set `BUNNY_STORAGE_REGION`). |
+| `BUNNY_STORAGE_PULL_ZONE_URL` | *none* | Optional public pull zone base URL (e.g., `https://storage.example.b-cdn.net`) used when generating download URLs. |
 
 ## Bridge Configuration File
 
