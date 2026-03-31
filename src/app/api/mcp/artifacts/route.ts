@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { artifacts, projects, tasks } from "@/db/schema";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit, resolveAgentId } from "@/lib/mcp";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import {
+    verifyMcpToken,
+    checkIdempotency,
+    saveIdempotencyResponse,
+    logAudit,
+    resolveAgentId,
+} from "@/lib/mcp";
+import { and, desc, eq, ilike, isNull, or, gte, lte } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
+import { findActiveFolder } from "@/lib/artifact-folders";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -13,23 +20,34 @@ export async function GET(req: NextRequest) {
 
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
     const projectId = searchParams.get("projectId");
     const taskId = searchParams.get("taskId");
+    const folderId = searchParams.get("folderId");
     const artifactClass = searchParams.get("artifactClass");
     const importance = searchParams.get("importance");
+    const contentType = searchParams.get("contentType");
+    const customerId = searchParams.get("customerId");
+    const agentId = searchParams.get("agentId");
     const isCanonical = searchParams.get("isCanonical");
+    const search = searchParams.get("search");
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
 
     try {
-        const conditions = [
+        const conditions: any[] = [
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         ];
+
         if (projectId) {
             conditions.push(eq(artifacts.projectId, projectId));
         }
         if (taskId) {
             conditions.push(eq(artifacts.taskId, taskId));
+        }
+        if (folderId) {
+            conditions.push(eq(artifacts.folderId, folderId));
         }
         if (artifactClass) {
             conditions.push(eq(artifacts.artifactClass, artifactClass));
@@ -37,13 +55,57 @@ export async function GET(req: NextRequest) {
         if (importance) {
             conditions.push(eq(artifacts.importance, importance));
         }
+        if (contentType) {
+            conditions.push(eq(artifacts.contentType, contentType));
+        }
+        if (agentId) {
+            conditions.push(eq(artifacts.createdById, agentId));
+        }
         if (isCanonical === "true" || isCanonical === "false") {
             conditions.push(eq(artifacts.isCanonical, isCanonical === "true"));
         }
 
-        const rows = await db.select()
+        const startDate = startDateParam ? new Date(startDateParam) : null;
+        if (startDate && !Number.isNaN(startDate.getTime())) {
+            conditions.push(gte(artifacts.createdAt, startDate));
+        }
+        const endDate = endDateParam ? new Date(endDateParam) : null;
+        if (endDate && !Number.isNaN(endDate.getTime())) {
+            conditions.push(lte(artifacts.createdAt, endDate));
+        }
+
+        if (search) {
+            const likeValue = `%${search}%`;
+            conditions.push(or(
+                ilike(artifacts.title, likeValue),
+                ilike(artifacts.originalFilename, likeValue)
+            ));
+        }
+
+        const customerCondition = customerId ? eq(projects.customerId, customerId) : null;
+
+        const rows = await db.select({
+            id: artifacts.id,
+            title: artifacts.title,
+            kind: artifacts.kind,
+            artifactClass: artifacts.artifactClass,
+            importance: artifacts.importance,
+            contentType: artifacts.contentType,
+            storageUrl: artifacts.storageUrl,
+            storageKey: artifacts.storageKey,
+            sizeBytes: artifacts.sizeBytes,
+            folderId: artifacts.folderId,
+            createdAt: artifacts.createdAt,
+            projectId: projects.id,
+            projectGoal: projects.goal,
+            customerId: projects.customerId,
+            taskId: tasks.id,
+            taskType: tasks.taskType,
+        })
             .from(artifacts)
-            .where(and(...conditions))
+            .leftJoin(projects, eq(projects.id, artifacts.projectId))
+            .leftJoin(tasks, eq(tasks.id, artifacts.taskId))
+            .where(customerCondition ? and(...conditions, customerCondition) : and(...conditions))
             .orderBy(desc(artifacts.createdAt))
             .limit(limit);
 
@@ -96,6 +158,8 @@ export async function POST(req: NextRequest) {
             importance,
             isCanonical,
             metadataJson,
+            folderId,
+            path,
         } = body;
 
         let internalAgentId = null;
@@ -124,6 +188,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Task does not belong to the specified project." }, { status: 400 });
         }
 
+        const finalStorageProvider = storageProvider || (storageKey ? "bunny" : undefined);
+        const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
+        if (folderId && !folder) {
+            return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+        }
+
+        const resolvedPath =
+            path ||
+            (folder
+                ? `${folder.path}/${originalFilename || title || "artifact"}`
+                : null);
+
         const preparedArtifact = prepareArtifactRecord({
             kind,
             artifactClass,
@@ -132,7 +208,7 @@ export async function POST(req: NextRequest) {
             contentType,
             contentText,
             storageUrl,
-            storageProvider,
+            storageProvider: finalStorageProvider,
             storageKey,
             originalFilename,
             sourceKind,
@@ -147,6 +223,8 @@ export async function POST(req: NextRequest) {
             companyId,
             projectId,
             taskId,
+            folderId: folder ? folder.id : null,
+            path: resolvedPath,
             ...preparedArtifact,
             createdByType: "agent",
             createdById: internalAgentId || null,
@@ -162,6 +240,8 @@ export async function POST(req: NextRequest) {
             contentType,
             taskId,
             projectId,
+            folderId: folder ? folder.id : null,
+            path: resolvedPath,
         });
 
         const responseObj = { message: "Artifact saved", artifact };
