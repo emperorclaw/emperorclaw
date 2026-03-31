@@ -240,6 +240,6 @@ After this, the agent will start reacting to Emperor tasks and threads according
 
 ### 4. Artifact Guidance
 
-- Treat artifacts as deliberate, Bunny-backed outputs. Upload via the Artifacts page or `/api/ui/artifacts/upload`, and use `/api/ui/artifacts/{id}` or folder APIs for metadata edits, renames, and moves.
+- Treat artifacts as deliberate, Bunny-backed outputs. Upload via the Artifacts page or `/api/ui/artifacts/upload`, use `/api/ui/artifacts/{id}` for metadata edits, `/api/ui/artifacts/{id}/move` for renames or folder moves, and `/api/ui/artifacts/{id}/replace` when new bytes should replace an existing durable file.
 - Finance deliverables belong under `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` so reporting teams find them without searching.
 - Preview documents before posting outcomes to avoid orphaned files; use the canonical path so Bunny, Emperor, and agents agree on where the bytes live.

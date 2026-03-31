@@ -160,6 +160,6 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 
 ## 7. Bunny-backed Artifact Workspace
 
-- The new Artifacts page provides a folder tree, breadcrumbs, live previews, and drag-and-drop uploads that mirror Bunny object keys. Filters cover project, task, and customer scopes plus importance/class facets.
+- The new Artifacts page provides a folder tree, breadcrumbs, live previews, and drag-and-drop uploads that mirror Bunny object keys. Filters cover project, task, customer, and kind scopes, and the right-hand inspector lets you rename files, move them between folders, replace file contents, and edit metadata in place.
 - Every upload writes to Bunny under `companies/<companyId>/artifacts/<logical-path>` and immediately registers metadata to keep search, retention, and permissions consistent.
 - Finance deliverables should land in `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` so downstream finance workflows can locate them reliably without searching raw DB artifacts.
