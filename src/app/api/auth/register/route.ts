@@ -5,9 +5,15 @@ import { hash } from "argon2";
 import { eq } from "drizzle-orm";
 import { sendEmail, getWelcomeEmailHtml } from "@/lib/email";
 
+interface RegisterRequestBody {
+    email: string;
+    password: string;
+    companyName: string;
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json();
+        const body = (await req.json()) as RegisterRequestBody;
         const { email, password, companyName } = body;
 
         if (!email || !password || !companyName) {
@@ -55,7 +61,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ message: "Account created successfully", data: result }, { status: 201 });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("Registration error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
