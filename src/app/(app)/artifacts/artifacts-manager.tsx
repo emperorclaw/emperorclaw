@@ -49,6 +49,12 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
@@ -258,6 +264,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const currentContents = folderCache[currentFolderId];
     const isSearchMode = Boolean(
         deferredSearch.trim() ||
+        projectFilter ||
+        taskFilter ||
+        customerFilter ||
+        kindFilter
+    );
+    const hasActiveFilters = Boolean(
+        searchValue.trim() ||
         projectFilter ||
         taskFilter ||
         customerFilter ||
@@ -556,7 +569,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     name: folderDraft.name.trim(),
-                    parentFolderId: currentFolderId === ROOT_ID ? null : currentFolderId,
+                    parentFolderId: folderDraft.parentFolderId === ROOT_ID ? null : folderDraft.parentFolderId,
                     projectId: folderDraft.projectId || null,
                     customerId: folderDraft.customerId || null,
                     metadataJson: parseJsonInput(folderDraft.metadataJson),
@@ -858,6 +871,72 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         setIsCreateFolderOpen(true);
     }
 
+    function beginCreateFolderAt(folder: Pick<FolderSummary, "id" | "projectId" | "customerId"> | null) {
+        setFolderDraft({
+            name: "",
+            parentFolderId: folder?.id ?? ROOT_ID,
+            projectId: folder?.projectId ?? "",
+            customerId: folder?.customerId ?? "",
+            metadataJson: "{}",
+        });
+        setIsCreateFolderOpen(true);
+    }
+
+    function renderFolderMenu(folder: FolderSummary | Pick<FolderSummary, "id" | "name" | "path" | "projectId" | "customerId">) {
+        const isRootFolder = folder.id === ROOT_ID;
+        return (
+            <>
+                {!isRootFolder && <ContextMenuItem onClick={() => openFolder(folder.id)}>Open</ContextMenuItem>}
+                <ContextMenuItem onClick={() => {
+                    setSelectedEntry({ type: "folder", id: folder.id });
+                    beginCreateFolderAt({
+                        id: folder.id,
+                        projectId: folder.projectId ?? null,
+                        customerId: folder.customerId ?? null,
+                    });
+                }}>
+                    New Folder Here
+                </ContextMenuItem>
+                {!isRootFolder && (
+                    <>
+                        <ContextMenuItem onClick={() => {
+                            setSelectedEntry({ type: "folder", id: folder.id });
+                            setInspectorTab("properties");
+                        }}>
+                            Edit Properties
+                        </ContextMenuItem>
+                        <ContextMenuItem variant="destructive" onClick={() => void handleDeleteFolder(folder.id)}>
+                            Delete Folder
+                        </ContextMenuItem>
+                    </>
+                )}
+            </>
+        );
+    }
+
+    function renderArtifactMenu(artifact: ArtifactSummary) {
+        return (
+            <>
+                <ContextMenuItem onClick={() => {
+                    setSelectedEntry({ type: "artifact", id: artifact.id });
+                    setInspectorTab("preview");
+                }}>
+                    Preview
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</ContextMenuItem>
+                <ContextMenuItem onClick={() => {
+                    setSelectedEntry({ type: "artifact", id: artifact.id });
+                    setInspectorTab("properties");
+                }}>
+                    Edit Properties
+                </ContextMenuItem>
+                <ContextMenuItem variant="destructive" onClick={() => void handleDeleteArtifact(artifact.id)}>
+                    Delete File
+                </ContextMenuItem>
+            </>
+        );
+    }
+
     function beginUpload() {
         const defaultProjectId = projectFilter || currentContents?.folder.projectId || "";
         const defaultCustomerId =
@@ -887,6 +966,14 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         if (file) {
             setUploadTitle(file.name);
         }
+    }
+
+    function clearFilters() {
+        setSearchValue("");
+        setProjectFilter("");
+        setTaskFilter("");
+        setCustomerFilter("");
+        setKindFilter("");
     }
 
     const breadcrumbItems = currentContents
@@ -934,6 +1021,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         onChange={(event) => {
                             const nextProjectId = event.target.value;
                             setProjectFilter(nextProjectId);
+                            const nextProjectCustomerId = findProjectCustomerId(projects, nextProjectId);
+                            if (nextProjectId && nextProjectCustomerId && customerFilter !== nextProjectCustomerId) {
+                                setCustomerFilter(nextProjectCustomerId);
+                            }
                             if (taskFilter && !tasks.some((task) => task.id === taskFilter && task.projectId === nextProjectId)) {
                                 setTaskFilter("");
                             }
@@ -957,7 +1048,18 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     </select>
                     <select
                         value={customerFilter}
-                        onChange={(event) => setCustomerFilter(event.target.value)}
+                        onChange={(event) => {
+                            const nextCustomerId = event.target.value;
+                            setCustomerFilter(nextCustomerId);
+                            if (
+                                projectFilter &&
+                                nextCustomerId &&
+                                findProjectCustomerId(projects, projectFilter) !== nextCustomerId
+                            ) {
+                                setProjectFilter("");
+                                setTaskFilter("");
+                            }
+                        }}
                         className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                     >
                         <option value="">All customers</option>
@@ -977,6 +1079,15 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         <option value="document">document</option>
                         <option value="export">export</option>
                     </select>
+                    {hasActiveFilters && (
+                        <Button
+                            variant="outline"
+                            onClick={clearFilters}
+                            className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                        >
+                            Clear
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -989,12 +1100,14 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         <ScrollArea className="h-[calc(100vh-18rem)]">
                             <div className="space-y-1 px-3 py-3">
                                 <TreeFolderRow
-                                    folder={{ id: ROOT_ID, name: "Root", path: "" }}
+                                    folder={{ id: ROOT_ID, name: "Root", path: "", projectId: null, customerId: null }}
                                     depth={0}
                                     isExpanded={expandedFolders[ROOT_ID] ?? true}
                                     isSelected={selectedEntry?.type === "folder" && selectedEntry.id === ROOT_ID}
                                     onToggle={() => toggleFolder(ROOT_ID)}
                                     onOpen={() => openFolder(ROOT_ID)}
+                                    onContextMenu={() => setSelectedEntry({ type: "folder", id: ROOT_ID })}
+                                    contextMenuContent={renderFolderMenu({ id: ROOT_ID, name: "Root", path: "", projectId: null, customerId: null })}
                                 />
                                 {(folderCache[ROOT_ID]?.folders ?? []).map((folder) => (
                                     <FolderTreeBranch
@@ -1006,6 +1119,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         selectedEntry={selectedEntry}
                                         onToggle={toggleFolder}
                                         onOpen={openFolder}
+                                        onContextMenu={(folderId) => setSelectedEntry({ type: "folder", id: folderId })}
+                                        renderFolderContextMenu={(folder) => renderFolderMenu(folder)}
                                     />
                                 ))}
                             </div>
@@ -1067,6 +1182,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         selected={selectedEntry?.type === "folder" && selectedEntry.id === folder.id}
                                         onClick={() => setSelectedEntry({ type: "folder", id: folder.id })}
                                         onDoubleClick={() => openFolder(folder.id)}
+                                        onContextMenu={() => setSelectedEntry({ type: "folder", id: folder.id })}
+                                        contextMenuContent={renderFolderMenu(folder)}
                                         actions={(
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -1076,6 +1193,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
                                                     <DropdownMenuItem onClick={() => openFolder(folder.id)}>Open</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        setSelectedEntry({ type: "folder", id: folder.id });
+                                                        beginCreateFolderAt(folder);
+                                                    }}>New Folder Here</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); }}>Edit Properties</DropdownMenuItem>
                                                     <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteFolder(folder.id)}>Delete Folder</DropdownMenuItem>
                                                 </DropdownMenuContent>
@@ -1095,6 +1216,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         selected={selectedEntry?.type === "artifact" && selectedEntry.id === artifact.id}
                                         onClick={() => setSelectedEntry({ type: "artifact", id: artifact.id })}
                                         onDoubleClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); }}
+                                        onContextMenu={() => setSelectedEntry({ type: "artifact", id: artifact.id })}
+                                        contextMenuContent={renderArtifactMenu(artifact)}
                                         actions={(
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -1255,6 +1378,8 @@ function FolderTreeBranch(props: {
     selectedEntry: SelectedEntry;
     onToggle: (folderId: string) => void;
     onOpen: (folderId: string) => void;
+    onContextMenu: (folderId: string) => void;
+    renderFolderContextMenu: (folder: FolderSummary) => ReactNode;
 }) {
     const { folder, depth, cache, expandedFolders, selectedEntry, onToggle, onOpen } = props;
     const isExpanded = expandedFolders[folder.id] ?? false;
@@ -1269,6 +1394,8 @@ function FolderTreeBranch(props: {
                 isSelected={selectedEntry?.type === "folder" && selectedEntry.id === folder.id}
                 onToggle={() => onToggle(folder.id)}
                 onOpen={() => onOpen(folder.id)}
+                onContextMenu={() => props.onContextMenu(folder.id)}
+                contextMenuContent={props.renderFolderContextMenu(folder)}
             />
             {isExpanded && children.map((child) => (
                 <FolderTreeBranch
@@ -1280,6 +1407,8 @@ function FolderTreeBranch(props: {
                     selectedEntry={selectedEntry}
                     onToggle={onToggle}
                     onOpen={onOpen}
+                    onContextMenu={props.onContextMenu}
+                    renderFolderContextMenu={props.renderFolderContextMenu}
                 />
             ))}
         </div>
@@ -1287,17 +1416,20 @@ function FolderTreeBranch(props: {
 }
 
 function TreeFolderRow(props: {
-    folder: Pick<FolderSummary, "id" | "name" | "path">;
+    folder: Pick<FolderSummary, "id" | "name" | "path" | "projectId" | "customerId">;
     depth: number;
     isExpanded: boolean;
     isSelected: boolean;
     onToggle: () => void;
     onOpen: () => void;
+    onContextMenu?: () => void;
+    contextMenuContent?: ReactNode;
 }) {
-    return (
+    const row = (
         <button
             type="button"
             onClick={props.onOpen}
+            onContextMenu={props.onContextMenu}
             className={cn(
                 "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition",
                 props.isSelected ? "bg-zinc-900 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-100"
@@ -1325,6 +1457,19 @@ function TreeFolderRow(props: {
             <span className="truncate">{props.folder.name}</span>
         </button>
     );
+
+    if (!props.contextMenuContent) {
+        return row;
+    }
+
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+            <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                {props.contextMenuContent}
+            </ContextMenuContent>
+        </ContextMenu>
+    );
 }
 
 function BrowserRow(props: {
@@ -1337,12 +1482,15 @@ function BrowserRow(props: {
     selected: boolean;
     onClick: () => void;
     onDoubleClick: () => void;
+    onContextMenu?: () => void;
+    contextMenuContent?: ReactNode;
     actions: ReactNode;
 }) {
-    return (
+    const row = (
         <div
             onClick={props.onClick}
             onDoubleClick={props.onDoubleClick}
+            onContextMenu={props.onContextMenu}
             className={cn(
                 "grid cursor-default grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_52px] items-center rounded-xl px-2 py-1.5 transition",
                 props.selected ? "bg-zinc-900" : "hover:bg-zinc-900/70"
@@ -1360,6 +1508,19 @@ function BrowserRow(props: {
             <div className="px-2 text-sm text-zinc-400">{props.dateLabel}</div>
             <div className="flex items-center justify-end">{props.actions}</div>
         </div>
+    );
+
+    if (!props.contextMenuContent) {
+        return row;
+    }
+
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+            <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                {props.contextMenuContent}
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 
