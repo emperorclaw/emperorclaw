@@ -7,6 +7,7 @@ import { storageAdapter } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/replace">) {
     const auth = await verifyMcpToken(req);
@@ -15,6 +16,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
     }
 
     const companyId = auth.companyToken!.companyId;
+    await ensureArtifactStorageSchema();
     const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
         eq(artifacts.id, artifactId),

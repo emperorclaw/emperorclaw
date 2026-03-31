@@ -7,10 +7,12 @@ import { storageAdapter } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function POST(req: NextRequest) {
     try {
         const { companyId, userId } = await requireCompanyFromSession();
+        await ensureArtifactStorageSchema();
         const form = await req.formData();
         const fileEntry = form.get("file");
         if (!(fileEntry instanceof File)) {

@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { artifactFolders, projects, customers } from "@/db/schema";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 const CREATED_BY_TYPE = "mcp";
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const companyId = auth.companyToken!.companyId;
+        await ensureArtifactStorageSchema();
         const body = await req.json();
         const name = sanitizeFolderName(body.name);
         if (!name) {
