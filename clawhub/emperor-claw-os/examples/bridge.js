@@ -817,8 +817,13 @@ class EmperorBridge {
     const explicitAtMention = agentName ? lowered.includes(`@${agentName.toLowerCase()}`) : false;
 
     if (IS_MANAGER_PROFILE) {
-      if (!isHuman || lowSignal || !explicitAtMention) {
-        console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
+      // Manager: in direct threads, accept all human, non-trivial messages; in team threads, require explicit @mention
+      if (!isHuman || lowSignal) {
+        console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal})`);
+        return;
+      }
+      if (!isDirectThread && !explicitAtMention) {
+        console.log(`[bridge] manager ignoring team thread ${thread.id} message without explicit @${agentName} mention`);
         return;
       }
     } else if (!isDirectThread && !explicitAtMention) {
@@ -1020,16 +1025,18 @@ class EmperorBridge {
       }
     } catch (error) {
       console.error("[bridge] viktor brain handoff failed:", error.message);
-      replyText = IS_MANAGER_PROFILE ? null : "I hit a local brain handoff issue just now. Please try again in a moment.";
+      // Surface a generic error only when a human explicitly addressed this agent
+      if (isHuman && (isDirectThread || explicitAtMention)) {
+        replyText = "I ran into an internal error while trying to answer that. I didn't change any Emperor state. Please try again in a bit.";
+      } else {
+        replyText = null;
+      }
     }
 
     if (!replyText || !String(replyText).trim()) {
-      if (IS_MANAGER_PROFILE || explicitDelegationRequest || explicitProjectCreationRequest) {
-        console.log("[bridge] suppressing unusable reply");
-        await this.updateChatStatus(thread.id, false);
-        return;
-      }
-      replyText = "I saw your message, but I don't have a usable reply yet.";
+      console.log("[bridge] suppressing empty or unusable reply");
+      await this.updateChatStatus(thread.id, false);
+      return;
     }
 
     await this.sendMessage(String(replyText).trim(), {
