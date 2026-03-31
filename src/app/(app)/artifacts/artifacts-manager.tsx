@@ -1812,31 +1812,43 @@ function UploadDialog(props: {
                                 ))}
                             </select>
                         </Field>
-                        <Field label="Kind">
-                            <Input value={props.uploadKind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
-                        </Field>
-                        <Field label="Artifact class">
-                            <select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                <option value="source_document">source_document</option>
-                                <option value="working_file">working_file</option>
-                                <option value="proof">proof</option>
-                                <option value="deliverable">deliverable</option>
-                                <option value="template">template</option>
-                                <option value="export_bundle">export_bundle</option>
-                            </select>
-                        </Field>
-                        <Field label="Importance">
-                            <select value={props.uploadImportance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                <option value="temporary">temporary</option>
-                                <option value="operational">operational</option>
-                                <option value="record">record</option>
-                                <option value="canonical">canonical</option>
-                            </select>
-                        </Field>
                     </div>
-                    <Field label="Metadata JSON">
-                        <Textarea value={props.uploadMetadataJson} onChange={(event) => props.onMetadataJsonChange(event.target.value)} className="min-h-28 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100" />
-                    </Field>
+                    <details className="rounded-xl border border-zinc-800 bg-zinc-950/70">
+                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">
+                            Advanced
+                        </summary>
+                        <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
+                            <p className="text-xs text-zinc-500">
+                                Defaults are usually right: `report`, `working_file`, `operational`.
+                            </p>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <Field label="Kind">
+                                    <Input value={props.uploadKind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
+                                </Field>
+                                <Field label="Artifact class">
+                                    <select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                        <option value="source_document">source_document</option>
+                                        <option value="working_file">working_file</option>
+                                        <option value="proof">proof</option>
+                                        <option value="deliverable">deliverable</option>
+                                        <option value="template">template</option>
+                                        <option value="export_bundle">export_bundle</option>
+                                    </select>
+                                </Field>
+                                <Field label="Importance">
+                                    <select value={props.uploadImportance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                        <option value="temporary">temporary</option>
+                                        <option value="operational">operational</option>
+                                        <option value="record">record</option>
+                                        <option value="canonical">canonical</option>
+                                    </select>
+                                </Field>
+                            </div>
+                            <Field label="Metadata JSON">
+                                <Textarea value={props.uploadMetadataJson} onChange={(event) => props.onMetadataJsonChange(event.target.value)} className="min-h-28 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100" />
+                            </Field>
+                        </div>
+                    </details>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={() => props.onOpenChange(false)}>
