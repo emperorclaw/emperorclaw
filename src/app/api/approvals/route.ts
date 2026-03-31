@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { createApprovalRequest, listApprovalsForCompany } from "@/lib/approvals";
 
+interface CreateApprovalRequestBody {
+    projectId: string;
+    taskIds: string[];
+    rationale?: string;
+    confidence?: number;
+}
+
 export async function GET(req: NextRequest) {
     const companyId = await getCompanyId();
     if (!companyId) {
@@ -30,7 +37,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const body = await req.json();
+        const body = (await req.json()) as CreateApprovalRequestBody;
         const { projectId, taskIds, rationale, confidence = 0 } = body;
 
         if (!projectId || !Array.isArray(taskIds) || taskIds.length === 0) {
@@ -51,7 +58,7 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({ approval }, { status: 201 });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Approval create error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

@@ -5,6 +5,16 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } f
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 
+interface RegisterAgentRequestBody {
+    name: string;
+    role?: string;
+    avatarUrl?: string;
+    skillsJson?: unknown[];
+    memory?: string | null;
+    modelPolicyJson?: Record<string, unknown>;
+    concurrencyLimit?: number;
+}
+
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
@@ -47,7 +57,7 @@ export async function POST(req: NextRequest) {
     const { requestHash } = idempotencyResult;
 
     try {
-        const body = await req.json();
+        const body = (await req.json()) as Partial<RegisterAgentRequestBody>;
         const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
 
         if (!name) {
@@ -59,7 +69,7 @@ export async function POST(req: NextRequest) {
             name,
             role: role || "operator",
             avatarUrl: avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name)}`,
-            skillsJson: skillsJson || [],
+            skillsJson: Array.isArray(skillsJson) ? skillsJson : [],
             memory: memory || null,
             modelPolicyJson: modelPolicyJson || {},
             concurrencyLimit: typeof concurrencyLimit === "number" ? concurrencyLimit : 1,
@@ -84,8 +94,12 @@ export async function POST(req: NextRequest) {
         const responseObj = { message: "Agent registered", agent };
         await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, responseObj);
         return NextResponse.json(responseObj, { status: 201 });
-    } catch (e: any) {
-        console.error("MCP Agents Register Error:", e);
-        return NextResponse.json({ error: "Internal server error", details: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        console.error("MCP Agents Register Error:", error);
+        const details = error instanceof Error ? error.message : undefined;
+        const responseBody = details
+            ? { error: "Internal server error", details }
+            : { error: "Internal server error" };
+        return NextResponse.json(responseBody, { status: 500 });
     }
 }

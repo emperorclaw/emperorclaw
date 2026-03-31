@@ -4,6 +4,26 @@ import { db } from "@/db";
 import { agents, projects, tasks, customers, companies } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 
+type JsonRpcId = string | number | null;
+
+interface JsonRpcEnvelope {
+    jsonrpc: "2.0";
+    id: JsonRpcId;
+    method: string;
+    params?: JsonRpcParams;
+}
+
+interface JsonRpcParams {
+    id?: string;
+    name?: string;
+    role?: string;
+    goal?: string;
+    model?: string;
+    skills?: string[];
+    skillsJson?: string[];
+    [key: string]: unknown;
+}
+
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if ("error" in auth) {
@@ -12,11 +32,11 @@ export async function POST(req: NextRequest) {
     const companyId = auth.companyToken.companyId;
 
     try {
-        const body = await req.json();
+        const body = (await req.json()) as JsonRpcEnvelope;
 
         // Handle JSON-RPC Standard Requests from OpenClaw's native engine
         if (body.jsonrpc === "2.0") {
-            const { id, method, params } = body;
+            const { id, method, params = {} } = body;
 
             if (method === "status.summary") {
                 const [agentsCount] = await db.select({ value: count() }).from(agents).where(eq(agents.companyId, companyId));
@@ -43,15 +63,21 @@ export async function POST(req: NextRequest) {
                 // params: { id: "probe-agent", name: "Probe", role: "test", model: "openai/gpt-5-mini" }
                 // In Emperor Claw, we have our own UUID IDs, but we can store their native ID in the name or just create it if it doesn't match
                 // For simplicity, we'll just insert a new agent or ignore if we want to map it
+                const agentName = typeof params.name === "string" ? params.name : params.id;
+                const agentSkills =
+                    Array.isArray(params.skills) ? params.skills :
+                    Array.isArray(params.skillsJson) ? params.skillsJson :
+                    [];
+
                 await db.insert(agents).values({
                     companyId,
-                    name: params.name || params.id,
+                    name: agentName || params.id,
                     role: params.role || "operator",
-                    skillsJson: params.skills || params.skillsJson || [],
+                    skillsJson: agentSkills,
                     status: "online",
                     lastSeenAt: new Date(),
                     currentLoad: 0,
-                }).catch(e => console.error("Agent Upsert Ignore:", e));
+                }).catch((upsertError) => console.error("Agent Upsert Ignore:", upsertError));
 
                 return NextResponse.json({
                     jsonrpc: "2.0",
@@ -61,11 +87,13 @@ export async function POST(req: NextRequest) {
             }
 
             if (method === "projects.upsert") {
+                const projectGoal = typeof params.goal === "string" ? params.goal : params.name;
+
                 await db.insert(projects).values({
                     companyId,
-                    goal: params.goal || params.name,
+                    goal: projectGoal,
                     status: "active",
-                }).catch(e => console.error("Project Upsert Ignore:", e));
+                }).catch((projectError) => console.error("Project Upsert Ignore:", projectError));
 
                 return NextResponse.json({
                     jsonrpc: "2.0",
@@ -93,7 +121,8 @@ export async function POST(req: NextRequest) {
         // If it's not JSON-RPC, throw a bad request (since GET/POST to /api/mcp directly isn't supported for REST)
         return NextResponse.json({ error: "Invalid JSON-RPC payload" }, { status: 400 });
 
-    } catch (e: any) {
-        return NextResponse.json({ error: "Internal Server Error", message: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        return NextResponse.json({ error: "Internal Server Error", message }, { status: 500 });
     }
 }
