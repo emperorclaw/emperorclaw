@@ -244,5 +244,8 @@ GET /messages/sync
 ## Artifact Folder APIs
 
 - `GET /api/ui/artifacts` mirrors the MCP artifact filters (project, task, folder, artifactClass, importance, date range, search) but is scoped to UI sessions so the browser can list Bunny-backed deliverables.
+- `GET /api/ui/artifacts/{id}` returns one artifact with its project, task, and customer context so the Artifacts inspector can edit metadata without reloading the whole tree.
 - `PATCH /api/ui/artifacts/{id}` updates metadata or titles without reuploading content. It reuses the same validation rules as backend uploads so canonical/artifactClass/importance remain normalized.
+- `PATCH /api/ui/artifacts/{id}/move` renames a file or moves it to a different folder and keeps the Bunny object key aligned with the DB path.
+- `PATCH /api/ui/artifacts/{id}/replace` uploads new bytes for an existing artifact while preserving the metadata record, making it suitable for document revisions and file replacement flows in the web UI.
 - `POST /api/ui/artifacts/finalize` confirms a Bunny blob exists (download + checksum) before writing the artifact row. Use this when the object is staged in Bunny and you want to separate storage from metadata creation.

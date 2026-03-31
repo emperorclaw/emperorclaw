@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
-import { and, desc, eq, gte, ilike, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, isNull, lte, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 
 export async function GET(req: NextRequest) {
@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
         const projectId = searchParams.get("projectId");
         const taskId = searchParams.get("taskId");
         const folderId = searchParams.get("folderId");
+        const kind = searchParams.get("kind");
         const artifactClass = searchParams.get("artifactClass");
         const importance = searchParams.get("importance");
         const contentType = searchParams.get("contentType");
@@ -22,18 +23,19 @@ export async function GET(req: NextRequest) {
         const endDateParam = searchParams.get("endDate");
         const isCanonical = searchParams.get("isCanonical");
 
-        const conditions: any[] = [
+        const conditions: SQL<unknown>[] = [
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         ];
         if (projectId) conditions.push(eq(artifacts.projectId, projectId));
         if (taskId) conditions.push(eq(artifacts.taskId, taskId));
         if (folderId) conditions.push(eq(artifacts.folderId, folderId));
+        if (kind) conditions.push(eq(artifacts.kind, kind));
         if (artifactClass) conditions.push(eq(artifacts.artifactClass, artifactClass));
         if (importance) conditions.push(eq(artifacts.importance, importance));
         if (contentType) conditions.push(eq(artifacts.contentType, contentType));
         if (customerId) conditions.push(eq(artifacts.customerId, customerId));
-        if (agentId) conditions.push(eq(artifacts.createdById, agentId));
+        if (agentId) conditions.push(eq(artifacts.agentId, agentId));
         if (isCanonical === "true" || isCanonical === "false") {
             conditions.push(eq(artifacts.isCanonical, isCanonical === "true"));
         }
@@ -49,10 +51,14 @@ export async function GET(req: NextRequest) {
 
         if (search) {
             const likeValue = `%${search}%`;
-            conditions.push(or(
+            const searchCondition = or(
                 ilike(artifacts.title, likeValue),
-                ilike(artifacts.originalFilename, likeValue)
-            ));
+                ilike(artifacts.originalFilename, likeValue),
+                ilike(artifacts.path, likeValue)
+            );
+            if (searchCondition) {
+                conditions.push(searchCondition);
+            }
         }
 
         const rows = await db.select({
@@ -62,15 +68,19 @@ export async function GET(req: NextRequest) {
             artifactClass: artifacts.artifactClass,
             importance: artifacts.importance,
             contentType: artifacts.contentType,
+            previewText: artifacts.previewText,
             storageUrl: artifacts.storageUrl,
             storageKey: artifacts.storageKey,
             sizeBytes: artifacts.sizeBytes,
             folderId: artifacts.folderId,
             path: artifacts.path,
+            metadataJson: artifacts.metadataJson,
+            isCanonical: artifacts.isCanonical,
+            updatedAt: artifacts.updatedAt,
             createdAt: artifacts.createdAt,
             projectId: artifacts.projectId,
             customerId: artifacts.customerId,
-            agentId: artifacts.createdById,
+            agentId: artifacts.agentId,
             taskId: artifacts.taskId,
             customerName: customers.name,
             projectGoal: projects.goal,
