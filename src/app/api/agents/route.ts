@@ -19,7 +19,8 @@ export async function GET() {
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 
         return NextResponse.json({ agents: allAgents });
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal Server Error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
