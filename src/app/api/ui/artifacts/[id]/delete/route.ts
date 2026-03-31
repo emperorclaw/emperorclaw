@@ -5,13 +5,15 @@ import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
 import { deriveArtifactLogicalPath } from "@/lib/path-utils";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         const { companyId } = await requireCompanyFromSession();
-    const { id: artifactId } = await params;
-    const [artifact] = await db.select().from(artifacts).where(and(
-        eq(artifacts.id, artifactId),
+        await ensureArtifactStorageSchema();
+        const { id: artifactId } = await params;
+        const [artifact] = await db.select().from(artifacts).where(and(
+            eq(artifacts.id, artifactId),
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         )).limit(1);

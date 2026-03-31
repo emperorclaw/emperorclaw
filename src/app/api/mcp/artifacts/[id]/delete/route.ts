@@ -5,6 +5,7 @@ import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
 import { deriveArtifactLogicalPath } from "@/lib/path-utils";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/delete">) {
     const auth = await verifyMcpToken(req);
@@ -13,6 +14,7 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/a
     }
 
     const companyId = auth.companyToken!.companyId;
+    await ensureArtifactStorageSchema();
     const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
         eq(artifacts.id, artifactId),

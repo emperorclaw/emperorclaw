@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
 import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { findActiveFolder } from "@/lib/artifact-folders";
+import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 type FolderDto = {
     id: string;
@@ -16,6 +18,7 @@ type FolderDto = {
 export async function GET(req: NextRequest) {
     try {
         const { companyId } = await requireCompanyFromSession();
+        await ensureArtifactStorageSchema();
         const { searchParams } = new URL(req.url);
         const folderId = searchParams.get("folderId");
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
@@ -129,15 +132,6 @@ export async function GET(req: NextRequest) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
     }
-}
-
-async function findActiveFolder(companyId: string, folderId: string) {
-    const [folder] = await db.select().from(artifactFolders).where(and(
-        eq(artifactFolders.id, folderId),
-        eq(artifactFolders.companyId, companyId),
-        isNull(artifactFolders.deletedAt),
-    )).limit(1);
-    return folder || null;
 }
 
 async function buildAncestors(companyId: string, parentFolderId: string | null) {
