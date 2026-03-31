@@ -271,6 +271,40 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         : null;
     const knownFolders = buildKnownFolders(folderCache);
     const availableTasks = tasks.filter((task) => task.projectId === uploadProjectId);
+    const hasFolderChanges = Boolean(
+        selectedFolder &&
+        selectedFolder.id !== ROOT_ID &&
+        (
+            folderDraft.name.trim() !== selectedFolder.name ||
+            folderDraft.parentFolderId !== (getParentFolderId(selectedFolder.id, folderCache) ?? ROOT_ID) ||
+            folderDraft.projectId !== (selectedFolder.projectId ?? "") ||
+            folderDraft.customerId !== (selectedFolder.customerId ?? "") ||
+            normalizeJsonInput(folderDraft.metadataJson) !== normalizeJsonValue(selectedFolder.metadataJson || {})
+        )
+    );
+    const hasArtifactPropertyChanges = Boolean(
+        artifactDetail &&
+        (
+            artifactDraft.title.trim() !== (artifactDetail.title ?? artifactDetail.originalFilename ?? "") ||
+            artifactDraft.kind.trim() !== artifactDetail.kind ||
+            artifactDraft.artifactClass !== artifactDetail.artifactClass ||
+            artifactDraft.importance !== artifactDetail.importance ||
+            artifactDraft.visibility !== (artifactDetail.visibility ?? "private") ||
+            artifactDraft.retentionPolicy.trim() !== (artifactDetail.retentionPolicy ?? "") ||
+            artifactDraft.projectId !== (artifactDetail.projectId ?? "") ||
+            artifactDraft.taskId !== (artifactDetail.taskId ?? "") ||
+            artifactDraft.customerId !== (artifactDetail.customerId ?? "") ||
+            artifactDraft.isCanonical !== Boolean(artifactDetail.isCanonical) ||
+            normalizeJsonInput(artifactDraft.metadataJson) !== normalizeJsonValue(artifactDetail.metadataJson || {})
+        )
+    );
+    const hasArtifactLocationChanges = Boolean(
+        artifactDetail &&
+        (
+            artifactLocationDraft.name.trim() !== (artifactDetail.originalFilename || deriveDisplayName(artifactDetail)) ||
+            artifactLocationDraft.folderId !== (artifactDetail.folderId ?? ROOT_ID)
+        )
+    );
 
     async function loadFolder(folderId: string, options?: { silent?: boolean }) {
         if (!options?.silent) {
@@ -638,7 +672,6 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             resetUploadState(
                 payload.artifact.projectId ?? "",
                 payload.artifact.customerId ?? uploadCustomerId,
-                tasks,
                 setUploadFile,
                 setUploadTitle,
                 setUploadKind,
@@ -832,10 +865,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             customerFilter ||
             findProjectCustomerId(projects, defaultProjectId) ||
             "";
-        const candidateTask = tasks.find((task) => task.projectId === defaultProjectId);
         setUploadProjectId(defaultProjectId);
         setUploadCustomerId(defaultProjectId ? findProjectCustomerId(projects, defaultProjectId) || defaultCustomerId : defaultCustomerId);
-        setUploadTaskId(defaultProjectId ? (taskFilter || candidateTask?.id || "") : "");
+        setUploadTaskId("");
         setUploadTitle(uploadFile?.name ?? "");
         setIsUploadOpen(true);
     }
@@ -1131,6 +1163,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         projects={projects}
                                         customers={customers}
                                         isSaving={isSavingFolder}
+                                        hasChanges={hasFolderChanges}
                                         onDraftChange={setFolderDraft}
                                         onSave={() => void handleSaveFolder()}
                                         onDelete={() => void handleDeleteFolder(selectedFolder.id)}
@@ -1149,6 +1182,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         inspectorTab={inspectorTab}
                                         isSavingArtifact={isSavingArtifact}
                                         isSavingLocation={isSavingLocation}
+                                        hasPropertyChanges={hasArtifactPropertyChanges}
+                                        hasLocationChanges={hasArtifactLocationChanges}
                                         onInspectorTabChange={setInspectorTab}
                                         onDraftChange={setArtifactDraft}
                                         onLocationDraftChange={setArtifactLocationDraft}
@@ -1198,12 +1233,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onArtifactClassChange={setUploadArtifactClass}
                 onImportanceChange={setUploadImportance}
                 onProjectChange={(nextProjectId) => {
-                    const candidateTask = tasks.find((task) => task.projectId === nextProjectId);
                     setUploadProjectId(nextProjectId);
                     setUploadCustomerId(findProjectCustomerId(projects, nextProjectId) || "");
-                    setUploadTaskId(candidateTask?.id || "");
+                    setUploadTaskId("");
                 }}
-                onTaskChange={setUploadTaskId}
                 onCustomerChange={setUploadCustomerId}
                 onMetadataJsonChange={setUploadMetadataJson}
                 onSubmit={() => void handleUpload()}
@@ -1337,6 +1370,7 @@ function FolderInspector(props: {
     projects: ProjectOption[];
     customers: CustomerOption[];
     isSaving: boolean;
+    hasChanges: boolean;
     onDraftChange: Dispatch<SetStateAction<FolderDraft>>;
     onSave: () => void;
     onDelete: () => void;
@@ -1422,7 +1456,7 @@ function FolderInspector(props: {
                     />
                 </Field>
                 <div className="flex flex-wrap gap-2">
-                    <Button onClick={props.onSave} disabled={props.isSaving}>
+                    <Button onClick={props.onSave} disabled={props.isSaving || !props.hasChanges}>
                         {props.isSaving && <Loader2 className="size-4 animate-spin" />}
                         Save Folder
                     </Button>
@@ -1448,6 +1482,8 @@ function ArtifactInspector(props: {
     inspectorTab: string;
     isSavingArtifact: boolean;
     isSavingLocation: boolean;
+    hasPropertyChanges: boolean;
+    hasLocationChanges: boolean;
     onInspectorTabChange: (value: string) => void;
     onDraftChange: Dispatch<SetStateAction<ArtifactDraft>>;
     onLocationDraftChange: Dispatch<SetStateAction<ArtifactLocationDraft>>;
@@ -1644,11 +1680,11 @@ function ArtifactInspector(props: {
                         <InfoPill label="Updated" value={formatRelativeDate(props.artifact.updatedAt || props.artifact.createdAt)} />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button onClick={props.onSaveProperties} disabled={props.isSavingArtifact}>
+                        <Button onClick={props.onSaveProperties} disabled={props.isSavingArtifact || !props.hasPropertyChanges}>
                             {props.isSavingArtifact && <Loader2 className="size-4 animate-spin" />}
                             Save Properties
                         </Button>
-                        <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onSaveLocation} disabled={props.isSavingLocation}>
+                        <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onSaveLocation} disabled={props.isSavingLocation || !props.hasLocationChanges}>
                             {props.isSavingLocation && <Loader2 className="size-4 animate-spin" />}
                             Save Location
                         </Button>
@@ -1761,7 +1797,6 @@ function UploadDialog(props: {
     onArtifactClassChange: (value: string) => void;
     onImportanceChange: (value: string) => void;
     onProjectChange: (value: string) => void;
-    onTaskChange: (value: string) => void;
     onCustomerChange: (value: string) => void;
     onMetadataJsonChange: (value: string) => void;
     onSubmit: () => void;
@@ -1772,7 +1807,7 @@ function UploadDialog(props: {
                 <DialogHeader>
                     <DialogTitle>Upload artifact</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Upload a file into the current folder. Customer is required; project and task are optional.
+                        Upload a file into the current folder. Customer is required; project is optional.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -1801,14 +1836,6 @@ function UploadDialog(props: {
                                 <option value="">None</option>
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
-                                ))}
-                            </select>
-                        </Field>
-                        <Field label="Task">
-                            <select value={props.uploadTaskId} onChange={(event) => props.onTaskChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200" disabled={!props.uploadProjectId}>
-                                <option value="">None</option>
-                                {props.tasks.map((task) => (
-                                    <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
                             </select>
                         </Field>
@@ -2061,6 +2088,18 @@ function parseJsonInput(value: string) {
     return JSON.parse(trimmed) as Record<string, unknown>;
 }
 
+function normalizeJsonInput(value: string) {
+    try {
+        return JSON.stringify(parseJsonInput(value));
+    } catch {
+        return value.trim();
+    }
+}
+
+function normalizeJsonValue(value: unknown) {
+    return JSON.stringify(value ?? {});
+}
+
 function formatJson(value: unknown) {
     return JSON.stringify(value ?? {}, null, 2);
 }
@@ -2107,7 +2146,6 @@ function formatRelativeDate(value?: string) {
 function resetUploadState(
     projectId: string,
     customerId: string,
-    tasks: TaskOption[],
     setUploadFile: (value: File | null) => void,
     setUploadTitle: (value: string) => void,
     setUploadKind: (value: string) => void,
@@ -2118,7 +2156,6 @@ function resetUploadState(
     setUploadCustomerId: (value: string) => void,
     setUploadTaskId: (value: string) => void
 ) {
-    const candidateTask = tasks.find((task) => task.projectId === projectId);
     setUploadFile(null);
     setUploadTitle("");
     setUploadKind("report");
@@ -2127,7 +2164,7 @@ function resetUploadState(
     setUploadMetadataJson("{}");
     setUploadProjectId(projectId);
     setUploadCustomerId(customerId);
-    setUploadTaskId(candidateTask?.id ?? "");
+    setUploadTaskId("");
 }
 
 function findProjectCustomerId(projects: ProjectOption[], projectId: string) {
