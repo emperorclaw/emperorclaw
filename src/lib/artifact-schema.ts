@@ -53,6 +53,8 @@ const ARTIFACT_STORAGE_SCHEMA_STATEMENTS = [
     `ALTER TABLE public.artifacts ADD COLUMN IF NOT EXISTS updated_at timestamp DEFAULT now() NOT NULL;`,
     `ALTER TABLE public.artifacts ADD COLUMN IF NOT EXISTS customer_id uuid;`,
     `ALTER TABLE public.artifacts ADD COLUMN IF NOT EXISTS agent_id uuid;`,
+    `ALTER TABLE public.artifacts ALTER COLUMN project_id DROP NOT NULL;`,
+    `ALTER TABLE public.artifacts ALTER COLUMN task_id DROP NOT NULL;`,
     `UPDATE public.artifact_folders SET metadata_json = '{}'::jsonb WHERE metadata_json IS NULL;`,
     `UPDATE public.artifacts SET metadata_json = '{}'::jsonb WHERE metadata_json IS NULL;`,
     `UPDATE public.artifact_folders SET updated_at = COALESCE(updated_at, created_at, now()) WHERE updated_at IS NULL;`,

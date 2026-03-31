@@ -63,6 +63,7 @@ import { cn } from "@/lib/utils";
 type ProjectOption = {
     id: string;
     name: string;
+    customerId: string | null;
 };
 
 type TaskOption = {
@@ -244,8 +245,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [uploadKind, setUploadKind] = useState("report");
     const [uploadArtifactClass, setUploadArtifactClass] = useState("working_file");
     const [uploadImportance, setUploadImportance] = useState("operational");
-    const [uploadProjectId, setUploadProjectId] = useState(projects[0]?.id ?? "");
+    const [uploadProjectId, setUploadProjectId] = useState("");
     const [uploadTaskId, setUploadTaskId] = useState("");
+    const [uploadCustomerId, setUploadCustomerId] = useState("");
     const [uploadMetadataJson, setUploadMetadataJson] = useState("{}");
     const [isUploading, setIsUploading] = useState(false);
     const replaceInputRef = useRef<HTMLInputElement | null>(null);
@@ -268,7 +270,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         ? findFolderById(folderCache, selectedEntry.id)
         : null;
     const knownFolders = buildKnownFolders(folderCache);
-    const availableTasks = tasks.filter((task) => !uploadProjectId || task.projectId === uploadProjectId);
+    const availableTasks = tasks.filter((task) => task.projectId === uploadProjectId);
 
     async function loadFolder(folderId: string, options?: { silent?: boolean }) {
         if (!options?.silent) {
@@ -597,8 +599,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             toast.error("Choose a file to upload");
             return;
         }
-        if (!uploadProjectId || !uploadTaskId) {
-            toast.error("Project and task are required");
+        if (!uploadProjectId && !uploadCustomerId) {
+            toast.error("Choose a customer or project");
             return;
         }
 
@@ -606,8 +608,15 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         try {
             const formData = new FormData();
             formData.set("file", uploadFile);
-            formData.set("projectId", uploadProjectId);
-            formData.set("taskId", uploadTaskId);
+            if (uploadProjectId) {
+                formData.set("projectId", uploadProjectId);
+            }
+            if (uploadTaskId) {
+                formData.set("taskId", uploadTaskId);
+            }
+            if (uploadCustomerId) {
+                formData.set("customerId", uploadCustomerId);
+            }
             formData.set("kind", uploadKind);
             formData.set("artifactClass", uploadArtifactClass);
             formData.set("importance", uploadImportance);
@@ -627,7 +636,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             const payload = await response.json() as { artifact: ArtifactSummary };
             setIsUploadOpen(false);
             resetUploadState(
-                payload.artifact.projectId ?? uploadProjectId,
+                payload.artifact.projectId ?? "",
+                payload.artifact.customerId ?? uploadCustomerId,
                 tasks,
                 setUploadFile,
                 setUploadTitle,
@@ -635,6 +645,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 setUploadArtifactClass,
                 setUploadImportance,
                 setUploadMetadataJson,
+                setUploadProjectId,
+                setUploadCustomerId,
                 setUploadTaskId
             );
             setSelectedEntry({ type: "artifact", id: payload.artifact.id });
@@ -664,8 +676,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     importance: artifactDraft.importance,
                     visibility: artifactDraft.visibility,
                     retentionPolicy: artifactDraft.retentionPolicy.trim() || null,
-                    projectId: artifactDraft.projectId,
-                    taskId: artifactDraft.taskId,
+                    projectId: artifactDraft.projectId || null,
+                    taskId: artifactDraft.taskId || null,
                     customerId: artifactDraft.customerId || null,
                     isCanonical: artifactDraft.isCanonical,
                     metadataJson: parseJsonInput(artifactDraft.metadataJson),
@@ -814,10 +826,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     }
 
     function beginUpload() {
-        const defaultProjectId = projectFilter || currentContents?.folder.projectId || projects[0]?.id || "";
+        const defaultProjectId = projectFilter || currentContents?.folder.projectId || "";
+        const defaultCustomerId =
+            currentContents?.folder.customerId ||
+            customerFilter ||
+            findProjectCustomerId(projects, defaultProjectId) ||
+            "";
         const candidateTask = tasks.find((task) => task.projectId === defaultProjectId);
         setUploadProjectId(defaultProjectId);
-        setUploadTaskId(taskFilter || candidateTask?.id || "");
+        setUploadCustomerId(defaultProjectId ? findProjectCustomerId(projects, defaultProjectId) || defaultCustomerId : defaultCustomerId);
+        setUploadTaskId(defaultProjectId ? (taskFilter || candidateTask?.id || "") : "");
         setUploadTitle(uploadFile?.name ?? "");
         setIsUploadOpen(true);
     }
@@ -1167,9 +1185,11 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 uploadImportance={uploadImportance}
                 uploadProjectId={uploadProjectId}
                 uploadTaskId={uploadTaskId}
+                uploadCustomerId={uploadCustomerId}
                 uploadMetadataJson={uploadMetadataJson}
                 projects={projects}
                 tasks={availableTasks}
+                customers={customers}
                 isUploading={isUploading}
                 onOpenChange={setIsUploadOpen}
                 onFileChange={handleUploadFileChange}
@@ -1180,9 +1200,11 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onProjectChange={(nextProjectId) => {
                     const candidateTask = tasks.find((task) => task.projectId === nextProjectId);
                     setUploadProjectId(nextProjectId);
+                    setUploadCustomerId(findProjectCustomerId(projects, nextProjectId) || "");
                     setUploadTaskId(candidateTask?.id || "");
                 }}
                 onTaskChange={setUploadTaskId}
+                onCustomerChange={setUploadCustomerId}
                 onMetadataJsonChange={setUploadMetadataJson}
                 onSubmit={() => void handleUpload()}
             />
@@ -1530,15 +1552,18 @@ function ArtifactInspector(props: {
                                 value={props.draft.projectId}
                                 onChange={(event) => {
                                     const nextProjectId = event.target.value;
+                                    const projectCustomerId = findProjectCustomerId(props.projects, nextProjectId);
                                     const candidateTask = props.tasks.find((task) => task.projectId === nextProjectId);
                                     props.onDraftChange((current) => ({
                                         ...current,
                                         projectId: nextProjectId,
                                         taskId: candidateTask?.id ?? "",
+                                        customerId: nextProjectId ? projectCustomerId : current.customerId,
                                     }));
                                 }}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                             >
+                                <option value="">None</option>
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
                                 ))}
@@ -1549,7 +1574,9 @@ function ArtifactInspector(props: {
                                 value={props.draft.taskId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, taskId: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                                disabled={!props.draft.projectId}
                             >
+                                <option value="">None</option>
                                 {props.tasks.filter((task) => task.projectId === props.draft.projectId).map((task) => (
                                     <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
@@ -1560,6 +1587,7 @@ function ArtifactInspector(props: {
                                 value={props.draft.customerId}
                                 onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                                disabled={Boolean(props.draft.projectId)}
                             >
                                 <option value="">None</option>
                                 {props.customers.map((customer) => (
@@ -1720,9 +1748,11 @@ function UploadDialog(props: {
     uploadImportance: string;
     uploadProjectId: string;
     uploadTaskId: string;
+    uploadCustomerId: string;
     uploadMetadataJson: string;
     projects: ProjectOption[];
     tasks: TaskOption[];
+    customers: CustomerOption[];
     isUploading: boolean;
     onOpenChange: (open: boolean) => void;
     onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -1732,6 +1762,7 @@ function UploadDialog(props: {
     onImportanceChange: (value: string) => void;
     onProjectChange: (value: string) => void;
     onTaskChange: (value: string) => void;
+    onCustomerChange: (value: string) => void;
     onMetadataJsonChange: (value: string) => void;
     onSubmit: () => void;
 }) {
@@ -1741,7 +1772,7 @@ function UploadDialog(props: {
                 <DialogHeader>
                     <DialogTitle>Upload artifact</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Upload a file into the current folder and register its metadata in Emperor.
+                        Upload a file into the current folder. Customer is required; project and task are optional.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -1752,15 +1783,30 @@ function UploadDialog(props: {
                         <Input value={props.uploadTitle} onChange={(event) => props.onTitleChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                     </Field>
                     <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Customer">
+                            <select
+                                value={props.uploadCustomerId}
+                                onChange={(event) => props.onCustomerChange(event.target.value)}
+                                className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                                disabled={Boolean(props.uploadProjectId)}
+                            >
+                                <option value="">Select customer</option>
+                                {props.customers.map((customer) => (
+                                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                                ))}
+                            </select>
+                        </Field>
                         <Field label="Project">
                             <select value={props.uploadProjectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                <option value="">None</option>
                                 {props.projects.map((project) => (
                                     <option key={project.id} value={project.id}>{project.name}</option>
                                 ))}
                             </select>
                         </Field>
                         <Field label="Task">
-                            <select value={props.uploadTaskId} onChange={(event) => props.onTaskChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                            <select value={props.uploadTaskId} onChange={(event) => props.onTaskChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200" disabled={!props.uploadProjectId}>
+                                <option value="">None</option>
                                 {props.tasks.map((task) => (
                                     <option key={task.id} value={task.id}>{task.type}</option>
                                 ))}
@@ -2048,6 +2094,7 @@ function formatRelativeDate(value?: string) {
 
 function resetUploadState(
     projectId: string,
+    customerId: string,
     tasks: TaskOption[],
     setUploadFile: (value: File | null) => void,
     setUploadTitle: (value: string) => void,
@@ -2055,6 +2102,8 @@ function resetUploadState(
     setUploadArtifactClass: (value: string) => void,
     setUploadImportance: (value: string) => void,
     setUploadMetadataJson: (value: string) => void,
+    setUploadProjectId: (value: string) => void,
+    setUploadCustomerId: (value: string) => void,
     setUploadTaskId: (value: string) => void
 ) {
     const candidateTask = tasks.find((task) => task.projectId === projectId);
@@ -2064,5 +2113,14 @@ function resetUploadState(
     setUploadArtifactClass("working_file");
     setUploadImportance("operational");
     setUploadMetadataJson("{}");
+    setUploadProjectId(projectId);
+    setUploadCustomerId(customerId);
     setUploadTaskId(candidateTask?.id ?? "");
+}
+
+function findProjectCustomerId(projects: ProjectOption[], projectId: string) {
+    if (!projectId) {
+        return "";
+    }
+    return projects.find((project) => project.id === projectId)?.customerId || "";
 }
