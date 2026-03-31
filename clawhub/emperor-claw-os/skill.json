@@ -1,5 +1,5 @@
 {
-  "version": "1.15.1",
+  "version": "1.15.2",
   "emperorMinVersion": "0.1.2",
   "name": "emperor-claw-os",
   "description": "Emperor Claw control plane integration for OpenClaw",
