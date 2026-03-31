@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { artifacts, projects, tasks } from "@/db/schema";
+import { artifacts, customers, projects, tasks } from "@/db/schema";
 import {
     verifyMcpToken,
     checkIdempotency,
@@ -153,6 +153,7 @@ export async function POST(req: NextRequest) {
         const {
             projectId,
             taskId,
+            customerId,
             kind,
             contentType,
             contentText,
@@ -181,25 +182,45 @@ export async function POST(req: NextRequest) {
             internalAgentId = await resolveAgentId(companyId, agentId);
         }
 
-        if (!projectId || !taskId || !kind || !contentType) {
-            return NextResponse.json({ error: "Missing required fields (projectId, taskId, kind, contentType)" }, { status: 400 });
+        if (!kind || !contentType) {
+            return NextResponse.json({ error: "Missing required fields (kind, contentType)" }, { status: 400 });
         }
 
-        const [project] = await db.select({ id: projects.id, customerId: projects.customerId }).from(projects)
-            .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
-            .limit(1);
-        if (!project) {
+        const [project] = projectId
+            ? await db.select({ id: projects.id, customerId: projects.customerId }).from(projects)
+                .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+                .limit(1)
+            : [];
+        if (projectId && !project) {
             return NextResponse.json({ error: "Project not found or unauthorized." }, { status: 404 });
         }
 
-        const [task] = await db.select({ id: tasks.id, projectId: tasks.projectId }).from(tasks)
-            .where(and(eq(tasks.id, taskId), eq(tasks.companyId, companyId)))
-            .limit(1);
-        if (!task) {
+        if (taskId && !projectId) {
+            return NextResponse.json({ error: "taskId requires projectId." }, { status: 400 });
+        }
+
+        const [task] = taskId
+            ? await db.select({ id: tasks.id, projectId: tasks.projectId }).from(tasks)
+                .where(and(eq(tasks.id, taskId), eq(tasks.companyId, companyId)))
+                .limit(1)
+            : [];
+        if (taskId && !task) {
             return NextResponse.json({ error: "Task not found or unauthorized." }, { status: 404 });
         }
-        if (task.projectId !== projectId) {
+        if (task && projectId && task.projectId !== projectId) {
             return NextResponse.json({ error: "Task does not belong to the specified project." }, { status: 400 });
+        }
+
+        const [customer] = customerId
+            ? await db.select({ id: customers.id }).from(customers)
+                .where(and(eq(customers.id, customerId), eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+                .limit(1)
+            : [];
+        if (customerId && !customer) {
+            return NextResponse.json({ error: "Customer not found or unauthorized." }, { status: 404 });
+        }
+        if (!project && !customer) {
+            return NextResponse.json({ error: "customerId or projectId is required." }, { status: 400 });
         }
 
         const finalStorageProvider = storageProvider || (storageKey ? "bunny" : undefined);
@@ -235,10 +256,10 @@ export async function POST(req: NextRequest) {
 
         const [artifact] = await db.insert(artifacts).values({
             companyId,
-            projectId,
-            taskId,
+            projectId: project?.id ?? null,
+            taskId: task?.id ?? null,
             folderId: folder ? folder.id : null,
-            customerId: project.customerId,
+            customerId: project?.customerId ?? customer?.id ?? null,
             agentId: internalAgentId || null,
             path: resolvedPath,
             ...preparedArtifact,
@@ -255,8 +276,8 @@ export async function POST(req: NextRequest) {
             importance: artifact.importance,
             title: artifact.title,
             contentType,
-            taskId,
-            projectId,
+            taskId: task?.id ?? null,
+            projectId: project?.id ?? null,
             folderId: folder ? folder.id : null,
             path: resolvedPath,
         });

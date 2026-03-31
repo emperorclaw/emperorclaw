@@ -350,8 +350,8 @@ export const taskEvents = pgTable("task_events", {
 export const artifacts = pgTable("artifacts", {
       id: uuid("id").primaryKey().defaultRandom(),
       companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
-      projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
-      taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+      projectId: uuid("project_id").references(() => projects.id, { onDelete: 'cascade' }),
+      taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'cascade' }),
       folderId: uuid("folder_id").references(() => artifactFolders.id, { onDelete: 'set null' }),
       customerId: uuid("customer_id").references(() => customers.id, { onDelete: 'set null' }),
       agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),

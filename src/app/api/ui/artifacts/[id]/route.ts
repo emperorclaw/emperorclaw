@@ -93,19 +93,25 @@ export async function PATCH(
         const artifactRecord = artifact as ArtifactRecord;
 
         const body = await req.json();
-        const selectedProject =
-            body.projectId === undefined
-                ? await getProjectById(companyId, artifactRecord.projectId as string)
-                : await getProjectById(companyId, body.projectId);
-        const projectId = selectedProject.id;
-        const taskId =
-            body.taskId === undefined
-                ? artifactRecord.taskId
-                : await resolveTaskId(companyId, body.taskId, projectId);
-        const customerId =
-            body.customerId === undefined
-                ? selectedProject.customerId ?? artifactRecord.customerId
-                : await resolveCustomerId(companyId, body.customerId);
+        const requestedProjectId = normalizeNullableId(body.projectId, artifactRecord.projectId as string | null);
+        const requestedTaskId = normalizeNullableId(body.taskId, artifactRecord.taskId as string | null);
+        const requestedCustomerId = normalizeNullableId(body.customerId, artifactRecord.customerId as string | null);
+
+        const selectedProject = requestedProjectId
+            ? await getProjectById(companyId, requestedProjectId)
+            : null;
+        const projectId = selectedProject?.id ?? null;
+        const taskId = requestedTaskId
+            ? await resolveTaskId(companyId, requestedTaskId, projectId)
+            : null;
+        const customerId = projectId
+            ? selectedProject?.customerId ?? null
+            : await resolveCustomerId(companyId, requestedCustomerId);
+
+        if (!projectId && !customerId) {
+            throw new Error("customerId or projectId is required");
+        }
+
         const metadataJson = body.metadataJson ?? artifactRecord.metadataJson;
         const contentType = (body.contentType ?? artifactRecord.contentType) as string;
         const prepared = prepareArtifactRecord({
@@ -129,8 +135,8 @@ export async function PATCH(
 
         const [updatedArtifact] = await db.update(artifacts).set({
             projectId,
-            taskId: taskId as string,
-            customerId: customerId as string | null,
+            taskId,
+            customerId,
             kind: prepared.kind,
             title: prepared.title,
             artifactClass: prepared.artifactClass,
@@ -172,9 +178,12 @@ async function getProjectById(companyId: string, projectId: string | null) {
     return project;
 }
 
-async function resolveTaskId(companyId: string, taskId: string | null, projectId: string) {
+async function resolveTaskId(companyId: string, taskId: string | null, projectId: string | null) {
     if (!taskId) {
-        throw new Error("taskId is required");
+        return null;
+    }
+    if (!projectId) {
+        throw new Error("taskId requires projectId");
     }
     const [task] = await db.select({
         id: tasks.id,
@@ -208,6 +217,16 @@ async function resolveCustomerId(companyId: string, customerId: string | null) {
         throw new Error("Customer not found");
     }
     return customer.id;
+}
+
+function normalizeNullableId(value: unknown, fallback: string | null) {
+    if (value === undefined) {
+        return fallback;
+    }
+    if (value === null || value === "") {
+        return null;
+    }
+    return typeof value === "string" ? value : fallback;
 }
 
 function mapErrorStatus(error: unknown) {
