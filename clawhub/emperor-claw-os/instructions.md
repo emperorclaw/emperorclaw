@@ -181,3 +181,59 @@ Start with:
 - strong separation between stable doctrine and live prompt context
 
 This gives the cleanest path from “chat works” to “real operational workforce behavior.”
+
+## Adding a New Emperor Agent + Bridge
+
+You can use this skill to wire new Emperor agents into OpenClaw, each with their own brain + bridge (e.g., a Slovak-tax accountant, sales operator, support agent).
+
+### 1. Create the Agent in Emperor
+
+Use the Emperor UI or MCP API:
+
+```json
+POST /api/mcp/agents
+{
+  "name": "Katarína – Accountant (SK)",
+  "role": "operator",
+  "skillsJson": ["accounting", "slovak_taxes", "invoicing", "reporting"],
+  "modelPolicyJson": { "preferred_models": ["best_general"] },
+  "concurrencyLimit": 1,
+  "avatarUrl": null,
+  "memory": "Initial bootstrap context..."
+}
+```
+
+Note the returned `id` (the MCP `agentId`). The local bridge uses the company token and runtime registration to bind to this record; you do not need to hardcode the UUID into the skill.
+
+### 2. Bootstrap the Local Brain + Bridge
+
+From the skill folder:
+
+```bash
+cd clawhub/emperor-claw-os/scripts
+
+EMPEROR_CLAW_API_TOKEN="<your_company_token>" \
+EMPEROR_CLAW_AGENT_NAME="Katarína – Accountant (SK)" \
+EMPEROR_CLAW_BRAIN_AGENT_ID="katarina-accountant" \
+./install.sh --profile operator
+```
+
+This will:
+
+- create a companion directory under `~/.openclaw/emperor-control-plane-katarina-accountant/`
+- install the Emperor runtime (`control-plane.js`) and bridge (`bridge.js`)
+- create an OpenClaw agent `katarina-accountant` with its own workspace
+- install and start a per-user bridge service (systemd user service or direct `run-bridge.sh` fallback)
+- run a local doctor check and a "brain OK" ping
+
+The human-readable name (`EMPEROR_CLAW_AGENT_NAME`) should match the Emperor agent name for clarity. The local brain id (`EMPEROR_CLAW_BRAIN_AGENT_ID`) must be unique per machine.
+
+### 3. Verify the Agent
+
+```bash
+~/.openclaw/emperor-control-plane-katarina-accountant/doctor.sh
+systemctl --user status emperor-claw-bridge-katarina-accountant.service
+openclaw agents list
+```
+
+After this, the agent will start reacting to Emperor tasks and threads according to its role.
