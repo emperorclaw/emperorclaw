@@ -6,15 +6,16 @@ import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
 import { deriveArtifactLogicalPath } from "@/lib/path-utils";
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
+    const { id: artifactId } = await params;
     const [artifact] = await db.select().from(artifacts).where(and(
-        eq(artifacts.id, params.id),
+        eq(artifacts.id, artifactId),
         eq(artifacts.companyId, companyId),
         isNull(artifacts.deletedAt),
     )).limit(1);
