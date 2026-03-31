@@ -33,7 +33,6 @@ export function AppSidebar() {
         { name: "Incidents", href: "/incidents", icon: AlertTriangle },
         { name: "Artifacts", href: "/artifacts", icon: FileBox },
         { name: "Settings", href: "/settings", icon: KeyRound },
-        { name: "Setup Guide", href: "/docs/v1.1/installation", icon: Terminal },
         { name: "Documentation", href: "/docs", icon: BookOpen },
     ];
 
