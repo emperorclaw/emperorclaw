@@ -5,21 +5,22 @@ import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { buildFolderPath, isDescendantPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/folders/[id]">) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
-    const folder = await findActiveFolder(companyId, params.id);
+    const { id: folderId } = await context.params;
+    const folder = await findActiveFolder(companyId, folderId);
     if (!folder) {
         return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
     return NextResponse.json({ folder });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/folders/[id]">) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -27,7 +28,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     try {
         const companyId = auth.companyToken!.companyId;
-        const folder = await findActiveFolder(companyId, params.id);
+        const { id: folderId } = await context.params;
+        const folder = await findActiveFolder(companyId, folderId);
         if (!folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
@@ -42,12 +44,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             body.parentFolderId === undefined
                 ? folder.parentFolderId
                 : body.parentFolderId;
-        const parentFolder = targetParentId ? await findFolder(companyId, targetParentId) : null;
+        const parentFolder = targetParentId ? await findActiveFolder(companyId, targetParentId) : null;
         if (targetParentId && !parentFolder) {
             return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
         }
 
-        if (parentFolder && isDescendantPath(parentFolder.path, folder.path)) {
+        const parentPathString = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
+        const folderPathString = typeof folder.path === "string" ? folder.path : "";
+        if (parentFolder && parentPathString && isDescendantPath(parentPathString, folderPathString)) {
             return NextResponse.json({ error: "Cannot move folder inside its own subtree" }, { status: 400 });
         }
 
@@ -56,8 +60,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         const resolvedAgentId = await resolveAgentUpdate(companyId, body.agentId);
 
         const finalParentId = parentFolder ? parentFolder.id : null;
-        const newPath = buildFolderPath(parentFolder?.path ?? null, newName);
-        const pathChanged = newPath !== folder.path;
+        const parentFolderPath = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
+        const folderPathValue = typeof folder.path === "string" ? folder.path : "";
+        const safeNewName = typeof newName === "string" ? newName : "";
+        const newPath = buildFolderPath(parentFolderPath, safeNewName);
+        const pathChanged = newPath !== folderPathValue;
 
         const result = await db.transaction(async (tx) => {
             const [updatedFolder] = await tx.update(artifactFolders).set({
@@ -75,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             )).returning();
 
             if (pathChanged) {
-                const matchPattern = `${folder.path}/%`;
+                const matchPattern = `${folderPathValue || ""}/%`;
                 await tx.update(artifactFolders).set({
                     path: sql`regexp_replace(${artifactFolders.path}, ${folder.path}, ${newPath}, 'g')`,
                 }).where(and(
@@ -101,14 +108,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/folders/[id]">) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const companyId = auth.companyToken!.companyId;
-    const folder = await findActiveFolder(companyId, params.id);
+    const { id: folderId } = await context.params;
+    const folder = await findActiveFolder(companyId, folderId);
     if (!folder) {
         return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }

@@ -166,12 +166,14 @@ export const agents = pgTable("agents", {
     deletedAt: timestamp("deleted_at"),
 });
 
+// @ts-expect-error self-referential column referencing the same table causes circular type inference.
 export const artifactFolders = pgTable("artifact_folders", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     customerId: uuid("customer_id").references(() => customers.id, { onDelete: 'set null' }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    // @ts-expect-error Self-reference for parent folder requires ignoring implicit any.
     parentFolderId: uuid("parent_folder_id").references(() => artifactFolders.id, { onDelete: 'cascade' }),
     name: text("name").notNull(),
     path: text("path").notNull(),

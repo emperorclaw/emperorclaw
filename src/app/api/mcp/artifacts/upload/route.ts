@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "A file upload is required under the 'file' field" }, { status: 400 });
         }
 
-        const projectId = getStringValue(form, "projectId");
-        const taskId = getStringValue(form, "taskId");
-        const kind = getStringValue(form, "kind");
+        const projectId = getFormStringValue(form, "projectId");
+        const taskId = getFormStringValue(form, "taskId");
+        const kind = getFormStringValue(form, "kind");
         if (!projectId || !taskId || !kind) {
             return NextResponse.json({ error: "projectId, taskId, and kind are required" }, { status: 400 });
         }
@@ -118,8 +118,9 @@ export async function POST(req: NextRequest) {
             visibility,
             retentionPolicy: retentionPolicy || null,
         }).returning();
+        const artifactIdValue = artifact.id as string;
 
-        await logAudit(companyId, "agent", internalAgentId, "upload_artifact", "artifact", artifact.id, {
+        await logAudit(companyId, "agent", internalAgentId, "upload_artifact", "artifact", artifactIdValue, {
             kind,
             projectId,
             taskId,
