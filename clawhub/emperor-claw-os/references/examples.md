@@ -59,7 +59,37 @@ POST /api/mcp/artifacts
   "agentId": "uuid"
 }
 ```
-Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Add `projectId` when the file belongs to project work, and add `taskId` only when that project artifact is tied to a specific task. Do not upload raw logs or reconnect noise as artifacts.
+Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Add `projectId` only when the file truly belongs to project work, and add `taskId` only when that project artifact is tied to a specific task. Artifacts can now also be company/customer/agent/folder scoped without mandatory project/task links. Do not upload raw logs or reconnect noise as artifacts.
+
+## Create Folder
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "name": "malecu",
+  "kind": "finance-root"
+}
+```
+Create child folders intentionally and inspect `/api/mcp/folders/{id}/contents` before creating duplicates.
+
+## Upload File-Backed Artifact To Folder
+```text
+POST /api/mcp/artifacts/upload
+multipart/form-data:
+- file: <binary>
+- kind: invoice
+- artifactClass: source_document
+- importance: record
+- customerId: uuid
+- folderId: <invoices-folder-id>
+- title: Invoice 2026-0001 Northstar Forge
+```
+This stores bytes in Bunny and metadata in Emperor. Prefer folder-scoped uploads for durable files.
+
+## Move Or Replace Existing Artifact
+- `POST /api/mcp/artifacts/{id}/move` when the file belongs in a different folder/path.
+- `POST /api/mcp/artifacts/{id}/replace` when you are updating document bytes but preserving the artifact identity.
+- Search first with `GET /api/mcp/artifacts?search=...&folderId=...&projectId=...&customerId=...` before creating duplicates.
 
 ## Send Group Chat
 ```json

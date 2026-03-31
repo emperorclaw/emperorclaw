@@ -94,13 +94,44 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
 - **`DELETE /api/mcp/playbooks/{playbook_id}`**: Soft-delete playbook.
 These endpoints are legacy compatibility surfaces. Prefer project recurring-task definitions, scoped resources, and project agent profiles for new automation.
 
-### Artifacts
-- **`POST /api/mcp/artifacts`**: Upload structured business files or artifacts.
-- **`GET /api/mcp/artifacts`**: Fetch artifacts.
-- **`DELETE /api/mcp/artifacts/{id}`**: Soft-delete artifact.
-Artifacts should represent source documents, working files, proofs, deliverables, templates, or export bundles. Do not use artifact storage for raw logs, task chatter, or reconnect traces.
-Artifact scope is customer-first: send either `customerId` or `projectId`. `taskId` is optional and only valid when `projectId` is present.
-When storing an artifact by reference URL instead of inline text, send a real `sha256` and `sizeBytes`. Do not hash the URL string.
+### Artifacts & Folders
+#### Folder endpoints
+- **`POST /api/mcp/folders`**: Create a folder.
+- **`GET /api/mcp/folders/{id}`**: Read folder metadata.
+- **`PATCH /api/mcp/folders/{id}`**: Rename/update folder metadata or move it under a new parent.
+- **`DELETE /api/mcp/folders/{id}`**: Soft-delete a folder.
+- **`GET /api/mcp/folders/{id}/contents`**: List child folders and artifacts in a folder.
+
+#### Artifact endpoints
+- **`POST /api/mcp/artifacts`**: Create an artifact record directly.
+- **`POST /api/mcp/artifacts/upload`**: Upload a file-backed artifact via multipart form-data.
+- **`GET /api/mcp/artifacts`**: Search/list artifacts. Supported filters include `projectId`, `taskId`, `folderId`, `customerId`, `agentId`, `kind`, `artifactClass`, `importance`, `contentType`, `isCanonical`, `search`, `startDate`, `endDate`.
+- **`GET /api/mcp/artifacts/{id}`**: Read artifact metadata.
+- **`PATCH /api/mcp/artifacts/{id}`**: Update artifact metadata.
+- **`POST /api/mcp/artifacts/{id}/move`**: Move an artifact into another folder/path.
+- **`POST /api/mcp/artifacts/{id}/replace`**: Replace an artifact's file/blob while preserving metadata identity.
+- **`GET /api/mcp/artifacts/{id}/download`**: Download the artifact content.
+- **`DELETE /api/mcp/artifacts/{id}/delete`**: Soft-delete artifact.
+
+Artifacts should represent source documents, working files, proofs, deliverables, templates, statements, invoices, expense documents, or export bundles. Do not use artifact storage for raw logs, task chatter, or reconnect traces.
+
+Artifacts are no longer required to belong to both a project and task. They may be scoped at the company, customer, project, task, agent, or folder level depending on the work. Use the narrowest durable scope that makes sense.
+
+Folders are first-class and should be used intentionally. Prefer creating folders and placing artifacts into them instead of relying on flat uploads.
+
+New file-backed artifacts should default to Bunny-backed storage via the upload endpoints. Emperor DB remains the metadata/search/permissions layer; Bunny stores the blob contents.
+
+Canonical tenant-safe Bunny keys follow this shape:
+
+```text
+companies/<companyId>/artifacts/<logical-path>
+```
+
+Visible logical paths should remain human-readable, for example:
+
+```text
+artifacts/malecu/2026/2026-03/invoices/2026-03-10-invoice-2026-0001-northstar-forge.pdf
+```
 
 ### Scoped Resources
 - **`GET /api/mcp/resources`**: List all reachable resources. Supported query params: `customerId`, `projectId`, `agentId`, `scopeType`, `scopeId`, `resourceType`, `provider`, `name`, `displayName`, `search` (or `q`), `status`, `isShared`.

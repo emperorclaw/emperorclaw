@@ -238,6 +238,20 @@ openclaw agents list
 
 After this, the agent will start reacting to Emperor tasks and threads according to its role.
 
+## Artifact & Folder Usage
+
+Emperor now supports first-class folders plus Bunny-backed artifact blobs.
+
+Important rules for operators:
+- Use folders intentionally; do not rely on flat uploads when a folder structure exists.
+- Search existing artifacts before creating a new one.
+- If updating a document, prefer move/replace/update instead of duplicating files.
+- Artifacts no longer need to be tied to both a project and task. Use the narrowest durable scope that makes sense: company, customer, project, task, agent, or folder.
+- For finance work, preserve the Malecu convention:
+  - `artifacts/malecu/YYYY/YYYY-MM/expenses`
+  - `artifacts/malecu/YYYY/YYYY-MM/invoices`
+  - `artifacts/malecu/YYYY/YYYY-MM/statements`
+
 ### 4. Artifact Guidance
 
 - Treat artifacts as deliberate, Bunny-backed outputs. Upload via the Artifacts page or `/api/ui/artifacts/upload`, use `/api/ui/artifacts/{id}` for metadata edits, `/api/ui/artifacts/{id}/move` for renames or folder moves, and `/api/ui/artifacts/{id}/replace` when new bytes should replace an existing durable file.
