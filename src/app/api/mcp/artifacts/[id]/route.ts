@@ -6,7 +6,7 @@ import { eq, and, isNull } from "drizzle-orm";
 
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    context: RouteContext<"/api/mcp/artifacts/[id]">
 ) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
@@ -14,7 +14,7 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
-    const { id: artifactId } = await params;
+    const { id: artifactId } = await context.params;
     const endpoint = `/api/mcp/artifacts/${artifactId}`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifactFolders, projects, customers } from "@/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 
 const CREATED_BY_TYPE = "mcp";
+type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -33,7 +34,9 @@ export async function POST(req: NextRequest) {
         const customerId = await resolveScopedCustomer(companyId, body.customerId);
         const agentId = body.agentId ? await resolveAgentId(companyId, body.agentId) : null;
 
-        const folderPath = buildFolderPath(parentFolder?.path ?? null, name);
+        const safeParentPath = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
+        const safeName = typeof name === "string" ? name : "";
+        const folderPath = buildFolderPath(safeParentPath, safeName);
 
         const existing = await db.select().from(artifactFolders)
             .where(and(
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Folder already exists at this path" }, { status: 409 });
         }
 
-        const [folder] = await db.insert(artifactFolders).values({
+        const inserted = await db.insert(artifactFolders).values({
             companyId,
             customerId,
             projectId,
@@ -60,6 +63,8 @@ export async function POST(req: NextRequest) {
             createdByType: CREATED_BY_TYPE,
             createdById: auth.companyToken?.id || null,
         }).returning();
+
+        const [folder] = (inserted as ArtifactFolderRecord[]);
 
         return NextResponse.json({ folder }, { status: 201 });
     } catch (error) {

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { artifactFolders, projects, customers } from "@/db/schema";
 import { db } from "@/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
+
+type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
 export async function POST(req: NextRequest) {
     try {
@@ -23,7 +25,9 @@ export async function POST(req: NextRequest) {
         const projectId = await resolveScopedProject(companyId, body.projectId);
         const customerId = await resolveScopedCustomer(companyId, body.customerId);
 
-        const folderPath = buildFolderPath(parentFolder?.path ?? null, name);
+        const parentPathValue = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
+        const safeName = typeof name === "string" ? name : "";
+        const folderPath = buildFolderPath(parentPathValue, safeName);
         const existing = await db.select().from(artifactFolders).where(and(
             eq(artifactFolders.companyId, companyId),
             eq(artifactFolders.path, folderPath),
@@ -33,7 +37,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Folder already exists at this path" }, { status: 409 });
         }
 
-        const [folder] = await db.insert(artifactFolders).values({
+        const inserted = await db.insert(artifactFolders).values({
             companyId,
             customerId,
             projectId,
@@ -45,6 +49,8 @@ export async function POST(req: NextRequest) {
             createdByType: "human",
             createdById: null,
         }).returning();
+
+        const [folder] = (inserted as ArtifactFolderRecord[]);
 
         return NextResponse.json({ folder }, { status: 201 });
     } catch (error) {

@@ -5,10 +5,11 @@ import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        const folder = await findActiveFolder(companyId, params.id);
+        const { id: folderId } = await context.params;
+        const folder = await findActiveFolder(companyId, folderId);
         if (!folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
@@ -28,17 +29,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
         }
 
-        if (parentFolder && isDescendantPath(parentFolder.path, folder.path)) {
+        const parentPath = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
+        const folderPathValue = typeof folder.path === "string" ? folder.path : "";
+        if (parentFolder && parentPath && isDescendantPath(parentPath, folderPathValue)) {
             return NextResponse.json({ error: "Cannot move folder inside its own subtree" }, { status: 400 });
         }
 
-        const newPath = buildFolderPath(parentFolder?.path ?? null, newName);
-        const pathChanged = newPath !== folder.path;
+        const parentPathValue = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
+        const safeNewName = typeof newName === "string" ? newName : "";
+        const newPath = buildFolderPath(parentPathValue, safeNewName);
+        const pathChanged = newPath !== folderPathValue;
 
         const resolvedProjectId = await resolveProjectUpdate(companyId, body.projectId);
         const resolvedCustomerId = await resolveCustomerUpdate(companyId, body.customerId);
 
-        const [updatedFolder] = await db.transaction(async (tx) => {
+        const updatedFolder = await db.transaction(async (tx) => {
             const [folderRow] = await tx.update(artifactFolders).set({
                 name: newName,
                 parentFolderId: parentFolder ? parentFolder.id : null,
@@ -52,17 +57,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                 eq(artifactFolders.companyId, companyId),
             )).returning();
 
-            if (pathChanged) {
-                const matchPattern = `${folder.path}/%`;
+                if (pathChanged) {
+                const matchPattern = `${folderPathValue}/%`;
                 await tx.update(artifactFolders).set({
-                    path: sql`regexp_replace(${artifactFolders.path}, ${folder.path}, ${newPath}, 'g')`,
+                    path: sql`regexp_replace(${artifactFolders.path}, ${folderPathValue}, ${newPath}, 'g')`,
                 }).where(and(
                     eq(artifactFolders.companyId, companyId),
                     like(artifactFolders.path, matchPattern),
                 ));
 
                 await tx.update(artifacts).set({
-                    path: sql`regexp_replace(${artifacts.path}, ${folder.path}, ${newPath}, 'g')`,
+                    path: sql`regexp_replace(${artifacts.path}, ${folderPathValue}, ${newPath}, 'g')`,
                 }).where(and(
                     eq(artifacts.companyId, companyId),
                     like(artifacts.path, matchPattern),
@@ -79,10 +84,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        const folder = await findActiveFolder(companyId, params.id);
+        const { id: folderId } = await context.params;
+        const folder = await findActiveFolder(companyId, folderId);
         if (!folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }

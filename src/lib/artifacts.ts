@@ -72,6 +72,26 @@ export function sanitizeArtifact<T extends { metadataJson?: unknown }>(artifact:
     };
 }
 
+export type PreparedArtifactRecord = {
+    title: string | null;
+    kind: string;
+    artifactClass: string;
+    importance: string;
+    contentType: string;
+    contentText: string | null;
+    storageUrl: string | null;
+    storageProvider: string | null;
+    storageKey: string | null;
+    originalFilename: string | null;
+    sourceKind: string | null;
+    sourceRef: string | null;
+    sha256: string;
+    sizeBytes: number;
+    isCanonical: boolean;
+    promotedAt: Date | null;
+    metadataJson: Record<string, unknown>;
+};
+
 export function prepareArtifactRecord(input: {
     kind: string;
     artifactClass?: string | null;
@@ -89,7 +109,7 @@ export function prepareArtifactRecord(input: {
     sizeBytes?: number | null;
     isCanonical?: boolean | null;
     metadataJson?: Record<string, unknown> | null;
-}) {
+}): PreparedArtifactRecord {
     const artifactClass = normalizeArtifactClass(input.artifactClass);
     const importance = normalizeArtifactImportance(input.importance, artifactClass);
     const sha256 = deriveArtifactHash({
