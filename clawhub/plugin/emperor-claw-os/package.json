@@ -11,7 +11,8 @@
     "install": {
       "localPath": "./",
       "defaultChoice": "local"
-    }
+    },
+    "setupEntry": "./setup-entry.ts"
   },
   "keywords": [
     "openclaw",
