@@ -1,6 +1,6 @@
 # Emperor Claw OS Plugin
 
-Native OpenClaw plugin implementation track for Emperor Claw OS.
+Native OpenClaw plugin for Emperor Claw OS.
 
 This plugin exists separately from the legacy skill package at:
 - `clawhub/emperor-claw-os`
@@ -9,7 +9,7 @@ Purpose:
 - install and manage Emperor-connected bridge agents
 - own local manifests/state for Emperor bridge lifecycle
 - provide doctor/repair/rebind/restart/remove flows
-- evolve toward the primary consumer installation path once proven
+- serve as the primary native installation and lifecycle path for Emperor-connected agents
 
 ## Current command surface
 - `emperor-status`
@@ -25,7 +25,7 @@ Purpose:
 - `emperor-help`
 
 ## Current implementation state
-This is an active implementation track, not just a placeholder. The plugin already includes:
+This plugin is now functionally usable and validated on a real OpenClaw host. It includes:
 - native plugin manifest/package
 - local config install flow
 - bridge-backed add-agent bootstrap
