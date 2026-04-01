@@ -122,6 +122,21 @@ function writeEnvFile(envFile: string, values: Record<string, string>): void {
   fs.writeFileSync(envFile, `${lines.join("\n")}\n`, "utf8");
 }
 
+function writeBridgeConfig(companionDir: string, values: Record<string, string>): void {
+  const configPath = path.join(companionDir, "bridge.config.json");
+  const config = {
+    apiUrl: values.EMPEROR_CLAW_API_URL,
+    agentName: values.EMPEROR_CLAW_AGENT_NAME,
+    profile: values.EMPEROR_CLAW_AGENT_PROFILE,
+    runtimeId: values.EMPEROR_CLAW_RUNTIME_ID,
+    brainAgentId: values.EMPEROR_CLAW_BRAIN_AGENT_ID,
+    thinking: values.EMPEROR_CLAW_BRAIN_THINKING,
+    stateDir: values.EMPEROR_CLAW_STATE_DIR,
+    bridgeStatePath: values.EMPEROR_CLAW_BRIDGE_STATE_PATH
+  };
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
 function writeRunBridge(companionDir: string): void {
   const runBridgePath = path.join(companionDir, "run-bridge.sh");
   fs.writeFileSync(runBridgePath, `#!/usr/bin/env bash
@@ -209,7 +224,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     profile: input.profile
   });
 
-  writeEnvFile(envFile, {
+  const envValues = {
     EMPEROR_CLAW_API_URL: input.apiUrl,
     EMPEROR_CLAW_API_TOKEN: input.token,
     EMPEROR_CLAW_AGENT_NAME: input.agentName,
@@ -225,8 +240,10 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     EMPEROR_CLAW_DEBUG_PROMPTS: "false",
     OPENCLAW_CLI_PATH: resolveOpenClawCliPath(),
     OPENCLAW_GATEWAY_PORT: process.env.OPENCLAW_GATEWAY_PORT || "18789"
-  });
+  };
 
+  writeEnvFile(envFile, envValues);
+  writeBridgeConfig(companionDir, envValues);
   writeRunBridge(companionDir);
   writeSystemdService(serviceNameBase, envFile, companionDir);
 
