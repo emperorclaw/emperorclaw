@@ -38,6 +38,7 @@ export default definePluginEntry({
     registerRepairCommand(api, paths);
     registerRestartAgentCommand(api, paths);
     registerRemoveAgentCommand(api, paths);
+    registerRebindThreadsCommand(api, paths);
     registerHelpCommand(api, paths);
 
   }
