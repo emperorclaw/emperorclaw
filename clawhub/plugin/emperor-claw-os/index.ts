@@ -32,26 +32,7 @@ export default definePluginEntry({
 
     registerStatusCommand(api, paths);
     registerInstallCommand(api, paths);
-    registerDoctorCommand(api, paths);
-    registerAddAgentCommand(api, paths);
-    registerListAgentsCommand(api, paths);
-    registerRepairCommand(api, paths);
-    registerRebindThreadsCommand(api, paths);
-    registerRestartAgentCommand(api, paths);
-    registerRemoveAgentCommand(api, paths);
     registerHelpCommand(api, paths);
-    registerShowAgentCommand(api, paths);
 
-    api.registerService({
-      name: "emperor-claw-os-supervisor",
-      async start() {
-        api.logger.info("Emperor Claw OS supervisor started", { manifestRoot: paths.manifestRoot });
-        return {
-          stop: async () => {
-            api.logger.info("Emperor Claw OS supervisor stopped");
-          }
-        };
-      }
-    });
   }
 });
