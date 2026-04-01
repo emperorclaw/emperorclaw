@@ -22,6 +22,8 @@ export function registerShowAgentCommand(api: any, paths: EmperorPluginPaths): v
           `Companion dir: ${manifest.companionDir}`,
           `Runtime id: ${manifest.runtimeId}`,
           `Profile: ${manifest.profile}`,
+          `Bridge contract version: ${manifest.bridgeContract?.version || "missing"}`,
+          `Thread policy: direct=${manifest.threadPolicy?.direct || "missing"}, team=${manifest.threadPolicy?.team || "missing"}, delegation=${manifest.threadPolicy?.delegation || "missing"}`,
           `Installed at: ${manifest.installedAt}`,
           "",
           JSON.stringify(manifest, null, 2)

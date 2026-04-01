@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { EmperorPluginPaths } from "./paths.js";
+import type { EmperorBridgeContract, EmperorThreadPolicy } from "../bridge/contract.js";
 
 export type EmperorAgentManifest = {
   agentId?: string;
@@ -10,10 +11,8 @@ export type EmperorAgentManifest = {
   companionDir: string;
   serviceName: string;
   profile: string;
-  threadPolicy: {
-    direct: string;
-    team: string;
-  };
+  threadPolicy?: EmperorThreadPolicy;
+  bridgeContract?: EmperorBridgeContract;
   installedAt: string;
   version: string;
 };

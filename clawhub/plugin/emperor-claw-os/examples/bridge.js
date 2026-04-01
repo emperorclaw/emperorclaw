@@ -59,12 +59,19 @@ const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "***REMOVED
 const LOCAL_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
 const LOCAL_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
 const LOCAL_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || `hook:${LOCAL_BRAIN_AGENT_ID}:emperor-brain`;
-const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH || "/home/jose/.npm-global/bin/openclaw";
+const OPENCLAW_BRAIN_WORKSPACE =
+  process.env.EMPEROR_CLAW_BRAIN_WORKSPACE
+  || path.join(os.homedir(), ".openclaw", `workspace-${LOCAL_BRAIN_AGENT_ID}`);
+const OPENCLAW_NODE_BIN = process.env.EMPEROR_CLAW_NODE_BIN || process.execPath;
+const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH
+  || (process.platform === "win32" ? "openclaw.cmd" : "/home/jose/.npm-global/bin/openclaw");
+const OPENCLAW_CLI_JS_PATH = process.env.OPENCLAW_CLI_JS_PATH || null;
 const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "false").toLowerCase() === "true";
 const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
   || ((String(AGENT_NAME).toLowerCase() === "manager" || String(LOCAL_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
 const EMPEROR_CLAW_MANAGER_REVIEW_MS = Number(process.env.EMPEROR_CLAW_MANAGER_REVIEW_MS || 1800000);
 const IS_MANAGER_PROFILE = EMPEROR_CLAW_AGENT_PROFILE === "manager";
+const IS_WINDOWS_PROMPT_CONSTRAINED = process.platform === "win32";
 
 if (!API_TOKEN) {
   console.error("EMPEROR_CLAW_API_TOKEN is required");
@@ -82,6 +89,87 @@ function stableHash(value) {
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function firstExistingPath(candidates) {
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "string") continue;
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      // ignore bad candidate path and continue
+    }
+  }
+  return null;
+}
+
+function parsePossiblyMixedJson(text) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    // fall through
+  }
+
+  const startIndexes = [];
+  const firstObject = value.indexOf("{");
+  const firstArray = value.indexOf("[");
+  if (firstObject >= 0) startIndexes.push(firstObject);
+  if (firstArray >= 0) startIndexes.push(firstArray);
+
+  for (const index of startIndexes.sort((a, b) => a - b)) {
+    const candidate = value.slice(index).trim();
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // keep scanning other candidate starts
+    }
+  }
+
+  return null;
+}
+
+function resolveOpenClawCliInvocation() {
+  if (process.platform !== "win32") {
+    return {
+      command: OPENCLAW_CLI_PATH,
+      argsPrefix: [],
+      mode: "native-cli",
+      resolvedCliJsPath: null,
+    };
+  }
+
+  const appDataCliJs =
+    process.env.APPDATA
+      ? path.join(process.env.APPDATA, "npm", "node_modules", "openclaw", "openclaw.mjs")
+      : null;
+  const derivedCliJs =
+    /\.(cmd|bat)$/i.test(String(OPENCLAW_CLI_PATH || ""))
+      ? path.join(path.dirname(OPENCLAW_CLI_PATH), "node_modules", "openclaw", "openclaw.mjs")
+      : null;
+  const resolvedCliJsPath = firstExistingPath([
+    OPENCLAW_CLI_JS_PATH,
+    derivedCliJs,
+    appDataCliJs,
+  ]);
+
+  if (resolvedCliJsPath) {
+    return {
+      command: OPENCLAW_NODE_BIN,
+      argsPrefix: [resolvedCliJsPath],
+      mode: "node-wrapped-cli",
+      resolvedCliJsPath,
+    };
+  }
+
+  return {
+    command: OPENCLAW_CLI_PATH,
+    argsPrefix: [],
+    mode: "shell-cli-fallback",
+    resolvedCliJsPath: null,
+  };
 }
 
 function readJsonFile(filePath) {
@@ -128,8 +216,9 @@ async function http(path, options = {}) {
 }
 
 async function callLocalOpenClawAgent(message, options = {}) {
-  const args = [
+  const agentArgs = [
     "agent",
+    "--local",
     "--agent",
     options.agentId || LOCAL_BRAIN_AGENT_ID,
     "--message",
@@ -142,25 +231,39 @@ async function callLocalOpenClawAgent(message, options = {}) {
   ];
 
   if (options.sessionId) {
-    args.push("--session-id", options.sessionId);
+    agentArgs.push("--session-id", options.sessionId);
   }
 
-  const { stdout, stderr } = await execFileAsync(OPENCLAW_CLI_PATH, args, {
-    cwd: "/home/jose/.openclaw/workspace",
-    timeout: (options.timeoutSeconds || 120) * 1000 + 5000,
-    env: {
-      ...process.env,
-      OPENCLAW_GATEWAY_PORT: String(OPENCLAW_GATEWAY_PORT),
-    },
-    maxBuffer: 1024 * 1024,
-  });
+  const invocation = resolveOpenClawCliInvocation();
+  const args = [...invocation.argsPrefix, ...agentArgs];
 
-  let parsed = null;
+  let stdout;
+  let stderr;
   try {
-    parsed = JSON.parse(stdout);
-  } catch {
-    parsed = { raw: stdout, stderr };
+    ({ stdout, stderr } = await execFileAsync(invocation.command, args, {
+      cwd: OPENCLAW_BRAIN_WORKSPACE,
+      timeout: (options.timeoutSeconds || 120) * 1000 + 5000,
+      env: {
+        ...process.env,
+        OPENCLAW_GATEWAY_PORT: String(OPENCLAW_GATEWAY_PORT),
+      },
+      shell: invocation.mode === "shell-cli-fallback" && /\.(cmd|bat)$/i.test(String(OPENCLAW_CLI_PATH || "")),
+      maxBuffer: 1024 * 1024,
+    }));
+  } catch (error) {
+    const launcher = [invocation.command, ...args].join(" ");
+    console.error(
+      `[bridge] local brain invocation failed mode=${invocation.mode} cli_js=${invocation.resolvedCliJsPath || "none"} launcher=${launcher}`,
+    );
+    throw error;
   }
+
+  const combinedOutput = [stdout, stderr].filter(Boolean).join("\n");
+  const parsed =
+    parsePossiblyMixedJson(stdout)
+    || parsePossiblyMixedJson(stderr)
+    || parsePossiblyMixedJson(combinedOutput)
+    || { raw: combinedOutput || stdout || "", stderr };
 
   const result = parsed?.result && typeof parsed.result === "object" ? parsed.result : parsed;
 
@@ -179,6 +282,13 @@ async function callLocalOpenClawAgent(message, options = {}) {
         : typeof result?.message === "string" && result.message.trim()
           ? result.message.trim()
           : null;
+
+  if (!extractedText) {
+    const preview = String(combinedOutput || "").slice(0, 400).replace(/\s+/g, " ").trim();
+    console.log(
+      `[bridge] local brain returned no text; parsed_keys=${Object.keys(result || {}).join(",") || "none"} stdout_preview=${preview}`,
+    );
+  }
 
   return {
     raw: parsed,
@@ -199,6 +309,13 @@ function stripCodeFences(text) {
     return value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   }
   return value;
+}
+
+function compactTextBlock(text, maxLength = 400) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (!value) return null;
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
 }
 
 const EMPEROR_CLAW_USE_EXECUTOR = String(process.env.EMPEROR_CLAW_USE_EXECUTOR || "false").toLowerCase() === "true";
@@ -776,9 +893,23 @@ class EmperorBridge {
   }
 
   async handlePolledMessage(message) {
+    const threadId = message.threadId || message.thread_id || message.chat_id || "team";
+    const metadata = message?.metadataJson || {};
+    const targetAgentHint = message?.targetAgentId || metadata.targetAgentId || metadata.target_agent_id || metadata.target_agent || null;
+    const knownOwner = (this.bridgeState.threadOwners || {})[threadId] || null;
+    const inferredThreadType =
+      message.threadType
+      || message.thread_type
+      || metadata.threadType
+      || metadata.thread_type
+      || (threadId === "team" || message.chat_id === "team"
+        ? "team"
+        : targetAgentHint || knownOwner
+          ? "direct"
+          : "team");
     const thread = {
-      id: message.threadId || message.thread_id || message.chat_id || "team",
-      type: message.threadType || message.thread_type || "team",
+      id: threadId,
+      type: inferredThreadType,
     };
     if (!this.rememberMessage(message)) return;
     console.log("[bridge] polled message:", message.text);
@@ -851,6 +982,16 @@ class EmperorBridge {
       return;
     }
 
+    if (isAgentSender && this.agent?.id && message?.senderId === this.agent.id) {
+      console.log(`[bridge] ignoring self-authored direct thread message in ${thread.id}`);
+      return;
+    }
+
+    if (directThread && isAgentSender && !explicitAtMention && !targetAgentHint) {
+      console.log(`[bridge] ignoring direct thread ${thread.id} agent message without explicit target or @${agentName} mention`);
+      return;
+    }
+
     if (IS_MANAGER_PROFILE) {
       if (!isHuman || lowSignal || !explicitAtMention) {
         console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
@@ -897,10 +1038,12 @@ class EmperorBridge {
     );
 
     let liveContext = null;
-    try {
-      liveContext = await this.buildLiveContextForMessage(text);
-    } catch (error) {
-      console.error("[bridge] live context fetch failed:", error.message);
+    if (!(IS_WINDOWS_PROMPT_CONSTRAINED && taskRef)) {
+      try {
+        liveContext = await this.buildLiveContextForMessage(text);
+      } catch (error) {
+        console.error("[bridge] live context fetch failed:", error.message);
+      }
     }
 
     let claimedTask = null;
@@ -1497,6 +1640,7 @@ class EmperorBridge {
     if (!task) return null;
 
     const sections = [];
+    const compactMode = IS_WINDOWS_PROMPT_CONSTRAINED;
     const taskLines = [
       `Task: ${task.title || task.goal || task.id}`,
       `Task ID: ${task.id}`,
@@ -1522,19 +1666,21 @@ class EmperorBridge {
     }
 
     if (Array.isArray(bundle.notes) && bundle.notes.length > 0) {
-      const noteLines = bundle.notes.slice(-10).map((event) => {
+      const noteLines = bundle.notes.slice(compactMode ? -4 : -10).map((event) => {
         const payload = event?.payloadJson || {};
         const note = typeof payload.note === 'string' ? payload.note : null;
         const handoff = payload.handoff && typeof payload.handoff === 'object' ? payload.handoff : null;
-        if (note) return `- [${event.eventType || 'event'}] ${note}`;
-        if (handoff) return `- [${event.eventType || 'handoff'}] ${handoff.fromRole || 'unknown'} -> ${handoff.toRole || 'unknown'} | ${handoff.summary || ''}`;
-        return `- [${event.eventType || 'event'}] ${JSON.stringify(payload).slice(0, 240)}`;
+        if (note) return `- [${event.eventType || 'event'}] ${compactTextBlock(note, compactMode ? 180 : 320)}`;
+        if (handoff) return `- [${event.eventType || 'handoff'}] ${handoff.fromRole || 'unknown'} -> ${handoff.toRole || 'unknown'} | ${compactTextBlock(handoff.summary || '', compactMode ? 180 : 320) || ''}`;
+        return `- [${event.eventType || 'event'}] ${compactTextBlock(JSON.stringify(payload), compactMode ? 180 : 240)}`;
       });
       sections.push(`Recent task notes/events:\n${noteLines.join("\n")}`);
     }
 
     if (Array.isArray(bundle.projectMemory) && bundle.projectMemory.length > 0) {
-      const memoryLines = bundle.projectMemory.slice(0, 8).map((item) => `- ${String(item.content || '').trim()}`);
+      const memoryLines = bundle.projectMemory
+        .slice(0, compactMode ? 4 : 8)
+        .map((item) => `- ${compactTextBlock(item.content || '', compactMode ? 220 : 400)}`);
       sections.push(`Recent project memory:\n${memoryLines.join("\n")}`);
     }
 
@@ -1542,8 +1688,15 @@ class EmperorBridge {
     const customerResources = Array.isArray(bundle.resources?.customer) ? bundle.resources.customer : [];
     const allResources = [...projectResources, ...customerResources];
     if (allResources.length > 0) {
-      const resourceLines = allResources.slice(0, 12).map((resource) => `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || 'unknown'}, provider=${resource.provider || 'unknown'}, scope=${resource.scopeType || 'unknown'}]`);
-      sections.push(`Relevant scoped resources:\n${resourceLines.join("\n")}`);
+      const resourceBlocks = allResources.slice(0, compactMode ? 6 : 12).map((resource) => {
+        const lines = [
+          `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || 'unknown'}, provider=${resource.provider || 'unknown'}, scope=${resource.scopeType || 'unknown'}]`
+        ];
+        const configText = compactTextBlock(resource.configText || resource.contentText || "", compactMode ? 320 : 600);
+        if (configText) lines.push(`  Text: ${configText}`);
+        return lines.join("\n");
+      });
+      sections.push(`Relevant scoped resources:\n${resourceBlocks.join("\n")}`);
     }
 
     if (bundle.agentProfile) {
@@ -1556,7 +1709,7 @@ class EmperorBridge {
       }
     }
 
-    if (Array.isArray(bundle.relatedThreads) && bundle.relatedThreads.length > 0) {
+    if (!compactMode && Array.isArray(bundle.relatedThreads) && bundle.relatedThreads.length > 0) {
       const threadBlocks = bundle.relatedThreads.slice(0, 4).map((entry) => {
         const thread = entry.thread || {};
         const messages = Array.isArray(entry.recentMessages) ? entry.recentMessages.slice(0, 5) : [];

@@ -11,6 +11,7 @@
   },
   "include": [
     "index.ts",
+    "session-key-api.ts",
     "setup-entry.ts",
     "src/**/*.ts"
   ]
