@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { loadManifests, type EmperorAgentManifest } from "../state/manifests.js";
 import { loadThreadOwners } from "../state/thread-owners.js";
+import { serviceIsActive, fallbackLogExists } from "../runtime/services.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,12 +21,8 @@ export type AgentDoctorReport = {
 };
 
 async function checkSystemdService(serviceName: string): Promise<DoctorCheck> {
-  try {
-    await execFileAsync("systemctl", ["--user", "is-active", serviceName]);
-    return { name: "service", ok: true, detail: `${serviceName} active` };
-  } catch {
-    return { name: "service", ok: false, detail: `${serviceName} inactive or unavailable` };
-  }
+  const active = await serviceIsActive(serviceName);
+  return { name: "service", ok: active, detail: active ? `${serviceName} active` : `${serviceName} inactive or unavailable` };
 }
 
 function checkPath(name: string, filePath: string): DoctorCheck {
@@ -56,7 +53,8 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
       checkPath("runtimeBridge", `${manifest.companionDir}/runtime/bridge.js`),
       checkPath("runtimeControlPlane", `${manifest.companionDir}/runtime/control-plane.js`),
       checkPath("bridgeState", `${manifest.companionDir}/state/bridge-state.json`),
-      await checkSystemdService(manifest.serviceName)
+      await checkSystemdService(manifest.serviceName),
+      { name: "fallbackLog", ok: true, detail: fallbackLogExists(manifest.companionDir) ? `${manifest.companionDir}/bridge-fallback.log present` : `no fallback log present` }
     ];
     agents.push({
       agentName: manifest.agentName,

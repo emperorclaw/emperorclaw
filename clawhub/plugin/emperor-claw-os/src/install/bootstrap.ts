@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { writeManifest, type EmperorAgentManifest } from "../state/manifests.js";
 import { writeWorkspaceBootstrap } from "./workspace.js";
+import { reloadAndRestartService, startFallbackBridge } from "../runtime/services.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -229,12 +230,9 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   writeRunBridge(companionDir);
   writeSystemdService(serviceName, envFile, companionDir);
 
-  try {
-    execSync(`systemctl --user daemon-reload`, { stdio: "inherit" });
-    execSync(`systemctl --user enable ${serviceName}.service`, { stdio: "inherit" });
-    execSync(`systemctl --user restart ${serviceName}.service`, { stdio: "inherit" });
-  } catch {
-    // fallback later; keep install resilient for non-systemd envs
+  const serviceRestart = await reloadAndRestartService(serviceName);
+  if (serviceRestart.mode === "fallback") {
+    await startFallbackBridge(companionDir);
   }
 
   const emperorAgentId = await resolveEmperorAgentId(input.apiUrl, input.token, input.agentName);
