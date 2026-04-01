@@ -1,5 +1,6 @@
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { bootstrapAgent } from "../install/bootstrap.js";
+import { loadLocalConfig } from "../install/config.js";
 
 export function registerAddAgentCommand(api: any, paths: EmperorPluginPaths): void {
   api.registerCommand({
@@ -22,14 +23,15 @@ export function registerAddAgentCommand(api: any, paths: EmperorPluginPaths): vo
     },
     async execute(_invocationId: string, params: any) {
       const pluginCfg = (api.pluginConfig || {}) as Record<string, string | undefined>;
+      const localConfig = loadLocalConfig(paths);
       const result = await bootstrapAgent(paths, {
-        apiUrl: String(params.apiUrl || pluginCfg.apiUrl || "https://emperorclaw.malecu.eu"),
+        apiUrl: String(params.apiUrl || localConfig?.apiUrl || pluginCfg.apiUrl || "https://emperorclaw.malecu.eu"),
         token: String(params.token),
         agentName: String(params.agentName),
         localBrainAgentId: String(params.localBrainAgentId),
         profile: String(params.profile || "operator") as "operator" | "manager",
-        ownerName: String(params.ownerName || pluginCfg.defaultOwnerName || "Jose"),
-        ownerTimezone: String(params.ownerTimezone || pluginCfg.defaultOwnerTimezone || "UTC"),
+        ownerName: String(params.ownerName || localConfig?.defaultOwnerName || pluginCfg.defaultOwnerName || "Jose"),
+        ownerTimezone: String(params.ownerTimezone || localConfig?.defaultOwnerTimezone || pluginCfg.defaultOwnerTimezone || "UTC"),
         thinking: String(params.thinking || "medium")
       });
       return {
