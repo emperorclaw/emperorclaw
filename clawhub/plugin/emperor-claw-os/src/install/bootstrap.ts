@@ -5,6 +5,7 @@ import { execFile, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { writeManifest, type EmperorAgentManifest } from "../state/manifests.js";
+import { writeWorkspaceBootstrap } from "./workspace.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -199,6 +200,13 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   await ensureRuntimeDeps(runtimeDir);
   await runControlPlaneBootstrap(runtimeDir, companionDir, stateDir, bridgeStatePath, input, runtimeId);
   await ensureLocalBrainAgent(input.localBrainAgentId, workspaceDir, input.agentName);
+  writeWorkspaceBootstrap({
+    workspaceDir,
+    agentName: input.agentName,
+    ownerName: input.ownerName,
+    ownerTimezone: input.ownerTimezone,
+    profile: input.profile
+  });
 
   writeEnvFile(envFile, {
     EMPEROR_CLAW_API_URL: input.apiUrl,
