@@ -8,18 +8,23 @@
     "extensions": [
       "./index.ts"
     ],
+    "channel": {
+      "id": "emperor-claw-os",
+      "label": "Emperor",
+      "blurb": "Connect OpenClaw to Emperor thread messaging."
+    },
     "install": {
       "localPath": "./",
       "defaultChoice": "local"
-    },
-    "setupEntry": "./setup-entry.ts"
+    }
   },
   "keywords": [
     "openclaw",
     "plugin",
     "emperor",
     "bridge",
-    "agents"
+    "agents",
+    "channel"
   ],
   "license": "MIT"
 }

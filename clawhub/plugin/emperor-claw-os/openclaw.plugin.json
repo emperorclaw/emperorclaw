@@ -1,7 +1,10 @@
 {
   "id": "emperor-claw-os",
   "name": "Emperor Claw OS",
-  "description": "Install, repair, and manage Emperor-connected OpenClaw bridge agents.",
+  "description": "Install, repair, and manage Emperor-connected OpenClaw agents, manifests, and messaging channel state.",
+  "channels": [
+    "emperor-claw-os"
+  ],
   "skills": [],
   "configSchema": {
     "type": "object",

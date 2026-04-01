@@ -1,4 +1,4 @@
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { registerInstallCommand } from "./src/commands/install.js";
 import { registerDoctorCommand } from "./src/commands/doctor.js";
 import { registerAddAgentCommand } from "./src/commands/add-agent.js";
@@ -10,13 +10,16 @@ import { registerRestartAgentCommand } from "./src/commands/restart-agent.js";
 import { registerRemoveAgentCommand } from "./src/commands/remove-agent.js";
 import { registerHelpCommand } from "./src/commands/help.js";
 import { registerShowAgentCommand } from "./src/commands/show-agent.js";
+import { registerUpgradeManifestsCommand } from "./src/commands/upgrade-manifests.js";
 import { registerEmperorCli } from "./src/cli/register.js";
 import { resolvePluginPaths } from "./src/state/paths.js";
+import { emperorChannelPlugin } from "./src/channel/plugin.js";
 
-export default definePluginEntry({
+export default defineChannelPluginEntry({
   id: "emperor-claw-os",
   name: "Emperor Claw OS",
-  description: "Install, repair, and manage Emperor-connected OpenClaw bridge agents.",
+  description: "Install, repair, and manage Emperor-connected OpenClaw agents and control-plane state.",
+  plugin: emperorChannelPlugin,
   configSchema: {
     type: "object",
     additionalProperties: false,
@@ -28,7 +31,20 @@ export default definePluginEntry({
       stateRoot: { type: "string" }
     }
   },
-  register(api) {
+  registerCliMetadata(api) {
+    api.registerCli(({ program }) => {
+      registerEmperorCli(api, program);
+    }, {
+      descriptors: [
+        {
+          name: "emperor",
+          description: "Emperor Claw OS plugin commands",
+          hasSubcommands: true
+        }
+      ]
+    });
+  },
+  registerFull(api) {
     const paths = resolvePluginPaths(api);
 
     registerStatusCommand(api, paths);
@@ -36,16 +52,12 @@ export default definePluginEntry({
     registerListAgentsCommand(api, paths);
     registerShowAgentCommand(api, paths);
     registerDoctorCommand(api, paths);
+    registerUpgradeManifestsCommand(api, paths);
     registerRepairCommand(api, paths);
     registerRestartAgentCommand(api, paths);
     registerRemoveAgentCommand(api, paths);
     registerRebindThreadsCommand(api, paths);
     registerAddAgentCommand(api, paths);
-
-    api.registerCli(({ program }) => {
-      registerEmperorCli(api, program);
-    }, { commands: ["emperor"] });
     registerHelpCommand(api, paths);
-
   }
 });
