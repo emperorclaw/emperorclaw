@@ -231,7 +231,9 @@ cat > "$COMPANION_DIR/run-bridge.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+set -a
 source "$SCRIPT_DIR/.env"
+set +a
 export EMPEROR_CLAW_CONFIG_PATH="$SCRIPT_DIR/bridge.config.json"
 export EMPEROR_CLAW_RECONNECT_BASE_MS="${EMPEROR_CLAW_RECONNECT_BASE_MS:-2000}"
 export EMPEROR_CLAW_RECONNECT_MAX_MS="${EMPEROR_CLAW_RECONNECT_MAX_MS:-60000}"
