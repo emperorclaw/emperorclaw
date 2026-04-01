@@ -10,7 +10,7 @@ import { registerRestartAgentCommand } from "./src/commands/restart-agent.js";
 import { registerRemoveAgentCommand } from "./src/commands/remove-agent.js";
 import { registerHelpCommand } from "./src/commands/help.js";
 import { registerShowAgentCommand } from "./src/commands/show-agent.js";
-import { ensurePluginLayout, resolvePluginPaths } from "./src/state/paths.js";
+import { resolvePluginPaths } from "./src/state/paths.js";
 
 export default definePluginEntry({
   id: "emperor-claw-os",
@@ -29,26 +29,6 @@ export default definePluginEntry({
   },
   register(api) {
     const paths = resolvePluginPaths(api);
-
-    api.registerCommand({
-      name: "emperor-status",
-      description: "Show current Emperor Claw OS plugin status",
-      async execute() {
-        ensurePluginLayout(paths);
-      const manifests = loadManifests(paths);
-        return {
-          content: [{
-            type: "text",
-            text: [
-              "Emperor Claw OS plugin is installed.",
-              `Manifest root: ${paths.manifestRoot}`,
-              `State root: ${paths.stateRoot}`,
-              `Tracked agents: ${manifests.length}`
-            ].join("\n")
-          }]
-        };
-      }
-    });
 
     registerStatusCommand(api, paths);
     registerInstallCommand(api, paths);
