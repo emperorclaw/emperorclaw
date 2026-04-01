@@ -56,13 +56,13 @@ const { promisify } = require("node:util");
 const execFileAsync = promisify(execFile);
 const OPENCLAW_GATEWAY_PORT = Number(process.env.OPENCLAW_GATEWAY_PORT || 18789);
 const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "***REMOVED***";
-const VIKTOR_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || "hook:viktor:emperor-brain";
-const VIKTOR_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
-const VIKTOR_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
+const LOCAL_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
+const LOCAL_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
+const LOCAL_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || `hook:${LOCAL_BRAIN_AGENT_ID}:emperor-brain`;
 const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH || "/home/jose/.npm-global/bin/openclaw";
 const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "false").toLowerCase() === "true";
 const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
-  || ((String(AGENT_NAME).toLowerCase() === "manager" || String(VIKTOR_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
+  || ((String(AGENT_NAME).toLowerCase() === "manager" || String(LOCAL_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
 const EMPEROR_CLAW_MANAGER_REVIEW_MS = Number(process.env.EMPEROR_CLAW_MANAGER_REVIEW_MS || 1800000);
 const IS_MANAGER_PROFILE = EMPEROR_CLAW_AGENT_PROFILE === "manager";
 
@@ -131,11 +131,11 @@ async function callLocalOpenClawAgent(message, options = {}) {
   const args = [
     "agent",
     "--agent",
-    options.agentId || VIKTOR_BRAIN_AGENT_ID,
+    options.agentId || LOCAL_BRAIN_AGENT_ID,
     "--message",
     message,
     "--thinking",
-    options.thinking || VIKTOR_BRAIN_THINKING,
+    options.thinking || LOCAL_BRAIN_THINKING,
     "--timeout",
     String(options.timeoutSeconds || 120),
     "--json",
@@ -337,15 +337,19 @@ class EmperorBridge {
       lastSessionId: null,
       lastAgentId: null,
       lastManagerReviewAt: null,
+      localBrainSessionId: null,
       recentMessageIds: [],
       recentTaskFingerprints: [],
       pendingOperationIds: [],
+      threadOwners: {},
     };
     const loaded = readJsonFile(BRIDGE_STATE_PATH);
     const state = loaded && typeof loaded === "object" ? { ...defaults, ...loaded } : defaults;
+    state.localBrainSessionId = state.localBrainSessionId || state.viktorBrainSessionId || null;
     state.recentMessageIds = Array.isArray(state.recentMessageIds) ? state.recentMessageIds.slice(-DEDUPE_WINDOW) : [];
     state.recentTaskFingerprints = Array.isArray(state.recentTaskFingerprints) ? state.recentTaskFingerprints.slice(-DEDUPE_WINDOW) : [];
     state.pendingOperationIds = Array.isArray(state.pendingOperationIds) ? state.pendingOperationIds.slice(-DEDUPE_WINDOW) : [];
+    state.threadOwners = state.threadOwners || {};
     this.recentMessageIds = new Set(state.recentMessageIds);
     this.recentTaskFingerprints = new Set(state.recentTaskFingerprints);
     this.pendingOperationIds = new Set(state.pendingOperationIds);
@@ -366,9 +370,11 @@ class EmperorBridge {
       lastRuntimeId: this.runtime?.runtimeId || this.bridgeState.lastRuntimeId || null,
       lastSessionId: this.session?.id || this.bridgeState.lastSessionId || null,
       lastAgentId: this.agent?.id || this.bridgeState.lastAgentId || null,
+      localBrainSessionId: this.bridgeState.localBrainSessionId || null,
       recentMessageIds: Array.from(this.recentMessageIds).slice(-DEDUPE_WINDOW),
       recentTaskFingerprints: Array.from(this.recentTaskFingerprints).slice(-DEDUPE_WINDOW),
       pendingOperationIds: Array.from(this.pendingOperationIds).slice(-DEDUPE_WINDOW),
+      threadOwners: { ...(this.bridgeState.threadOwners || {}) },
     };
   }
 
@@ -388,6 +394,16 @@ class EmperorBridge {
       }
     }, 100);
   }
+  updateThreadOwner(threadId, agentId) {
+    if (!threadId || !agentId) return;
+    if (!this.bridgeState.threadOwners) {
+      this.bridgeState.threadOwners = {};
+    }
+    if (this.bridgeState.threadOwners[threadId] === agentId) return;
+    this.bridgeState.threadOwners[threadId] = agentId;
+    this.schedulePersistBridgeState();
+  }
+
 
   rememberMessage(message) {
     const key = this.messageKey(message);
@@ -816,14 +832,28 @@ class EmperorBridge {
     const taskRef = extractTaskRef(text);
     const explicitAtMention = agentName ? lowered.includes(`@${agentName.toLowerCase()}`) : false;
 
+    const metadata = message?.metadataJson || {};
+    const targetAgentHint = message?.targetAgentId || metadata.targetAgentId || metadata.target_agent_id || metadata.target_agent || null;
+    const directThread = isDirectThread;
+    const threadOwner = (this.bridgeState.threadOwners || {})[thread.id] || null;
+    let intendedAgentId = threadOwner;
+
+    if (targetAgentHint) {
+      intendedAgentId = targetAgentHint;
+      this.updateThreadOwner(thread.id, targetAgentHint);
+    } else if (directThread && explicitAtMention && this.agent?.id) {
+      intendedAgentId = this.agent.id;
+      this.updateThreadOwner(thread.id, this.agent.id);
+    }
+
+    if (directThread && intendedAgentId && this.agent?.id && intendedAgentId !== this.agent.id) {
+      console.log(`[bridge] skipping thread ${thread.id} message targeted at ${intendedAgentId}`);
+      return;
+    }
+
     if (IS_MANAGER_PROFILE) {
-      // Manager: in direct threads, accept all human, non-trivial messages; in team threads, require explicit @mention
-      if (!isHuman || lowSignal) {
-        console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal})`);
-        return;
-      }
-      if (!isDirectThread && !explicitAtMention) {
-        console.log(`[bridge] manager ignoring team thread ${thread.id} message without explicit @${agentName} mention`);
+      if (!isHuman || lowSignal || !explicitAtMention) {
+        console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
         return;
       }
     } else if (!isDirectThread && !explicitAtMention) {
@@ -938,10 +968,6 @@ class EmperorBridge {
       `Runtime access note: this Emperor-connected runtime already has working Emperor authentication and API access. Emperor API base: ${API_URL}/api/mcp . Authorization bearer token available in runtime: ${API_TOKEN}. Use it when direct Emperor calls are needed. Do not claim you lack the Emperor API key or Emperor access unless a real call fails.`,
       `If you want Emperor state changed, return raw JSON only with this schema: {"reply_text":"string","summary":"optional","status":"observed|working|blocked|done|failed|needs_human","actions":[...]}.`,
       `Supported actions in this turn are: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, task_assign {task_id,agent_id,mode?}, thread_reply {thread_id?,thread_type?,text,chat_id?,target_agent_id?}, project_memory {project_id,content,summary?}, project_create {goal,customer_id?,status?,lead_agent_id?,max_active_agents?}, task_create {project_id,task_type,title,description,acceptance_criteria?,definition_of_done?,deliverables?,owner_role?,priority?,blocked_by_task_ids?}. Also remember that Emperor MCP lets you read/use customers, projects, tasks, notes, project memory, resources, artifacts, threads, templates, tactics, playbooks, incidents, approvals, schedules, and agent context when relevant. Resources are plain text/context; artifacts are preserved outputs.`,
-      `When you need explicit human approval (budget, scope change, risky action), prefer an approval task over only chatting: use task_create with task_type like "approval" and a clear title/description, use task_assign to assign it to the approver, add a task_note summarizing your recommendation and linking to any artifacts, and wait for the approval task result before executing dependent work.`,
-      `For real work products (reports, proposals, drafts, export bundles), upload artifacts and reference them in task_result or project_memory instead of relying only on chat text.`,
-      `For reusable configuration or templates, prefer creating or updating scoped resources over leaving them only in chat or local files.`,
-      `When you encounter systemic or recurring blockers (upstream outages, repeated failures across tasks), create or update incidents in addition to marking the local task as blocked.`,
       `If the human asks to create a project, define a project, break down a goal, or set up work, and the request is clear enough, use the creation actions available in this turn instead of only describing what you would do.`,
       `When another agent delegates work, only treat it as actionable if it explicitly uses @${agentName} and includes a concrete task/work verb. If a TASK-XXXXXXXX reference is present, use that specific task as the intended target.`,
       `If a TASK-XXXXXXXX reference is present, prefer the canonical Emperor task detail/context in the prompt over chat memory. Do not claim that task details are missing unless the canonical task detail is genuinely empty or retrieval failed.`,
@@ -966,16 +992,16 @@ class EmperorBridge {
 
     let replyText = null;
     try {
-      const knownSessionId = this.bridgeState.viktorBrainSessionId || null;
+      const knownSessionId = this.bridgeState.localBrainSessionId || null;
       const useFreshSession = false;
       const agentResult = await callLocalOpenClawAgent(prompt, {
         sessionId: useFreshSession ? null : knownSessionId,
-        thinking: VIKTOR_BRAIN_THINKING,
+        thinking: LOCAL_BRAIN_THINKING,
         timeoutSeconds: 120,
       });
       const nextSessionId = agentResult?.sessionId || null;
       if (nextSessionId) {
-        this.bridgeState.viktorBrainSessionId = nextSessionId;
+        this.bridgeState.localBrainSessionId = nextSessionId;
         this.schedulePersistBridgeState();
       }
       const structured = parseStructuredEnvelope(agentResult?.text || "");
@@ -1008,12 +1034,12 @@ class EmperorBridge {
       } else {
         if (!IS_MANAGER_PROFILE && referencedTask && !referencedTask.assignedAgentId && isAgentSender && explicitAtMention && /\b(take|claim|work on|handle|pick up|start)\b/.test(lowered)) {
           try {
-            console.log(`[bridge] self-assign attempt taskId=${referencedTask.id} agentId=${this.agent?.id || VIKTOR_BRAIN_AGENT_ID}`);
-            appendDebugLog(COMPANION_DIR, { kind: "self-assign-attempt", bridgeAgent: agentName, taskId: referencedTask.id, agentId: this.agent?.id || VIKTOR_BRAIN_AGENT_ID });
+            console.log(`[bridge] self-assign attempt taskId=${referencedTask.id} agentId=${this.agent?.id || LOCAL_BRAIN_AGENT_ID}`);
+            appendDebugLog(COMPANION_DIR, { kind: "self-assign-attempt", bridgeAgent: agentName, taskId: referencedTask.id, agentId: this.agent?.id || LOCAL_BRAIN_AGENT_ID });
             await http(`/api/mcp/tasks/${referencedTask.id}/assign`, {
               method: "POST",
-              idempotencyKey: `self-assign:${stableHash({ taskId: referencedTask.id, agentId: this.agent?.id || VIKTOR_BRAIN_AGENT_ID })}`,
-              body: { agentId: this.agent?.id || VIKTOR_BRAIN_AGENT_ID, mode: "assign" },
+              idempotencyKey: `self-assign:${stableHash({ taskId: referencedTask.id, agentId: this.agent?.id || LOCAL_BRAIN_AGENT_ID })}`,
+              body: { agentId: this.agent?.id || LOCAL_BRAIN_AGENT_ID, mode: "assign" },
             });
             console.log(`[bridge] self-assign success taskId=${referencedTask.id}`);
             appendDebugLog(COMPANION_DIR, { kind: "self-assign-success", bridgeAgent: agentName, taskId: referencedTask.id });
@@ -1029,24 +1055,25 @@ class EmperorBridge {
       }
     } catch (error) {
       console.error("[bridge] viktor brain handoff failed:", error.message);
-      // Surface a generic error only when a human explicitly addressed this agent
-      if (isHuman && (isDirectThread || explicitAtMention)) {
-        replyText = "I ran into an internal error while trying to answer that. I didn't change any Emperor state. Please try again in a bit.";
-      } else {
-        replyText = null;
-      }
+      replyText = IS_MANAGER_PROFILE ? null : "I hit a local brain handoff issue just now. Please try again in a moment.";
     }
 
     if (!replyText || !String(replyText).trim()) {
-      console.log("[bridge] suppressing empty or unusable reply");
-      await this.updateChatStatus(thread.id, false);
-      return;
+      if (IS_MANAGER_PROFILE || explicitDelegationRequest || explicitProjectCreationRequest) {
+        console.log("[bridge] suppressing unusable reply");
+        await this.updateChatStatus(thread.id, false);
+        return;
+      }
+      replyText = "I saw your message, but I don't have a usable reply yet.";
     }
 
     await this.sendMessage(String(replyText).trim(), {
       thread_id: thread.id,
       thread_type: thread.type,
     });
+    if (thread?.id && this.agent?.id) {
+      this.updateThreadOwner(thread.id, this.agent.id);
+    }
     await this.updateChatStatus(thread.id, false);
     await this.checkpoint(
       {
@@ -1054,7 +1081,7 @@ class EmperorBridge {
         threadId: thread.id,
         threadType: thread.type,
         lastSeenMessageId: message.id || null,
-        brainSessionKey: VIKTOR_BRAIN_SESSION_KEY,
+        brainSessionKey: LOCAL_BRAIN_SESSION_KEY,
       },
       `Processed thread ${thread.id}`,
     );
@@ -1716,15 +1743,15 @@ class EmperorBridge {
       `Current sync snapshot: tasks=${Array.isArray(snapshot?.tasks) ? snapshot.tasks.length : 0}, teamThreads=${Array.isArray(snapshot?.teamThreads) ? snapshot.teamThreads.length : 0}`,
     ].filter(Boolean).join("\n\n");
 
-    const knownSessionId = this.bridgeState.viktorBrainSessionId || null;
+    const knownSessionId = this.bridgeState.localBrainSessionId || null;
     const agentResult = await callLocalOpenClawAgent(prompt, {
       sessionId: knownSessionId,
-      thinking: VIKTOR_BRAIN_THINKING,
+      thinking: LOCAL_BRAIN_THINKING,
       timeoutSeconds: 120,
     });
     const nextSessionId = agentResult?.sessionId || null;
     if (nextSessionId) {
-      this.bridgeState.viktorBrainSessionId = nextSessionId;
+      this.bridgeState.localBrainSessionId = nextSessionId;
     }
     this.bridgeState.lastManagerReviewAt = new Date(now).toISOString();
     this.schedulePersistBridgeState();
