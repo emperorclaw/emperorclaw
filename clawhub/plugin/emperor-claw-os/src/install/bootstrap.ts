@@ -47,8 +47,8 @@ function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function getSkillRoot(): string {
-  return path.resolve(process.cwd(), "../../emperor-claw-os");
+function getPluginRoot(): string {
+  return process.cwd();
 }
 
 async function ensureRuntimeDeps(runtimeDir: string): Promise<void> {
@@ -165,14 +165,14 @@ WantedBy=default.target
 `, "utf8");
 }
 
-function copyRuntimeAssets(skillRoot: string, runtimeDir: string, companionDir: string): void {
+function copyRuntimeAssets(pluginRoot: string, runtimeDir: string, companionDir: string): void {
   ensureDir(runtimeDir);
-  fs.copyFileSync(path.join(skillRoot, "examples", "bridge.js"), path.join(runtimeDir, "bridge.js"));
+  fs.copyFileSync(path.join(pluginRoot, "examples", "bridge.js"), path.join(runtimeDir, "bridge.js"));
   const controlPlaneUrl = `${process.env.EMPEROR_CLAW_API_URL || "https://emperorclaw.malecu.eu"}/downloads/control-plane.js`;
   execSync(`curl -fsSL ${JSON.stringify(controlPlaneUrl)} -o ${JSON.stringify(path.join(runtimeDir, "control-plane.js"))}`, { stdio: "inherit" });
   fs.chmodSync(path.join(runtimeDir, "bridge.js"), 0o755);
   fs.chmodSync(path.join(runtimeDir, "control-plane.js"), 0o755);
-  const doctorLocal = path.join(skillRoot, "scripts", "doctor-local.sh");
+  const doctorLocal = path.join(pluginRoot, "scripts", "doctor-local.sh");
   if (fs.existsSync(doctorLocal)) {
     fs.copyFileSync(doctorLocal, path.join(companionDir, "doctor.sh"));
     fs.chmodSync(path.join(companionDir, "doctor.sh"), 0o755);
@@ -190,14 +190,14 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   const runtimeId = `${slug}-${os.hostname().toLowerCase()}`;
   const serviceName = `emperor-claw-bridge-${slug}`;
   const workspaceDir = path.join(openclawHome, `workspace-${input.localBrainAgentId}`);
-  const skillRoot = getSkillRoot();
+  const pluginRoot = getPluginRoot();
 
   ensureDir(companionDir);
   ensureDir(runtimeDir);
   ensureDir(stateDir);
   ensureDir(workspaceDir);
 
-  copyRuntimeAssets(skillRoot, runtimeDir, companionDir);
+  copyRuntimeAssets(pluginRoot, runtimeDir, companionDir);
   await ensureRuntimeDeps(runtimeDir);
   await runControlPlaneBootstrap(runtimeDir, companionDir, stateDir, bridgeStatePath, input, runtimeId);
   await ensureLocalBrainAgent(input.localBrainAgentId, workspaceDir, input.agentName);
