@@ -21,6 +21,7 @@ Purpose:
 - `emperor-rebind-threads`
 - `emperor-restart-agent`
 - `emperor-remove-agent`
+- `emperor-help`
 
 ## Current implementation state
 This is an active implementation track, not just a placeholder. The plugin already includes:
