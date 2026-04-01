@@ -10,6 +10,7 @@ import { registerRestartAgentCommand } from "./src/commands/restart-agent.js";
 import { registerRemoveAgentCommand } from "./src/commands/remove-agent.js";
 import { registerHelpCommand } from "./src/commands/help.js";
 import { registerShowAgentCommand } from "./src/commands/show-agent.js";
+import { registerEmperorCli } from "./src/cli/register.js";
 import { resolvePluginPaths } from "./src/state/paths.js";
 
 export default definePluginEntry({
@@ -40,6 +41,10 @@ export default definePluginEntry({
     registerRemoveAgentCommand(api, paths);
     registerRebindThreadsCommand(api, paths);
     registerAddAgentCommand(api, paths);
+
+    api.registerCli(({ program }) => {
+      registerEmperorCli(api, program);
+    }, { commands: ["emperor"] });
     registerHelpCommand(api, paths);
 
   }
