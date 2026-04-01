@@ -1,5 +1,4 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { Type } from "@sinclair/typebox";
 import { registerInstallCommand } from "./src/commands/install.js";
 import { registerDoctorCommand } from "./src/commands/doctor.js";
 import { registerAddAgentCommand } from "./src/commands/add-agent.js";
@@ -17,13 +16,17 @@ export default definePluginEntry({
   id: "emperor-claw-os",
   name: "Emperor Claw OS",
   description: "Install, repair, and manage Emperor-connected OpenClaw bridge agents.",
-  configSchema: Type.Object({
-    apiUrl: Type.Optional(Type.String()),
-    defaultOwnerName: Type.Optional(Type.String()),
-    defaultOwnerTimezone: Type.Optional(Type.String()),
-    manifestRoot: Type.Optional(Type.String()),
-    stateRoot: Type.Optional(Type.String())
-  }, { additionalProperties: false }),
+  configSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      apiUrl: { type: "string" },
+      defaultOwnerName: { type: "string" },
+      defaultOwnerTimezone: { type: "string" },
+      manifestRoot: { type: "string" },
+      stateRoot: { type: "string" }
+    }
+  },
   register(api) {
     const paths = resolvePluginPaths(api);
     ensurePluginLayout(paths);
