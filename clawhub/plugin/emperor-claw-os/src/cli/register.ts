@@ -29,8 +29,8 @@ export function registerEmperorCli(api: any, program: any): void {
       localConfigPresent: Boolean(localConfig),
       manifestCount: manifests.length,
       threadOwnerCount: Object.keys(owners).length,
-      hasBridgeAsset: fs.existsSync(`${process.cwd()}/examples/bridge.js`),
-      hasDoctorScript: fs.existsSync(`${process.cwd()}/scripts/doctor-local.sh`)
+      hasBridgeAsset: fs.existsSync(`${paths.pluginRoot}/examples/bridge.js`),
+      hasDoctorScript: fs.existsSync(`${paths.pluginRoot}/scripts/doctor-local.sh`)
     }, null, 2));
   });
 
