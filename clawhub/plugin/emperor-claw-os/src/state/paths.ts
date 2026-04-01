@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 export type EmperorPluginPaths = {
+  pluginRoot: string;
   emperorRoot: string;
   manifestRoot: string;
   stateRoot: string;
@@ -14,7 +15,9 @@ export function resolvePluginPaths(api: any): EmperorPluginPaths {
   const emperorRoot = path.join(os.homedir(), ".openclaw", "emperor");
   const manifestRoot = cfg.manifestRoot || path.join(emperorRoot, "agents");
   const stateRoot = cfg.stateRoot || path.join(emperorRoot, "state");
+  const pluginRoot = typeof api.resolvePath === "function" ? api.resolvePath(".") : process.cwd();
   return {
+    pluginRoot,
     emperorRoot,
     manifestRoot,
     stateRoot,
