@@ -18,7 +18,7 @@ export function registerHelpCommand(api: any, _paths: EmperorPluginPaths): void 
             "- emperor-repair — re-bootstrap and restart tracked agents",
             "- emperor-rebind-threads — rebuild direct-thread ownership state",
             "- emperor-restart-agent — restart one tracked bridge service",
-            "- emperor-remove-agent — remove one tracked agent manifest/service",
+            "- emperor-remove-agent — remove one tracked agent manifest/service (optionally delete companion dir)",
             "- emperor-show-agent — show one tracked manifest in detail",
             "- emperor-help — this help overview"
           ].join("\n")

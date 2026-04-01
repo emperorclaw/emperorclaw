@@ -36,7 +36,7 @@
 ## Architecture follow-up
 - [ ] reduce copied bridge/runtime duplication further
 - [ ] move more runtime logic into plugin-native modules
-- [ ] improve remove-agent cleanup
+- [x] improve remove-agent cleanup
 - [ ] add upgrade/update flow
 
 - emperor-help
