@@ -21,6 +21,7 @@ Purpose:
 - `emperor-rebind-threads`
 - `emperor-restart-agent`
 - `emperor-remove-agent`
+- `emperor-show-agent`
 - `emperor-help`
 
 ## Current implementation state
