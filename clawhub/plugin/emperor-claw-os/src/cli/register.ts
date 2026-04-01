@@ -1,25 +1,53 @@
-async function invokeByName(api: any, name: string, argsObj?: any): Promise<any> {
-  const registry = api.runtime?.commands;
-  if (!registry || typeof registry.invoke !== 'function') throw new Error('OpenClaw runtime command registry is unavailable');
-  return await registry.invoke(name, {
-    args: argsObj ? JSON.stringify(argsObj) : '',
-    channel: 'cli'
-  });
-}
+import { ensurePluginLayout, resolvePluginPaths } from "../state/paths.js";
+import { loadLocalConfig, writeLocalConfig } from "../install/config.js";
+import { loadManifests } from "../state/manifests.js";
+import { loadThreadOwners } from "../state/thread-owners.js";
+import { runDoctor, formatDoctorReport } from "../install/health.js";
+import { bootstrapAgent } from "../install/bootstrap.js";
+import { repairAllAgents } from "../install/repair.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import fs from "node:fs";
 
-function printResult(result: any): void {
-  console.log(result?.text || JSON.stringify(result, null, 2));
+const execFileAsync = promisify(execFile);
+
+function print(text: string): void {
+  console.log(text);
 }
 
 export function registerEmperorCli(api: any, program: any): void {
   const emperor = program.command('emperor').description('Emperor Claw OS plugin commands');
+  const paths = resolvePluginPaths(api);
 
   emperor.command('status').description('Show plugin status summary').action(async () => {
-    printResult(await invokeByName(api, 'emperor-status'));
+    ensurePluginLayout(paths);
+    const localConfig = loadLocalConfig(paths);
+    const manifests = loadManifests(paths);
+    const owners = loadThreadOwners(paths);
+    print(JSON.stringify({
+      pluginId: api.id,
+      localConfigPresent: Boolean(localConfig),
+      manifestCount: manifests.length,
+      threadOwnerCount: Object.keys(owners).length,
+      hasBridgeAsset: fs.existsSync(`${process.cwd()}/examples/bridge.js`),
+      hasDoctorScript: fs.existsSync(`${process.cwd()}/scripts/doctor-local.sh`)
+    }, null, 2));
   });
 
   emperor.command('help').description('Show plugin help overview').action(async () => {
-    printResult(await invokeByName(api, 'emperor-help'));
+    print([
+      'Emperor Claw OS plugin commands:',
+      '- emperor status',
+      '- emperor install',
+      '- emperor doctor',
+      '- emperor list-agents',
+      '- emperor show-agent --local-brain-agent-id <id>',
+      '- emperor add-agent --agent-name <name> --local-brain-agent-id <id> --token <token>',
+      '- emperor repair',
+      '- emperor restart-agent --local-brain-agent-id <id>',
+      '- emperor remove-agent --local-brain-agent-id <id> [--remove-companion-dir]',
+      '- emperor rebind-threads --token <token>'
+    ].join('\n'));
   });
 
   emperor.command('install')
@@ -28,26 +56,38 @@ export function registerEmperorCli(api: any, program: any): void {
     .option('--owner-name <name>')
     .option('--owner-timezone <tz>')
     .action(async (opts: any) => {
-      printResult(await invokeByName(api, 'emperor-install', {
-        apiUrl: opts.apiUrl,
-        defaultOwnerName: opts.ownerName,
-        defaultOwnerTimezone: opts.ownerTimezone
-      }));
+      ensurePluginLayout(paths);
+      const configPath = writeLocalConfig(paths, {
+        apiUrl: String(opts.apiUrl || api.pluginConfig?.apiUrl || 'https://emperorclaw.malecu.eu'),
+        defaultOwnerName: String(opts.ownerName || api.pluginConfig?.defaultOwnerName || 'Jose'),
+        defaultOwnerTimezone: String(opts.ownerTimezone || api.pluginConfig?.defaultOwnerTimezone || 'UTC'),
+        installedAt: new Date().toISOString()
+      });
+      print(`Emperor plugin install initialized.\nConfig: ${configPath}`);
     });
 
   emperor.command('doctor').description('Run Emperor plugin health diagnostics').action(async () => {
-    printResult(await invokeByName(api, 'emperor-doctor'));
+    ensurePluginLayout(paths);
+    const localConfig = loadLocalConfig(paths);
+    const report = await runDoctor(paths);
+    const prefix = localConfig ? `Local config: ${JSON.stringify(localConfig)}\n\n` : 'Local config: missing\n\n';
+    print(prefix + formatDoctorReport(report));
   });
 
   emperor.command('list-agents').description('List tracked Emperor agent manifests').action(async () => {
-    printResult(await invokeByName(api, 'emperor-list-agents'));
+    ensurePluginLayout(paths);
+    const manifests = loadManifests(paths);
+    print(manifests.length === 0 ? 'No Emperor agent manifests are currently tracked.' : manifests.map((m) => `- ${m.agentName} → ${m.localBrainAgentId} (${m.serviceName})`).join('\n'));
   });
 
   emperor.command('show-agent')
     .description('Show one tracked Emperor agent manifest')
     .requiredOption('--local-brain-agent-id <id>')
     .action(async (opts: any) => {
-      printResult(await invokeByName(api, 'emperor-show-agent', { localBrainAgentId: opts.localBrainAgentId }));
+      ensurePluginLayout(paths);
+      const manifest = loadManifests(paths).find((row) => row.localBrainAgentId === String(opts.localBrainAgentId || ''));
+      if (!manifest) return print(`No tracked Emperor agent found for ${opts.localBrainAgentId}`);
+      print(JSON.stringify(manifest, null, 2));
     });
 
   emperor.command('add-agent')
@@ -61,27 +101,36 @@ export function registerEmperorCli(api: any, program: any): void {
     .option('--owner-timezone <tz>')
     .option('--thinking <level>')
     .action(async (opts: any) => {
-      printResult(await invokeByName(api, 'emperor-add-agent', {
-        agentName: opts.agentName,
-        localBrainAgentId: opts.localBrainAgentId,
-        token: opts.token,
-        profile: opts.profile,
-        apiUrl: opts.apiUrl,
-        ownerName: opts.ownerName,
-        ownerTimezone: opts.ownerTimezone,
-        thinking: opts.thinking
-      }));
+      ensurePluginLayout(paths);
+      const localConfig = loadLocalConfig(paths);
+      const result = await bootstrapAgent(paths, {
+        apiUrl: String(opts.apiUrl || localConfig?.apiUrl || api.pluginConfig?.apiUrl || 'https://emperorclaw.malecu.eu'),
+        token: String(opts.token || ''),
+        agentName: String(opts.agentName || ''),
+        localBrainAgentId: String(opts.localBrainAgentId || ''),
+        profile: String(opts.profile || 'operator') as 'operator' | 'manager',
+        ownerName: String(opts.ownerName || localConfig?.defaultOwnerName || api.pluginConfig?.defaultOwnerName || 'Jose'),
+        ownerTimezone: String(opts.ownerTimezone || localConfig?.defaultOwnerTimezone || api.pluginConfig?.defaultOwnerTimezone || 'UTC'),
+        thinking: String(opts.thinking || 'medium')
+      });
+      print(`Bootstrapped Emperor agent ${result.manifest.agentName}.\nManifest: ${result.manifestPath}\nCompanion dir: ${result.companionDir}\nService: ${result.manifest.serviceName}`);
     });
 
   emperor.command('repair').description('Repair and restart tracked Emperor bridge agents').action(async () => {
-    printResult(await invokeByName(api, 'emperor-repair'));
+    ensurePluginLayout(paths);
+    const repaired = await repairAllAgents(paths, api);
+    print(repaired.length === 0 ? 'No tracked Emperor agents were repaired.' : `Repaired Emperor agents:\n${repaired.map((n) => `- ${n}`).join('\n')}`);
   });
 
   emperor.command('restart-agent')
     .description('Restart a tracked Emperor bridge service')
     .requiredOption('--local-brain-agent-id <id>')
     .action(async (opts: any) => {
-      printResult(await invokeByName(api, 'emperor-restart-agent', { localBrainAgentId: opts.localBrainAgentId }));
+      ensurePluginLayout(paths);
+      const manifest = loadManifests(paths).find((row) => row.localBrainAgentId === String(opts.localBrainAgentId || ''));
+      if (!manifest) return print(`No tracked Emperor agent found for ${opts.localBrainAgentId}`);
+      await execFileAsync('systemctl', ['--user', 'restart', manifest.serviceName]);
+      print(`Restarted ${manifest.serviceName}`);
     });
 
   emperor.command('remove-agent')
@@ -89,20 +138,16 @@ export function registerEmperorCli(api: any, program: any): void {
     .requiredOption('--local-brain-agent-id <id>')
     .option('--remove-companion-dir', 'Delete companion directory too')
     .action(async (opts: any) => {
-      printResult(await invokeByName(api, 'emperor-remove-agent', {
-        localBrainAgentId: opts.localBrainAgentId,
-        removeCompanionDir: Boolean(opts.removeCompanionDir)
-      }));
+      ensurePluginLayout(paths);
+      print('Use plugin command surface for remove-agent cleanup for now; CLI wrapper expansion still in progress.');
     });
 
   emperor.command('rebind-threads')
     .description('Rebuild direct-thread ownership from Emperor metadata')
     .requiredOption('--token <token>')
     .option('--api-url <url>')
-    .action(async (opts: any) => {
-      printResult(await invokeByName(api, 'emperor-rebind-threads', {
-        token: opts.token,
-        apiUrl: opts.apiUrl
-      }));
+    .action(async () => {
+      ensurePluginLayout(paths);
+      print('Use plugin command surface for rebind-threads for now; CLI wrapper expansion still in progress.');
     });
 }
