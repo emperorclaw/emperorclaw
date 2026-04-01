@@ -26,6 +26,7 @@ export function registerEmperorCli(api: any, program: any): void {
     const owners = loadThreadOwners(paths);
     print(JSON.stringify({
       pluginId: api.id,
+      pluginRoot: paths.pluginRoot,
       localConfigPresent: Boolean(localConfig),
       manifestCount: manifests.length,
       threadOwnerCount: Object.keys(owners).length,
