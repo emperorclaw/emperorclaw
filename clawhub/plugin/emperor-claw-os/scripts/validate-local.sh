@@ -9,15 +9,43 @@ OWNER_TZ="${OWNER_TZ:-UTC}"
 TEST_AGENT_ID="${TEST_AGENT_ID:-plugin-validation-agent}"
 TEST_AGENT_NAME="${TEST_AGENT_NAME:-Plugin Validation Agent}"
 TOKEN="${EMPEROR_API_TOKEN:-}"
+OPENCLAW_CONFIG="${OPENCLAW_CONFIG:-/home/jose/.openclaw/openclaw.json}"
+
+strip_stale_plugin_entry() {
+  python - <<'PY'
+import json
+from pathlib import Path
+p = Path('/home/jose/.openclaw/openclaw.json')
+if not p.exists():
+    raise SystemExit(0)
+data = json.loads(p.read_text())
+plugins = data.get('plugins') or {}
+entries = plugins.get('entries') or {}
+if 'emperor-claw-os' in entries:
+    del entries['emperor-claw-os']
+    plugins['entries'] = entries
+    data['plugins'] = plugins
+    p.write_text(json.dumps(data, indent=2) + '\n')
+    print('[cleanup] removed stale plugins.entries.emperor-claw-os')
+PY
+}
 
 cleanup() {
+  set +e
   "$OPENCLAW_BIN" emperor remove-agent --local-brain-agent-id "$TEST_AGENT_ID" --remove-companion-dir >/dev/null 2>&1 || true
+  strip_stale_plugin_entry >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
+
+echo '[0/8] pre-clean config state'
+strip_stale_plugin_entry || true
 
 echo '[1/8] reinstall plugin'
 rm -rf /home/jose/.openclaw/extensions/emperor-claw-os
 "$OPENCLAW_BIN" plugins install "$PLUGIN_SRC" >/dev/null
+
+echo '[1.5/8] normalize config after install'
+strip_stale_plugin_entry || true
 
 echo '[2/8] status'
 "$OPENCLAW_BIN" emperor status
@@ -52,4 +80,5 @@ echo '[7/8] rebind-threads'
 
 echo '[8/8] remove-agent'
 "$OPENCLAW_BIN" emperor remove-agent --local-brain-agent-id "$TEST_AGENT_ID" --remove-companion-dir
+strip_stale_plugin_entry || true
 "$OPENCLAW_BIN" emperor list-agents
