@@ -1,10 +1,24 @@
 {
   "name": "@malecu/emperor-claw-os-plugin",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "Native OpenClaw plugin for Emperor bridge installation and agent lifecycle management",
   "openclaw": {
-    "extensions": ["./index.ts"]
-  }
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "localPath": "./",
+      "defaultChoice": "local"
+    }
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "emperor",
+    "bridge",
+    "agents"
+  ],
+  "license": "MIT"
 }
