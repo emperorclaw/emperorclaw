@@ -38,3 +38,5 @@
 - [ ] move more runtime logic into plugin-native modules
 - [ ] improve remove-agent cleanup
 - [ ] add upgrade/update flow
+
+- emperor-help

@@ -32,3 +32,5 @@ Current architectural note:
 - emperor-rebind-threads
 - emperor-restart-agent
 - emperor-remove-agent
+
+- emperor-help
