@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { loadManifests, type EmperorAgentManifest } from "../state/manifests.js";
+import { loadThreadOwners } from "../state/thread-owners.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,10 +38,12 @@ function checkPath(name: string, filePath: string): DoctorCheck {
 
 export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChecks: DoctorCheck[]; agents: AgentDoctorReport[] }> {
   const manifests = loadManifests(paths);
+  const owners = loadThreadOwners(paths);
   const globalChecks: DoctorCheck[] = [
     checkPath("manifestRoot", paths.manifestRoot),
     checkPath("stateRoot", paths.stateRoot),
-    checkPath("threadOwners", paths.threadOwnerPath)
+    checkPath("threadOwners", paths.threadOwnerPath),
+    { name: "threadOwnerEntries", ok: true, detail: `${Object.keys(owners).length} tracked direct thread bindings` }
   ];
 
   const agents: AgentDoctorReport[] = [];
