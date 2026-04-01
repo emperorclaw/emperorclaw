@@ -3,14 +3,10 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
-import { loadManifests } from "../state/manifests.js";
+import { loadManifests, resolveManifestPath } from "../state/manifests.js";
 import { loadThreadOwners, saveThreadOwners } from "../state/thread-owners.js";
 
 const execFileAsync = promisify(execFile);
-
-function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
 
 function removeMatchingThreadOwners(paths: EmperorPluginPaths, emperorAgentId?: string): number {
   if (!emperorAgentId) return 0;
@@ -52,7 +48,7 @@ export function registerRemoveAgentCommand(api: any, paths: EmperorPluginPaths):
       } catch {
         // best effort
       }
-      const manifestPath = path.join(paths.manifestRoot, `${slugify(localBrainAgentId)}.json`);
+      const manifestPath = resolveManifestPath(paths, localBrainAgentId);
       if (fs.existsSync(manifestPath)) {
         fs.unlinkSync(manifestPath);
       }

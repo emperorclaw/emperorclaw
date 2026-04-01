@@ -22,7 +22,21 @@ export function registerShowAgentCommand(api: any, paths: EmperorPluginPaths): v
         };
       }
       return {
-        content: [{ type: "text", text: JSON.stringify(manifest, null, 2) }]
+        content: [{
+          type: "text",
+          text: [
+            `Agent: ${manifest.agentName}` ,
+            `Local brain: ${manifest.localBrainAgentId}` ,
+            `Emperor agent id: ${manifest.agentId || "unknown"}` ,
+            `Service: ${manifest.serviceName}` ,
+            `Companion dir: ${manifest.companionDir}` ,
+            `Runtime id: ${manifest.runtimeId}` ,
+            `Profile: ${manifest.profile}` ,
+            `Installed at: ${manifest.installedAt}` ,
+            "",
+            JSON.stringify(manifest, null, 2)
+          ].join("\n")
+        }]
       };
     }
   });

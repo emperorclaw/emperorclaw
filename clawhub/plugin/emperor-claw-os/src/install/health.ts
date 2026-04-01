@@ -26,6 +26,19 @@ async function checkSystemdService(serviceName: string): Promise<DoctorCheck> {
 }
 
 
+
+function checkManifestConsistency(manifest: EmperorAgentManifest): DoctorCheck {
+  const expectedService = `${manifest.serviceName}`;
+  const hasRuntimeId = Boolean(manifest.runtimeId && manifest.runtimeId.trim());
+  return {
+    name: "manifestConsistency",
+    ok: hasRuntimeId && expectedService.endsWith('.service'),
+    detail: hasRuntimeId
+      ? `service=${expectedService}, runtimeId=${manifest.runtimeId}`
+      : `manifest missing runtimeId or invalid service name`
+  };
+}
+
 function checkBridgeFreshness(bridgeStatePath: string): DoctorCheck {
   if (!fs.existsSync(bridgeStatePath)) {
     return { name: "bridgeFreshness", ok: false, detail: `${bridgeStatePath} missing` };
@@ -69,6 +82,7 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
   const agents: AgentDoctorReport[] = [];
   for (const manifest of manifests) {
     const checks: DoctorCheck[] = [
+      checkManifestConsistency(manifest),
       checkPath("companionDir", manifest.companionDir),
       checkPath("envFile", `${manifest.companionDir}/.env`),
       checkPath("runBridge", `${manifest.companionDir}/run-bridge.sh`),

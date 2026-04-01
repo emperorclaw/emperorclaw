@@ -18,6 +18,14 @@ export type EmperorAgentManifest = {
   version: string;
 };
 
+function manifestPath(paths: EmperorPluginPaths, slug: string): string {
+  return path.join(paths.manifestRoot, `${slug}.json`);
+}
+
+export function slugifyManifestId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 export function loadManifests(paths: EmperorPluginPaths): EmperorAgentManifest[] {
   if (!fs.existsSync(paths.manifestRoot)) return [];
   return fs.readdirSync(paths.manifestRoot)
@@ -27,7 +35,11 @@ export function loadManifests(paths: EmperorPluginPaths): EmperorAgentManifest[]
 }
 
 export function writeManifest(paths: EmperorPluginPaths, slug: string, manifest: EmperorAgentManifest): string {
-  const filePath = path.join(paths.manifestRoot, `${slug}.json`);
+  const filePath = manifestPath(paths, slug);
   fs.writeFileSync(filePath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   return filePath;
+}
+
+export function resolveManifestPath(paths: EmperorPluginPaths, localBrainAgentId: string): string {
+  return manifestPath(paths, slugifyManifestId(localBrainAgentId));
 }
