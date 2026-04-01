@@ -126,7 +126,7 @@ function writeRunBridge(companionDir: string): void {
   const runBridgePath = path.join(companionDir, "run-bridge.sh");
   fs.writeFileSync(runBridgePath, `#!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 set -a
 source "$SCRIPT_DIR/.env"
 set +a
