@@ -82,6 +82,23 @@ async function runControlPlaneBootstrap(runtimeDir: string, companionDir: string
   });
 }
 
+
+async function resolveEmperorAgentId(apiUrl: string, token: string, agentName: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("curl", [
+      "-sS",
+      "-H", `Authorization: Bearer ${token}`,
+      `${apiUrl}/api/mcp/agents?limit=200`
+    ]);
+    const payload = JSON.parse(stdout);
+    const rows = Array.isArray(payload?.agents) ? payload.agents : [];
+    const match = rows.find((row: any) => String(row?.name || "").trim() === agentName.trim());
+    return match?.id;
+  } catch {
+    return undefined;
+  }
+}
+
 async function ensureLocalBrainAgent(localBrainAgentId: string, workspaceDir: string, agentName: string): Promise<void> {
   const openclaw = resolveOpenClawCliPath();
   let exists = false;
@@ -212,7 +229,10 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     // fallback later; keep install resilient for non-systemd envs
   }
 
+  const emperorAgentId = await resolveEmperorAgentId(input.apiUrl, input.token, input.agentName);
+
   const manifest: EmperorAgentManifest = {
+    agentId: emperorAgentId,
     agentName: input.agentName,
     localBrainAgentId: input.localBrainAgentId,
     runtimeId,
