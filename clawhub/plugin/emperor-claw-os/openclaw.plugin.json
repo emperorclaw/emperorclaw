@@ -28,5 +28,19 @@
         "description": "Root directory for Emperor plugin runtime state"
       }
     }
+  },
+  "version": "0.1.0",
+  "uiHints": {
+    "apiUrl": {
+      "label": "Emperor API URL",
+      "placeholder": "https://emperorclaw.malecu.eu"
+    },
+    "defaultOwnerName": {
+      "label": "Default owner name"
+    },
+    "defaultOwnerTimezone": {
+      "label": "Default owner timezone",
+      "placeholder": "UTC"
+    }
   }
 }
