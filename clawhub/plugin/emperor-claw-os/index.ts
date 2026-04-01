@@ -10,6 +10,7 @@ import { registerRebindThreadsCommand } from "./src/commands/rebind-threads.js";
 import { registerRestartAgentCommand } from "./src/commands/restart-agent.js";
 import { registerRemoveAgentCommand } from "./src/commands/remove-agent.js";
 import { registerHelpCommand } from "./src/commands/help.js";
+import { registerShowAgentCommand } from "./src/commands/show-agent.js";
 import { ensurePluginLayout, resolvePluginPaths } from "./src/state/paths.js";
 
 export default definePluginEntry({
@@ -56,6 +57,7 @@ export default definePluginEntry({
     registerRestartAgentCommand(api, paths);
     registerRemoveAgentCommand(api, paths);
     registerHelpCommand(api, paths);
+    registerShowAgentCommand(api, paths);
 
     api.registerService({
       name: "emperor-claw-os-supervisor",
