@@ -1,14 +1,11 @@
-# Emperor Claw OS Plugin (Scaffold)
+# Emperor Claw OS Plugin References
 
-This folder is the dedicated native OpenClaw plugin target for Emperor Claw OS.
-It intentionally exists separately from `clawhub/emperor-claw-os` so plugin work
-can proceed without destabilizing the existing skill package.
+This folder tracks the native OpenClaw plugin implementation path for Emperor Claw OS.
 
-Current status:
-- plugin manifest and package scaffolded
-- basic commands added: install, doctor, add-agent, list-agents
-- local manifest/state layout scaffolded
-- service hook scaffolded
-
-Next implementation loops should replace scaffold behavior with full Emperor API,
-OpenClaw agent bootstrap, service supervision, repair, and routing management.
+Start here:
+- `CHANNEL-MIGRATION-PROPOSAL.md`
+- `BRIDGE-CONTRACT.md`
+- `BRIDGE-PRESERVATION-PLAN.md`
+- `CHANNEL-CONFIG.md`
+- `PLUGIN-STATUS.md`
+- `NEXT-STEPS.md`
