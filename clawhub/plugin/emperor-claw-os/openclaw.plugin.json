@@ -1,0 +1,32 @@
+{
+  "id": "emperor-claw-os",
+  "name": "Emperor Claw OS",
+  "description": "Install, repair, and manage Emperor-connected OpenClaw bridge agents.",
+  "skills": [],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiUrl": {
+        "type": "string",
+        "description": "Base URL for the Emperor API"
+      },
+      "defaultOwnerName": {
+        "type": "string",
+        "description": "Default human owner name used for new local agents"
+      },
+      "defaultOwnerTimezone": {
+        "type": "string",
+        "description": "Default owner timezone used for new local agents"
+      },
+      "manifestRoot": {
+        "type": "string",
+        "description": "Root directory for Emperor local manifests"
+      },
+      "stateRoot": {
+        "type": "string",
+        "description": "Root directory for Emperor plugin runtime state"
+      }
+    }
+  }
+}
