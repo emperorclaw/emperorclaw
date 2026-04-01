@@ -94,7 +94,7 @@ async function resolveEmperorAgentId(apiUrl: string, token: string, agentName: s
     ]);
     const payload = JSON.parse(stdout);
     const rows = Array.isArray(payload?.agents) ? payload.agents : [];
-    const match = rows.find((row: any) => String(row?.name || "").trim() === agentName.trim());
+    const match = rows.find((row: any) => String(row?.name || "").trim() === String(agentName || "").trim());
     return match?.id;
   } catch {
     return undefined;

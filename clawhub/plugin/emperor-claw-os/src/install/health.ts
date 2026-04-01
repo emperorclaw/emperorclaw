@@ -29,7 +29,7 @@ async function checkSystemdService(serviceName: string): Promise<DoctorCheck> {
 
 function checkManifestConsistency(manifest: EmperorAgentManifest): DoctorCheck {
   const expectedService = `${manifest.serviceName}`;
-  const hasRuntimeId = Boolean(manifest.runtimeId && manifest.runtimeId.trim());
+  const hasRuntimeId = Boolean(manifest.runtimeId && String(manifest.runtimeId || "").trim());
   return {
     name: "manifestConsistency",
     ok: hasRuntimeId && expectedService.endsWith('.service'),
