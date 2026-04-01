@@ -1,16 +1,21 @@
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { runDoctor, formatDoctorReport } from "../install/health.js";
+import { loadLocalConfig } from "../install/config.js";
 
 export function registerDoctorCommand(api: any, paths: EmperorPluginPaths): void {
   api.registerCommand({
     name: "emperor-doctor",
     description: "Run an Emperor Claw OS local health check",
     async execute() {
+      const localConfig = loadLocalConfig(paths);
       const report = await runDoctor(paths);
+      const prefix = localConfig
+        ? `Local config: ${JSON.stringify(localConfig)}\n\n`
+        : "Local config: missing\n\n";
       return {
         content: [{
           type: "text",
-          text: formatDoctorReport(report)
+          text: prefix + formatDoctorReport(report)
         }]
       };
     }
