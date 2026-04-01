@@ -49,10 +49,11 @@ Non-goal for v1:
 
 ## 2.1 Canonical shipped surface
 
-Keep all consumer-visible distributed assets under:
-- `clawhub/emperor-claw-os/`
+Keep all consumer-visible distributed assets under `clawhub/*`, with a split between:
+- `clawhub/emperor-claw-os/` for the current skill package
+- `clawhub/plugin/emperor-claw-os/` for the new native plugin package
 
-That folder should become the canonical plugin root (or contain the plugin root payload).
+The dedicated plugin folder should become the canonical plugin root.
 
 ## 2.2 Plugin type
 
@@ -378,10 +379,10 @@ Once plugin install is solid:
 
 # 10. Proposed plugin file layout
 
-Suggested structure inside `clawhub/emperor-claw-os/`:
+Suggested structure inside `clawhub/plugin/emperor-claw-os/`:
 
 ```text
-clawhub/emperor-claw-os/
+clawhub/plugin/emperor-claw-os/
   openclaw.plugin.json
   package.json
   index.ts
