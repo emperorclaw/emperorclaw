@@ -5,6 +5,7 @@ import { registerDoctorCommand } from "./src/commands/doctor.js";
 import { registerAddAgentCommand } from "./src/commands/add-agent.js";
 import { registerListAgentsCommand } from "./src/commands/list-agents.js";
 import { registerRepairCommand } from "./src/commands/repair.js";
+import { registerRebindThreadsCommand } from "./src/commands/rebind-threads.js";
 import { ensurePluginLayout, resolvePluginPaths } from "./src/state/paths.js";
 import { loadManifests } from "./src/state/manifests.js";
 
@@ -47,6 +48,7 @@ export default definePluginEntry({
     registerAddAgentCommand(api, paths);
     registerListAgentsCommand(api, paths);
     registerRepairCommand(api, paths);
+    registerRebindThreadsCommand(api, paths);
 
     api.registerService({
       name: "emperor-claw-os-supervisor",
