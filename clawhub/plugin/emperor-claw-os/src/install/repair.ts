@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { loadManifests } from "../state/manifests.js";
 import { bootstrapAgent } from "./bootstrap.js";
+import { reloadAndRestartService, startFallbackBridge } from "../runtime/services.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,10 +38,9 @@ export async function repairAllAgents(paths: EmperorPluginPaths, api: any): Prom
       thinking: String(vars.EMPEROR_CLAW_BRAIN_THINKING || "medium")
     });
 
-    try {
-      await execFileAsync("systemctl", ["--user", "restart", manifest.serviceName]);
-    } catch {
-      // best effort
+    const restarted = await reloadAndRestartService(manifest.serviceName.replace(/\.service$/, ""));
+    if (restarted.mode === "fallback") {
+      await startFallbackBridge(manifest.companionDir);
     }
     repaired.push(manifest.agentName);
   }
