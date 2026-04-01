@@ -39,6 +39,7 @@ export default definePluginEntry({
     registerRestartAgentCommand(api, paths);
     registerRemoveAgentCommand(api, paths);
     registerRebindThreadsCommand(api, paths);
+    registerAddAgentCommand(api, paths);
     registerHelpCommand(api, paths);
 
   }
