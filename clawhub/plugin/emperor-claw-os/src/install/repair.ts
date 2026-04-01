@@ -33,7 +33,7 @@ export async function repairAllAgents(paths: EmperorPluginPaths, api: any): Prom
       agentName: String(vars.EMPEROR_CLAW_AGENT_NAME || manifest.agentName),
       localBrainAgentId: String(vars.EMPEROR_CLAW_BRAIN_AGENT_ID || manifest.localBrainAgentId),
       profile: String(vars.EMPEROR_CLAW_AGENT_PROFILE || manifest.profile || "operator") as "operator" | "manager",
-      ownerName: String(api.pluginConfig?.defaultOwnerName || "Jose"),
+      ownerName: String(api.pluginConfig?.defaultOwnerName || "Admin"),
       ownerTimezone: String(api.pluginConfig?.defaultOwnerTimezone || "UTC"),
       thinking: String(vars.EMPEROR_CLAW_BRAIN_THINKING || "medium")
     });

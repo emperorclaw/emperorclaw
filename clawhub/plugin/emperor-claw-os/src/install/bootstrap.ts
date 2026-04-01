@@ -7,6 +7,7 @@ import type { EmperorPluginPaths } from "../state/paths.js";
 import { writeManifest, type EmperorAgentManifest } from "../state/manifests.js";
 import { writeWorkspaceBootstrap } from "./workspace.js";
 import { reloadAndRestartService, startFallbackBridge } from "../runtime/services.js";
+import { createDefaultBridgeContract, DEFAULT_THREAD_POLICY } from "../bridge/contract.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,11 +37,49 @@ function resolveOpenClawHome(): string {
   return process.env.OPENCLAW_HOME || path.join(os.homedir(), ".openclaw");
 }
 
+function inferOpenClawStateDir(pluginRoot: string): string | undefined {
+  const configured = String(process.env.OPENCLAW_STATE_DIR || "").trim();
+  if (configured) return configured;
+
+  const extensionsDir = path.dirname(pluginRoot);
+  if (path.basename(extensionsDir).toLowerCase() !== "extensions") return undefined;
+
+  const stateDir = path.dirname(extensionsDir);
+  return fs.existsSync(stateDir) ? stateDir : undefined;
+}
+
 function resolveOpenClawCliPath(): string {
   if (process.env.OPENCLAW_CLI_PATH) return process.env.OPENCLAW_CLI_PATH;
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+    const npmCli = path.join(appData, "npm", "openclaw.cmd");
+    if (fs.existsSync(npmCli)) return npmCli;
+  }
   const fallback = path.join(os.homedir(), ".npm-global", "bin", "openclaw");
   if (fs.existsSync(fallback)) return fallback;
-  return "openclaw";
+  return process.platform === "win32" ? "openclaw.cmd" : "openclaw";
+}
+
+function resolveOpenClawCliJsPath(cliPath: string): string {
+  const configured = String(process.env.OPENCLAW_CLI_JS_PATH || "").trim();
+  if (configured) return configured;
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(cliPath)) {
+    return path.join(path.dirname(cliPath), "node_modules", "openclaw", "openclaw.mjs");
+  }
+  return "";
+}
+
+function shouldUseShellForCli(cliPath: string): boolean {
+  return process.platform === "win32" && /\.(cmd|bat)$/i.test(cliPath);
+}
+
+async function execOpenClawCli(
+  cliPath: string,
+  args: string[]
+): Promise<{ stdout: string; stderr: string }> {
+  return execFileAsync(cliPath, args, {
+    shell: shouldUseShellForCli(cliPath)
+  });
 }
 
 function ensureDir(dir: string): void {
@@ -82,12 +121,12 @@ async function runControlPlaneBootstrap(runtimeDir: string, companionDir: string
 
 async function resolveEmperorAgentId(apiUrl: string, token: string, agentName: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync("curl", [
-      "-sS",
-      "-H", `Authorization: Bearer ${token}`,
-      `${apiUrl}/api/mcp/agents?limit=200`
-    ]);
-    const payload = JSON.parse(stdout);
+    const response = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/mcp/agents?limit=200`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) return undefined;
+    const payload = await response.json();
     const rows = Array.isArray(payload?.agents) ? payload.agents : [];
     const match = rows.find((row: any) => String(row?.name || "").trim() === String(agentName || "").trim());
     return match?.id;
@@ -100,21 +139,21 @@ async function ensureLocalBrainAgent(localBrainAgentId: string, workspaceDir: st
   const openclaw = resolveOpenClawCliPath();
   let exists = false;
   try {
-    const { stdout } = await execFileAsync(openclaw, ["agents", "list", "--json"]);
+    const { stdout } = await execOpenClawCli(openclaw, ["agents", "list", "--json"]);
     const rows = JSON.parse(stdout);
     exists = Array.isArray(rows) && rows.some((row) => row?.id === localBrainAgentId);
   } catch {
     exists = false;
   }
   if (!exists) {
-    await execFileAsync(openclaw, [
+    await execOpenClawCli(openclaw, [
       "agents", "add", localBrainAgentId,
       "--workspace", workspaceDir,
       "--model", "openai-codex/gpt-5.4",
       "--non-interactive"
     ]);
   }
-  await execFileAsync(openclaw, ["agents", "set-identity", "--agent", localBrainAgentId, "--name", agentName, "--emoji", "🧠"]);
+  await execOpenClawCli(openclaw, ["agents", "set-identity", "--agent", localBrainAgentId, "--name", agentName, "--emoji", "brain"]);
 }
 
 function writeEnvFile(envFile: string, values: Record<string, string>): void {
@@ -138,6 +177,30 @@ function writeBridgeConfig(companionDir: string, values: Record<string, string>)
 }
 
 function writeRunBridge(companionDir: string): void {
+  if (process.platform === "win32") {
+    const runBridgePath = path.join(companionDir, "run-bridge.ps1");
+    fs.writeFileSync(runBridgePath, `$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Get-Content (Join-Path $scriptDir ".env") | ForEach-Object {
+  if ([string]::IsNullOrWhiteSpace($_)) { return }
+  $idx = $_.IndexOf("=")
+  if ($idx -lt 1) { return }
+  $key = $_.Substring(0, $idx)
+  $raw = $_.Substring($idx + 1)
+  try {
+    $value = $raw | ConvertFrom-Json
+  } catch {
+    $value = $raw.Trim('"')
+  }
+  Set-Item -Path ("Env:" + $key) -Value ([string]$value)
+}
+$env:EMPEROR_CLAW_CONFIG_PATH = Join-Path $scriptDir "bridge.config.json"
+if (-not $env:EMPEROR_CLAW_RECONNECT_BASE_MS) { $env:EMPEROR_CLAW_RECONNECT_BASE_MS = "2000" }
+if (-not $env:EMPEROR_CLAW_RECONNECT_MAX_MS) { $env:EMPEROR_CLAW_RECONNECT_MAX_MS = "60000" }
+& $env:EMPEROR_CLAW_NODE_BIN (Join-Path $scriptDir "runtime/bridge.js")
+`, "utf8");
+    return;
+  }
+
   const runBridgePath = path.join(companionDir, "run-bridge.sh");
   fs.writeFileSync(runBridgePath, `#!/usr/bin/env bash
 set -euo pipefail
@@ -148,12 +211,13 @@ set +a
 export EMPEROR_CLAW_CONFIG_PATH="$SCRIPT_DIR/bridge.config.json"
 export EMPEROR_CLAW_RECONNECT_BASE_MS="\${EMPEROR_CLAW_RECONNECT_BASE_MS:-2000}"
 export EMPEROR_CLAW_RECONNECT_MAX_MS="\${EMPEROR_CLAW_RECONNECT_MAX_MS:-60000}"
-exec node "$SCRIPT_DIR/runtime/bridge.js"
+exec "$EMPEROR_CLAW_NODE_BIN" "$SCRIPT_DIR/runtime/bridge.js"
 `, "utf8");
   fs.chmodSync(runBridgePath, 0o755);
 }
 
 function writeSystemdService(serviceNameBase: string, envFile: string, companionDir: string): void {
+  if (process.platform === "win32") return;
   const serviceDir = path.join(os.homedir(), ".config", "systemd", "user");
   ensureDir(serviceDir);
   const servicePath = path.join(serviceDir, `${serviceNameBase}.service`);
@@ -206,6 +270,11 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   const serviceName = `${serviceNameBase}.service`;
   const workspaceDir = path.join(openclawHome, `workspace-${input.localBrainAgentId}`);
   const pluginRoot = paths.pluginRoot;
+  const openclawStateDir = inferOpenClawStateDir(pluginRoot);
+  const openclawConfigPath = String(process.env.OPENCLAW_CONFIG_PATH || "").trim()
+    || (openclawStateDir ? path.join(openclawStateDir, "openclaw.json") : "");
+  const openclawCliPath = resolveOpenClawCliPath();
+  const openclawCliJsPath = resolveOpenClawCliJsPath(openclawCliPath);
 
   ensureDir(companionDir);
   ensureDir(runtimeDir);
@@ -235,10 +304,15 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     EMPEROR_CLAW_BRIDGE_STATE_PATH: bridgeStatePath,
     EMPEROR_CLAW_BRAIN_AGENT_ID: input.localBrainAgentId,
     EMPEROR_CLAW_BRAIN_THINKING: input.thinking,
+    EMPEROR_CLAW_BRAIN_WORKSPACE: workspaceDir,
     EMPEROR_CLAW_AUTO_CLAIM: "false",
-    EMPEROR_CLAW_USE_EXECUTOR: "false",
+    EMPEROR_CLAW_USE_EXECUTOR: "true",
     EMPEROR_CLAW_DEBUG_PROMPTS: "false",
-    OPENCLAW_CLI_PATH: resolveOpenClawCliPath(),
+    EMPEROR_CLAW_NODE_BIN: process.execPath,
+    OPENCLAW_CLI_PATH: openclawCliPath,
+    ...(openclawCliJsPath ? { OPENCLAW_CLI_JS_PATH: openclawCliJsPath } : {}),
+    ...(openclawStateDir ? { OPENCLAW_STATE_DIR: openclawStateDir } : {}),
+    ...(openclawConfigPath ? { OPENCLAW_CONFIG_PATH: openclawConfigPath } : {}),
     OPENCLAW_GATEWAY_PORT: process.env.OPENCLAW_GATEWAY_PORT || "18789"
   };
 
@@ -262,10 +336,8 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     companionDir,
     serviceName,
     profile: input.profile,
-    threadPolicy: {
-      direct: "bound",
-      team: "mention-required"
-    },
+    threadPolicy: { ...DEFAULT_THREAD_POLICY },
+    bridgeContract: createDefaultBridgeContract(),
     installedAt: new Date().toISOString(),
     version: "0.1.0"
   };

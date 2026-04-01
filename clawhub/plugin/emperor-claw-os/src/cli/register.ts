@@ -1,43 +1,37 @@
 import { ensurePluginLayout, resolvePluginPaths } from "../state/paths.js";
 import { loadLocalConfig, writeLocalConfig } from "../install/config.js";
-import { loadManifests, resolveManifestPath } from "../state/manifests.js";
+import { loadManifests } from "../state/manifests.js";
 import { loadThreadOwners, saveThreadOwners } from "../state/thread-owners.js";
 import { runDoctor, formatDoctorReport } from "../install/health.js";
 import { bootstrapAgent } from "../install/bootstrap.js";
 import { repairAllAgents } from "../install/repair.js";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { BRIDGE_CONTRACT_VERSION, REQUIRED_BRIDGE_CAPABILITIES } from "../bridge/contract.js";
+import { backfillTrackedManifests, inspectTrackedManifestUpgrades } from "../state/normalize.js";
 import fs from "node:fs";
-
-const execFileAsync = promisify(execFile);
+import { removeTrackedAgent } from "../install/remove.js";
+import { reloadAndRestartService, startFallbackBridge } from "../runtime/services.js";
 
 function print(text: string): void {
   console.log(text);
 }
 
-function removeMatchingThreadOwners(paths: ReturnType<typeof resolvePluginPaths>, emperorAgentId?: string): number {
-  if (!emperorAgentId) return 0;
-  const owners = loadThreadOwners(paths);
-  let removed = 0;
-  for (const [threadId, ownerId] of Object.entries(owners)) {
-    if (ownerId === emperorAgentId) {
-      delete owners[threadId];
-      removed += 1;
-    }
-  }
-  saveThreadOwners(paths, owners);
-  return removed;
-}
-
 async function fetchThreads(token: string, apiUrl: string): Promise<any[]> {
-  const { stdout } = await execFileAsync("curl", ["-sS", "-H", `Authorization: Bearer ${token}`, `${apiUrl}/api/mcp/threads?thread_type=direct`]);
-  const payload = JSON.parse(stdout);
+  const response = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/mcp/threads?thread_type=direct`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error(`thread fetch failed with ${response.status}`);
+  const payload = await response.json();
   return payload.threads || [];
 }
 
 async function fetchThreadMessages(token: string, apiUrl: string, threadId: string): Promise<any[]> {
-  const { stdout } = await execFileAsync("curl", ["-sS", "-H", `Authorization: Bearer ${token}`, `${apiUrl}/api/mcp/threads/${threadId}/messages?limit=200`]);
-  const payload = JSON.parse(stdout);
+  const response = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/mcp/threads/${threadId}/messages?limit=200`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error(`thread message fetch failed with ${response.status}`);
+  const payload = await response.json();
   return payload.messages || [];
 }
 
@@ -50,14 +44,24 @@ export function registerEmperorCli(api: any, program: any): void {
     const localConfig = loadLocalConfig(paths);
     const manifests = loadManifests(paths);
     const owners = loadThreadOwners(paths);
+    const upgradePreview = inspectTrackedManifestUpgrades(paths);
     print(JSON.stringify({
       pluginId: api.id,
       rootDir: api.rootDir || "unknown",
       localConfigPresent: Boolean(localConfig),
+      configuredApiUrl: localConfig?.apiUrl || "https://emperorclaw.malecu.eu",
+      emperorTokenPresent: Boolean(process.env.EMPEROR_API_TOKEN || process.env.EMPEROR_CLAW_API_TOKEN),
+      bridgeContractVersion: BRIDGE_CONTRACT_VERSION,
+      requiredBridgeCapabilities: REQUIRED_BRIDGE_CAPABILITIES,
       manifestCount: manifests.length,
+      manifestsWithBridgeContract: manifests.filter((manifest) => Boolean(manifest.bridgeContract)).length,
+      manifestsNeedingUpgrade: upgradePreview.needingUpgrade,
       threadOwnerCount: Object.keys(owners).length,
       hasBridgeAsset: fs.existsSync(`${paths.pluginRoot}/examples/bridge.js`),
-      hasDoctorScript: fs.existsSync(`${paths.pluginRoot}/scripts/doctor-local.sh`)
+      hasDoctorScript: fs.existsSync(`${paths.pluginRoot}/scripts/doctor-local.sh`),
+      declaresChannelInManifest: fs.readFileSync(`${paths.pluginRoot}/openclaw.plugin.json`, "utf8").includes("\"channels\""),
+      hasSessionKeyApi: fs.existsSync(`${paths.pluginRoot}/session-key-api.ts`),
+      hasChannelConfigReference: fs.existsSync(`${paths.pluginRoot}/references/CHANNEL-CONFIG.md`)
     }, null, 2));
   });
 
@@ -70,10 +74,13 @@ export function registerEmperorCli(api: any, program: any): void {
       "- emperor list-agents",
       "- emperor show-agent --local-brain-agent-id <id>",
       "- emperor add-agent --agent-name <name> --local-brain-agent-id <id> --token <token>",
+      "- emperor upgrade-manifests",
       "- emperor repair",
       "- emperor restart-agent --local-brain-agent-id <id>",
-      "- emperor remove-agent --local-brain-agent-id <id> [--remove-companion-dir]",
-      "- emperor rebind-threads --token <token>"
+      "- emperor remove-agent --local-brain-agent-id <id> [--remove-companion-dir] [--remove-workspace] [--remove-local-brain-agent]",
+      "- emperor rebind-threads --token <token>",
+      "- emperor channel capability is registered through index.ts",
+      "- emperor doctor also probes Emperor host reachability and auth when an EMPEROR_API_TOKEN is available"
     ].join("\n"));
   });
 
@@ -101,6 +108,20 @@ export function registerEmperorCli(api: any, program: any): void {
     print(prefix + formatDoctorReport(report));
   });
 
+  emperor.command("upgrade-manifests").description("Backfill tracked manifests with bridge contract metadata").action(async () => {
+    ensurePluginLayout(paths);
+    const result = backfillTrackedManifests(paths);
+    print(
+      result.changed === 0
+        ? `Scanned ${result.scanned} manifests. No manifest upgrades were needed.`
+        : [
+            `Scanned ${result.scanned} manifests.`,
+            `Upgraded ${result.changed} manifest(s) with bridge contract metadata:`,
+            ...result.agents.map((agentName) => `- ${agentName}`)
+          ].join("\n")
+    );
+  });
+
   emperor.command("list-agents").description("List tracked Emperor agent manifests").action(async () => {
     ensurePluginLayout(paths);
     const manifests = loadManifests(paths);
@@ -114,7 +135,19 @@ export function registerEmperorCli(api: any, program: any): void {
       ensurePluginLayout(paths);
       const manifest = loadManifests(paths).find((row) => row.localBrainAgentId === String(opts.localBrainAgentId || ""));
       if (!manifest) return print(`No tracked Emperor agent found for ${opts.localBrainAgentId}`);
-      print(JSON.stringify(manifest, null, 2));
+      print([
+        `Agent: ${manifest.agentName}`,
+        `Local brain: ${manifest.localBrainAgentId}`,
+        `Emperor agent id: ${manifest.agentId || "unknown"}`,
+        `Service: ${manifest.serviceName}`,
+        `Companion dir: ${manifest.companionDir}`,
+        `Runtime id: ${manifest.runtimeId}`,
+        `Profile: ${manifest.profile}`,
+        `Bridge contract version: ${manifest.bridgeContract?.version || "missing"}`,
+        `Thread policy: direct=${manifest.threadPolicy?.direct || "missing"}, team=${manifest.threadPolicy?.team || "missing"}, delegation=${manifest.threadPolicy?.delegation || "missing"}`,
+        "",
+        JSON.stringify(manifest, null, 2)
+      ].join("\n"));
     });
 
   emperor.command("add-agent")
@@ -145,8 +178,20 @@ export function registerEmperorCli(api: any, program: any): void {
 
   emperor.command("repair").description("Repair and restart tracked Emperor bridge agents").action(async () => {
     ensurePluginLayout(paths);
+    const upgraded = backfillTrackedManifests(paths);
     const repaired = await repairAllAgents(paths, api);
-    print(repaired.length === 0 ? "No tracked Emperor agents were repaired." : `Repaired Emperor agents:\n${repaired.map((n) => `- ${n}`).join("\n")}`);
+    print(
+      repaired.length === 0 && upgraded.changed === 0
+        ? "No tracked Emperor agents were repaired."
+        : [
+            upgraded.changed > 0
+              ? `Backfilled bridge contract metadata for ${upgraded.changed} manifest(s).`
+              : "No manifest backfill was needed.",
+            repaired.length === 0
+              ? "No tracked Emperor agents were repaired."
+              : `Repaired Emperor agents:\n${repaired.map((n) => `- ${n}`).join("\n")}`
+          ].join("\n")
+    );
   });
 
   emperor.command("restart-agent")
@@ -156,35 +201,41 @@ export function registerEmperorCli(api: any, program: any): void {
       ensurePluginLayout(paths);
       const manifest = loadManifests(paths).find((row) => row.localBrainAgentId === String(opts.localBrainAgentId || ""));
       if (!manifest) return print(`No tracked Emperor agent found for ${opts.localBrainAgentId}`);
-      await execFileAsync("systemctl", ["--user", "restart", manifest.serviceName]);
-      print(`Restarted ${manifest.serviceName}`);
+      const restarted = await reloadAndRestartService(manifest.serviceName.replace(/\.service$/, ""));
+      if (restarted.mode === "fallback") {
+        const logPath = await startFallbackBridge(manifest.companionDir);
+        return print(`Restarted ${manifest.serviceName} via fallback launcher (${logPath})`);
+      }
+      print(restarted.detail);
     });
 
   emperor.command("remove-agent")
     .description("Remove a tracked Emperor agent manifest and stop its service")
     .requiredOption("--local-brain-agent-id <id>")
     .option("--remove-companion-dir", "Delete companion directory too")
+    .option("--remove-workspace", "Delete the local OpenClaw workspace too")
+    .option("--remove-local-brain-agent", "Attempt to delete the local OpenClaw brain agent too")
     .action(async (opts: any) => {
       ensurePluginLayout(paths);
       const localBrainAgentId = String(opts.localBrainAgentId || "");
       const removeCompanionDir = Boolean(opts.removeCompanionDir || false);
-      const manifests = loadManifests(paths);
-      const manifest = manifests.find((row) => row.localBrainAgentId === localBrainAgentId);
-      if (!manifest) return print(`No tracked Emperor agent found for ${localBrainAgentId}`);
-      try { await execFileAsync("systemctl", ["--user", "disable", "--now", manifest.serviceName]); } catch {}
-      const manifestPath = resolveManifestPath(paths, localBrainAgentId);
-      if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
-      let companionRemoved = false;
-      if (removeCompanionDir && fs.existsSync(manifest.companionDir)) {
-        fs.rmSync(manifest.companionDir, { recursive: true, force: true });
-        companionRemoved = true;
-      }
-      const threadBindingsRemoved = removeMatchingThreadOwners(paths, manifest.agentId);
+      const removeWorkspace = Boolean(opts.removeWorkspace || false);
+      const removeLocalBrain = Boolean(opts.removeLocalBrainAgent || false);
+      const result = await removeTrackedAgent(paths, {
+        localBrainAgentId,
+        removeCompanionDir,
+        removeWorkspace,
+        removeLocalBrainAgent: removeLocalBrain
+      });
+      if (!result) return print(`No tracked Emperor agent found for ${localBrainAgentId}`);
       print([
-        `Removed tracked Emperor agent ${localBrainAgentId}`,
-        `Manifest removed: ${manifestPath}`,
-        `Thread bindings removed: ${threadBindingsRemoved}`,
-        `Companion dir removed: ${companionRemoved ? "yes" : "no"}`
+        `Removed tracked Emperor agent ${result.localBrainAgentId}`,
+        `Manifest removed: ${result.manifestPath}`,
+        `Thread bindings removed: ${result.threadBindingsRemoved}`,
+        `Systemd unit removed: ${result.systemdUnitRemoved ? "yes" : "no"}`,
+        `Companion dir removed: ${result.companionRemoved ? "yes" : "no"}`,
+        `Workspace removed: ${result.workspaceRemoved ? "yes" : "no"}`,
+        `Local brain agent removed: ${result.localBrainAgentRemovalAttempted ? (result.localBrainAgentRemoved ? "yes" : "no") : "skipped"}`
       ].join("\n"));
     });
 

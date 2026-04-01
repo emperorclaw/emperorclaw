@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+function psQuote(value: string): string {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
 
 export async function reloadAndRestartService(serviceName: string): Promise<{ mode: "systemd" | "fallback"; detail: string }> {
   try {
@@ -17,9 +21,29 @@ export async function reloadAndRestartService(serviceName: string): Promise<{ mo
 }
 
 export async function startFallbackBridge(companionDir: string): Promise<string> {
-  const launcher = path.join(companionDir, "run-bridge.sh");
   const logPath = path.join(companionDir, "bridge-fallback.log");
-  await execFileAsync("bash", ["-lc", `nohup ${JSON.stringify(launcher)} >> ${JSON.stringify(logPath)} 2>&1 &`]);
+  if (process.platform === "win32") {
+    const launcher = path.join(companionDir, "run-bridge.ps1");
+    const childCommand = `& { & ${psQuote(launcher)} *>> ${psQuote(logPath)} }`;
+    await execFileAsync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      `Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-Command',${psQuote(childCommand)}) -WindowStyle Hidden`
+    ], {
+      windowsHide: true
+    });
+    return logPath;
+  }
+
+  const logFd = fs.openSync(logPath, "a");
+  const launcher = path.join(companionDir, "run-bridge.sh");
+  const child = spawn(launcher, [], {
+    detached: true,
+    stdio: ["ignore", logFd, logFd]
+  });
+  child.unref();
   return logPath;
 }
 
