@@ -1,19 +1,18 @@
 import type { EmperorPluginPaths } from "../state/paths.js";
+import { ensurePluginLayout } from "../state/paths.js";
 import { repairAllAgents } from "../install/repair.js";
 
 export function registerRepairCommand(api: any, paths: EmperorPluginPaths): void {
   api.registerCommand({
     name: "emperor-repair",
     description: "Repair and restart tracked Emperor bridge agents",
-    async execute() {
+    handler: async () => {
+      ensurePluginLayout(paths);
       const repaired = await repairAllAgents(paths, api);
       return {
-        content: [{
-          type: "text",
-          text: repaired.length === 0
-            ? "No tracked Emperor agents were repaired."
-            : `Repaired Emperor agents:\n${repaired.map((name) => `- ${name}`).join("\n")}`
-        }]
+        text: repaired.length === 0
+          ? "No tracked Emperor agents were repaired."
+          : `Repaired Emperor agents:\n${repaired.map((name) => `- ${name}`).join("\n")}`
       };
     }
   });
