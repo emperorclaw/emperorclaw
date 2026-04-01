@@ -20,8 +20,8 @@ export function registerStatusCommand(api: any, paths: EmperorPluginPaths): void
         localConfigPresent: Boolean(localConfig),
         manifestCount: manifests.length,
         threadOwnerCount: Object.keys(owners).length,
-        hasBridgeAsset: fs.existsSync(`${process.cwd()}/examples/bridge.js`),
-        hasDoctorScript: fs.existsSync(`${process.cwd()}/scripts/doctor-local.sh`)
+        hasBridgeAsset: fs.existsSync(`${paths.pluginRoot}/examples/bridge.js`),
+        hasDoctorScript: fs.existsSync(`${paths.pluginRoot}/scripts/doctor-local.sh`)
       };
       return { text: JSON.stringify(summary, null, 2) };
     }
