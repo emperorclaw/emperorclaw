@@ -29,13 +29,13 @@ export default definePluginEntry({
   },
   register(api) {
     const paths = resolvePluginPaths(api);
-    ensurePluginLayout(paths);
 
     api.registerCommand({
       name: "emperor-status",
       description: "Show current Emperor Claw OS plugin status",
       async execute() {
-        const manifests = loadManifests(paths);
+        ensurePluginLayout(paths);
+      const manifests = loadManifests(paths);
         return {
           content: [{
             type: "text",
