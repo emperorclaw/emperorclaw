@@ -25,6 +25,29 @@ async function checkSystemdService(serviceName: string): Promise<DoctorCheck> {
   return { name: "service", ok: active, detail: active ? `${serviceName} active` : `${serviceName} inactive or unavailable` };
 }
 
+
+function checkBridgeFreshness(bridgeStatePath: string): DoctorCheck {
+  if (!fs.existsSync(bridgeStatePath)) {
+    return { name: "bridgeFreshness", ok: false, detail: `${bridgeStatePath} missing` };
+  }
+  try {
+    const payload = JSON.parse(fs.readFileSync(bridgeStatePath, "utf8"));
+    const updatedAt = payload?.updatedAt;
+    if (!updatedAt) {
+      return { name: "bridgeFreshness", ok: false, detail: "bridge state has no updatedAt" };
+    }
+    const updatedMs = new Date(updatedAt).getTime();
+    const ageSec = Math.max(0, Math.round((Date.now() - updatedMs) / 1000));
+    return {
+      name: "bridgeFreshness",
+      ok: ageSec < 600,
+      detail: `bridge state updated ${ageSec}s ago`
+    };
+  } catch (error: any) {
+    return { name: "bridgeFreshness", ok: false, detail: `bridge state parse failed: ${error?.message || error}` };
+  }
+}
+
 function checkPath(name: string, filePath: string): DoctorCheck {
   return {
     name,
@@ -53,6 +76,7 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
       checkPath("runtimeBridge", `${manifest.companionDir}/runtime/bridge.js`),
       checkPath("runtimeControlPlane", `${manifest.companionDir}/runtime/control-plane.js`),
       checkPath("bridgeState", `${manifest.companionDir}/state/bridge-state.json`),
+      checkBridgeFreshness(`${manifest.companionDir}/state/bridge-state.json`),
       await checkSystemdService(manifest.serviceName),
       { name: "fallbackLog", ok: true, detail: fallbackLogExists(manifest.companionDir) ? `${manifest.companionDir}/bridge-fallback.log present` : `no fallback log present` }
     ];
