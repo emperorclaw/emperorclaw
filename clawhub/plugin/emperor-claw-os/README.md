@@ -34,6 +34,7 @@ This plugin is now functionally usable and validated on a real OpenClaw host. It
 - workspace bootstrap generation
 - service restart + fallback launch behavior
 - doctor / repair / rebind lifecycle commands
+- local end-to-end validation script (`scripts/validate-local.sh`)
 
 ## Important packaging rule
 Everything in `clawhub/plugin/emperor-claw-os` is the consumer-tracked plugin surface for this implementation path.
