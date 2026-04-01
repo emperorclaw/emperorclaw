@@ -32,6 +32,8 @@ export default definePluginEntry({
 
     registerStatusCommand(api, paths);
     registerInstallCommand(api, paths);
+    registerListAgentsCommand(api, paths);
+    registerShowAgentCommand(api, paths);
     registerHelpCommand(api, paths);
 
   }
