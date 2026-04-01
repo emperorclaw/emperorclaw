@@ -47,10 +47,6 @@ function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function getPluginRoot(): string {
-  return process.cwd();
-}
-
 async function ensureRuntimeDeps(runtimeDir: string): Promise<void> {
   const packageJsonPath = path.join(runtimeDir, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
@@ -83,7 +79,6 @@ async function runControlPlaneBootstrap(runtimeDir: string, companionDir: string
     }
   });
 }
-
 
 async function resolveEmperorAgentId(apiUrl: string, token: string, agentName: string): Promise<string | undefined> {
   try {
@@ -143,10 +138,10 @@ exec node "$SCRIPT_DIR/runtime/bridge.js"
   fs.chmodSync(runBridgePath, 0o755);
 }
 
-function writeSystemdService(serviceName: string, envFile: string, companionDir: string): void {
+function writeSystemdService(serviceNameBase: string, envFile: string, companionDir: string): void {
   const serviceDir = path.join(os.homedir(), ".config", "systemd", "user");
   ensureDir(serviceDir);
-  const servicePath = path.join(serviceDir, `${serviceName}.service`);
+  const servicePath = path.join(serviceDir, `${serviceNameBase}.service`);
   fs.writeFileSync(servicePath, `[Unit]
 Description=Emperor Claw bridge for OpenClaw
 After=network-online.target openclaw-gateway.service
@@ -180,6 +175,10 @@ function copyRuntimeAssets(pluginRoot: string, runtimeDir: string, companionDir:
 }
 
 export async function bootstrapAgent(paths: EmperorPluginPaths, input: BootstrapAgentInput): Promise<BootstrapResult> {
+  if (!input.token?.trim()) throw new Error("Emperor token is required");
+  if (!input.agentName?.trim()) throw new Error("Agent name is required");
+  if (!input.localBrainAgentId?.trim()) throw new Error("Local brain agent id is required");
+
   const slug = slugify(input.localBrainAgentId || input.agentName);
   const openclawHome = resolveOpenClawHome();
   const companionDir = path.join(openclawHome, `emperor-control-plane-${slug}`);
@@ -188,9 +187,10 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   const bridgeStatePath = path.join(stateDir, "bridge-state.json");
   const envFile = path.join(companionDir, ".env");
   const runtimeId = `${slug}-${os.hostname().toLowerCase()}`;
-  const serviceName = `emperor-claw-bridge-${slug}`;
+  const serviceNameBase = `emperor-claw-bridge-${slug}`;
+  const serviceName = `${serviceNameBase}.service`;
   const workspaceDir = path.join(openclawHome, `workspace-${input.localBrainAgentId}`);
-  const pluginRoot = getPluginRoot();
+  const pluginRoot = paths.pluginRoot;
 
   ensureDir(companionDir);
   ensureDir(runtimeDir);
@@ -228,9 +228,9 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   });
 
   writeRunBridge(companionDir);
-  writeSystemdService(serviceName, envFile, companionDir);
+  writeSystemdService(serviceNameBase, envFile, companionDir);
 
-  const serviceRestart = await reloadAndRestartService(serviceName);
+  const serviceRestart = await reloadAndRestartService(serviceNameBase);
   if (serviceRestart.mode === "fallback") {
     await startFallbackBridge(companionDir);
   }
@@ -243,7 +243,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     localBrainAgentId: input.localBrainAgentId,
     runtimeId,
     companionDir,
-    serviceName: `${serviceName}.service`,
+    serviceName,
     profile: input.profile,
     threadPolicy: {
       direct: "bound",
