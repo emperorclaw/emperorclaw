@@ -28,6 +28,8 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
+    const isSharedParam = searchParams.get("isShared");
+    const isShared = isSharedParam === null ? undefined : isSharedParam === "true";
     const resources = await listScopedResources({
         companyId,
         scopeType: "customer",
@@ -38,6 +40,7 @@ export async function GET(
         displayName: searchParams.get("displayName"),
         search: searchParams.get("search") || searchParams.get("q"),
         status: searchParams.get("status"),
+        isShared,
     });
     return NextResponse.json({ resources });
 }
@@ -88,6 +91,7 @@ export async function POST(
             configText: configJson || body.configText || "",
             secretText: secretJson || body.secretText || "",
             ownership: ownership || null,
+            isShared: typeof body.isShared === "boolean" ? body.isShared : undefined,
         });
 
         const res = { resource };

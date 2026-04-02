@@ -16,6 +16,11 @@ function normalizeManifest(manifest: EmperorAgentManifest): { manifest: EmperorA
     changed = true;
   }
 
+  if ((!Array.isArray(next.sharedDoctrineResourceIds) || next.sharedDoctrineResourceIds.length === 0) && next.doctrineResourceId) {
+    next.sharedDoctrineResourceIds = [String(next.doctrineResourceId)];
+    changed = true;
+  }
+
   return { manifest: next, changed };
 }
 

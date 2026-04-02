@@ -11,6 +11,8 @@ export type EmperorAgentManifest = {
   companionDir: string;
   serviceName: string;
   profile: string;
+  sharedDoctrineResourceIds?: string[];
+  doctrineResourceId?: string | null;
   threadPolicy?: EmperorThreadPolicy;
   bridgeContract?: EmperorBridgeContract;
   installedAt: string;
