@@ -26,9 +26,11 @@ export function registerAddAgentCommand(api: any, paths: EmperorPluginPaths): vo
       return {
         text: [
           `Bootstrapped Emperor agent ${result.manifest.agentName}.`,
+          `Emperor agent id: ${result.manifest.agentId || "unknown"}`,
           `Manifest: ${result.manifestPath}`,
           `Companion dir: ${result.companionDir}`,
-          `Service: ${result.manifest.serviceName}`
+          `Service: ${result.manifest.serviceName}`,
+          `Shared doctrine resources: ${result.sharedDoctrineResourceIds.length > 0 ? result.sharedDoctrineResourceIds.join(", ") : "not seeded"}`
         ].join("\n")
       };
     }

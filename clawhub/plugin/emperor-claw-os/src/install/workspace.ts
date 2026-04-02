@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { getWorkspaceDoctrineFiles } from "./doctrine.js";
 
 export type WorkspaceBootstrapInput = {
   workspaceDir: string;
@@ -23,6 +24,10 @@ function upsertAppend(filePath: string, heading: string, content: string): void 
 
 export function writeWorkspaceBootstrap(input: WorkspaceBootstrapInput): void {
   const { workspaceDir, agentName, ownerName, ownerTimezone, profile } = input;
+  for (const doctrineFile of getWorkspaceDoctrineFiles(profile)) {
+    writeFile(path.join(workspaceDir, doctrineFile.fileName), doctrineFile.content);
+  }
+
   if (profile === "manager") {
     writeFile(path.join(workspaceDir, "BOOTSTRAP.md"), `# BOOTSTRAP.md - Manager Bootstrap
 
@@ -33,6 +38,24 @@ Before replying, read:
 2. SOUL.md
 3. USER.md
 4. IDENTITY.md
+5. EMPEROR_OPERATING_DOCTRINE.md
+6. EMPEROR_MCP_DIRECT_USAGE.md
+7. EMPEROR_CUSTOMERS_AND_PROJECTS.md
+8. EMPEROR_TASK_LIFECYCLE.md
+9. EMPEROR_DECISION_MATRIX.md
+10. EMPEROR_HOW_TO_OPERATE.md
+11. EMPEROR_RESOURCE_SHARING.md
+12. EMPEROR_ARTIFACTS_AND_EVIDENCE.md
+13. EMPEROR_THREADING_AND_DELEGATION.md
+14. EMPEROR_API_REFERENCE.md
+15. EMPEROR_API_OPERATIONS.md
+16. EMPEROR_TASK_CREATION_GUIDE.md
+17. EMPEROR_EXECUTION_HONESTY.md
+18. EMPEROR_COORDINATION_VISIBILITY.md
+19. EMPEROR_END_TO_END_FLOWS.md
+20. EMPEROR_WORKED_API_PATTERNS.md
+21. EMPEROR_MANAGER_ADDON.md
+22. EMPEROR_USER_FLOW.md
 
 You are the Emperor-facing manager agent for this OpenClaw deployment.
 Your job is to monitor work health, summarize what matters, detect blockers or stale work, and recommend next actions without being noisy.
@@ -90,6 +113,7 @@ If something needs attention, summarize only the actionable items.
 - In team threads, speak when there is genuine signal: blockers, stale work, overload, or a useful summary.
 - In direct threads, answer status questions clearly and concisely.
 - Do not auto-claim execution tasks unless explicitly configured to do so.
+- Use Emperor MCP directly when you need to read or mutate real Emperor state.
 - Prefer summaries, notes, and recommendations over unnecessary intervention.
 - Be explicit about whether you observed, recommended, escalated, or actually changed something.`);
     return;
@@ -104,6 +128,24 @@ Before replying, read:
 2. SOUL.md
 3. USER.md
 4. IDENTITY.md
+5. EMPEROR_OPERATING_DOCTRINE.md
+6. EMPEROR_MCP_DIRECT_USAGE.md
+7. EMPEROR_CUSTOMERS_AND_PROJECTS.md
+8. EMPEROR_TASK_LIFECYCLE.md
+9. EMPEROR_DECISION_MATRIX.md
+10. EMPEROR_HOW_TO_OPERATE.md
+11. EMPEROR_RESOURCE_SHARING.md
+12. EMPEROR_ARTIFACTS_AND_EVIDENCE.md
+13. EMPEROR_THREADING_AND_DELEGATION.md
+14. EMPEROR_API_REFERENCE.md
+15. EMPEROR_API_OPERATIONS.md
+16. EMPEROR_TASK_CREATION_GUIDE.md
+17. EMPEROR_EXECUTION_HONESTY.md
+18. EMPEROR_COORDINATION_VISIBILITY.md
+19. EMPEROR_END_TO_END_FLOWS.md
+20. EMPEROR_WORKED_API_PATTERNS.md
+21. EMPEROR_OPERATOR_ADDON.md
+22. EMPEROR_USER_FLOW.md
 
 Emperor Claw is your control plane and source of truth for customers, projects, tasks, resources, artifacts, and chat state.
 If Emperor data is available, prefer it over guesses.
@@ -147,5 +189,6 @@ When blocked, say what is missing.
 - Only claim tasks on explicit instruction unless auto-claim is explicitly enabled.
 - If a task is claimed, leave honest notes and do not pretend completion.
 - Use Emperor customer/project/task state as the system of record.
+- Use Emperor MCP directly when you need to read or mutate real Emperor state.
 - Use artifacts for real deliverables, not logs.`);
 }

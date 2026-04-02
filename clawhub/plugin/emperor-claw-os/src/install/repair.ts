@@ -8,6 +8,20 @@ import { reloadAndRestartService, startFallbackBridge } from "../runtime/service
 
 const execFileAsync = promisify(execFile);
 
+function parseEnvValue(rawValue: string): string {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = JSON.parse(trimmed);
+    return typeof parsed === "string" ? parsed : String(parsed ?? "");
+  } catch {
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.slice(1, -1);
+    }
+    return trimmed;
+  }
+}
+
 export async function repairAllAgents(paths: EmperorPluginPaths, api: any): Promise<string[]> {
   const manifests = loadManifests(paths);
   const repaired: string[] = [];
@@ -19,10 +33,7 @@ export async function repairAllAgents(paths: EmperorPluginPaths, api: any): Prom
       envText.split(/\n+/).filter(Boolean).map((line) => {
         const idx = line.indexOf("=");
         const key = line.slice(0, idx);
-        let value = line.slice(idx + 1);
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
+        const value = parseEnvValue(line.slice(idx + 1));
         return [key, value];
       })
     );
