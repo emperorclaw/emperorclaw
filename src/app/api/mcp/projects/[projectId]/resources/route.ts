@@ -24,6 +24,8 @@ export async function GET(
   const { projectId } = await params;
   const { searchParams } = new URL(req.url);
   const resourceType = searchParams.get("resourceType");
+  const isSharedParam = searchParams.get("isShared");
+  const isShared = isSharedParam === null ? undefined : isSharedParam === "true";
 
   try {
     const resources = await listScopedResources({
@@ -36,6 +38,7 @@ export async function GET(
       displayName: searchParams.get("displayName"),
       search: searchParams.get("search") || searchParams.get("q"),
       status: searchParams.get("status"),
+      isShared,
     });
     return NextResponse.json({ resources: resources.map(sanitizeResource) });
   } catch (error) {
@@ -75,6 +78,7 @@ export async function POST(
       secretText: body.secretJson || body.secretText || "",
       status: body.status || "active",
       ownership: body.ownership || "managed",
+      isShared: typeof body.isShared === "boolean" ? body.isShared : undefined,
     });
 
     return NextResponse.json({ resource: sanitizeResource(resource) }, { status: 201 });

@@ -22,6 +22,7 @@ export function registerShowAgentCommand(api: any, paths: EmperorPluginPaths): v
           `Companion dir: ${manifest.companionDir}`,
           `Runtime id: ${manifest.runtimeId}`,
           `Profile: ${manifest.profile}`,
+          `Shared doctrine resources: ${(manifest.sharedDoctrineResourceIds || []).length > 0 ? manifest.sharedDoctrineResourceIds!.join(", ") : (manifest.doctrineResourceId || "missing")}`,
           `Bridge contract version: ${manifest.bridgeContract?.version || "missing"}`,
           `Thread policy: direct=${manifest.threadPolicy?.direct || "missing"}, team=${manifest.threadPolicy?.team || "missing"}, delegation=${manifest.threadPolicy?.delegation || "missing"}`,
           `Installed at: ${manifest.installedAt}`,

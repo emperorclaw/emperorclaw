@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
   const scopeId = searchParams.get("scopeId");
   const resourceType = searchParams.get("resourceType");
   const status = searchParams.get("status");
+  const isSharedParam = searchParams.get("isShared");
+  const isShared = isSharedParam === null ? undefined : isSharedParam === "true";
 
   try {
     const internalAgentId = agentId ? await resolveAgentId(companyId, agentId) : null;
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
       displayName: searchParams.get("displayName"),
       search: searchParams.get("search") || searchParams.get("q"),
       status,
+      isShared,
     });
 
     return NextResponse.json({ resources: resources.map(sanitizeResource) });
@@ -71,6 +74,7 @@ export async function POST(req: NextRequest) {
       secretJson,
       status,
       leaseMode,
+      isShared,
     } = body;
 
     if (!name || !resourceType || !provider) {
@@ -121,6 +125,7 @@ export async function POST(req: NextRequest) {
       secretText: secretJson || body.secretText || "",
       status: status || "active",
       ownership: leaseMode === "local-runtime" ? "local-runtime" : body.ownership || "managed",
+      isShared: typeof isShared === "boolean" ? isShared : undefined,
     });
 
     return NextResponse.json({ resource: sanitizeResource(resource) }, { status: 201 });

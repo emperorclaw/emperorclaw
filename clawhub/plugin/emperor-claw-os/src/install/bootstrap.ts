@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { execFile, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
@@ -8,6 +9,8 @@ import { writeManifest, type EmperorAgentManifest } from "../state/manifests.js"
 import { writeWorkspaceBootstrap } from "./workspace.js";
 import { reloadAndRestartService, startFallbackBridge } from "../runtime/services.js";
 import { createDefaultBridgeContract, DEFAULT_THREAD_POLICY } from "../bridge/contract.js";
+import { getSharedDoctrineResourceSpecs } from "./doctrine.js";
+import { inferOpenClawStateDir, normalizeOpenClawProfileConfig, resolveOpenClawConfigPath } from "./openclaw-profile.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,6 +30,7 @@ export type BootstrapResult = {
   manifest: EmperorAgentManifest;
   serviceName: string;
   companionDir: string;
+  sharedDoctrineResourceIds: string[];
 };
 
 function slugify(value: string): string {
@@ -35,17 +39,6 @@ function slugify(value: string): string {
 
 function resolveOpenClawHome(): string {
   return process.env.OPENCLAW_HOME || path.join(os.homedir(), ".openclaw");
-}
-
-function inferOpenClawStateDir(pluginRoot: string): string | undefined {
-  const configured = String(process.env.OPENCLAW_STATE_DIR || "").trim();
-  if (configured) return configured;
-
-  const extensionsDir = path.dirname(pluginRoot);
-  if (path.basename(extensionsDir).toLowerCase() !== "extensions") return undefined;
-
-  const stateDir = path.dirname(extensionsDir);
-  return fs.existsSync(stateDir) ? stateDir : undefined;
 }
 
 function resolveOpenClawCliPath(): string {
@@ -77,6 +70,10 @@ async function execOpenClawCli(
   cliPath: string,
   args: string[]
 ): Promise<{ stdout: string; stderr: string }> {
+  const cliJsPath = resolveOpenClawCliJsPath(cliPath);
+  if (process.platform === "win32" && cliJsPath && fs.existsSync(cliJsPath)) {
+    return execFileAsync(process.execPath, [cliJsPath, ...args], { shell: false });
+  }
   return execFileAsync(cliPath, args, {
     shell: shouldUseShellForCli(cliPath)
   });
@@ -133,6 +130,137 @@ async function resolveEmperorAgentId(apiUrl: string, token: string, agentName: s
   } catch {
     return undefined;
   }
+}
+
+function readBridgeStateAgentId(bridgeStatePath: string): string | undefined {
+  if (!fs.existsSync(bridgeStatePath)) return undefined;
+  try {
+    const payload = JSON.parse(fs.readFileSync(bridgeStatePath, "utf8"));
+    const agentId = String(payload?.lastAgentId || "").trim();
+    return agentId || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForEmperorAgentId(
+  apiUrl: string,
+  token: string,
+  agentName: string,
+  bridgeStatePath: string,
+): Promise<string | undefined> {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const fromBridgeState = readBridgeStateAgentId(bridgeStatePath);
+    if (fromBridgeState) return fromBridgeState;
+    const fromName = await resolveEmperorAgentId(apiUrl, token, agentName);
+    if (fromName) return fromName;
+    await sleep(1000);
+  }
+  return readBridgeStateAgentId(bridgeStatePath) || resolveEmperorAgentId(apiUrl, token, agentName);
+}
+
+async function emperorFetch(
+  apiUrl: string,
+  token: string,
+  pathname: string,
+  init: RequestInit = {},
+): Promise<any> {
+  const response = await fetch(`${apiUrl.replace(/\/+$/, "")}${pathname}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Emperor request failed ${response.status}: ${text || response.statusText}`);
+  }
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function upsertCompanySharedDoctrineResources(
+  apiUrl: string,
+  token: string,
+): Promise<string[]> {
+  const createdIds: string[] = [];
+  for (const spec of getSharedDoctrineResourceSpecs()) {
+    const query = new URLSearchParams({
+      scopeType: "company",
+      provider: spec.provider,
+      resourceType: spec.resourceType,
+      name: spec.name,
+    });
+    const payload = await emperorFetch(apiUrl, token, `/api/mcp/resources?${query.toString()}`, { method: "GET" });
+    const resources = Array.isArray(payload?.resources) ? payload.resources : [];
+    const existing = resources.find((resource: any) =>
+      String(resource?.scopeType || "").trim() === "company"
+      && String(resource?.name || "").trim() === spec.name
+    ) || null;
+    const body = {
+      name: spec.name,
+      displayName: spec.displayName,
+      provider: spec.provider,
+      resourceType: spec.resourceType,
+      configText: spec.configText,
+      isShared: spec.isShared,
+      status: "active",
+      ownership: "managed",
+    };
+
+    if (existing?.id) {
+      const updated = await emperorFetch(apiUrl, token, `/api/mcp/resources/${existing.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      const updatedId = updated?.resource?.id || existing.id || null;
+      if (updatedId) createdIds.push(updatedId);
+      continue;
+    }
+
+    const created = await emperorFetch(apiUrl, token, "/api/mcp/resources", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const createdId = created?.resource?.id || null;
+    if (createdId && created?.resource?.isShared !== spec.isShared) {
+      const patched = await emperorFetch(apiUrl, token, `/api/mcp/resources/${createdId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      const patchedId = patched?.resource?.id || createdId;
+      if (patchedId) createdIds.push(patchedId);
+      continue;
+    }
+    if (createdId) createdIds.push(createdId);
+  }
+  return createdIds;
+}
+
+async function reconcileEmperorAgentProfile(
+  apiUrl: string,
+  token: string,
+  agentId: string,
+  profile: "operator" | "manager",
+): Promise<void> {
+  await emperorFetch(apiUrl, token, `/api/mcp/agents/${agentId}`, {
+    method: "PATCH",
+    headers: {
+      "Idempotency-Key": `agent-profile:${randomUUID()}`,
+    },
+    body: JSON.stringify({
+      role: profile,
+    }),
+  });
 }
 
 async function ensureLocalBrainAgent(localBrainAgentId: string, workspaceDir: string, agentName: string): Promise<void> {
@@ -271,8 +399,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   const workspaceDir = path.join(openclawHome, `workspace-${input.localBrainAgentId}`);
   const pluginRoot = paths.pluginRoot;
   const openclawStateDir = inferOpenClawStateDir(pluginRoot);
-  const openclawConfigPath = String(process.env.OPENCLAW_CONFIG_PATH || "").trim()
-    || (openclawStateDir ? path.join(openclawStateDir, "openclaw.json") : "");
+  const openclawConfigPath = resolveOpenClawConfigPath(pluginRoot);
   const openclawCliPath = resolveOpenClawCliPath();
   const openclawCliJsPath = resolveOpenClawCliJsPath(openclawCliPath);
 
@@ -285,6 +412,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   await ensureRuntimeDeps(runtimeDir);
   await runControlPlaneBootstrap(runtimeDir, companionDir, stateDir, bridgeStatePath, input, runtimeId);
   await ensureLocalBrainAgent(input.localBrainAgentId, workspaceDir, input.agentName);
+  normalizeOpenClawProfileConfig(openclawConfigPath);
   writeWorkspaceBootstrap({
     workspaceDir,
     agentName: input.agentName,
@@ -326,7 +454,11 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     await startFallbackBridge(companionDir);
   }
 
-  const emperorAgentId = await resolveEmperorAgentId(input.apiUrl, input.token, input.agentName);
+  const emperorAgentId = await waitForEmperorAgentId(input.apiUrl, input.token, input.agentName, bridgeStatePath);
+  if (emperorAgentId) {
+    await reconcileEmperorAgentProfile(input.apiUrl, input.token, emperorAgentId, input.profile);
+  }
+  const sharedDoctrineResourceIds = await upsertCompanySharedDoctrineResources(input.apiUrl, input.token);
 
   const manifest: EmperorAgentManifest = {
     agentId: emperorAgentId,
@@ -336,6 +468,8 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     companionDir,
     serviceName,
     profile: input.profile,
+    sharedDoctrineResourceIds,
+    doctrineResourceId: sharedDoctrineResourceIds[0] || null,
     threadPolicy: { ...DEFAULT_THREAD_POLICY },
     bridgeContract: createDefaultBridgeContract(),
     installedAt: new Date().toISOString(),
@@ -343,5 +477,5 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   };
 
   const manifestPath = writeManifest(paths, slug, manifest);
-  return { manifestPath, manifest, serviceName, companionDir };
+  return { manifestPath, manifest, serviceName, companionDir, sharedDoctrineResourceIds };
 }

@@ -7,6 +7,7 @@ import { serviceIsActive, fallbackLogExists } from "../runtime/services.js";
 import { BRIDGE_CONTRACT_VERSION, getMissingBridgeCapabilities, hasRequiredThreadPolicy } from "../bridge/contract.js";
 import { inspectTrackedManifestUpgrades } from "../state/normalize.js";
 import { loadLocalConfig } from "./config.js";
+import { inspectOpenClawProfileConfig, resolveOpenClawConfigPath } from "./openclaw-profile.js";
 
 export type DoctorCheck = {
   name: string;
@@ -81,6 +82,23 @@ function checkThreadPolicy(manifest: EmperorAgentManifest): DoctorCheck {
     detail: ok
       ? `direct=${manifest.threadPolicy?.direct}, team=${manifest.threadPolicy?.team}, delegation=${manifest.threadPolicy?.delegation}`
       : "manifest is missing the required direct/team/delegation routing policy"
+  };
+}
+
+function checkDoctrineResource(manifest: EmperorAgentManifest): DoctorCheck {
+  const sharedIds = Array.isArray(manifest.sharedDoctrineResourceIds)
+    ? manifest.sharedDoctrineResourceIds.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  const legacyId = String(manifest.doctrineResourceId || "").trim();
+  const ids = sharedIds.length > 0 ? sharedIds : legacyId ? [legacyId] : [];
+  return {
+    name: "doctrineResource",
+    ok: ids.length >= 2,
+    detail: ids.length >= 2
+      ? `shared doctrine resources tracked: ${ids.join(", ")}`
+      : ids.length === 1
+        ? `only one doctrine resource is tracked (${ids[0]}); expected the shared operating doctrine and shared operator manual`
+        : "manifest is missing the seeded shared doctrine resource ids"
   };
 }
 
@@ -218,6 +236,7 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
   const owners = loadThreadOwners(paths);
   const emperorApiReachability = await checkEmperorApiReachability(paths);
   const emperorApiAuth = await checkEmperorApiAuth(paths);
+  const openclawProfileConfig = inspectOpenClawProfileConfig(resolveOpenClawConfigPath(paths.pluginRoot));
   const globalChecks: DoctorCheck[] = [
     checkPath("manifestRoot", paths.manifestRoot),
     checkPath("stateRoot", paths.stateRoot),
@@ -227,6 +246,11 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
     checkPath("channelManifest", path.join(paths.pluginRoot, "openclaw.plugin.json")),
     checkPath("sessionKeyApi", path.join(paths.pluginRoot, "session-key-api.ts")),
     checkPath("channelConfigReference", path.join(paths.pluginRoot, "references", "CHANNEL-CONFIG.md")),
+    {
+      name: "openclawProfileConfig",
+      ok: openclawProfileConfig.ok,
+      detail: openclawProfileConfig.detail
+    },
     emperorApiReachability,
     emperorApiAuth,
     { name: "threadOwnerEntries", ok: true, detail: `${Object.keys(owners).length} tracked direct thread bindings` },
@@ -245,6 +269,7 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
       checkManifestConsistency(manifest),
       checkBridgeContract(manifest),
       checkThreadPolicy(manifest),
+      checkDoctrineResource(manifest),
       checkPath("companionDir", manifest.companionDir),
       checkPath("envFile", `${manifest.companionDir}/.env`),
       checkPath("runBridge", resolveRunBridgePath(manifest.companionDir)),

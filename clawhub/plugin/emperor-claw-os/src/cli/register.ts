@@ -45,7 +45,7 @@ export function registerEmperorCli(api: any, program: any): void {
     const manifests = loadManifests(paths);
     const owners = loadThreadOwners(paths);
     const upgradePreview = inspectTrackedManifestUpgrades(paths);
-    print(JSON.stringify({
+      print(JSON.stringify({
       pluginId: api.id,
       rootDir: api.rootDir || "unknown",
       localConfigPresent: Boolean(localConfig),
@@ -53,10 +53,16 @@ export function registerEmperorCli(api: any, program: any): void {
       emperorTokenPresent: Boolean(process.env.EMPEROR_API_TOKEN || process.env.EMPEROR_CLAW_API_TOKEN),
       bridgeContractVersion: BRIDGE_CONTRACT_VERSION,
       requiredBridgeCapabilities: REQUIRED_BRIDGE_CAPABILITIES,
-      manifestCount: manifests.length,
-      manifestsWithBridgeContract: manifests.filter((manifest) => Boolean(manifest.bridgeContract)).length,
-      manifestsNeedingUpgrade: upgradePreview.needingUpgrade,
-      threadOwnerCount: Object.keys(owners).length,
+        manifestCount: manifests.length,
+        manifestsWithBridgeContract: manifests.filter((manifest) => Boolean(manifest.bridgeContract)).length,
+        manifestsWithSharedDoctrineResources: manifests.filter((manifest) => {
+          const ids = Array.isArray(manifest.sharedDoctrineResourceIds)
+            ? manifest.sharedDoctrineResourceIds.filter(Boolean)
+            : [];
+          return ids.length >= 2 || Boolean(manifest.doctrineResourceId);
+        }).length,
+        manifestsNeedingUpgrade: upgradePreview.needingUpgrade,
+        threadOwnerCount: Object.keys(owners).length,
       hasBridgeAsset: fs.existsSync(`${paths.pluginRoot}/examples/bridge.js`),
       hasDoctorScript: fs.existsSync(`${paths.pluginRoot}/scripts/doctor-local.sh`),
       declaresChannelInManifest: fs.readFileSync(`${paths.pluginRoot}/openclaw.plugin.json`, "utf8").includes("\"channels\""),
@@ -143,6 +149,7 @@ export function registerEmperorCli(api: any, program: any): void {
         `Companion dir: ${manifest.companionDir}`,
         `Runtime id: ${manifest.runtimeId}`,
         `Profile: ${manifest.profile}`,
+        `Shared doctrine resources: ${(manifest.sharedDoctrineResourceIds || []).length > 0 ? manifest.sharedDoctrineResourceIds!.join(", ") : (manifest.doctrineResourceId || "missing")}`,
         `Bridge contract version: ${manifest.bridgeContract?.version || "missing"}`,
         `Thread policy: direct=${manifest.threadPolicy?.direct || "missing"}, team=${manifest.threadPolicy?.team || "missing"}, delegation=${manifest.threadPolicy?.delegation || "missing"}`,
         "",
@@ -173,7 +180,16 @@ export function registerEmperorCli(api: any, program: any): void {
         ownerTimezone: String(opts.ownerTimezone || localConfig?.defaultOwnerTimezone || api.pluginConfig?.defaultOwnerTimezone || "UTC"),
         thinking: String(opts.thinking || "medium")
       });
-      print(`Bootstrapped Emperor agent ${result.manifest.agentName}.\nManifest: ${result.manifestPath}\nCompanion dir: ${result.companionDir}\nService: ${result.manifest.serviceName}`);
+      print(
+        [
+          `Bootstrapped Emperor agent ${result.manifest.agentName}.`,
+          `Emperor agent id: ${result.manifest.agentId || "unknown"}`,
+          `Manifest: ${result.manifestPath}`,
+          `Companion dir: ${result.companionDir}`,
+          `Service: ${result.manifest.serviceName}`,
+          `Shared doctrine resources: ${result.sharedDoctrineResourceIds.length > 0 ? result.sharedDoctrineResourceIds.join(", ") : "not seeded"}`,
+        ].join("\n")
+      );
     });
 
   emperor.command("repair").description("Repair and restart tracked Emperor bridge agents").action(async () => {
