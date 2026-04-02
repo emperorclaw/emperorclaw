@@ -72,6 +72,7 @@ const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
 const EMPEROR_CLAW_MANAGER_REVIEW_MS = Number(process.env.EMPEROR_CLAW_MANAGER_REVIEW_MS || 1800000);
 const IS_MANAGER_PROFILE = EMPEROR_CLAW_AGENT_PROFILE === "manager";
 const IS_WINDOWS_PROMPT_CONSTRAINED = process.platform === "win32";
+const DIRECT_THREAD_CACHE_MS = Number(process.env.EMPEROR_CLAW_DIRECT_THREAD_CACHE_MS || 15000);
 
 if (!API_TOKEN) {
   console.error("EMPEROR_CLAW_API_TOKEN is required");
@@ -85,6 +86,26 @@ function makeIdempotencyKey(prefix = "bridge") {
 function stableHash(value) {
   const normalized = typeof value === "string" ? value : JSON.stringify(value);
   return crypto.createHash("sha256").update(normalized).digest("hex");
+}
+
+function dedupeBy(items, selector) {
+  const seen = new Set();
+  const result = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = selector(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function toStringList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  const single = String(value || "").trim();
+  return single ? [single] : [];
 }
 
 function ensureDir(dir) {
@@ -350,14 +371,17 @@ function getSharedOperatorDoctrine() {
   return [
     "Emperor Claw is the control plane and system of record; OpenClaw is the runtime executor.",
     "Connection model: API base is https://emperorclaw.malecu.eu, MCP REST base is https://emperorclaw.malecu.eu/api/mcp, websocket is wss://emperorclaw.malecu.eu/api/mcp/ws, and auth uses Authorization: Bearer <company_token> from EMPEROR_CLAW_API_TOKEN.",
+    "Endpoint cheat sheet when direct MCP calls are needed: GET /agents, /customers, /projects, /tasks, /resources, /threads, /tasks/{id}/context; POST /projects, /tasks, /messages/send, /projects/{id}/memory, /tasks/{id}/notes, /tasks/{id}/assign, /tasks/{id}/result.",
+    "Primary operating rule: use Emperor MCP directly from your runtime when you need to read or mutate Emperor state. The bridge is mainly for message routing, session lifecycle, context injection, and posting the final thread reply back into Emperor.",
     "Use Emperor as canonical for customers, projects, tasks, task notes/events, project memory, scoped resources, artifacts, threads, schedules, templates, tactics, playbooks, incidents, approvals, and agent context when relevant.",
+    "Resource sharing rule: if a resource has isShared=true and is scoped to an agent, inject it only for that agent; if it has isShared=true and is not agent-scoped, treat it as shared operating context for all agents in that scope.",
     "Resources are first-class plain-text context via configText: use them for templates, profiles, SOPs, reusable docs, scoped references, and operational notes.",
     "Artifacts are first-class outputs via contentText: use them for deliverables, proofs, working files, source documents, reports, templates, and export bundles when real work product should be preserved.",
     "If chat memory and Emperor disagree, prefer Emperor and surface the mismatch honestly.",
     "You are allowed to use your local OpenClaw runtime capabilities to do the work: tools, files, browser/web access, coding, and enabled skills on the machine where you run.",
     "Do not limit yourself to chat-only behavior when real execution or research is needed and your runtime can do it.",
     "Your bridge/runtime usually handles registration, session lifecycle, websocket/sync, heartbeat, dedupe, reconnect state, and local brain handoff; you still need to understand what Emperor objects and state changes mean.",
-    "The rule is: do the work with OpenClaw capabilities, then report, coordinate, and persist the important results back into Emperor.",
+    "The rule is: do the work with OpenClaw capabilities, use Emperor MCP directly when real state must change, then report, coordinate, and persist the important results back into Emperor.",
     "Read first when truth matters: if a TASK-XXXXXXXX reference is present, read canonical task detail/context before answering; also prefer reading task notes, project memory, relevant resources, or thread context before making confident claims.",
     "A task is not execution-ready just because it exists; treat tasks missing title, description, acceptance criteria/definition of done, or deliverables as under-specified.",
     "If a task is under-specified, say so clearly and name the missing fields instead of pretending it is executable.",
@@ -437,6 +461,10 @@ class EmperorBridge {
     this.reconnectAttempt = 0;
     this.bridgeState = this.loadBridgeState();
     this.lastClaimKey = null;
+    this.directThreadIdsCache = {
+      fetchedAt: 0,
+      ids: new Set(),
+    };
     this.onMessage = null;
     this.onTask = null;
   }
@@ -968,6 +996,22 @@ class EmperorBridge {
     const directThread = isDirectThread;
     const threadOwner = (this.bridgeState.threadOwners || {})[thread.id] || null;
     let intendedAgentId = threadOwner;
+    let ownedDirectThreadIds = null;
+
+    if (directThread && this.agent?.id) {
+      try {
+        ownedDirectThreadIds = await this.fetchOwnedDirectThreadIds();
+      } catch (error) {
+        console.error("[bridge] direct-thread ownership lookup failed:", error.message);
+      }
+      const isOwnedDirectThread = ownedDirectThreadIds?.has(thread.id);
+      if (threadOwner === this.agent.id && !isOwnedDirectThread) {
+        console.log(`[bridge] clearing stale direct-thread owner for ${thread.id} on ${this.agent.id}`);
+        delete this.bridgeState.threadOwners[thread.id];
+        this.schedulePersistBridgeState();
+        intendedAgentId = null;
+      }
+    }
 
     if (targetAgentHint) {
       intendedAgentId = targetAgentHint;
@@ -975,10 +1019,20 @@ class EmperorBridge {
     } else if (directThread && explicitAtMention && this.agent?.id) {
       intendedAgentId = this.agent.id;
       this.updateThreadOwner(thread.id, this.agent.id);
+    } else if (directThread && this.agent?.id) {
+      if (ownedDirectThreadIds?.has(thread.id)) {
+        intendedAgentId = this.agent.id;
+        this.updateThreadOwner(thread.id, this.agent.id);
+      }
     }
 
     if (directThread && intendedAgentId && this.agent?.id && intendedAgentId !== this.agent.id) {
       console.log(`[bridge] skipping thread ${thread.id} message targeted at ${intendedAgentId}`);
+      return;
+    }
+
+    if (directThread && !intendedAgentId) {
+      console.log(`[bridge] skipping direct thread ${thread.id} because ownership could not be verified for ${this.agent?.id || AGENT_NAME}`);
       return;
     }
 
@@ -1046,6 +1100,13 @@ class EmperorBridge {
       }
     }
 
+    let agentSharedResourceContext = null;
+    try {
+      agentSharedResourceContext = await this.buildAgentScopedSharedResourceContext();
+    } catch (error) {
+      console.error("[bridge] agent shared resource fetch failed:", error.message);
+    }
+
     let claimedTask = null;
     let referencedTask = null;
     let referencedTaskContext = null;
@@ -1109,23 +1170,25 @@ class EmperorBridge {
       `Role overlay:\n${getRoleOperatorOverlay(IS_MANAGER_PROFILE)}`,
       `Only answer the user's latest message; do not mention internal bridges, hooks, or routing.`,
       `Runtime access note: this Emperor-connected runtime already has working Emperor authentication and API access. Emperor API base: ${API_URL}/api/mcp . Authorization bearer token available in runtime: ${API_TOKEN}. Use it when direct Emperor calls are needed. Do not claim you lack the Emperor API key or Emperor access unless a real call fails.`,
-      `If you want Emperor state changed, return raw JSON only with this schema: {"reply_text":"string","summary":"optional","status":"observed|working|blocked|done|failed|needs_human","actions":[...]}.`,
-      `Supported actions in this turn are: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, task_assign {task_id,agent_id,mode?}, thread_reply {thread_id?,thread_type?,text,chat_id?,target_agent_id?}, project_memory {project_id,content,summary?}, project_create {goal,customer_id?,status?,lead_agent_id?,max_active_agents?}, task_create {project_id,task_type,title,description,acceptance_criteria?,definition_of_done?,deliverables?,owner_role?,priority?,blocked_by_task_ids?}. Also remember that Emperor MCP lets you read/use customers, projects, tasks, notes, project memory, resources, artifacts, threads, templates, tactics, playbooks, incidents, approvals, schedules, and agent context when relevant. Resources are plain text/context; artifacts are preserved outputs.`,
-      `If the human asks to create a project, define a project, break down a goal, or set up work, and the request is clear enough, use the creation actions available in this turn instead of only describing what you would do.`,
+      `Primary execution path: use Emperor MCP directly from your runtime when the user wants real Emperor state changed. Read first when truth matters, then do the real MCP write before you say it happened.`,
+      `Optional compatibility fallback: if direct MCP access is genuinely unavailable in this turn, you may instead return raw JSON only with this schema: {"reply_text":"string","summary":"optional","status":"observed|working|blocked|done|failed|needs_human","actions":[...]}.`,
+      `Compatibility helper actions, only when you intentionally use the bridge fallback instead of direct MCP: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, task_assign {task_id,agent_id,mode?}, thread_reply {thread_id?,thread_type?,text,chat_id?,target_agent_id?}, project_memory {project_id,content,summary?}, project_create {goal,customer_id?,status?,lead_agent_id?,max_active_agents?}, task_create {project_id,task_type,title,description,acceptance_criteria?,definition_of_done?,deliverables?,owner_role?,priority?,blocked_by_task_ids?}. Emperor MCP also lets you read/use customers, projects, tasks, notes, project memory, resources, artifacts, threads, templates, tactics, playbooks, incidents, approvals, schedules, and agent context directly when relevant.`,
+      `If the human asks to create a project, define a project, break down a goal, or set up work, and the request is clear enough, prefer direct MCP project/task creation instead of merely describing what you would do.`,
       `When another agent delegates work, only treat it as actionable if it explicitly uses @${agentName} and includes a concrete task/work verb. If a TASK-XXXXXXXX reference is present, use that specific task as the intended target.`,
       `If a TASK-XXXXXXXX reference is present, prefer the canonical Emperor task detail/context in the prompt over chat memory. Do not claim that task details are missing unless the canonical task detail is genuinely empty or retrieval failed.`,
       `If the human asks whether work is finished, blocked, or what the task says, ground the reply in the referenced task's state, notes, acceptance criteria, deliverables, and visible blockers before answering.`,
       explicitDelegationRequest && IS_MANAGER_PROFILE
-        ? `This is a delegation turn. Use structured actions for the handoff rather than only describing the handoff in prose.`
+        ? `This is a delegation turn. Prefer direct MCP assignment and visible thread handoff. Use the JSON compatibility helpers only if direct MCP is unavailable in this turn.`
         : explicitProjectCreationRequest
-          ? `This is a project-setup turn. If the request is clear enough, use structured creation actions to set it up instead of only describing the intended project in prose.`
+          ? `This is a project-setup turn. If the request is clear enough, create the project and starter tasks through direct MCP instead of only describing the intended project in prose.`
           : `If no Emperor mutation is needed, you may reply with plain natural language text instead of JSON. Do not wrap JSON in markdown fences.`,
       IS_MANAGER_PROFILE
-        ? `Use the Agent profiles in Emperor to delegate intentionally. When execution work should go to a worker like Viktor, prefer a visible team-thread delegation via thread_reply tagging @Viktor with a concrete instruction. Use explicit @agent-name mentions for agent-to-agent delegation. If the human references a TASK-XXXXXXXX id, include that exact task reference in the delegation. If you are assigning a specific task to a worker, prefer task_assign first, then the visible delegation message. Keep your human-facing reply generic (for example: "I’m delegating that now.") and avoid mentioning the worker name there if you also send a separate delegation message.`
-        : `If another agent such as Manager delegates execution work to you, treat a concrete @${agentName} instruction about taking or working on a task as actionable and stay honest about progress, blockers, and results. If you accept a specific task, prefer structured actions so Emperor stays consistent: assign or claim the task if needed, add a start note, and later add a blocker note or task_result instead of only chatting about it. Never say you took a task unless the assignment/claim succeeded.`,
+        ? `Use the Agent profiles in Emperor to delegate intentionally. When execution work should go to a worker like Viktor, prefer a visible team-thread delegation via messages/send tagging @Viktor with a concrete instruction. Use explicit @agent-name mentions for agent-to-agent delegation. If the human references a TASK-XXXXXXXX id, include that exact task reference in the delegation. If you are assigning a specific task to a worker, prefer a real MCP assign call first, then the visible delegation message. Keep your human-facing reply generic (for example: "I'm delegating that now.") and avoid mentioning the worker name there if you also send a separate delegation message.`
+        : `If another agent such as Manager delegates execution work to you, treat a concrete @${agentName} instruction about taking or working on a task as actionable and stay honest about progress, blockers, and results. If you accept a specific task, keep Emperor consistent with real MCP writes: assign or claim the task if needed, add a start note, and later add a blocker note or task result instead of only chatting about it. Never say you took a task unless the assignment/claim succeeded.`,
       IS_MANAGER_PROFILE
         ? `When asked to create a project for a goal, behave like an operator-planner: create a project, seed project memory with project brief/assumptions/constraints/success definition/next steps, then create a small initial executable task breakdown. Prefer 3-7 execution-ready tasks over many vague tasks. If the request is too vague, ask a sharp clarifying question or create a draft project with explicit assumptions.`
         : null,
+      agentSharedResourceContext,
       liveContext ? `Live Emperor context:\n${liveContext}` : null,
       `Thread ID: ${thread.id}`,
       `Thread type: ${thread.type}`,
@@ -1214,7 +1277,7 @@ class EmperorBridge {
       thread_id: thread.id,
       thread_type: thread.type,
     });
-    if (thread?.id && this.agent?.id) {
+    if (directThread && thread?.id && this.agent?.id && intendedAgentId === this.agent.id) {
       this.updateThreadOwner(thread.id, this.agent.id);
     }
     await this.updateChatStatus(thread.id, false);
@@ -1569,21 +1632,24 @@ class EmperorBridge {
           const title = String(action.title || "").trim();
           const description = String(action.description || "").trim();
           if (!projectId || !taskType || !title || !description) continue;
+          const taskCreateBody = {
+            projectId,
+            taskType,
+            title,
+            description,
+            acceptanceCriteria: toStringList(action.acceptance_criteria || action.acceptanceCriteria || []),
+            definitionOfDone: String(action.definition_of_done || action.definitionOfDone || "").trim() || null,
+            deliverables: toStringList(action.deliverables || []),
+            ownerRole: String(action.owner_role || action.ownerRole || "").trim() || null,
+            priority: typeof action.priority === "number" ? action.priority : 0,
+            blockedByTaskIds: toStringList(action.blocked_by_task_ids || action.blockedByTaskIds || []),
+          };
+          console.log(`[bridge] task_create body: ${JSON.stringify(taskCreateBody)}`);
+          appendDebugLog(COMPANION_DIR, { kind: "task-create-request", body: taskCreateBody });
           const payload = await http("/api/mcp/tasks", {
             method: "POST",
             idempotencyKey: `task-create:${stableHash({ projectId, taskType, title, description })}`,
-            body: {
-              projectId,
-              taskType,
-              title,
-              description,
-              acceptanceCriteria: action.acceptance_criteria || action.acceptanceCriteria || [],
-              definitionOfDone: action.definition_of_done || action.definitionOfDone || null,
-              deliverables: action.deliverables || [],
-              ownerRole: action.owner_role || action.ownerRole || null,
-              priority: typeof action.priority === "number" ? action.priority : 0,
-              blockedByTaskIds: action.blocked_by_task_ids || action.blockedByTaskIds || [],
-            },
+            body: taskCreateBody,
           });
           if (payload?.task?.id) {
             executionContext.taskId = payload.task.id;
@@ -1621,6 +1687,23 @@ class EmperorBridge {
     const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     const payload = await http(`/api/mcp/tasks${suffix}`, { method: "GET" });
     return Array.isArray(payload?.tasks) ? payload.tasks : Array.isArray(payload) ? payload : [];
+  }
+
+  async fetchOwnedDirectThreadIds(force = false) {
+    if (!this.agent?.id) return new Set();
+    const ageMs = Date.now() - Number(this.directThreadIdsCache?.fetchedAt || 0);
+    if (!force && ageMs >= 0 && ageMs < DIRECT_THREAD_CACHE_MS) {
+      return this.directThreadIdsCache.ids;
+    }
+
+    const payload = await http(`/api/mcp/threads?type=direct&agentId=${encodeURIComponent(this.agent.id)}`, { method: "GET" });
+    const threads = Array.isArray(payload?.threads) ? payload.threads : Array.isArray(payload) ? payload : [];
+    const ids = new Set(threads.map((thread) => String(thread?.id || "")).filter(Boolean));
+    this.directThreadIdsCache = {
+      fetchedAt: Date.now(),
+      ids,
+    };
+    return ids;
   }
 
   async fetchTaskDetail(taskId) {
@@ -1686,11 +1769,23 @@ class EmperorBridge {
 
     const projectResources = Array.isArray(bundle.resources?.project) ? bundle.resources.project : [];
     const customerResources = Array.isArray(bundle.resources?.customer) ? bundle.resources.customer : [];
-    const allResources = [...projectResources, ...customerResources];
+    const sharedResources = Array.isArray(bundle.resources?.shared) ? bundle.resources.shared : [];
+    const companyResources = Array.isArray(bundle.resources?.company) ? bundle.resources.company : [];
+    const agentResources = Array.isArray(bundle.resources?.agent) ? bundle.resources.agent : [];
+    const allResources = dedupeBy(
+      [
+        ...sharedResources,
+        ...companyResources,
+        ...agentResources,
+        ...projectResources,
+        ...customerResources,
+      ],
+      (resource) => String(resource?.id || ""),
+    );
     if (allResources.length > 0) {
       const resourceBlocks = allResources.slice(0, compactMode ? 6 : 12).map((resource) => {
         const lines = [
-          `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || 'unknown'}, provider=${resource.provider || 'unknown'}, scope=${resource.scopeType || 'unknown'}]`
+          `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || 'unknown'}, provider=${resource.provider || 'unknown'}, scope=${resource.scopeType || 'unknown'}, mode=${resource.isShared ? 'inject' : 'manual'}]`
         ];
         const configText = compactTextBlock(resource.configText || resource.contentText || "", compactMode ? 320 : 600);
         if (configText) lines.push(`  Text: ${configText}`);
@@ -1738,6 +1833,67 @@ class EmperorBridge {
   async fetchResources() {
     const payload = await http("/api/mcp/resources", { method: "GET" });
     return Array.isArray(payload?.resources) ? payload.resources : Array.isArray(payload) ? payload : [];
+  }
+
+  collectRelevantResources(resources, options = {}) {
+    const allResources = Array.isArray(resources) ? resources : [];
+    const focusName = String(options.focusName || "").trim().toLowerCase();
+    const currentAgentId = String(this.agent?.id || "");
+    const currentAgentName = String(this.agent?.name || AGENT_NAME || "").trim().toLowerCase();
+
+    return dedupeBy(
+      allResources.filter((resource) => {
+        const scopeType = String(resource?.scopeType || "");
+        const scopeId = String(resource?.scopeId || "");
+        const isShared = Boolean(resource?.isShared);
+        const haystack = [
+          resource?.name,
+          resource?.displayName,
+          resource?.configText,
+          resource?.contentText,
+        ].map((value) => String(value || "").toLowerCase()).join("\n");
+
+        if (scopeType === "agent") {
+          if (scopeId !== currentAgentId) return false;
+          return isShared || !focusName || haystack.includes(focusName);
+        }
+
+        if (scopeType === "company") {
+          return isShared || !focusName || haystack.includes(focusName);
+        }
+
+        if (focusName) {
+          return haystack.includes(focusName);
+        }
+
+        return isShared || haystack.includes(currentAgentName);
+      }),
+      (resource) => String(resource?.id || ""),
+    );
+  }
+
+  async buildAgentScopedSharedResourceContext() {
+    if (!this.agent?.id) return null;
+    const resources = await this.fetchResources();
+    const sharedAgentResources = resources.filter((resource) => {
+      return String(resource?.scopeType || "") === "agent"
+        && String(resource?.scopeId || "") === String(this.agent.id)
+        && Boolean(resource?.isShared);
+    });
+    console.log(`[bridge] agent shared resources for ${this.agent.id}: ${sharedAgentResources.map((resource) => resource.name || resource.displayName || resource.id).join(", ") || "none"}`);
+
+    if (sharedAgentResources.length === 0) return null;
+
+    const blocks = sharedAgentResources.slice(0, 8).map((resource) => {
+      const lines = [
+        `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || "unknown"}, provider=${resource.provider || "unknown"}]`
+      ];
+      const configText = compactTextBlock(resource.configText || resource.contentText || "", 700);
+      if (configText) lines.push(`  Text: ${configText}`);
+      return lines.join("\n");
+    });
+
+    return `Agent-scoped shared resources for ${this.agent.name || AGENT_NAME}:\n${blocks.join("\n")}`;
   }
 
   async fetchAgents() {
@@ -1803,6 +1959,9 @@ class EmperorBridge {
     const sections = [];
     const customers = await this.fetchCustomers();
     const projects = await this.fetchProjects();
+    const resources = (options.includeResources || options.includeOverview || options.includeAgents)
+      ? await this.fetchResources()
+      : [];
 
     if (options.includeOverview) {
       sections.push(`Emperor snapshot: customers=${customers.length}, projects=${projects.length}, activeTasks=${(await this.fetchTasks()).length}`);
@@ -1841,10 +2000,20 @@ class EmperorBridge {
     }
 
     if (options.includeResources) {
-      if (options.focusName) {
-        sections.push("Known scoped resource: Northstar Product Brief [type=template, provider=emperor-demo]");
-      } else {
-        sections.push("Known scoped resources may include project templates, identities, mailboxes, or other project/customer assets. Agent-scoped resources must stay private to their owner agent.");
+      const relevantResources = this.collectRelevantResources(resources, options);
+      console.log(`[bridge] live-context resources for ${this.agent?.id || AGENT_NAME}: ${relevantResources.map((resource) => resource.name || resource.displayName || resource.id).join(", ") || "none"}`);
+      if (relevantResources.length > 0) {
+        const resourceBlocks = relevantResources.slice(0, 10).map((resource) => {
+          const lines = [
+            `- ${resource.name || resource.displayName || resource.id} [type=${resource.resourceType || "unknown"}, provider=${resource.provider || "unknown"}, scope=${resource.scopeType || "unknown"}, mode=${resource.isShared ? "inject" : "manual"}]`
+          ];
+          const configText = compactTextBlock(resource.configText || resource.contentText || "", 500);
+          if (resource.isShared && configText) {
+            lines.push(`  Text: ${configText}`);
+          }
+          return lines.join("\n");
+        });
+        sections.push(`Relevant scoped resources:\n${resourceBlocks.join("\n")}`);
       }
     }
 
