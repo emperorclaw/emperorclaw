@@ -1047,8 +1047,9 @@ class EmperorBridge {
     }
 
     if (IS_MANAGER_PROFILE) {
-      if (!isHuman || lowSignal || !explicitAtMention) {
-        console.log(`[bridge] manager ignoring thread ${thread.id} message (human=${isHuman} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
+      const isAllowedSender = isHuman || isAgentSender;
+      if (!isAllowedSender || lowSignal || !explicitAtMention) {
+        console.log(`[bridge] manager ignoring thread ${thread.id} message (senderType=${senderType} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
         return;
       }
     } else if (!isDirectThread && !explicitAtMention) {
@@ -1057,7 +1058,7 @@ class EmperorBridge {
       return;
     }
     // If we reach here, message is allowed:
-    // - Manager profile: human, non-lowSignal, with @mention
+    // - Manager profile: human/agent, non-lowSignal, with @mention
     // - Non-manager profile: either direct thread OR has @mention
 
     // Debug log for agent messages
@@ -1174,6 +1175,7 @@ class EmperorBridge {
       `Optional compatibility fallback: if direct MCP access is genuinely unavailable in this turn, you may instead return raw JSON only with this schema: {"reply_text":"string","summary":"optional","status":"observed|working|blocked|done|failed|needs_human","actions":[...]}.`,
       `Compatibility helper actions, only when you intentionally use the bridge fallback instead of direct MCP: task_note {task_id,note,handoff?}, task_result {task_id,state,comment?,output_json?}, task_assign {task_id,agent_id,mode?}, thread_reply {thread_id?,thread_type?,text,chat_id?,target_agent_id?}, project_memory {project_id,content,summary?}, project_create {goal,customer_id?,status?,lead_agent_id?,max_active_agents?}, task_create {project_id,task_type,title,description,acceptance_criteria?,definition_of_done?,deliverables?,owner_role?,priority?,blocked_by_task_ids?}. Emperor MCP also lets you read/use customers, projects, tasks, notes, project memory, resources, artifacts, threads, templates, tactics, playbooks, incidents, approvals, schedules, and agent context directly when relevant.`,
       `If the human asks to create a project, define a project, break down a goal, or set up work, and the request is clear enough, prefer direct MCP project/task creation instead of merely describing what you would do.`,
+      `Agent-to-agent anti-loop rule: only @mention another agent when you want that specific agent to act or reply. If you are replying to another agent and do not want a further response, do not repeat @their-name in your reply.`,
       `When another agent delegates work, only treat it as actionable if it explicitly uses @${agentName} and includes a concrete task/work verb. If a TASK-XXXXXXXX reference is present, use that specific task as the intended target.`,
       `If a TASK-XXXXXXXX reference is present, prefer the canonical Emperor task detail/context in the prompt over chat memory. Do not claim that task details are missing unless the canonical task detail is genuinely empty or retrieval failed.`,
       `If the human asks whether work is finished, blocked, or what the task says, ground the reply in the referenced task's state, notes, acceptance criteria, deliverables, and visible blockers before answering.`,
