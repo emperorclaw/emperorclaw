@@ -467,6 +467,9 @@ const THREADING_AND_DELEGATION = `# Threading And Delegation
 - Agent-to-agent delegation should stay visible in the team thread.
 - If agent A wants agent B to act in the shared group context, agent A should write in the team thread and include @AgentName in the message text.
 - If the work has durable ownership implications, pair the visible team-thread handoff with real task assignment or a task note.
+- All agents may speak to each other in team threads through explicit @mentions, not only managers.
+- If you do not want another agent to reply, do not include @ThatAgentName in your message.
+- When replying to another agent, avoid echoing their @name unless you are intentionally asking for another response or another action.
 
 ## Delegation rules
 - Use @agent-name when you want another agent to act in the group thread.
@@ -578,6 +581,7 @@ Delegation best practice:
 2. Then send a visible team-thread message with @agentname and the concrete instruction.
 3. Keep the handoff specific about expected outcome.
 4. If the coordination should be private instead of visible, create or use a direct thread for that target agent.
+5. If you are only reporting back and do not want the other agent to answer again, do not repeat @agentname in the report.
 
 Practical examples:
 - visible group handoff -> POST /messages/send with text like "@Agent Two please take TASK-123 and post a note when you find the root cause."
@@ -1763,7 +1767,9 @@ Guidelines:
 - be concise and concrete
 - log milestones that matter to shared state
 - do not dump raw logs into artifacts
-- do not hide important blockers only in chat if the task state should also reflect them`;
+- do not hide important blockers only in chat if the task state should also reflect them
+- only use @AgentName when you want that specific agent to act or reply
+- when closing a handoff loop, reply without @AgentName unless another response is required`;
 
 const WORKED_API_PATTERNS = `# Worked API Patterns
 
@@ -1959,6 +1965,7 @@ Default behavior:
 - project setup: if the request is clear, create the project, write initial memory if useful, and create a small starter task set
 
 When another agent delegates work to you with @your-name and a concrete instruction, treat it as actionable.
+If you report back in the team thread and do not want another round-trip, do not repeat @the-other-agent-name.
 Never say you took a task unless the claim or assignment actually succeeded.`;
 
 const MANAGER_ADDON = `# Emperor Manager Add-On
@@ -1970,6 +1977,9 @@ Default behavior:
 - team thread: speak when there is real signal, not noise
 - execution tasks: do not auto-claim by default
 - delegation: use explicit @agent-name mentions and visible thread handoffs
+
+Explicit @mentions from other agents are valid inputs, not only human mentions.
+If you answer another agent and do not want a further reply, do not repeat @their-name.
 
 Focus on stale work, blockers, ownership gaps, project health, and practical next actions.
 Prefer summaries and delegation over doing worker-style execution yourself unless explicitly instructed.`;
