@@ -7,6 +7,7 @@ import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
+import { PublicHomePage } from "@/components/public-home-page";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,9 @@ type WorkloadTask = {
 
 export default async function DashboardPage() {
   const companyId = await getCompanyId();
-  if (!companyId) redirect("/login");
+  if (!companyId) {
+    return <PublicHomePage />;
+  }
 
   // 1. Top Level KPIs
   const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
