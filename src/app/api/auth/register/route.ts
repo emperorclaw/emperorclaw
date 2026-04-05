@@ -9,15 +9,51 @@ interface RegisterRequestBody {
     email: string;
     password: string;
     companyName: string;
+    acceptBetaDisclaimer?: boolean;
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmail(value: unknown): string {
+    return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeCompanyName(value: unknown): string {
+    return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 export async function POST(req: NextRequest) {
     try {
         const body = (await req.json()) as RegisterRequestBody;
-        const { email, password, companyName } = body;
+        const email = normalizeEmail(body.email);
+        const password = String(body.password ?? "");
+        const companyName = normalizeCompanyName(body.companyName);
+        const acceptBetaDisclaimer = body.acceptBetaDisclaimer === true;
 
         if (!email || !password || !companyName) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+        }
+
+        if (!acceptBetaDisclaimer) {
+            return NextResponse.json({
+                error: "You must acknowledge the beta data disclaimer before creating a workspace."
+            }, { status: 400 });
+        }
+
+        if (!EMAIL_REGEX.test(email) || email.length > 254) {
+            return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+        }
+
+        if (companyName.length < 2 || companyName.length > 120) {
+            return NextResponse.json({
+                error: "Company name must be between 2 and 120 characters."
+            }, { status: 400 });
+        }
+
+        if (password.length < 8 || password.length > 128) {
+            return NextResponse.json({
+                error: "Password must be between 8 and 128 characters."
+            }, { status: 400 });
         }
 
         // Check if user already exists
