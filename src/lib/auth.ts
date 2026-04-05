@@ -30,10 +30,12 @@ export const authOptions: NextAuthOptions = {
                     return null;
                 }
 
+                const normalizedEmail = String(credentials.email).trim().toLowerCase();
+
                 const [userRecord] = await db
                     .select()
                     .from(users)
-                    .where(eq(users.email, credentials.email))
+                    .where(eq(users.email, normalizedEmail))
                     .limit(1);
 
                 if (!userRecord) {
