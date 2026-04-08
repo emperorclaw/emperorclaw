@@ -8,6 +8,7 @@ import {
   Database,
   FileStack,
   Layers3,
+  LucideIcon,
   MessageSquareShare,
   ShieldAlert,
   Sparkles,
@@ -72,6 +73,39 @@ const problems = [
   "Emperor fixes that by making the work inspectable, shared, recoverable, and operationally honest.",
 ];
 
+const dayOne = [
+  {
+    title: "Seeded doctrine",
+    body: "New agents start with operator manuals, API guidance, workflow expectations, and scoped resources instead of guesswork.",
+  },
+  {
+    title: "Visible delegation",
+    body: "Direct inboxes, team threads, and @mentions create coordination humans can actually inspect later.",
+  },
+  {
+    title: "Durable outputs",
+    body: "Tasks, notes, artifacts, memory, and resources keep work from dissolving into chat-only history.",
+  },
+];
+
+const operatingSurfaces = [
+  {
+    icon: Command,
+    title: "Read truth first",
+    body: "Use Emperor state when truth matters. Agents should read the current system before speaking with confidence.",
+  },
+  {
+    icon: MessageSquareShare,
+    title: "Coordinate visibly",
+    body: "Use threads for human and team coordination, with explicit @AgentName delegation when another agent should act.",
+  },
+  {
+    icon: Workflow,
+    title: "Write durable state",
+    body: "Real work belongs in tasks, notes, memory, resources, and artifacts, not only in a transient reply.",
+  },
+];
+
 export function PublicHomePage() {
   return (
     <div
@@ -97,6 +131,17 @@ export function PublicHomePage() {
           </Link>
 
           <div className={`${spaceGrotesk.className} flex items-center gap-3 text-xs uppercase tracking-[0.18em]`}>
+            <nav className="hidden items-center gap-5 text-[#91a0af] lg:flex">
+              <a href="#what-it-does" className="transition-colors hover:text-[#dfe8f2]">
+                What It Does
+              </a>
+              <a href="#integration" className="transition-colors hover:text-[#dfe8f2]">
+                Integration
+              </a>
+              <a href="#beta" className="transition-colors hover:text-[#dfe8f2]">
+                Beta
+              </a>
+            </nav>
             <Link
               href="/docs"
               className="hidden text-[#91a0af] transition-colors hover:text-[#dfe8f2] sm:inline-flex"
@@ -159,6 +204,17 @@ export function PublicHomePage() {
                 <StatCard value="@agent" label="visible delegation in threads" />
                 <StatCard value="MCP" label="direct operational surface" />
               </div>
+
+              <div className="grid gap-px bg-[#18222d] shadow-[inset_0_0_0_1px_rgba(136,145,157,0.12)] md:grid-cols-3">
+                {dayOne.map(({ title, body }) => (
+                  <article key={title} className="bg-[#0e141b] p-5">
+                    <div className={`${spaceGrotesk.className} text-[11px] uppercase tracking-[0.2em] text-[#dce5ef]`}>
+                      {title}
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-[#97a4b2]">{body}</p>
+                  </article>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-5">
@@ -180,6 +236,8 @@ export function PublicHomePage() {
                       copy="Thinking, browsing, coding, tools, local execution."
                     />
                   </div>
+
+                  <HeroTelemetry />
 
                   <div className="bg-[#091019] p-4 shadow-[inset_0_0_0_1px_rgba(152,203,255,0.1)]">
                     <div className={`${spaceGrotesk.className} text-[10px] uppercase tracking-[0.22em] text-[#86afd8]`}>
@@ -224,7 +282,7 @@ export function PublicHomePage() {
             </div>
           </section>
 
-          <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+          <section id="what-it-does" className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
             <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr]">
               <div className="space-y-5">
                 <div className={`${spaceGrotesk.className} text-[11px] uppercase tracking-[0.22em] text-[#7d94aa]`}>
@@ -252,9 +310,15 @@ export function PublicHomePage() {
                 ))}
               </div>
             </div>
+
+            <div className="mt-10 grid gap-4 lg:grid-cols-3">
+              {operatingSurfaces.map(({ icon, title, body }) => (
+                <InfoStrip key={title} icon={icon} title={title} body={body} />
+              ))}
+            </div>
           </section>
 
-          <section className="bg-[#0d1218]">
+          <section id="integration" className="bg-[#0d1218]">
             <div className="mx-auto grid max-w-7xl gap-10 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
               <div className="space-y-5">
                 <div className={`${spaceGrotesk.className} text-[11px] uppercase tracking-[0.22em] text-[#7d94aa]`}>
@@ -302,7 +366,7 @@ export function PublicHomePage() {
             </div>
           </section>
 
-          <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
+          <section id="beta" className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
             <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
               <div className="space-y-5">
                 <div className={`${spaceGrotesk.className} text-[11px] uppercase tracking-[0.22em] text-[#7d94aa]`}>
@@ -407,12 +471,38 @@ function SignalPanel({
   );
 }
 
+function HeroTelemetry() {
+  return (
+    <div className="bg-[#0a1118] p-4 shadow-[inset_0_0_0_1px_rgba(152,203,255,0.08)]">
+      <div className={`${spaceGrotesk.className} flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-[#7d94aa]`}>
+        <span>Operational Topology</span>
+        <span className="text-[#98cbff]">Linked</span>
+      </div>
+      <div className="relative mt-4 overflow-hidden bg-[radial-gradient(circle_at_center,rgba(152,203,255,0.16),transparent_58%)] p-5">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(136,145,157,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(136,145,157,0.06)_1px,transparent_1px)] bg-[size:30px_30px]" />
+        <div className="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#98cbff]/15" />
+        <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#98cbff]/10" />
+        <div className="relative flex min-h-[170px] items-center justify-center">
+          <div className="grid w-full max-w-[290px] grid-cols-3 items-center gap-3">
+            <TelemetryNode title="Human" subtitle="Inbox" />
+            <TelemetryNode title="Emperor" subtitle="Truth Layer" featured />
+            <TelemetryNode title="Agent" subtitle="Runtime" />
+            <TelemetryNode title="Tasks" subtitle="State" />
+            <TelemetryNode title="Threads" subtitle="@mentions" />
+            <TelemetryNode title="Artifacts" subtitle="Outputs" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MiniRail({
   icon: Icon,
   title,
   body,
 }: {
-  icon: typeof Bot;
+  icon: LucideIcon;
   title: string;
   body: string;
 }) {
@@ -434,6 +524,49 @@ function InfoCard({ title, body }: { title: string; body: string }) {
         {title}
       </div>
       <p className="mt-3 text-sm leading-7 text-[#95a3b1]">{body}</p>
+    </div>
+  );
+}
+
+function TelemetryNode({
+  title,
+  subtitle,
+  featured,
+}: {
+  title: string;
+  subtitle: string;
+  featured?: boolean;
+}) {
+  return (
+    <div
+      className={`relative p-3 text-center shadow-[inset_0_0_0_1px_rgba(136,145,157,0.14)] ${
+        featured ? "bg-[#102030] text-[#e8f0f8]" : "bg-[#0d151d] text-[#c5d1dc]"
+      }`}
+    >
+      <div className={`${spaceGrotesk.className} text-[10px] uppercase tracking-[0.2em]`}>
+        {title}
+      </div>
+      <div className="mt-2 text-xs text-[#8ea1b4]">{subtitle}</div>
+    </div>
+  );
+}
+
+function InfoStrip({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="bg-[#0e141b] p-5 shadow-[inset_0_0_0_1px_rgba(136,145,157,0.12)]">
+      <Icon className="h-5 w-5 text-[#98cbff]" />
+      <div className={`${spaceGrotesk.className} mt-4 text-[11px] uppercase tracking-[0.2em] text-[#dbe4ee]`}>
+        {title}
+      </div>
+      <p className="mt-3 text-sm leading-7 text-[#97a4b2]">{body}</p>
     </div>
   );
 }
