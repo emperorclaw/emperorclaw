@@ -166,7 +166,7 @@ function GettingStartedHero() {
         </div>
         <div className="flex-shrink-0 flex flex-col sm:flex-row gap-3">
           <Link
-            href="/setup"
+            href="/docs"
             className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all hover:scale-105 active:scale-95"
           >
             View Setup Guide

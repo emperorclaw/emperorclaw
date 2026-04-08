@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 "use client";
 
 import { useState } from "react";
@@ -191,20 +191,20 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
                     Control Plane Bootstrap
                 </h2>
                 <p className="text-sm text-zinc-400 mb-4">
-                    Install the skill, export your company token, then use the local companion bootstrap and doctor commands before launching the bridge. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
+                    Install the plugin, export your company token, then add an agent and verify the local companion with the Emperor commands. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
                 </p>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
-                        openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os
+                        openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
                     </code>
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
-                        EMPEROR_CLAW_API_TOKEN=your_token_here npm run control-plane:bootstrap
+                        EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor add-agent --name "Operator One" --profile operator
                     </code>
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
-                        EMPEROR_CLAW_API_TOKEN=your_token_here npm run control-plane:doctor
+                        EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor doctor
                     </code>
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
-                        EMPEROR_CLAW_API_TOKEN=your_token_here node clawhub/emperor-claw-os/examples/bridge.js
+                        EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor status
                     </code>
                 </div>
                 <p className="text-xs text-zinc-500 mt-4">
@@ -260,3 +260,4 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
         </div>
     );
 }
+

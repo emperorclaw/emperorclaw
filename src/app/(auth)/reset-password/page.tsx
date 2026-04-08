@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -134,7 +134,7 @@ function ResetPasswordForm() {
 
             {error && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-sm text-rose-400 flex items-center">
-                    <span className="mr-2">⚠️</span> {error}
+                    <span className="mr-2 font-semibold">Warning:</span> {error}
                 </div>
             )}
 
@@ -174,3 +174,4 @@ export default function ResetPasswordPage() {
         </div>
     );
 }
+

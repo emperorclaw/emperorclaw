@@ -82,9 +82,11 @@ export function AppSidebar() {
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="w-56 bg-zinc-950 border-zinc-800 text-zinc-200">
-                            <DropdownMenuItem className="gap-2 text-zinc-200 focus:bg-zinc-900">
-                                <User className="w-4 h-4 text-zinc-400" />
-                                <span>Profile</span>
+                            <DropdownMenuItem asChild className="gap-2 text-zinc-200 focus:bg-zinc-900">
+                                <Link href="/settings">
+                                    <User className="w-4 h-4 text-zinc-400" />
+                                    <span>Workspace Settings</span>
+                                </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className="gap-2 text-zinc-200 focus:bg-zinc-900"

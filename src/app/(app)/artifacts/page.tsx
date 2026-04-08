@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function ArtifactsPage() {
     const sessionUser = (await getServerSession(authOptions))?.user as { id?: string } | undefined;
     if (!sessionUser?.id) {
-        redirect("/api/auth/signin");
+        redirect("/login");
     }
 
     const [membership] = await db.select().from(companyMembers)
