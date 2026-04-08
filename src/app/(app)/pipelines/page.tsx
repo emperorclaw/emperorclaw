@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function PipelinesPage() {
     const session = await getServerSession(authOptions);
     if (!session || !session.user || !(session.user as any).id) {
-        redirect("/api/auth/signin");
+        redirect("/login");
     }
 
     const [membership] = await db.select().from(companyMembers)
