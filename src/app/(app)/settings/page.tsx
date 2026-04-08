@@ -12,7 +12,7 @@ export default async function SettingsPage() {
     const session = await getServerSession(authOptions);
     const sessionUserId = (session?.user as { id?: string } | undefined)?.id;
     if (!sessionUserId) {
-        redirect("/api/auth/signin");
+        redirect("/login");
     }
 
     const [membership] = await db.select().from(companyMembers)

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
 
                             {error && (
                                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-sm text-rose-400 flex items-center">
-                                    <span className="mr-2">⚠️</span> {error}
+                                    <span className="mr-2 font-semibold">Warning:</span> {error}
                                 </div>
                             )}
 
@@ -114,3 +114,4 @@ export default function ForgotPasswordPage() {
         </div>
     );
 }
+
