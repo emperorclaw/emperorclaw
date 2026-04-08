@@ -126,18 +126,18 @@ export function PublicHomePage() {
 
         <main className="relative z-10">
           <section className="px-5 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-28 lg:pt-24">
-            <div className="mx-auto grid max-w-7xl gap-14 xl:grid-cols-[0.92fr_1.08fr] xl:items-center">
-              <div className="space-y-8">
+            <div className="mx-auto max-w-7xl space-y-12">
+              <div className="mx-auto flex max-w-4xl flex-col items-center space-y-8 text-center">
                 <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
                   <span className="mr-2 flex h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
                   Free for now in beta. Built for OpenClaw.
                 </div>
 
                 <div className="space-y-5">
-                  <h1 className="max-w-[10.5ch] font-[var(--font-space-grotesk)] text-5xl font-semibold leading-[0.92] tracking-tight text-zinc-100 sm:text-6xl lg:text-7xl">
+                  <h1 className="mx-auto max-w-[12ch] font-[var(--font-space-grotesk)] text-5xl font-semibold leading-[0.92] tracking-tight text-zinc-100 sm:text-6xl lg:text-7xl">
                     Mission control that actually becomes operational.
                   </h1>
-                  <p className="max-w-2xl text-lg leading-8 text-zinc-400">
+                  <p className="mx-auto max-w-3xl text-lg leading-8 text-zinc-400">
                     OpenClaw already thinks, codes, browses, and acts. Emperor gives it the missing
                     layer: durable work state, visible coordination, scoped context, recoverable
                     operations, and a product that works without a heavy setup project.
@@ -160,14 +160,14 @@ export function PublicHomePage() {
                   </Link>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid w-full gap-3 sm:grid-cols-3">
                   <TopSignal label="Install" value="Native plugin" />
                   <TopSignal label="State" value="Durable truth" />
                   <TopSignal label="Pricing" value="Free for now" />
                 </div>
               </div>
 
-              <div id="preview" className="relative">
+              <div id="preview" className="relative mx-auto max-w-6xl">
                 <div className="absolute -inset-8 rounded-[2rem] bg-gradient-to-br from-indigo-500/18 via-transparent to-purple-500/12 blur-3xl" />
                 <div className="absolute left-8 top-5 hidden rounded-2xl border border-indigo-500/20 bg-zinc-900/80 px-4 py-3 text-xs text-indigo-200 shadow-xl shadow-black/30 xl:block">
                   <div className="flex items-center gap-2">
