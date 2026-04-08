@@ -125,36 +125,36 @@ export function PublicHomePage() {
         </header>
 
         <main className="relative z-10">
-          <section className="px-5 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-28 lg:pt-24">
-            <div className="mx-auto max-w-7xl space-y-12">
-              <div className="mx-auto flex max-w-4xl flex-col items-center space-y-8 text-center">
+          <section className="px-4 pb-16 pt-12 sm:px-6 sm:pb-20 sm:pt-16 lg:px-8 lg:pb-28 lg:pt-24">
+            <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-12 xl:gap-16">
+              <div className="mx-auto flex max-w-3xl flex-col items-center space-y-7 text-center lg:mx-0 lg:max-w-none lg:items-start lg:text-left">
                 <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
                   <span className="mr-2 flex h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
                   Free for now in beta. Built for OpenClaw.
                 </div>
 
                 <div className="space-y-5">
-                  <h1 className="mx-auto max-w-[12ch] font-[var(--font-space-grotesk)] text-5xl font-semibold leading-[0.92] tracking-tight text-zinc-100 sm:text-6xl lg:text-7xl">
+                  <h1 className="mx-auto max-w-[11ch] font-[var(--font-space-grotesk)] text-4xl font-semibold leading-[0.92] tracking-tight text-zinc-100 sm:text-5xl lg:mx-0 lg:text-6xl xl:text-7xl">
                     Mission control that actually becomes operational.
                   </h1>
-                  <p className="mx-auto max-w-3xl text-lg leading-8 text-zinc-400">
+                  <p className="mx-auto max-w-2xl text-base leading-7 text-zinc-400 sm:text-lg sm:leading-8 lg:mx-0">
                     OpenClaw already thinks, codes, browses, and acts. Emperor gives it the missing
                     layer: durable work state, visible coordination, scoped context, recoverable
                     operations, and a product that works without a heavy setup project.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                   <Link
                     href="/signup"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-px hover:bg-indigo-500"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-px hover:bg-indigo-500 sm:px-5"
                   >
                     Create Workspace
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/docs"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/60 px-6 py-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/60 px-6 py-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white sm:px-5"
                   >
                     See Docs
                   </Link>
@@ -167,9 +167,9 @@ export function PublicHomePage() {
                 </div>
               </div>
 
-              <div id="preview" className="relative mx-auto max-w-6xl">
+              <div id="preview" className="relative mx-auto w-full max-w-5xl lg:mx-0 lg:max-w-none">
                 <div className="absolute -inset-8 rounded-[2rem] bg-gradient-to-br from-indigo-500/18 via-transparent to-purple-500/12 blur-3xl" />
-                <div className="absolute left-8 top-5 hidden rounded-2xl border border-indigo-500/20 bg-zinc-900/80 px-4 py-3 text-xs text-indigo-200 shadow-xl shadow-black/30 xl:block">
+                <div className="absolute left-6 top-4 hidden rounded-2xl border border-indigo-500/20 bg-zinc-900/80 px-4 py-3 text-xs text-indigo-200 shadow-xl shadow-black/30 xl:block">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-3.5 w-3.5" />
                     <span>OpenClaw linked</span>
@@ -180,7 +180,23 @@ export function PublicHomePage() {
                 <div className="relative overflow-hidden rounded-[2rem] border border-zinc-800/80 bg-zinc-950/90 shadow-[0_32px_90px_rgba(0,0,0,0.45)]">
                   <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-indigo-500/8 to-transparent" />
                   <div className="grid lg:grid-cols-[220px_1fr]">
-                    <div className="border-b border-zinc-800/80 bg-zinc-950/85 p-5 lg:border-b-0 lg:border-r">
+                    <div className="border-b border-zinc-800/80 bg-zinc-950/85 p-4 sm:p-5 lg:border-b-0 lg:border-r">
+                      <div className="mb-5 flex items-center justify-between lg:hidden">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/20">
+                            <CustomLogo className="h-5 w-5 text-indigo-400" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-white">Emperor Claw</div>
+                            <div className="text-xs uppercase tracking-wide text-zinc-500">Control Plane</div>
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1 text-[11px] text-zinc-400">
+                          Live
+                        </div>
+                      </div>
+
+                      <div className="hidden lg:block">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/20">
                           <CustomLogo className="h-5 w-5 text-indigo-400" />
@@ -208,13 +224,20 @@ export function PublicHomePage() {
                           </div>
                         </div>
                       </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 lg:hidden">
+                        {navItems.slice(0, 3).map((item, index) => (
+                          <SidebarItem key={item} label={item} active={index === 0} compact />
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="bg-zinc-950/35 p-5 sm:p-6">
-                      <div className="space-y-6">
+                    <div className="bg-zinc-950/35 p-4 sm:p-5 lg:p-6">
+                      <div className="space-y-5 sm:space-y-6">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <div className="text-2xl font-semibold tracking-tight text-zinc-100">
+                            <div className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
                               Control Plane
                             </div>
                             <p className="mt-1 text-sm font-medium text-zinc-500">
@@ -230,7 +253,7 @@ export function PublicHomePage() {
                           </div>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                           <MetricPanel title="Agents" value="12" hint="registered" accent="indigo" />
                           <MetricPanel title="Inbox" value="28" hint="awaiting assignment" />
                           <MetricPanel title="Review" value="4" hint="human action" accent="amber" />
@@ -262,7 +285,7 @@ export function PublicHomePage() {
                                     </div>
                                     <div
                                       className={cn(
-                                        "max-w-[88%] rounded-2xl border px-4 py-3 text-sm leading-7 rounded-tl-none",
+                                        "max-w-full rounded-2xl border px-4 py-3 text-sm leading-7 rounded-tl-none sm:max-w-[88%]",
                                         item.tone === "indigo" && "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
                                         item.tone === "zinc" && "border-zinc-700/50 bg-zinc-800/55 text-zinc-200",
                                       )}
@@ -327,7 +350,7 @@ export function PublicHomePage() {
           </section>
 
           <section id="why" className="px-5 py-24 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl space-y-14">
+            <div className="mx-auto max-w-7xl space-y-12 sm:space-y-14">
               <div className="max-w-3xl space-y-4">
                 <div className="text-xs font-medium uppercase tracking-[0.24em] text-indigo-300">
                   Why this is different
@@ -342,7 +365,7 @@ export function PublicHomePage() {
                 </p>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {pillars.map(({ icon: Icon, title, body }) => (
                   <article
                     key={title}
@@ -474,11 +497,12 @@ function TopSignal({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SidebarItem({ label, active }: { label: string; active?: boolean }) {
+function SidebarItem({ label, active, compact }: { label: string; active?: boolean; compact?: boolean }) {
   return (
     <div
       className={cn(
         "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all",
+        compact && "justify-center px-2 py-2 text-xs",
         active
           ? "bg-zinc-800/80 text-white ring-1 ring-zinc-700/50"
           : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100",
@@ -516,10 +540,10 @@ function MetricPanel({
         : "text-indigo-400";
 
   return (
-    <div className="relative h-36 overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-5 shadow-sm">
+    <div className="relative h-32 overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4 shadow-sm sm:h-36 sm:p-5">
       <div className={`absolute right-0 top-0 h-16 w-16 rounded-bl-full blur-xl ${accentGlow}`} />
       <div className="text-sm font-medium text-zinc-500">{title}</div>
-      <div className="mt-4 text-3xl font-semibold text-zinc-100">{value}</div>
+      <div className="mt-3 text-2xl font-semibold text-zinc-100 sm:mt-4 sm:text-3xl">{value}</div>
       <div className="mt-2 flex items-center gap-1 text-xs">
         <span className={accentText}>Live</span>
         <span className="text-zinc-600">{hint}</span>
