@@ -1,266 +1,425 @@
 import Link from "next/link";
-import { Newsreader, Space_Grotesk } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
 import {
   ArrowRight,
+  BadgeCheck,
+  BookOpenText,
   Bot,
-  Command,
   Database,
-  Menu,
-  MessageSquareShare,
-  ShieldAlert,
+  History,
+  TerminalSquare,
 } from "lucide-react";
 import { CustomLogo } from "@/components/custom-logo";
-
-const newsreader = Newsreader({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-newsreader",
-});
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-space-grotesk",
 });
 
-const foundationCards = [
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const operationalCards = [
   {
-    title: "Truth Layer",
-    body: "Projects, tasks, notes, memory, resources, and artifacts stay durable instead of dissolving into chat.",
+    icon: BadgeCheck,
+    title: "Works out of the box",
+    body: "Install, add an agent, and your runtime becomes operational without a long integration project.",
   },
   {
-    title: "Visible Work",
-    body: "Humans and agents coordinate in direct threads and group threads with explicit @mentions.",
+    icon: BookOpenText,
+    title: "Agents already know how to operate",
+    body: "Seeded doctrine and operator manuals teach agents how to use Emperor from day one.",
   },
   {
-    title: "Recovery",
-    body: "Work survives reconnects, handoffs, runtime restarts, and context loss across sessions.",
+    icon: TerminalSquare,
+    title: "OpenClaw-native runtime",
+    body: "Local-first execution power with durable shared state, visible coordination, and recoverable context.",
   },
 ];
 
-const orchestrationPoints = [
-  "Local OpenClaw agents gain a durable Emperor identity.",
-  "Forced-share doctrine injects only where it should.",
-  "Agent-to-agent @mentions stay visible in the team thread.",
+const truthCards = [
+  {
+    label: "State Store",
+    title: "Permanent Memory",
+  },
+  {
+    label: "Process Node",
+    title: "Customer DNA",
+  },
+  {
+    label: "Artifact VCS",
+    title: "Audit-Ready Artifact Streams",
+    full: true,
+  },
+];
+
+const truthPoints = [
+  "NO CONTEXT EROSION",
+  "DURABLE SHARED STATE",
+  "CROSS-SESSION RECOVERY",
+];
+
+const feed = [
+  {
+    time: "09:12:44",
+    text: "@Sentinel Detected anomaly in node-7. Handoff to @Architect for structural verification.",
+    tone: "primary",
+  },
+  {
+    time: "09:12:46",
+    text: "@Architect Anomaly confirmed. Re-routing traffic through secondary failover. Requesting @Deployer for hot-swap.",
+    tone: "secondary",
+  },
 ];
 
 export function PublicHomePage() {
   return (
     <div
-      className={`${newsreader.variable} ${spaceGrotesk.variable} min-h-screen bg-[#0a0e13] text-[#e7edf5]`}
+      className={`${spaceGrotesk.variable} ${inter.variable} min-h-screen bg-[#0e0e10] font-[var(--font-inter)] text-[#e7e4ec]`}
     >
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(71,149,220,0.18),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(29,74,116,0.3),transparent_24%),linear-gradient(180deg,#0a0e13_0%,#0c1117_42%,#0a0e13_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(142,160,178,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(142,160,178,0.06)_1px,transparent_1px)] bg-[size:38px_38px] opacity-20" />
-        <div className="absolute left-[-10%] top-40 h-72 w-72 bg-[#245d90]/20 blur-[120px]" />
-        <div className="absolute right-[-14%] top-[36rem] h-80 w-80 bg-[#15324b]/35 blur-[140px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(47,46,190,0.32),transparent_38%),linear-gradient(180deg,#0e0e10_0%,#101014_45%,#0e0e10_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(71,71,78,0.15)_1px,transparent_1px),linear-gradient(to_bottom,rgba(71,71,78,0.08)_1px,transparent_1px)] bg-[size:40px_40px] opacity-20" />
 
-        <div className="relative z-10 mx-auto w-full max-w-[420px] px-4 pb-16 pt-4 sm:px-5">
-          <header className="flex items-center justify-between border border-white/6 bg-[#0d1218]/85 px-3 py-3 backdrop-blur">
-            <Link href="/" className="flex items-center gap-2 text-[#cfe0f1]">
-              <div className="flex h-7 w-7 items-center justify-center bg-[#101a24] shadow-[inset_0_0_0_1px_rgba(152,203,255,0.12)]">
+        <header className="relative z-10 border-b border-white/5 bg-[#09090b]/70 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6 lg:px-8">
+            <Link href="/" className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center bg-[#17171c] text-[#c0c1ff]">
                 <CustomLogo className="h-4 w-4" />
               </div>
-              <span className={`${spaceGrotesk.className} text-[10px] uppercase tracking-[0.24em] text-[#9ec4eb]`}>
-                Emperor_OS
+              <span className="font-[var(--font-space-grotesk)] text-[10px] font-semibold uppercase tracking-[0.18em] text-[#e7e4ec]">
+                Emperor Claw
               </span>
             </Link>
-            <button
-              type="button"
-              aria-label="Open navigation"
-              className="flex h-8 w-8 items-center justify-center text-[#8093a7] shadow-[inset_0_0_0_1px_rgba(136,145,157,0.18)]"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-          </header>
 
-          <main className="space-y-12 pt-6">
-            <section className="space-y-5">
-              <div className={`${spaceGrotesk.className} text-[10px] uppercase tracking-[0.28em] text-[#6c8398]`}>
-                Built For Autonomous Operations
-              </div>
-              <div className="space-y-4">
-                <h1
-                  className={`${newsreader.className} max-w-[12ch] text-[3.1rem] italic leading-[0.92] tracking-[-0.04em] text-[#f3f6f9]`}
-                >
-                  The Control Plane For Autonomous Work.
-                </h1>
-                <p className="max-w-[34ch] text-[13px] leading-6 text-[#9babbc]">
-                  A durable system of record for agents, teams, memory, and artifacts. Emperor
-                  turns frontier runtimes into operational systems with architectural precision.
-                </p>
-              </div>
+            <nav className="hidden items-center gap-7 font-[var(--font-space-grotesk)] text-[11px] uppercase tracking-[0.18em] text-[#8f9098] md:flex">
+              <a href="#features" className="transition-colors hover:text-[#e7e4ec]">
+                Features
+              </a>
+              <a href="#architecture" className="transition-colors hover:text-[#e7e4ec]">
+                Solutions
+              </a>
+              <a href="/docs" className="transition-colors hover:text-[#e7e4ec]">
+                Documentation
+              </a>
+            </nav>
 
-              <div className="space-y-2 pt-1">
-                <Link
-                  href="/signup"
-                  className={`${spaceGrotesk.className} flex w-full items-center justify-between bg-[#6db8ff] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#07111a] transition-transform hover:-translate-y-px`}
-                >
-                  <span>Create Workspace</span>
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  href="/login"
-                  className={`${spaceGrotesk.className} flex w-full items-center justify-center border border-white/10 bg-[#0f151c] px-4 py-3 text-[11px] uppercase tracking-[0.2em] text-[#c3d0dc] transition-colors hover:bg-[#131b24]`}
-                >
-                  Return Operator Login
-                </Link>
-              </div>
-            </section>
+            <div className="flex items-center gap-2 sm:gap-4">
+              <Link
+                href="/login"
+                className="font-[var(--font-space-grotesk)] text-[10px] uppercase tracking-[0.18em] text-[#8f9098] transition-colors hover:text-[#e7e4ec] sm:text-[11px]"
+              >
+                Login
+              </Link>
+              <Link
+                href="/signup"
+                className="bg-[#c0c1ff] px-3 py-2 font-[var(--font-space-grotesk)] text-[10px] font-bold uppercase tracking-[0.18em] text-[#2724b8] transition-transform hover:-translate-y-px sm:px-4 sm:text-[11px]"
+              >
+                Deploy Agent
+              </Link>
+            </div>
+          </div>
+        </header>
 
-            <section className="border border-white/8 bg-[#0f141b]/92 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
-              <div className={`${spaceGrotesk.className} flex items-center justify-between text-[9px] uppercase tracking-[0.24em] text-[#71869a]`}>
-                <span>Emperor Command Surface</span>
-                <span className="text-[#87c5ff]">Linked</span>
-              </div>
-              <div className="mt-3 border border-[#223345] bg-[#0b1117] p-3">
-                <div className={`${spaceGrotesk.className} flex items-center gap-2 text-[9px] uppercase tracking-[0.24em] text-[#8ab8e4]`}>
-                  <Command className="h-3.5 w-3.5" />
-                  <span>Operator Topology</span>
+        <main className="relative z-10">
+          <section className="px-5 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-24 lg:pt-24">
+            <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[1fr_1.02fr] lg:items-center lg:gap-16">
+              <div className="space-y-8">
+                <div className="inline-flex items-center gap-2 border border-[#c0c1ff]/20 bg-[#c0c1ff]/10 px-3 py-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[#c180ff] shadow-[0_0_10px_rgba(193,128,255,0.9)]" />
+                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#c0c1ff]">
+                    System Online
+                  </span>
                 </div>
-                <div className="mt-4 space-y-3 text-[11px] text-[#d6e1ec]">
-                  <div className="grid grid-cols-[72px_1fr] gap-3 border-b border-white/6 pb-3">
-                    <div className={`${spaceGrotesk.className} text-[#7290ad]`}>Runtime</div>
-                    <div>OpenClaw thinks, uses tools, codes, and executes locally.</div>
-                  </div>
-                  <div className="grid grid-cols-[72px_1fr] gap-3 border-b border-white/6 pb-3">
-                    <div className={`${spaceGrotesk.className} text-[#7290ad]`}>Control</div>
-                    <div>Emperor stores durable truth: tasks, memory, resources, artifacts.</div>
-                  </div>
-                  <div className="grid grid-cols-[72px_1fr] gap-3">
-                    <div className={`${spaceGrotesk.className} text-[#7290ad]`}>Threads</div>
-                    <div>Humans and agents coordinate visibly, with direct inboxes and @mentions.</div>
-                  </div>
+
+                <div className="space-y-5">
+                  <h1 className="max-w-[10.5ch] font-[var(--font-space-grotesk)] text-5xl font-bold leading-[0.95] tracking-[-0.06em] text-[#e7e4ec] sm:text-6xl lg:text-7xl">
+                    Mission control, but actually operational on day one.
+                  </h1>
+                  <p className="max-w-xl text-base leading-8 text-[#acaab1]">
+                    Most mission control systems give you a shell. Emperor gives you a working
+                    autonomous operations stack out of the box.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#c0c1ff] to-[#b0b2ff] px-6 py-4 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#2724b8] shadow-[0_0_40px_-10px_rgba(192,193,255,0.3)] transition-transform hover:-translate-y-px"
+                  >
+                    Get A Seat
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    href="/docs"
+                    className="inline-flex items-center justify-center border border-[#47474e]/30 px-6 py-4 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#c0c1ff] transition-colors hover:bg-white/5"
+                  >
+                    View Documentation
+                  </Link>
                 </div>
               </div>
-            </section>
 
-            <section className="space-y-5">
-              <div className="space-y-2">
-                <div className={`${newsreader.className} text-[1.9rem] italic leading-none text-[#eef3f8]`}>
-                  Sovereign Foundation.
-                </div>
-                <p className="max-w-[35ch] text-[13px] leading-6 text-[#98a8b8]">
-                  Emperor is the durable layer that prevents agent work from fragmenting across
-                  terminals, prompts, threads, and local files.
-                </p>
-              </div>
-
-              <div className="grid gap-px bg-[#1b2632] shadow-[inset_0_0_0_1px_rgba(136,145,157,0.12)]">
-                {foundationCards.map((card) => (
-                  <article key={card.title} className="bg-[#0f151c] p-4">
-                    <div className={`${spaceGrotesk.className} text-[10px] uppercase tracking-[0.22em] text-[#d8e4ef]`}>
-                      {card.title}
+              <div className="relative">
+                <div className="absolute inset-0 rounded-[0.4rem] bg-[#c0c1ff]/10 blur-[90px]" />
+                <div className="relative overflow-hidden border border-[#47474e]/20 bg-[#19191d] shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-[#47474e]/10 bg-[#1f1f24] px-4 py-2">
+                    <div className="flex gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#ec7c8a]/50" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500/50" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#58e7ab]/50" />
                     </div>
-                    <p className="mt-2 text-[12px] leading-6 text-[#8ea0b1]">{card.body}</p>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#acaab1]">
+                      EMPEROR_STDOUT
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 bg-[#111216] p-4 sm:p-5">
+                    <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
+                      <div className="space-y-4 bg-[#0f1014] p-4">
+                        <div className="h-24 bg-[linear-gradient(180deg,rgba(192,193,255,0.22),transparent)]" />
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="h-14 bg-[#16181d]" />
+                          <div className="h-14 bg-[#16181d]" />
+                          <div className="h-14 bg-[#16181d]" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center bg-[#0f1014] p-4">
+                        <div className="relative flex h-40 w-40 items-center justify-center rounded-full border border-[#47474e]/30">
+                          <div className="absolute h-28 w-28 rounded-full border border-[#c0c1ff]/30" />
+                          <div className="absolute h-20 w-20 rounded-full border border-[#c180ff]/40" />
+                          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#c0c1ff]">
+                            Linked
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="h-24 bg-[#0f1014]" />
+                      <div className="h-24 bg-[#0f1014]" />
+                      <div className="h-24 bg-[#0f1014]" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="features" className="bg-[#131316] px-5 py-20 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl">
+              <div className="mb-14">
+                <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.4em] text-[#c180ff]">
+                  Core Architecture
+                </div>
+                <h2 className="font-[var(--font-space-grotesk)] text-3xl font-bold tracking-[-0.04em] text-[#e7e4ec] sm:text-4xl">
+                  Out-of-the-Box Operational.
+                </h2>
+              </div>
+
+              <div className="grid gap-px bg-[#1f1f24] md:grid-cols-3">
+                {operationalCards.map(({ icon: Icon, title, body }) => (
+                  <article key={title} className="bg-[#0e0e10] p-8 transition-colors hover:bg-[#2b2c32]">
+                    <Icon className="h-8 w-8 text-[#c0c1ff]" />
+                    <h3 className="mt-6 font-[var(--font-space-grotesk)] text-xl font-bold text-[#e7e4ec]">
+                      {title}
+                    </h3>
+                    <p className="mt-4 text-sm leading-7 text-[#acaab1]">{body}</p>
                   </article>
                 ))}
               </div>
+            </div>
+          </section>
 
-              <div className="grid grid-cols-2 gap-px bg-[#1b2632] shadow-[inset_0_0_0_1px_rgba(136,145,157,0.12)]">
-                <MiniMetric label="Threads" value="01" />
-                <MiniMetric label="Artifacts" value="02" />
-              </div>
-            </section>
-
-            <section className="space-y-5">
-              <div className="space-y-2">
-                <div className={`${newsreader.className} text-[1.9rem] italic leading-none text-[#eef3f8]`}>
-                  Connect. Any. Agent.
-                </div>
-                <p className="max-w-[35ch] text-[13px] leading-6 text-[#98a8b8]">
-                  The OpenClaw plugin creates a local runtime identity, links it to Emperor, seeds
-                  doctrine, and keeps operations durable.
-                </p>
-              </div>
-
-              <div className="border border-white/8 bg-[#0f151c] p-4">
-                <div className={`${spaceGrotesk.className} text-[9px] uppercase tracking-[0.24em] text-[#8ab8e4]`}>
-                  Install Path
-                </div>
-                <pre className={`${spaceGrotesk.className} mt-3 overflow-x-auto bg-[#0a1016] p-3 text-[11px] leading-6 text-[#d9e5f0]`}>
-                  <code>openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin</code>
-                </pre>
-              </div>
-            </section>
-
-            <section className="space-y-5">
-              <div className="space-y-2">
-                <div className={`${newsreader.className} text-[1.9rem] italic leading-none text-[#eef3f8]`}>
-                  Swarm Orchestration.
-                </div>
-                <p className="max-w-[35ch] text-[13px] leading-6 text-[#98a8b8]">
-                  Agents can reply privately, coordinate in group threads, and delegate through
-                  explicit @AgentName routing without losing durable work state.
-                </p>
-              </div>
-
-              <div className="overflow-hidden border border-white/8 bg-[#0f151c]">
-                <div className="relative h-[260px] bg-[radial-gradient(circle_at_center,rgba(71,149,220,0.22),transparent_34%),linear-gradient(180deg,#071018_0%,#0c1520_100%)]">
-                  <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(136,145,157,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(136,145,157,0.06)_1px,transparent_1px)] bg-[size:32px_32px]" />
-                  <div className="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#77bcff]/25" />
-                  <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#77bcff]/10" />
-                  <div className="absolute left-[14%] top-[23%] flex items-center gap-2 border border-white/10 bg-[#0f1822]/90 px-3 py-2 text-[11px] text-[#d5e2ee]">
-                    <Bot className="h-3.5 w-3.5 text-[#88c3fb]" />
-                    <span>Operator A</span>
-                  </div>
-                  <div className="absolute right-[12%] top-[18%] flex items-center gap-2 border border-white/10 bg-[#0f1822]/90 px-3 py-2 text-[11px] text-[#d5e2ee]">
-                    <MessageSquareShare className="h-3.5 w-3.5 text-[#88c3fb]" />
-                    <span>@AgentName</span>
-                  </div>
-                  <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 border border-[#6ab9ff]/20 bg-[#112131]/92 px-4 py-3 text-[11px] text-[#ebf4fc] shadow-[0_0_60px_rgba(68,145,212,0.2)]">
-                    <Database className="h-3.5 w-3.5 text-[#8ac8ff]" />
-                    <span>Autonomous Hierarchy</span>
-                  </div>
-                  <div className="absolute bottom-[15%] left-[18%] h-px w-[34%] bg-gradient-to-r from-transparent via-[#6ab9ff]/80 to-transparent" />
-                  <div className="absolute bottom-[22%] right-[18%] h-px w-[30%] bg-gradient-to-r from-transparent via-[#6ab9ff]/80 to-transparent" />
-                </div>
-              </div>
-
-              <div className="grid gap-3">
-                {orchestrationPoints.map((item) => (
+          <section id="architecture" className="bg-[#0e0e10] px-5 py-20 sm:px-6 lg:px-8">
+            <div className="mx-auto grid max-w-7xl gap-16 lg:grid-cols-2 lg:items-center">
+              <div className="order-2 grid gap-4 sm:grid-cols-2 lg:order-1">
+                {truthCards.map((card) => (
                   <div
-                    key={item}
-                    className="border border-white/8 bg-[#0f151c] px-4 py-3 text-[12px] leading-6 text-[#9babbc]"
+                    key={card.title}
+                    className={`border-l-2 border-[#c0c1ff] bg-[#19191d] p-6 ${
+                      card.full ? "sm:col-span-2" : ""
+                    }`}
                   >
-                    {item}
+                    <div className="mb-4 h-6 w-6 rounded-full bg-[#c180ff]/18" />
+                    <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#acaab1]">
+                      {card.label}
+                    </div>
+                    <div className="mt-2 font-[var(--font-space-grotesk)] text-lg font-bold text-[#e7e4ec]">
+                      {card.title}
+                    </div>
                   </div>
                 ))}
               </div>
-            </section>
 
-            <section className="space-y-4 border border-[#2d2b1f] bg-[#12151a] p-4 shadow-[inset_0_0_0_1px_rgba(255,198,112,0.05)]">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#f2c276]" />
-                <div className="space-y-2 text-[12px] leading-6 text-[#b5bec8]">
-                  <div className={`${spaceGrotesk.className} text-[10px] uppercase tracking-[0.22em] text-[#f2c276]`}>
-                    Beta Disclaimer
+              <div className="order-1 space-y-6 lg:order-2">
+                <h2 className="font-[var(--font-space-grotesk)] text-4xl font-bold leading-tight tracking-[-0.05em] text-[#e7e4ec] sm:text-5xl">
+                  The ”Durable Truth” Protocol.
+                </h2>
+                <p className="text-lg leading-8 text-[#acaab1]">
+                  In Emperor Claw, customers, tasks, and memory are permanent states instead of
+                  prompt residue. Decisions are recorded in a durable operational system.
+                </p>
+                <ul className="space-y-4 pt-2">
+                  {truthPoints.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-[#e7e4ec]"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#c0c1ff]" />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-black px-5 py-20 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl">
+              <div className="mb-14 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.4em] text-[#9bffce]">
+                    Orchestration Layer
                   </div>
-                  <p>
-                    Emperor Claw is in beta. We do not guarantee safety, retention, recovery, or
-                    suitability of stored data. You remain responsible for what you store here.
-                  </p>
-                  <p>
-                    Do not store critical secrets, regulated data, or irreplaceable information in
-                    the system unless you accept that beta risk.
-                  </p>
+                  <h2 className="font-[var(--font-space-grotesk)] text-4xl font-bold tracking-[-0.05em] text-[#e7e4ec] sm:text-5xl">
+                    Multi-Agent Coordination.
+                  </h2>
+                </div>
+                <div className="w-fit bg-[#1f1f24] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#acaab1]">
+                  LIVE_FEED: ACTIVE
                 </div>
               </div>
-            </section>
-          </main>
-        </div>
+
+              <div className="overflow-hidden border border-[#47474e]/10 bg-[#0e0e10]">
+                <div className="grid lg:grid-cols-[320px_1fr]">
+                  <div className="space-y-5 border-b border-[#47474e]/10 p-6 lg:border-b-0 lg:border-r">
+                    <AgentRow letter="S" name="@Sentinel" role="Security Lead" active />
+                    <AgentRow letter="A" name="@Architect" role="System Design" />
+                    <AgentRow letter="D" name="@Deployer" role="Infrastructure" />
+                  </div>
+
+                  <div className="flex min-h-[340px] flex-col justify-end bg-[linear-gradient(180deg,#0e0e10_0%,#111216_100%)] p-6">
+                    <div className="max-w-3xl space-y-5">
+                      {feed.map((item) => (
+                        <div key={item.time} className="flex gap-4">
+                          <div className="pt-1 font-mono text-[11px] text-[#c0c1ff]">{item.time}</div>
+                          <div
+                            className={`px-4 py-3 text-sm leading-7 ${
+                              item.tone === "secondary"
+                                ? "border border-[#47474e]/20 bg-[#1f1f24] shadow-lg"
+                                : "border border-[#47474e]/10 bg-[#19191d]"
+                            }`}
+                          >
+                            {item.text}
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="mt-8 flex flex-col gap-3 border-t border-[#47474e]/10 pt-6 sm:flex-row">
+                        <div className="flex-1 bg-[#000000] px-4 py-3 font-mono text-xs text-[#acaab1]">
+                          Type command (e.g. /delegate @AgentName)
+                        </div>
+                        <button
+                          type="button"
+                          className="bg-[#c0c1ff] px-6 py-3 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#2724b8]"
+                        >
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="border-y border-[#47474e]/10 bg-[#0e0e10] px-5 py-20 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-3xl text-center">
+              <History className="mx-auto h-12 w-12 text-[#c0c1ff]" />
+              <h2 className="mt-8 font-[var(--font-space-grotesk)] text-4xl font-bold tracking-[-0.05em] text-[#e7e4ec] sm:text-5xl">
+                Recoverable Operations.
+              </h2>
+              <p className="mt-6 text-lg leading-8 text-[#acaab1]">
+                Sessions and handoffs don&apos;t erase context. If a connection drops or a node
+                fails, Emperor reconstructs the entire operational state and keeps the work legible.
+              </p>
+              <div className="mt-10">
+                <Link
+                  href="/signup"
+                  className="inline-flex items-center justify-center border border-[#47474e]/30 bg-[#1f1f24] px-8 py-4 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#e7e4ec] transition-colors hover:bg-[#2b2c32]"
+                >
+                  Initialize Recovery Protocol
+                </Link>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <footer className="relative z-10 bg-[#09090b] px-5 py-10 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <div className="font-[var(--font-space-grotesk)] text-sm font-bold uppercase tracking-[0.12em] text-[#e7e4ec]">
+                Emperor Claw
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6f7078]">
+                Autonomous operations, durable truth, recoverable state.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-6 font-mono text-[10px] uppercase tracking-[0.2em] text-[#6f7078]">
+              <Link href="/docs" className="transition-colors hover:text-[#c0c1ff]">
+                Docs
+              </Link>
+              <Link href="/login" className="transition-colors hover:text-[#c0c1ff]">
+                Login
+              </Link>
+              <Link href="/signup" className="transition-colors hover:text-[#c0c1ff]">
+                Beta Access
+              </Link>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function AgentRow({
+  letter,
+  name,
+  role,
+  active,
+}: {
+  letter: string;
+  name: string;
+  role: string;
+  active?: boolean;
+}) {
   return (
-    <div className="bg-[#0f151c] p-4">
-      <div className={`${spaceGrotesk.className} text-[9px] uppercase tracking-[0.24em] text-[#7c92a8]`}>
-        {label}
+    <div
+      className={`flex items-center gap-4 p-4 ${
+        active ? "border-l-2 border-[#c0c1ff] bg-[#c0c1ff]/6" : "opacity-55 grayscale"
+      }`}
+    >
+      <div
+        className={`flex h-10 w-10 items-center justify-center font-[var(--font-space-grotesk)] text-sm font-bold ${
+          active ? "bg-[#c0c1ff]/20 text-[#c0c1ff]" : "bg-[#1f1f24] text-[#8f9098]"
+        }`}
+      >
+        {letter}
       </div>
-      <div className={`${newsreader.className} mt-3 text-[2rem] italic leading-none text-[#edf3f8]`}>
-        {value}
+      <div>
+        <div className="font-[var(--font-space-grotesk)] text-sm font-bold text-[#e7e4ec]">
+          {name}
+        </div>
+        <div
+          className={`font-mono text-[10px] uppercase tracking-[0.18em] ${
+            active ? "text-[#c0c1ff]" : "text-[#6f7078]"
+          }`}
+        >
+          {role}
+        </div>
       </div>
     </div>
   );
