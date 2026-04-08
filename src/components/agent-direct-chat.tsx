@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Send, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 type DirectThread = {
     id: string;
@@ -260,7 +261,10 @@ export function AgentDirectChat({
                                                     {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                 </span>
                                             </div>
-                                            <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</div>
+                                            <MarkdownRenderer
+                                                content={message.text}
+                                                className="[&_.prose]:max-w-none [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
+                                            />
                                         </div>
                                         {isHuman && (
                                             <div className="mt-1 flex items-center gap-1 px-1">
