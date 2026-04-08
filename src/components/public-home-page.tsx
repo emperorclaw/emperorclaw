@@ -5,8 +5,12 @@ import {
   BadgeCheck,
   BookOpenText,
   Bot,
+  Cable,
   Database,
   History,
+  Layers3,
+  LockOpen,
+  Orbit,
   TerminalSquare,
 } from "lucide-react";
 import { CustomLogo } from "@/components/custom-logo";
@@ -39,6 +43,12 @@ const operationalCards = [
   },
 ];
 
+const quickSignals = [
+  { label: "Plugin", value: "Native OpenClaw install" },
+  { label: "Pricing", value: "Free for now in beta" },
+  { label: "Outcome", value: "Operational on day one" },
+];
+
 const truthCards = [
   {
     label: "State Store",
@@ -59,6 +69,24 @@ const truthPoints = [
   "NO CONTEXT EROSION",
   "DURABLE SHARED STATE",
   "CROSS-SESSION RECOVERY",
+];
+
+const openclawReasons = [
+  {
+    icon: Cable,
+    title: "Built around OpenClaw",
+    body: "The runtime stays local and powerful, but it gains a durable control plane instead of living in isolated terminal sessions.",
+  },
+  {
+    icon: Layers3,
+    title: "Execution gets structure",
+    body: "Threads, tasks, notes, memory, resources, and artifacts make OpenClaw work inspectable and recoverable.",
+  },
+  {
+    icon: LockOpen,
+    title: "Free for now",
+    body: "You can start using Emperor during beta without a pricing wall while the system is still evolving.",
+  },
 ];
 
 const feed = [
@@ -130,18 +158,30 @@ export function PublicHomePage() {
                 <div className="inline-flex items-center gap-2 border border-[#c0c1ff]/20 bg-[#c0c1ff]/10 px-3 py-1.5">
                   <span className="h-2 w-2 rounded-full bg-[#c180ff] shadow-[0_0_10px_rgba(193,128,255,0.9)]" />
                   <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#c0c1ff]">
-                    System Online
+                    OpenClaw Native Control Plane
                   </span>
                 </div>
 
                 <div className="space-y-5">
                   <h1 className="max-w-[10.5ch] font-[var(--font-space-grotesk)] text-5xl font-bold leading-[0.95] tracking-[-0.06em] text-[#e7e4ec] sm:text-6xl lg:text-7xl">
-                    Mission control, but actually operational on day one.
+                    OpenClaw mission control, but actually operational on day one.
                   </h1>
                   <p className="max-w-xl text-base leading-8 text-[#acaab1]">
-                    Most mission control systems give you a shell. Emperor gives you a working
-                    autonomous operations stack out of the box.
+                    Emperor is the durable control plane for OpenClaw. Install the plugin, add an
+                    agent, and you get visible coordination, scoped context, durable work state,
+                    and recoverable operations without building the stack yourself.
                   </p>
+                </div>
+
+                <div className="grid gap-px bg-[#1f1f24] sm:grid-cols-3">
+                  {quickSignals.map((item) => (
+                    <div key={item.label} className="bg-[#111216] px-4 py-4">
+                      <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#7f8088]">
+                        {item.label}
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-[#e7e4ec]">{item.value}</div>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="flex flex-col gap-3 pt-2 sm:flex-row">
@@ -149,14 +189,14 @@ export function PublicHomePage() {
                     href="/signup"
                     className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#c0c1ff] to-[#b0b2ff] px-6 py-4 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#2724b8] shadow-[0_0_40px_-10px_rgba(192,193,255,0.3)] transition-transform hover:-translate-y-px"
                   >
-                    Get A Seat
+                    Start Free For Now
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/docs"
                     className="inline-flex items-center justify-center border border-[#47474e]/30 px-6 py-4 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#c0c1ff] transition-colors hover:bg-white/5"
                   >
-                    View Documentation
+                    See OpenClaw Setup
                   </Link>
                 </div>
               </div>
@@ -171,13 +211,24 @@ export function PublicHomePage() {
                       <span className="h-2.5 w-2.5 rounded-full bg-[#58e7ab]/50" />
                     </div>
                     <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#acaab1]">
-                      EMPEROR_STDOUT
+                      OPENCLAW_LINKED_RUNTIME
                     </div>
                   </div>
 
                   <div className="grid gap-4 bg-[#111216] p-4 sm:p-5">
                     <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
                       <div className="space-y-4 bg-[#0f1014] p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#7f8088]">
+                              Runtime Surface
+                            </div>
+                            <div className="mt-2 font-[var(--font-space-grotesk)] text-lg font-bold text-[#e7e4ec]">
+                              OpenClaw + Emperor
+                            </div>
+                          </div>
+                          <Orbit className="h-5 w-5 text-[#c180ff]" />
+                        </div>
                         <div className="h-24 bg-[linear-gradient(180deg,rgba(192,193,255,0.22),transparent)]" />
                         <div className="grid grid-cols-3 gap-3">
                           <div className="h-14 bg-[#16181d]" />
@@ -190,16 +241,16 @@ export function PublicHomePage() {
                           <div className="absolute h-28 w-28 rounded-full border border-[#c0c1ff]/30" />
                           <div className="absolute h-20 w-20 rounded-full border border-[#c180ff]/40" />
                           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#c0c1ff]">
-                            Linked
+                            Day One Live
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-3">
-                      <div className="h-24 bg-[#0f1014]" />
-                      <div className="h-24 bg-[#0f1014]" />
-                      <div className="h-24 bg-[#0f1014]" />
+                      <MetricTile label="Agents" value="Linked" />
+                      <MetricTile label="Doctrine" value="Seeded" />
+                      <MetricTile label="Threads" value="@Routed" />
                     </div>
                   </div>
                 </div>
@@ -232,6 +283,31 @@ export function PublicHomePage() {
             </div>
           </section>
 
+          <section className="bg-[#101014] px-5 py-20 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl">
+              <div className="mb-14 max-w-3xl">
+                <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.4em] text-[#c0c1ff]">
+                  Why OpenClaw Teams Care
+                </div>
+                <h2 className="font-[var(--font-space-grotesk)] text-3xl font-bold tracking-[-0.04em] text-[#e7e4ec] sm:text-4xl">
+                  OpenClaw already executes. Emperor makes that execution usable.
+                </h2>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-3">
+                {openclawReasons.map(({ icon: Icon, title, body }) => (
+                  <article key={title} className="bg-[#19191d] p-7 shadow-[inset_0_0_0_1px_rgba(71,71,78,0.22)]">
+                    <Icon className="h-6 w-6 text-[#c0c1ff]" />
+                    <h3 className="mt-5 font-[var(--font-space-grotesk)] text-xl font-bold text-[#e7e4ec]">
+                      {title}
+                    </h3>
+                    <p className="mt-4 text-sm leading-7 text-[#acaab1]">{body}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+
           <section id="architecture" className="bg-[#0e0e10] px-5 py-20 sm:px-6 lg:px-8">
             <div className="mx-auto grid max-w-7xl gap-16 lg:grid-cols-2 lg:items-center">
               <div className="order-2 grid gap-4 sm:grid-cols-2 lg:order-1">
@@ -255,7 +331,7 @@ export function PublicHomePage() {
 
               <div className="order-1 space-y-6 lg:order-2">
                 <h2 className="font-[var(--font-space-grotesk)] text-4xl font-bold leading-tight tracking-[-0.05em] text-[#e7e4ec] sm:text-5xl">
-                  The ”Durable Truth” Protocol.
+                  The "Durable Truth" Protocol.
                 </h2>
                 <p className="text-lg leading-8 text-[#acaab1]">
                   In Emperor Claw, customers, tasks, and memory are permanent states instead of
@@ -350,7 +426,7 @@ export function PublicHomePage() {
                   href="/signup"
                   className="inline-flex items-center justify-center border border-[#47474e]/30 bg-[#1f1f24] px-8 py-4 font-[var(--font-space-grotesk)] text-[11px] font-bold uppercase tracking-[0.2em] text-[#e7e4ec] transition-colors hover:bg-[#2b2c32]"
                 >
-                  Initialize Recovery Protocol
+                  Start Free During Beta
                 </Link>
               </div>
             </div>
@@ -364,7 +440,7 @@ export function PublicHomePage() {
                 Emperor Claw
               </div>
               <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6f7078]">
-                Autonomous operations, durable truth, recoverable state.
+                OpenClaw control plane. Free for now in beta.
               </div>
             </div>
             <div className="flex flex-wrap gap-6 font-mono text-[10px] uppercase tracking-[0.2em] text-[#6f7078]">
@@ -420,6 +496,17 @@ function AgentRow({
         >
           {role}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-[#0f1014] px-4 py-5">
+      <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#7f8088]">{label}</div>
+      <div className="mt-3 font-[var(--font-space-grotesk)] text-base font-bold text-[#e7e4ec]">
+        {value}
       </div>
     </div>
   );
