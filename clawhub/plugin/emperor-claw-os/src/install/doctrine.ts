@@ -382,7 +382,8 @@ Scope model:
 
 Force-sharing rule:
 - If isShared=true and the resource is assigned to a specific agent, inject it only to that agent.
-- If isShared=true and the resource is not assigned to an agent, inject it to every agent within that scope.
+- If isShared=true and the resource is company-scoped with no assigned agent, inject it to all agents as global operating context.
+- Customer- and project-scoped resources may be shared and discoverable, but they should only be force-injected when the current turn is actually operating in that customer or project scope.
 - If isShared=false, treat it as discoverable/manual context rather than automatically injected doctrine.
 
 Operational meaning:
@@ -414,7 +415,13 @@ Do not use resources for:
 - final deliverables that belong in artifacts
 
 Leak prevention:
-- Do not expose agent-scoped shared content in public/team chat unless the content itself is meant to be shared.`;
+- Do not expose agent-scoped shared content in public/team chat unless the content itself is meant to be shared.
+
+Bridge expectation:
+- The bridge should inject only resources marked for forced sharing, not every discoverable resource.
+- The bridge should inject company-scoped forced-share resources as baseline global doctrine.
+- The bridge should inject agent-scoped shared resources only to the assigned agent.
+- The bridge should not auto-inject non-shared resources as mandatory doctrine.`;
 
 const ARTIFACTS_AND_EVIDENCE_GUIDE = `# Artifacts And Evidence
 
@@ -484,7 +491,37 @@ const THREADING_AND_DELEGATION = `# Threading And Delegation
 
 ## Coordination rule
 - Speech and state should not drift apart.
-- If you say work started, blocked, delegated, or finished, the related note/assignment/result/thread message should support that claim.`;
+- If you say work started, blocked, delegated, or finished, the related note/assignment/result/thread message should support that claim.
+
+## Bridge routing expectation
+- The bridge should route @AgentName the same way whether the sender is a human or another agent.
+- If another agent writes @YourAgentName in a team thread with a concrete instruction, treat it as a valid routed input.
+- The bridge should not force loops on its own; the anti-loop convention is that you only use @AgentName when you want that agent to reply or act.`;
+
+const BRIDGE_CONTRACT = `# Bridge Contract
+
+The bridge is not the brain.
+It is the transport, routing, and context adapter between Emperor and the local OpenClaw runtime.
+
+The bridge should:
+- deliver inbound human-to-agent and agent-to-agent messages reliably
+- route replies back to the correct direct or team thread
+- reserve baseline automatic injection for force-shared company doctrine plus force-shared agent-scoped resources
+- inject scoped forced-share resources only when the current turn is actually operating in that customer or project scope
+- inject agent-scoped shared resources only to the assigned agent
+- provide a compact team roster so agents know available agent names and roles
+- preserve direct-thread vs team-thread behavior
+- preserve explicit @AgentName routing for agent-to-agent coordination
+- keep reconnect, sync fallback, and dedupe reliable
+
+The bridge should not:
+- replace the agent's reasoning
+- hide durable state changes behind fake chat claims
+- become the main place where business operations are hardcoded
+
+Doctrine rule:
+- Use the bridge for routing, context injection, reply delivery, and session continuity.
+- Use direct Emperor MCP operations for normal CRUD and durable operational work.`;
 
 const OPERATION_DECISION_MATRIX = `# Emperor Operation Decision Matrix
 
@@ -526,8 +563,8 @@ Use this cheat sheet when you must choose the right Emperor surface quickly.
 ## If you need private scoped context
 - company-shared doctrine for all agents -> company scope with isShared=true
 - agent-private injected doctrine -> agent scope with isShared=true
-- customer-specific shared account instructions -> customer scope with isShared=true
-- project operating pack for everyone on that project -> project scope with isShared=true
+- customer-specific shared account instructions -> customer scope with isShared=true and inject only when that customer scope is active/relevant
+- project operating pack for everyone on that project -> project scope with isShared=true and inject only when that project scope is active/relevant
 
 ## If a change should be visible to humans and other agents
 - write the durable state first or in the same operation window
@@ -1993,6 +2030,7 @@ function getSharedOperatingDoctrineText(): string {
     HOW_TO_OPERATE_EMPEROR,
     RESOURCE_SHARING_DOCTRINE,
     THREADING_AND_DELEGATION,
+    BRIDGE_CONTRACT,
   ].join("\n\n");
 }
 
@@ -2050,6 +2088,7 @@ export function getWorkspaceDoctrineFiles(profile: DoctrineProfile): Array<{ fil
     { fileName: "EMPEROR_RESOURCE_SHARING.md", content: RESOURCE_SHARING_DOCTRINE },
     { fileName: "EMPEROR_ARTIFACTS_AND_EVIDENCE.md", content: ARTIFACTS_AND_EVIDENCE_GUIDE },
     { fileName: "EMPEROR_THREADING_AND_DELEGATION.md", content: THREADING_AND_DELEGATION },
+    { fileName: "EMPEROR_BRIDGE_CONTRACT.md", content: BRIDGE_CONTRACT },
     { fileName: "EMPEROR_API_REFERENCE.md", content: API_REFERENCE_FILE },
     { fileName: "EMPEROR_API_OPERATIONS.md", content: API_OPERATIONS_HANDBOOK },
     { fileName: "EMPEROR_TASK_CREATION_GUIDE.md", content: TASK_CREATION_GUIDE },
