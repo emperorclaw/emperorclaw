@@ -4,7 +4,6 @@ import { eq, inArray, and, sql, isNull } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 import { PublicHomePage } from "@/components/public-home-page";
