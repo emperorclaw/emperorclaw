@@ -152,6 +152,15 @@ function parsePossiblyMixedJson(text) {
   return null;
 }
 
+function parseResourceConfig(resource) {
+  if (resource?.configJson && typeof resource.configJson === "object") {
+    return resource.configJson;
+  }
+
+  const parsed = parsePossiblyMixedJson(resource?.configText);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+}
+
 function resolveOpenClawCliInvocation() {
   if (process.platform !== "win32") {
     return {
@@ -236,6 +245,55 @@ async function http(path, options = {}) {
   return response.json();
 }
 
+function normalizePayloadText(value) {
+  return String(value || "").replace(/\r\n/g, "\n").trim();
+}
+
+function selectBestPayloadText(payloads) {
+  const texts = (Array.isArray(payloads) ? payloads : [])
+    .map((item) => (item && typeof item.text === "string" ? normalizePayloadText(item.text) : ""))
+    .filter(Boolean);
+
+  if (texts.length === 0) return null;
+  if (texts.length === 1) return texts[0];
+
+  const uniqueTexts = [];
+  for (const text of texts) {
+    if (uniqueTexts[uniqueTexts.length - 1] === text) continue;
+    uniqueTexts.push(text);
+  }
+
+  const longest = uniqueTexts.reduce((best, current) => (current.length >= best.length ? current : best), "");
+  const last = uniqueTexts[uniqueTexts.length - 1];
+  const progressivelyGrowing = uniqueTexts.every((text, index) => {
+    if (index === 0) return true;
+    const previous = uniqueTexts[index - 1];
+    return text.startsWith(previous) || previous.startsWith(text);
+  });
+
+  if (progressivelyGrowing) return longest || last;
+  if (longest && last && (longest.includes(last) || last.includes(longest))) {
+    return longest.length >= last.length ? longest : last;
+  }
+  return last || longest;
+}
+
+function looksLikeBrokenStreamArtifact(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  if (/^data:\s*\{?/m.test(value)) return true;
+  if (value.split("\n").filter((line) => /^data:\s*/.test(line)).length >= 2) return true;
+  if (/^\{"reply_text":/i.test(value) && !value.endsWith("}")) return true;
+  if ((value.match(/\{\"type\":/g) || []).length >= 2) return true;
+  return false;
+}
+
+function sanitizeAgentReplyText(text) {
+  const value = normalizePayloadText(text);
+  if (!value || looksLikeBrokenStreamArtifact(value)) return null;
+  return value;
+}
+
 async function callLocalOpenClawAgent(message, options = {}) {
   const agentArgs = [
     "agent",
@@ -288,21 +346,11 @@ async function callLocalOpenClawAgent(message, options = {}) {
 
   const result = parsed?.result && typeof parsed.result === "object" ? parsed.result : parsed;
 
-  const payloadTexts = Array.isArray(result?.payloads)
-    ? result.payloads
-        .map((item) => (item && typeof item.text === "string" ? item.text.trim() : ""))
-        .filter(Boolean)
-    : [];
-
-  const extractedText = payloadTexts.length > 0
-    ? payloadTexts.join("\n\n")
-    : typeof result?.reply === "string" && result.reply.trim()
-      ? result.reply.trim()
-      : typeof result?.text === "string" && result.text.trim()
-        ? result.text.trim()
-        : typeof result?.message === "string" && result.message.trim()
-          ? result.message.trim()
-          : null;
+  const extractedText =
+    sanitizeAgentReplyText(selectBestPayloadText(result?.payloads))
+    || (typeof result?.reply === "string" ? sanitizeAgentReplyText(result.reply) : null)
+    || (typeof result?.text === "string" ? sanitizeAgentReplyText(result.text) : null)
+    || (typeof result?.message === "string" ? sanitizeAgentReplyText(result.message) : null);
 
   if (!extractedText) {
     const preview = String(combinedOutput || "").slice(0, 400).replace(/\s+/g, " ").trim();
@@ -374,7 +422,7 @@ function getSharedOperatorDoctrine() {
     "Endpoint cheat sheet when direct MCP calls are needed: GET /agents, /customers, /projects, /tasks, /resources, /threads, /tasks/{id}/context; POST /projects, /tasks, /messages/send, /projects/{id}/memory, /tasks/{id}/notes, /tasks/{id}/assign, /tasks/{id}/result.",
     "Primary operating rule: use Emperor MCP directly from your runtime when you need to read or mutate Emperor state. The bridge is mainly for message routing, session lifecycle, context injection, and posting the final thread reply back into Emperor.",
     "Use Emperor as canonical for customers, projects, tasks, task notes/events, project memory, scoped resources, artifacts, threads, schedules, templates, tactics, playbooks, incidents, approvals, and agent context when relevant.",
-    "Resource sharing rule: if a resource has isShared=true and is scoped to an agent, inject it only for that agent; if it has isShared=true and is not agent-scoped, treat it as shared operating context for all agents in that scope.",
+    "Resource sharing rule: only force-injected resources belong in automatic bridge context. If a resource has isShared=true and is scoped to an agent, inject it only for that agent. If it has isShared=true and company scope, inject it as baseline global operating context. Other resources remain discoverable and should be read on demand when relevant.",
     "Resources are first-class plain-text context via configText: use them for templates, profiles, SOPs, reusable docs, scoped references, and operational notes.",
     "Artifacts are first-class outputs via contentText: use them for deliverables, proofs, working files, source documents, reports, templates, and export bundles when real work product should be preserved.",
     "If chat memory and Emperor disagree, prefer Emperor and surface the mismatch honestly.",
@@ -465,6 +513,7 @@ class EmperorBridge {
       fetchedAt: 0,
       ids: new Set(),
     };
+    this.typingKeepaliveTimers = new Map();
     this.onMessage = null;
     this.onTask = null;
   }
@@ -1075,84 +1124,94 @@ class EmperorBridge {
       appendDebugLog(COMPANION_DIR, { kind: "delegation-request", bridgeAgent: agentName, threadId: thread.id, senderType, taskRef, text });
     }
 
-    await this.updateChatStatus(thread.id, true, true);
-    await this.writeMemory(
-      `Observed thread ${thread.id} message mentioning ${agentName} from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
-      {
-        kind: "thread_observation",
-        taskId: message.taskId || null,
-        summary: `Observed thread ${thread.id}`,
-        metadataJson: {
-          threadId: thread.id,
-          threadType: thread.type,
-          senderId: message.senderId || null,
-          agentName,
-          matchedByMention: true,
-        },
-      },
-    );
-
-    let liveContext = null;
-    if (!(IS_WINDOWS_PROMPT_CONSTRAINED && taskRef)) {
-      try {
-        liveContext = await this.buildLiveContextForMessage(text);
-      } catch (error) {
-        console.error("[bridge] live context fetch failed:", error.message);
-      }
-    }
-
-    let agentSharedResourceContext = null;
+    const typingToken = this.startTypingKeepalive(thread.id, { markRead: true });
     try {
-      agentSharedResourceContext = await this.buildAgentScopedSharedResourceContext();
-    } catch (error) {
-      console.error("[bridge] agent shared resource fetch failed:", error.message);
-    }
+      await this.writeMemory(
+        `Observed thread ${thread.id} message mentioning ${agentName} from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
+        {
+          kind: "thread_observation",
+          taskId: message.taskId || null,
+          summary: `Observed thread ${thread.id}`,
+          metadataJson: {
+            threadId: thread.id,
+            threadType: thread.type,
+            senderId: message.senderId || null,
+            agentName,
+            matchedByMention: true,
+          },
+        },
+      );
 
-    let claimedTask = null;
-    let referencedTask = null;
-    let referencedTaskContext = null;
-    if (taskRef) {
+      let liveContext = null;
+      if (!(IS_WINDOWS_PROMPT_CONSTRAINED && taskRef)) {
+        try {
+          liveContext = await this.buildLiveContextForMessage(text);
+        } catch (error) {
+          console.error("[bridge] live context fetch failed:", error.message);
+        }
+      }
+
+      let baselineBridgeContext = null;
       try {
-        referencedTask = await this.findTaskByRef(taskRef);
-        if (referencedTask) {
-          console.log(`[bridge] task-ref resolved TASK-${taskRef} -> ${referencedTask.id} assignedAgentId=${referencedTask.assignedAgentId || 'null'} state=${referencedTask.state || 'unknown'}`);
-          appendDebugLog(COMPANION_DIR, { kind: "task-ref-resolved", bridgeAgent: agentName, taskRef, taskId: referencedTask.id, assignedAgentId: referencedTask.assignedAgentId || null, state: referencedTask.state || null });
-          try {
-            referencedTaskContext = await this.fetchTaskContext(referencedTask.id);
-          } catch (contextError) {
-            console.error("[bridge] task context fetch failed:", contextError.message);
-          }
+        baselineBridgeContext = await this.composeLiveContext({
+          includeAgents: true,
+          includeSharedInjectedResources: true,
+        });
+      } catch (error) {
+        console.error("[bridge] baseline bridge context fetch failed:", error.message);
+      }
 
-          const taskContextBlock = this.formatTaskContextBundle(referencedTaskContext);
-          if (taskContextBlock) {
-            liveContext = liveContext ? `${taskContextBlock}\n\n${liveContext}` : taskContextBlock;
+      let agentSharedResourceContext = null;
+      try {
+        agentSharedResourceContext = await this.buildAgentScopedSharedResourceContext();
+      } catch (error) {
+        console.error("[bridge] agent shared resource fetch failed:", error.message);
+      }
+
+      let claimedTask = null;
+      let referencedTask = null;
+      let referencedTaskContext = null;
+      if (taskRef) {
+        try {
+          referencedTask = await this.findTaskByRef(taskRef);
+          if (referencedTask) {
+            console.log(`[bridge] task-ref resolved TASK-${taskRef} -> ${referencedTask.id} assignedAgentId=${referencedTask.assignedAgentId || 'null'} state=${referencedTask.state || 'unknown'}`);
+            appendDebugLog(COMPANION_DIR, { kind: "task-ref-resolved", bridgeAgent: agentName, taskRef, taskId: referencedTask.id, assignedAgentId: referencedTask.assignedAgentId || null, state: referencedTask.state || null });
+            try {
+              referencedTaskContext = await this.fetchTaskContext(referencedTask.id);
+            } catch (contextError) {
+              console.error("[bridge] task context fetch failed:", contextError.message);
+            }
+
+            const taskContextBlock = this.formatTaskContextBundle(referencedTaskContext);
+            if (taskContextBlock) {
+              liveContext = liveContext ? `${taskContextBlock}\n\n${liveContext}` : taskContextBlock;
+            } else {
+              const taskSummary = `Referenced task: TASK-${taskRef} => ${referencedTask.title || referencedTask.goal || referencedTask.id} [state=${referencedTask.state || "unknown"}, type=${referencedTask.taskType || "unknown"}]`;
+              liveContext = liveContext ? `${taskSummary}\n\n${liveContext}` : taskSummary;
+            }
           } else {
-            const taskSummary = `Referenced task: TASK-${taskRef} => ${referencedTask.title || referencedTask.goal || referencedTask.id} [state=${referencedTask.state || "unknown"}, type=${referencedTask.taskType || "unknown"}]`;
-            liveContext = liveContext ? `${taskSummary}\n\n${liveContext}` : taskSummary;
+            console.log(`[bridge] task-ref TASK-${taskRef} did not resolve`);
           }
-        } else {
-          console.log(`[bridge] task-ref TASK-${taskRef} did not resolve`);
+        } catch (error) {
+          console.error("[bridge] task ref lookup failed:", error.message);
         }
-      } catch (error) {
-        console.error("[bridge] task ref lookup failed:", error.message);
       }
-    }
-    if (IS_MANAGER_PROFILE && explicitDelegationRequest && referencedTask && mentionedAgentRef) {
-      try {
-        const targetAgent = await this.resolveAgentRef(mentionedAgentRef);
-        if (targetAgent?.id && referencedTask.assignedAgentId && String(referencedTask.assignedAgentId) === String(targetAgent.id)) {
-          const alreadyAssignedReply = `TASK-${taskRef} is already assigned to ${targetAgent.name || mentionedAgentRef}. No new delegation needed.`;
-          appendDebugLog(COMPANION_DIR, { kind: 'delegation-already-assigned', bridgeAgent: agentName, taskId: referencedTask.id, targetAgentId: targetAgent.id, targetAgentName: targetAgent.name || mentionedAgentRef });
-          await this.sendMessage(alreadyAssignedReply, { thread_id: thread.id, thread_type: thread.type });
-          await this.updateChatStatus(thread.id, false);
-          return;
+      if (IS_MANAGER_PROFILE && explicitDelegationRequest && referencedTask && mentionedAgentRef) {
+        try {
+          const targetAgent = await this.resolveAgentRef(mentionedAgentRef);
+          if (targetAgent?.id && referencedTask.assignedAgentId && String(referencedTask.assignedAgentId) === String(targetAgent.id)) {
+            const alreadyAssignedReply = `TASK-${taskRef} is already assigned to ${targetAgent.name || mentionedAgentRef}. No new delegation needed.`;
+            appendDebugLog(COMPANION_DIR, { kind: 'delegation-already-assigned', bridgeAgent: agentName, taskId: referencedTask.id, targetAgentId: targetAgent.id, targetAgentName: targetAgent.name || mentionedAgentRef });
+            await this.sendMessage(alreadyAssignedReply, { thread_id: thread.id, thread_type: thread.type });
+            return;
+          }
+        } catch (error) {
+          console.error('[bridge] delegation precheck failed:', error.message);
         }
-      } catch (error) {
-        console.error('[bridge] delegation precheck failed:', error.message);
       }
-    }
 
-    if (explicitClaimRequest) {
+      if (explicitClaimRequest) {
       try {
         claimedTask = await this.claimNextTask("explicit-thread-command");
         if (claimedTask) {
@@ -1164,7 +1223,7 @@ class EmperorBridge {
       }
     }
 
-    const prompt = [
+      const prompt = [
       `You are ${agentName}, replying to an Emperor Claw thread as a helpful assistant.`,
       `Reply naturally and helpfully as ${agentName}.`,
       `Shared Emperor doctrine:\n${getSharedOperatorDoctrine()}`,
@@ -1190,6 +1249,7 @@ class EmperorBridge {
       IS_MANAGER_PROFILE
         ? `When asked to create a project for a goal, behave like an operator-planner: create a project, seed project memory with project brief/assumptions/constraints/success definition/next steps, then create a small initial executable task breakdown. Prefer 3-7 execution-ready tasks over many vague tasks. If the request is too vague, ask a sharp clarifying question or create a draft project with explicit assumptions.`
         : null,
+      baselineBridgeContext ? `Baseline bridge context:\n${baselineBridgeContext}` : null,
       agentSharedResourceContext,
       liveContext ? `Live Emperor context:\n${liveContext}` : null,
       `Thread ID: ${thread.id}`,
@@ -1198,8 +1258,8 @@ class EmperorBridge {
       `Latest message: ${text}`,
     ].filter(Boolean).join("\n\n");
 
-    let replyText = null;
-    try {
+      let replyText = null;
+      try {
       const knownSessionId = this.bridgeState.localBrainSessionId || null;
       const useFreshSession = false;
       const agentResult = await callLocalOpenClawAgent(prompt, {
@@ -1261,38 +1321,45 @@ class EmperorBridge {
           replyText = agentResult?.text || null;
         }
       }
-    } catch (error) {
+      } catch (error) {
       console.error("[bridge] viktor brain handoff failed:", error.message);
       replyText = IS_MANAGER_PROFILE ? null : "I hit a local brain handoff issue just now. Please try again in a moment.";
     }
 
-    if (!replyText || !String(replyText).trim()) {
-      if (IS_MANAGER_PROFILE || explicitDelegationRequest || explicitProjectCreationRequest) {
-        console.log("[bridge] suppressing unusable reply");
-        await this.updateChatStatus(thread.id, false);
+      if (!replyText || !String(replyText).trim()) {
+        if (IS_MANAGER_PROFILE || explicitDelegationRequest || explicitProjectCreationRequest) {
+          console.log("[bridge] suppressing unusable reply");
+          return;
+        }
+        replyText = "I saw your message, but I don't have a usable reply yet.";
+      }
+
+      const finalReplyText = sanitizeAgentReplyText(replyText);
+      if (!finalReplyText) {
+        console.log("[bridge] suppressing malformed or partial reply text");
         return;
       }
-      replyText = "I saw your message, but I don't have a usable reply yet.";
-    }
 
-    await this.sendMessage(String(replyText).trim(), {
-      thread_id: thread.id,
-      thread_type: thread.type,
-    });
-    if (directThread && thread?.id && this.agent?.id && intendedAgentId === this.agent.id) {
-      this.updateThreadOwner(thread.id, this.agent.id);
+      await this.sendMessage(finalReplyText, {
+        thread_id: thread.id,
+        thread_type: thread.type,
+      });
+      if (directThread && thread?.id && this.agent?.id && intendedAgentId === this.agent.id) {
+        this.updateThreadOwner(thread.id, this.agent.id);
+      }
+      await this.checkpoint(
+        {
+          reason: "thread_message",
+          threadId: thread.id,
+          threadType: thread.type,
+          lastSeenMessageId: message.id || null,
+          brainSessionKey: LOCAL_BRAIN_SESSION_KEY,
+        },
+        `Processed thread ${thread.id}`,
+      );
+    } finally {
+      await this.stopTypingKeepalive(thread.id, typingToken);
     }
-    await this.updateChatStatus(thread.id, false);
-    await this.checkpoint(
-      {
-        reason: "thread_message",
-        threadId: thread.id,
-        threadType: thread.type,
-        lastSeenMessageId: message.id || null,
-        brainSessionKey: LOCAL_BRAIN_SESSION_KEY,
-      },
-      `Processed thread ${thread.id}`,
-    );
   }
 
   async defaultTaskHandler(task) {
@@ -1874,6 +1941,30 @@ class EmperorBridge {
     );
   }
 
+  collectInjectedSharedResources(resources) {
+    const allResources = Array.isArray(resources) ? resources : [];
+    const currentAgentId = String(this.agent?.id || "");
+
+    return dedupeBy(
+      allResources.filter((resource) => {
+        if (!resource?.isShared) return false;
+        const scopeType = String(resource?.scopeType || "");
+        const scopeId = String(resource?.scopeId || "");
+
+        if (scopeType === "agent") {
+          return scopeId === currentAgentId;
+        }
+
+        if (scopeType === "company") {
+          return true;
+        }
+
+        return false;
+      }),
+      (resource) => String(resource?.id || ""),
+    );
+  }
+
   async buildAgentScopedSharedResourceContext() {
     if (!this.agent?.id) return null;
     const resources = await this.fetchResources();
@@ -1898,9 +1989,40 @@ class EmperorBridge {
     return `Agent-scoped shared resources for ${this.agent.name || AGENT_NAME}:\n${blocks.join("\n")}`;
   }
 
+  async buildInjectedSharedResourceContext(resources = null) {
+    const resolvedResources = Array.isArray(resources) ? resources : await this.fetchResources();
+    const injectedResources = this.collectInjectedSharedResources(resolvedResources);
+    if (injectedResources.length === 0) return null;
+
+    const blocks = injectedResources.slice(0, 12).map((resource) => {
+      const lines = [
+        `- ${resource.name || resource.displayName || resource.id} [scope=${resource.scopeType || "unknown"}, type=${resource.resourceType || "unknown"}, provider=${resource.provider || "unknown"}]`
+      ];
+      const configText = compactTextBlock(resource.configText || resource.contentText || "", 500);
+      if (configText) lines.push(`  Text: ${configText}`);
+      return lines.join("\n");
+    });
+
+    return `Force-injected resources available to ${this.agent?.name || AGENT_NAME}:\n${blocks.join("\n")}`;
+  }
+
   async fetchAgents() {
     const payload = await http("/api/mcp/agents", { method: "GET" });
     return Array.isArray(payload?.agents) ? payload.agents : Array.isArray(payload) ? payload : [];
+  }
+
+  async buildAgentRosterContext() {
+    const agents = await this.fetchAgents();
+    if (!Array.isArray(agents) || agents.length === 0) return null;
+
+    const lines = agents.slice(0, 24).map((agent) => {
+      const name = agent?.name || agent?.displayName || agent?.id || "unknown";
+      const role = agent?.role || agent?.profile || "unknown";
+      const status = agent?.status || "unknown";
+      return `- ${name} [role=${role}, status=${status}]`;
+    });
+
+    return `Team roster in Emperor:\n${lines.join("\n")}`;
   }
 
   async resolveAgentRef(agentRef) {
@@ -1913,7 +2035,8 @@ class EmperorBridge {
   async fetchAgentProfiles(scopeId = null) {
     const resources = await this.fetchResources();
     return resources.filter((resource) => {
-      const profileText = resource?.configJson?.profileText;
+      const config = parseResourceConfig(resource);
+      const profileText = typeof config?.profileText === "string" ? config.profileText : "";
       const name = String(resource?.name || "");
       const scopeType = String(resource?.scopeType || "");
       const scopeIdValue = String(resource?.scopeId || "");
@@ -1961,7 +2084,7 @@ class EmperorBridge {
     const sections = [];
     const customers = await this.fetchCustomers();
     const projects = await this.fetchProjects();
-    const resources = (options.includeResources || options.includeOverview || options.includeAgents)
+    const resources = (options.includeResources || options.includeOverview || options.includeAgents || options.includeSharedInjectedResources)
       ? await this.fetchResources()
       : [];
 
@@ -2023,11 +2146,26 @@ class EmperorBridge {
       const profiles = await this.fetchAgentProfiles(matchedCustomer?.id || null);
       if (profiles.length > 0) {
         const profileBlocks = profiles.slice(0, 10).map((resource) => {
-          const name = resource?.name || resource?.configJson?.agentId || resource?.id;
-          const text = String(resource?.configJson?.profileText || "").trim();
+          const config = parseResourceConfig(resource);
+          const name = resource?.name || config?.agentId || resource?.id;
+          const text = String(config?.profileText || resource?.configText || "").trim();
           return `## ${name}\n${text}`;
         });
         sections.push(`Agent profiles in Emperor:\n${profileBlocks.join("\n\n")}`);
+      }
+    }
+
+    if (options.includeSharedInjectedResources) {
+      const injectedSharedResourceContext = await this.buildInjectedSharedResourceContext(resources);
+      if (injectedSharedResourceContext) {
+        sections.push(injectedSharedResourceContext);
+      }
+    }
+
+    if (options.includeAgents) {
+      const rosterContext = await this.buildAgentRosterContext();
+      if (rosterContext) {
+        sections.push(rosterContext);
       }
     }
 
@@ -2172,7 +2310,7 @@ class EmperorBridge {
    * @param {boolean} typing - Set to true to show the typing indicator.
    * @param {boolean} markRead - Set to true to clear unread counts.
    */
-  async updateChatStatus(threadId, typing = null, markRead = false) {
+  async updateChatStatus(threadId, typing = null, markRead = false, executionState = null) {
     return http("/api/mcp/chat/status/", {
       method: "POST",
       body: {
@@ -2180,8 +2318,42 @@ class EmperorBridge {
         agentId: this.agent.id,
         typing,
         markRead,
+        executionState,
       },
     });
+  }
+
+  startTypingKeepalive(threadId, options = {}) {
+    if (!threadId) return null;
+    const token = crypto.randomUUID();
+    const tick = async (markRead = false) => {
+      try {
+        await this.updateChatStatus(threadId, true, markRead, "acting");
+      } catch (error) {
+        console.error("[bridge] typing keepalive failed:", error.message);
+      }
+    };
+
+    void tick(Boolean(options.markRead));
+    const timer = setInterval(() => {
+      void tick(false);
+    }, 4000);
+
+    this.typingKeepaliveTimers.set(token, timer);
+    return token;
+  }
+
+  async stopTypingKeepalive(threadId, token = null) {
+    if (token && this.typingKeepaliveTimers.has(token)) {
+      clearInterval(this.typingKeepaliveTimers.get(token));
+      this.typingKeepaliveTimers.delete(token);
+    }
+    if (!threadId) return;
+    try {
+      await this.updateChatStatus(threadId, false, false, "seen");
+    } catch (error) {
+      console.error("[bridge] typing keepalive shutdown failed:", error.message);
+    }
   }
 
   async end(summary = "Bridge shutdown") {
@@ -2191,6 +2363,8 @@ class EmperorBridge {
     if (this.controlSyncTimer) clearInterval(this.controlSyncTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.persistTimer) clearTimeout(this.persistTimer);
+    for (const timer of this.typingKeepaliveTimers.values()) clearInterval(timer);
+    this.typingKeepaliveTimers.clear();
     if (this.socket && this.socket.readyState === 1) this.socket.close();
     if (this.activeTasks.size > 0) {
       await this.checkpoint({

@@ -37,16 +37,66 @@ export async function runBrainViaRuntimeAgent(input: {
   };
 }
 
-export function extractBrainText(raw: unknown): string | null {
-  const value = raw as Record<string, any> | null;
-  const payloads = Array.isArray(value?.payloads) ? value.payloads : Array.isArray(value?.result?.payloads) ? value?.result?.payloads : [];
-  const payloadTexts = payloads
-    .map((item) => (item && typeof item.text === "string" ? item.text.trim() : ""))
+function normalizePayloadText(value: unknown): string {
+  return String(value || "").replace(/\r\n/g, "\n").trim();
+}
+
+function selectBestPayloadText(payloads: unknown[]): string | null {
+  const texts = payloads
+    .map((item) => (item && typeof (item as Record<string, unknown>).text === "string"
+      ? normalizePayloadText((item as Record<string, string>).text)
+      : ""))
     .filter(Boolean);
 
-  if (payloadTexts.length > 0) {
-    return payloadTexts.join("\n\n");
+  if (texts.length === 0) return null;
+  if (texts.length === 1) return texts[0];
+
+  const uniqueTexts: string[] = [];
+  for (const text of texts) {
+    if (uniqueTexts[uniqueTexts.length - 1] === text) continue;
+    uniqueTexts.push(text);
   }
+
+  const longest = uniqueTexts.reduce((best, current) => (current.length >= best.length ? current : best), "");
+  const last = uniqueTexts[uniqueTexts.length - 1];
+  const progressivelyGrowing = uniqueTexts.every((text, index) => {
+    if (index === 0) return true;
+    const previous = uniqueTexts[index - 1];
+    return text.startsWith(previous) || previous.startsWith(text);
+  });
+
+  if (progressivelyGrowing) return longest || last;
+  if (longest && last && (longest.includes(last) || last.includes(longest))) {
+    return longest.length >= last.length ? longest : last;
+  }
+  return last || longest;
+}
+
+function looksLikeBrokenStreamArtifact(text: string): boolean {
+  if (!text) return false;
+  if (/^data:\s*\{?/m.test(text)) return true;
+  if (text.split("\n").filter((line) => /^data:\s*/.test(line)).length >= 2) return true;
+  if (/^\{"reply_text":/i.test(text) && !text.endsWith("}")) return true;
+  if ((text.match(/\{\"type\":/g) || []).length >= 2) return true;
+  return false;
+}
+
+function sanitizeBrainText(text: string | null): string | null {
+  const value = normalizePayloadText(text);
+  if (!value || looksLikeBrokenStreamArtifact(value)) return null;
+  return value;
+}
+
+export function extractBrainText(raw: unknown): string | null {
+  const value = raw as Record<string, any> | null;
+  const payloads = Array.isArray(value?.payloads)
+    ? value.payloads
+    : Array.isArray(value?.result?.payloads)
+      ? value?.result?.payloads
+      : [];
+
+  const bestPayloadText = sanitizeBrainText(selectBestPayloadText(payloads));
+  if (bestPayloadText) return bestPayloadText;
 
   const candidates = [
     value?.reply,
@@ -58,8 +108,9 @@ export function extractBrainText(raw: unknown): string | null {
   ];
 
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
+    if (typeof candidate === "string") {
+      const sanitized = sanitizeBrainText(candidate);
+      if (sanitized) return sanitized;
     }
   }
 
