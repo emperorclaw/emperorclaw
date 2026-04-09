@@ -23,13 +23,50 @@ type TeamMessage = {
     createdAt: string | Date;
 };
 
-export function MessagingHub({ agents, initialTeamMessages = [] }: { agents: Agent[]; initialTeamMessages?: TeamMessage[] }) {
+type DirectThreadSummary = {
+    agentId: string;
+    threadId: string | null;
+    agentName: string;
+    agentRole: string | null;
+    avatarUrl: string | null;
+    status: string;
+    unreadCount: number;
+    lastMessageText: string | null;
+    lastMessageAt: string | null;
+};
+
+function formatRelativeMessageTime(value: string | null) {
+    if (!value) return "No messages yet";
+    const timestamp = new Date(value).getTime();
+    if (Number.isNaN(timestamp)) return "No messages yet";
+    const diffMs = Date.now() - timestamp;
+    const diffMinutes = Math.floor(diffMs / 60000);
+    if (diffMinutes < 1) return "Just now";
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+export function MessagingHub({
+    agents,
+    directThreads,
+    initialTeamMessages = [],
+}: {
+    agents: Agent[];
+    directThreads: DirectThreadSummary[];
+    initialTeamMessages?: TeamMessage[];
+}) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
-    const filteredAgents = useMemo(() => {
-        return agents.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    }, [agents, searchQuery]);
+    const filteredThreads = useMemo(() => {
+        return directThreads.filter((thread) =>
+            thread.agentName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [directThreads, searchQuery]);
 
     const activeAgent = useMemo(() => {
         return agents.find(a => a.id === selectedAgentId);
@@ -86,43 +123,60 @@ export function MessagingHub({ agents, initialTeamMessages = [] }: { agents: Age
                             Direct Threads
                         </div>
 
-                        {filteredAgents.map(agent => (
+                        {filteredThreads.map((thread) => (
                             <button
-                                key={agent.id}
-                                onClick={() => setSelectedAgentId(agent.id)}
+                                key={thread.agentId}
+                                onClick={() => setSelectedAgentId(thread.agentId)}
                                 className={cn(
-                                    "w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all group",
-                                    selectedAgentId === agent.id 
+                                    "w-full text-left p-3 rounded-xl flex items-start gap-3 transition-all group",
+                                    selectedAgentId === thread.agentId 
                                         ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm" 
                                         : "hover:bg-zinc-900 border border-transparent"
                                 )}
                             >
                                 <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800 relative shadow-inner">
                                     <img 
-                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`} 
+                                        src={thread.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(thread.agentId)}`} 
                                         className="w-full h-full object-cover" 
                                         alt="" 
                                     />
                                     <div className={cn(
                                         "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-950 shadow-sm",
-                                        agent.status === 'online' ? "bg-emerald-500" : "bg-zinc-700"
+                                        thread.status === 'online' ? "bg-emerald-500" : "bg-zinc-700"
                                     )} />
                                 </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className={cn(
-                                        "text-sm font-semibold tracking-tight truncate",
-                                        selectedAgentId === agent.id ? "text-indigo-100" : "text-zinc-300"
-                                    )}>
-                                        {agent.name}
-                                    </span>
-                                    <span className="text-[10px] font-medium text-zinc-500 truncate">
-                                        {agent.role || "Operator"}
-                                    </span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <span className={cn(
+                                                "block text-sm font-semibold tracking-tight truncate",
+                                                selectedAgentId === thread.agentId ? "text-indigo-100" : "text-zinc-300"
+                                            )}>
+                                                {thread.agentName}
+                                            </span>
+                                            <span className="block text-[10px] font-medium text-zinc-500 truncate">
+                                                {thread.agentRole || "Operator"}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1 shrink-0">
+                                            {thread.unreadCount > 0 && (
+                                                <span className="min-w-5 rounded-full bg-indigo-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white shadow-sm">
+                                                    {thread.unreadCount}
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] text-zinc-600">
+                                                {formatRelativeMessageTime(thread.lastMessageAt)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-xs leading-relaxed text-zinc-500 truncate">
+                                        {thread.lastMessageText || "No direct conversation yet."}
+                                    </div>
                                 </div>
                             </button>
                         ))}
 
-                        {filteredAgents.length === 0 && (
+                        {filteredThreads.length === 0 && (
                             <div className="p-8 text-center bg-zinc-900/40 rounded-xl border border-dashed border-zinc-800 mt-4">
                                 <div className="text-sm text-zinc-500">No agents found.</div>
                             </div>
