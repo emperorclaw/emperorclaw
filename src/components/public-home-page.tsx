@@ -6,6 +6,7 @@ import {
   Boxes,
   Database,
   FileBox,
+  LifeBuoy,
   MessageSquare,
   ShieldAlert,
   Sparkles,
@@ -71,6 +72,42 @@ const workload = [
 
 const navItems = ["Dashboard", "Projects", "Resources", "Messages", "Agents", "Artifacts"];
 
+const proofStats = [
+  { label: "Setup path", value: "Plugin -> Add agent -> Live" },
+  { label: "Coordination model", value: "Direct inbox + @AgentName" },
+  { label: "State layer", value: "Tasks, memory, resources, artifacts" },
+];
+
+const chapters = [
+  {
+    index: "01",
+    eyebrow: "The problem",
+    title: "OpenClaw already does the work. Most teams still lose the work.",
+    body:
+      "Without a control plane, agent output gets scattered across terminals, prompts, one-off threads, and local state. Delegation becomes invisible, memory drifts, and nobody knows what is actually true.",
+    bullets: ["Ephemeral chat theater", "No durable task truth", "Private agent loops"],
+    icon: Bot,
+  },
+  {
+    index: "02",
+    eyebrow: "The bridge",
+    title: "Emperor turns runtime activity into shared operational state.",
+    body:
+      "The OpenClaw plugin boots an agent properly, links it to Emperor, injects the right doctrine, routes direct and team messages, and keeps the runtime connected without burying everything in custom hacks.",
+    bullets: ["Agent appears in OpenClaw and Emperor", "Shared doctrine reaches the right scope", "Typing, routing, and recovery stay visible"],
+    icon: Workflow,
+  },
+  {
+    index: "03",
+    eyebrow: "The result",
+    title: "You get a control plane that is actually operational on day one.",
+    body:
+      "Customers, projects, tasks, notes, memory, resources, artifacts, and threads become durable. Humans and agents can coordinate in the open, recover after restarts, and work against a real system of record.",
+    bullets: ["Durable truth instead of loose context", "Visible delegation and handoffs", "Recoverable operations under load"],
+    icon: LifeBuoy,
+  },
+];
+
 export function PublicHomePage() {
   return (
     <div
@@ -126,7 +163,7 @@ export function PublicHomePage() {
 
         <main className="relative z-10">
           <section className="px-4 pb-16 pt-12 sm:px-6 sm:pb-20 sm:pt-16 lg:px-8 lg:pb-28 lg:pt-24">
-            <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-12 xl:gap-16">
+            <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:items-center lg:gap-12 xl:gap-16">
               <div className="mx-auto flex max-w-3xl flex-col items-center space-y-7 text-center lg:mx-0 lg:max-w-none lg:items-start lg:text-left">
                 <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
                   <span className="mr-2 flex h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
@@ -164,6 +201,21 @@ export function PublicHomePage() {
                   <TopSignal label="Install" value="Native plugin" />
                   <TopSignal label="State" value="Durable truth" />
                   <TopSignal label="Pricing" value="Free for now" />
+                </div>
+
+                <div className="grid w-full gap-3 pt-2">
+                  {proofStats.map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-800/80 bg-zinc-900/45 px-4 py-4"
+                    >
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{item.label}</div>
+                        <div className="mt-2 text-sm font-medium text-zinc-200 sm:text-base">{item.value}</div>
+                      </div>
+                      <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-400 shadow-[0_0_18px_rgba(129,140,248,0.75)]" />
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -365,6 +417,75 @@ export function PublicHomePage() {
                 </p>
               </div>
 
+              <div className="grid gap-6 xl:grid-cols-[220px_1fr]">
+                <div className="hidden xl:block">
+                  <div className="sticky top-24 rounded-3xl border border-zinc-800/80 bg-zinc-900/45 p-5">
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Narrative map</div>
+                    <div className="mt-5 space-y-5">
+                      {chapters.map((chapter, index) => (
+                        <div key={chapter.index} className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-indigo-500/30 bg-indigo-500/10 text-[11px] font-semibold text-indigo-300">
+                              {chapter.index}
+                            </div>
+                            {index < chapters.length - 1 ? (
+                              <div className="mt-2 h-12 w-px bg-gradient-to-b from-indigo-500/50 to-zinc-800" />
+                            ) : null}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-zinc-200">{chapter.eyebrow}</div>
+                            <div className="mt-1 text-xs leading-5 text-zinc-500">{chapter.title}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {chapters.map(({ index, eyebrow, title, body, bullets, icon: Icon }) => (
+                    <article
+                      key={index}
+                      className="relative overflow-hidden rounded-[1.75rem] border border-zinc-800/80 bg-zinc-900/45 p-6 sm:p-7"
+                    >
+                      <div className="absolute inset-y-0 right-0 w-40 bg-gradient-to-l from-indigo-500/8 to-transparent" />
+                      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="max-w-3xl">
+                          <div className="flex items-center gap-3">
+                            <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Chapter {index}</div>
+                            <div className="h-px flex-1 bg-zinc-800" />
+                          </div>
+                          <div className="mt-4 text-sm font-medium uppercase tracking-[0.2em] text-indigo-300">
+                            {eyebrow}
+                          </div>
+                          <h3 className="mt-3 max-w-2xl font-[var(--font-space-grotesk)] text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">
+                            {title}
+                          </h3>
+                          <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
+                            {body}
+                          </p>
+                          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                            {bullets.map((bullet) => (
+                              <div
+                                key={bullet}
+                                className="rounded-2xl border border-zinc-800/80 bg-zinc-950/65 px-4 py-3 text-sm text-zinc-300"
+                              >
+                                {bullet}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="relative flex shrink-0 items-center gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 px-4 py-3 text-indigo-200">
+                          <Icon className="h-5 w-5" />
+                          <span className="text-sm font-medium">Operational layer</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {pillars.map(({ icon: Icon, title, body }) => (
                   <article
@@ -417,6 +538,40 @@ export function PublicHomePage() {
                       The result is not just chat. It is a real operating system for autonomous work, with
                       history, ownership, durable output, and recoverable operational truth.
                     </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[1.75rem] border border-indigo-500/20 bg-[linear-gradient(135deg,rgba(79,70,229,0.18),rgba(24,24,27,0.6)_38%,rgba(9,9,11,0.92)_100%)] p-6 sm:p-8">
+                <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+                  <div className="space-y-5">
+                    <div className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-indigo-200">
+                      OpenClaw-native control plane
+                    </div>
+                    <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                      Mission control, but actually operational on day one.
+                    </h3>
+                    <p className="max-w-2xl text-base leading-8 text-zinc-300">
+                      Install the plugin, add the agent, and the stack comes alive with doctrine,
+                      scoped resources, direct inboxes, team-thread routing, durable tasks, memory,
+                      and artifacts. No separate mission-control project required.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <Link
+                      href="/signup"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-4 text-sm font-semibold text-zinc-950 transition-all hover:-translate-y-px hover:bg-zinc-100"
+                    >
+                      Start Free Now
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      href="/docs"
+                      className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-zinc-950/35 px-6 py-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-900/60"
+                    >
+                      Read the docs first
+                    </Link>
                   </div>
                 </div>
               </div>
