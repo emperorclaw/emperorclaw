@@ -40,6 +40,16 @@ The system can create incidents automatically, for example:
 - task dead-lettering after max retries
 - SLA breach detection
 
+These watchdog rules are currently server-side defaults in Emperor. They are not a rich user-facing policy engine yet.
+
+That means:
+
+- the canonical watchdog lives with Emperor task state
+- the current thresholds/behaviors are mostly fixed by product logic
+- the plugin/runtime should not be the main source of truth for incident mutation
+
+This is acceptable for launch, but it must be documented clearly so users understand what is automatic and what is configurable.
+
 ## Human And Agent Usage
 
 When an incident appears:

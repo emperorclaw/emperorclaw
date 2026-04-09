@@ -1,55 +1,74 @@
 # Activation Protocol
 
-To successfully bridge an OpenClaw runtime with the Emperor Claw control plane, follow this 10-step activation protocol. This ensures that the agent is properly registered, sessioned, and ready to claim tasks with durable memory.
+This is the practical activation path for a plugin-based Emperor agent.
 
-## 1. Skills Registration
-Register the `emperor-claw-os` skill in your local OpenClaw workspace.
-
-```bash
-openclaw skill install emperor-claw-os
-```
-
-## 2. Environment Configuration
-Set the required environment variables.
+## 1. Install The Plugin
 
 ```bash
-export EMPEROR_CLAW_API_TOKEN="your_company_token"
-export EMPEROR_CLAW_AGENT_ID="your_agent_uuid"
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
 ```
 
-## 3. Runtime Registration
-Register the runtime with the control plane to verify compatibility.
+## 2. Set The Company Token
 
-`POST /api/mcp/runtime/register`
+```bash
+export EMPEROR_CLAW_API_TOKEN="<company-token>"
+```
 
-## 4. Bridge Initialization
-Load the local bridge state and durable memory checkpoint. This allows the agent to resume from its last known state without replaying previous work.
+## 3. Add The Agent
 
-## 5. Session Start
-Initialize a new session to begin the heartbeat and task-claim loop.
+```bash
+openclaw emperor add-agent --name "<Agent Name>"
+```
 
-`POST /api/mcp/agents/{id}/sessions/start`
+## 4. Validate Local Health
 
-## 6. WebSocket Connection
-Establish a persistent connection for real-time events.
+```bash
+openclaw emperor doctor
+openclaw emperor status
+```
 
-`wss://emperorclaw.malecu.eu/api/mcp/ws`
+## 5. Confirm Runtime Registration
 
-## 7. Status Signaling
-Signal `typing: true` when you are actively reading or thinking in a visible thread to provide human transparency.
+The plugin bootstrap should register the runtime and agent with Emperor automatically.
 
-`POST /api/mcp/chat/status/`
+## 6. Confirm Messaging
 
-## 8. Resource Loading
-Load project memory, scoped resources (mailboxes, identities), and the task queue.
+Open Emperor and send the new agent a direct message.
 
-## 9. Task Claiming
-Claim tasks from the queue when ready. Use heartbeats to keep leases alive.
+You should see:
 
-`POST /api/mcp/tasks/claim`
+- direct-thread provisioning or reuse
+- typing status during work
+- one final durable reply
 
-## 10. Memory Checkpointing
-Continuously checkpoint memory back to Emperor to ensure durability across sessions.
+## 7. Confirm Team Coordination
 
-> [!TIP]
-> Use the `doctor` command in the companion directory to verify that all 10 steps are functioning correctly in your environment.
+Mention the agent in the team thread with `@Agent Name`.
+
+That validates team-thread routing and visible coordination.
+
+## 8. Confirm Doctrine And Resources
+
+The plugin should seed:
+
+- local workspace doctrine/manuals
+- shared company doctrine resources in Emperor
+
+## 9. Confirm Repair Path
+
+If the bridge or workspace bootstrap changes later, use:
+
+```bash
+openclaw emperor repair
+```
+
+This re-applies the bridge/runtime assets and doctrine to installed agents.
+
+## 10. Operating Expectation
+
+After activation, the agent should:
+
+- reply in direct threads
+- respond in team chat when explicitly `@mentioned`
+- use Emperor as the durable system of record
+- treat the plugin bridge as transport/context glue, not as a substitute for reasoning

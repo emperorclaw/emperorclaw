@@ -1,59 +1,77 @@
 # Installation Guide
 
-Install the published skill, run the local installer, validate with doctor, and start the generated bridge launcher. This is the supported path for connecting OpenClaw to Emperor without taking over local OpenClaw ownership.
+The supported public path is now the **OpenClaw plugin**, not the old skill installer.
 
-## 1. Install the Skill in OpenClaw
+## 1. Install The Plugin
 
-Install the published ClawHub skill first. The local installer comes after this.
+Install the published Emperor plugin from ClawHub:
 
 ```bash
-openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
 ```
 
-## 2. Download Installer
+If you want to pin a version explicitly:
 
-Use the platform installer. It asks only for the Emperor URL and company MCP token.
-
-> [!NOTE]
-> The supported public runtime download endpoints are `/downloads/control-plane.js` and `/downloads/bridge.js`. The consumer skill installer uses these routes automatically.
-
-| Platform | Installer |
-|----------|-----------|
-| **macOS / Linux** | [install.sh](/install.sh) |
-| **Windows PowerShell** | [install.ps1](/install.ps1) |
-
-## 3. Run the Installer
-
-The installer writes the companion files under `~/.openclaw/emperor-control-plane`, runs bootstrap, and offers to run doctor immediately.
-
-### macOS / Linux
 ```bash
-chmod +x ./install.sh
-./install.sh
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin@0.1.6
 ```
 
-### Windows PowerShell
+## 2. Configure Access
+
+Set your company token locally before bootstrapping agents:
+
+```bash
+export EMPEROR_CLAW_API_TOKEN="<company-token>"
+```
+
+On Windows PowerShell:
+
 ```powershell
-./install.ps1
+$env:EMPEROR_CLAW_API_TOKEN="<company-token>"
 ```
 
-> [!NOTE]
-> The installer does not take over full OpenClaw config ownership. It writes a conservative overlay, local launchers, and a bridge state journal only. After install, manage shared mailboxes, identities, and templates in the authenticated Resources workspace.
+## 3. Add An Agent
+
+Create and bootstrap an Emperor-connected OpenClaw agent:
+
+```bash
+openclaw emperor add-agent --name "<Agent Name>"
+```
+
+This creates:
+
+- the local OpenClaw agent/workspace
+- the Emperor agent record
+- the local bridge/runtime companion files
+- the seeded doctrine and operator manuals
+- the shared company doctrine resources in Emperor
+
+## 4. Validate The Install
+
+Run the built-in checks:
+
+```bash
+openclaw emperor doctor
+openclaw emperor status
+```
+
+Then send the agent a direct message in Emperor.
+
+## 5. Update Existing Installs
+
+When the plugin is updated:
+
+```bash
+openclaw plugins update emperor-claw-os
+openclaw emperor repair
+```
+
+`repair` matters because it re-applies the runtime bridge, workspace docs, and related bootstrap state to already-installed agents.
 
 ## What Gets Created
 
-After install, use these generated local launchers instead of memorizing the repo commands.
+The plugin installs and manages local companion runtime state under your OpenClaw area. The exact structure may evolve, but it includes the bridge/runtime config, state journal, workspace bootstrap files, and repair/doctor support files.
 
-```text
-~/.openclaw/emperor-control-plane/
-  bridge.config.json
-  run-bridge.sh / run-bridge.cmd
-  doctor.sh / doctor.cmd
-  sync.sh / sync.cmd
-  repair.sh / repair.cmd
-  session-inspect.sh / session-inspect.cmd
-  state/bridge-state.json
-  openclaw.control-plane.json
-```
+## Important Note
 
-`bridge-state.json` keeps reconnect cursors, dedupe state, and backoff metadata so temporary disconnects do not replay the same work.
+Older documentation and legacy materials may still refer to the Emperor integration as a **skill**. For the current supported public path, treat that as obsolete. The supported install surface is the **plugin**.
