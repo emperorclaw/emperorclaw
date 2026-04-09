@@ -1,14 +1,30 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
+"use strict";
 
 /**
- * Compatibility launcher for the production bridge runtime.
+ * Emperor Claw standalone bridge runtime for OpenClaw.
  *
- * The real standalone runtime now lives in `runtime/bridge.cjs`.
- * This file stays only as a backwards-compatible entrypoint for
- * older docs, local references, and already-copied paths.
+ * This is a runnable reference adapter that:
+ * - registers a runtime node
+ * - resolves or creates the local agent record
+ * - opens a durable Emperor session
+ * - hydrates memory from Emperor
+ * - maintains heartbeat
+ * - connects to the MCP WebSocket, with /messages/sync fallback
+ * - persists a local state journal for reconnect cursors, backoff, and dedupe
+ * - exposes helper methods for memory, actions, and messages
+ *
+ * It does not implement planning or execution logic by itself.
+ *
+ * Usage:
+ *   EMPEROR_CLAW_API_TOKEN=... node runtime/bridge.cjs
  */
 
-import "../runtime/bridge.cjs";
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const API_URL = process.env.EMPEROR_CLAW_API_URL || "https://emperorclaw.malecu.eu";
 const API_TOKEN = process.env.EMPEROR_CLAW_API_TOKEN;

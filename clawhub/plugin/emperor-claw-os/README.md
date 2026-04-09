@@ -2,17 +2,26 @@
 
 Native OpenClaw plugin for Emperor Claw OS.
 
-This plugin exists separately from the legacy skill package at:
+This package installs and manages Emperor-connected OpenClaw agents. It is the native plugin path for:
+- local agent bootstrap
+- Emperor bridge lifecycle
+- scoped doctrine seeding
+- repair / doctor / restart flows
+- Emperor messaging channel integration
+
+The legacy skill package still exists separately at:
 - `clawhub/emperor-claw-os`
 
-Purpose:
-- install and manage Emperor-connected bridge agents
-- own local manifests/state for Emperor bridge lifecycle
-- provide doctor/repair/rebind/restart/remove flows
-- ship a native Emperor messaging channel scaffold
-- serve as the primary native installation and lifecycle path for Emperor-connected agents
+## What It Gives You
 
-## How To Use It
+- a local OpenClaw brain agent plus an Emperor agent record
+- a standalone bridge runtime copied into a per-agent companion directory
+- seeded doctrine and operator manuals
+- shared company doctrine resources in Emperor
+- direct thread replies and team-thread `@Agent Name` routing
+- maintenance commands for repair, rebind, restart, removal, and diagnostics
+
+## Install
 
 Prerequisites:
 - OpenClaw installed locally
@@ -20,11 +29,20 @@ Prerequisites:
 - network access to the Emperor host, normally `https://emperorclaw.malecu.eu`
 
 Recommended first-time flow:
-1. Install or load the plugin into OpenClaw.
-2. Export `EMPEROR_CLAW_API_TOKEN`.
-3. Run `openclaw emperor add-agent --name "<Agent Name>"`.
-4. Run `openclaw emperor doctor`.
-5. Open Emperor and send the new agent a direct message.
+
+```bash
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
+```
+
+Then:
+
+```bash
+export EMPEROR_CLAW_API_TOKEN="<company-token>"
+openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor doctor
+```
+
+Then open Emperor and send the new agent a direct message.
 
 What `add-agent` does:
 - creates or ensures the local OpenClaw brain agent
@@ -34,7 +52,7 @@ What `add-agent` does:
 - writes plugin manifest/state
 - installs or restarts the local bridge/service
 
-What should work out of the box after `add-agent`:
+After `add-agent`, the expected baseline is:
 - the agent exists both locally and in Emperor
 - the workspace contains Emperor doctrine and operator manuals
 - the two shared doctrine resources exist at company scope with `isShared=true`
@@ -42,14 +60,15 @@ What should work out of the box after `add-agent`:
 - the agent replies in team threads when explicitly `@mentioned`
 - the agent can use direct Emperor MCP CRUD instead of relying on bridge-only hardcoded actions
 
-Expected coordination behavior:
+## Coordination Model
+
 - direct thread with the agent: normal reply path
 - team thread: mention the agent explicitly with `@Agent Name`
 - agent-to-agent delegation in a team thread should stay visible with `@Agent Name`
 - durable outputs belong in artifacts, not only in chat
 - durable progress belongs in task notes or project memory, not only in chat
 
-## Common Commands
+## Commands
 
 Bootstrap and install:
 - `openclaw emperor add-agent --name "<Agent Name>"`
@@ -82,7 +101,9 @@ The two shared company resources are:
 - `emperor-operating-doctrine`
 - `emperor-operator-manual`
 
-Bridge behaviors that must survive plugin rewrites:
+## Bridge Contract
+
+These behaviors are expected to survive future rewrites:
 - thread send/receive
 - websocket receive with sync fallback
 - direct-thread binding
@@ -93,22 +114,19 @@ Bridge behaviors that must survive plugin rewrites:
 - local brain handoff
 - reconnect/dedupe state journal
 
-## Current command surface
-- `emperor-status`
-- `emperor-install`
-- `emperor-add-agent`
-- `emperor-list-agents`
-- `emperor-doctor`
-- `emperor-upgrade-manifests`
-- `emperor-repair`
-- `emperor-rebind-threads`
-- `emperor-restart-agent`
-- `emperor-remove-agent`
-- `emperor-show-agent`
-- `emperor-help`
+## Runtime Layout
 
-## Current implementation state
-This plugin is now functionally usable and validated on a real OpenClaw host. It includes:
+The runtime-critical bridge is shipped as a standalone CommonJS runtime under:
+- `runtime/bridge.cjs`
+
+The plugin lifecycle/control code remains TypeScript under:
+- `src/`
+
+That split exists because the bridge is copied into companion directories and executed directly by Node as a standalone runtime script.
+
+## Implementation Notes
+
+This plugin is functionally usable and validated on a real OpenClaw host. It includes:
 - native plugin manifest/package
 - native channel package metadata (`openclaw.channel`)
 - channel declaration in `openclaw.plugin.json`
@@ -123,14 +141,31 @@ This plugin is now functionally usable and validated on a real OpenClaw host. It
 - channel-owned session grammar and outbound send scaffolding under `src/channel/`
 - local end-to-end validation script (`scripts/validate-local.sh`)
 
-Packaging note:
-- `setupEntry` is intentionally not registered in `package.json`
-- local runtime validation showed that `setupEntry` pushed the package into OpenClaw setup-runtime mode before channel config existed, which suppressed the `emperor` CLI metadata
-- the tested working shape is one `defineChannelPluginEntry(...)` package loaded from `index.ts`
+## Update Existing Installs
 
-## Important packaging rule
-Everything in `clawhub/plugin/emperor-claw-os` is the consumer-tracked plugin surface for this implementation path.
-Everything in `clawhub/emperor-claw-os` remains the current skill surface.
+```bash
+openclaw plugins update emperor-claw-os
+openclaw emperor repair
+```
+
+If manifest shape changes:
+
+```bash
+openclaw emperor upgrade-manifests
+```
+
+## Validation
+
+The plugin has been validated both by local build checks and by live Emperor-connected inbox tests.
+
+Useful checks:
+- `npm run build`
+- `node --check runtime/bridge.cjs`
+- `scripts/validate-local.sh`
+
+## Contributing
+
+See `CONTRIBUTING.md`.
 
 See:
 - `references/BRIDGE-CONTRACT.md`
