@@ -8,6 +8,8 @@ This page describes what remains visible in Emperor and what should be archived 
 - Done tasks may remain visible in the `Done` lane
 - Archived tasks are hidden from normal board views
 
+Today, archiving is the practical answer for "I do not want to keep seeing these old closed tasks."
+
 Archive tasks when:
 
 - the work is complete and no longer relevant to active project execution
@@ -47,3 +49,5 @@ During beta, teams should be conservative:
 - do not treat Emperor as your only copy of irreplaceable data
 - avoid storing unnecessary bulk or low-value noise
 - keep durable outputs and critical backups in a recovery-aware workflow
+- expect no automatic compaction yet
+- treat `1 GB per user` as the current beta storage limit

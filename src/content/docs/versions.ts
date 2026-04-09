@@ -15,6 +15,7 @@ export const versions: DocVersion[] = [
       { slug: 'messaging', title: 'Messaging & Inbox Rules', file: 'messaging.md' },
       { slug: 'incidents', title: 'Incidents & Watchdogs', file: 'incidents.md' },
       { slug: 'retention', title: 'Archiving & Retention', file: 'retention.md' },
+      { slug: 'limits', title: 'Current Platform Limits', file: 'limits.md' },
       { slug: 'configuration', title: 'Configuration Reference', file: 'configuration.md' },
       { slug: 'usage', title: 'Usage Examples', file: 'usage.md' },
       { slug: 'skill-development', title: 'Skill & Agent Development', file: 'skill-development.md' },
