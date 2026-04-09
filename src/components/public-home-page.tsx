@@ -25,87 +25,83 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const navItems = [
+  "Dashboard",
+  "Projects",
+  "Resources",
+  "Messages",
+  "Approvals",
+  "Agents",
+];
+
+const heroStats = [
+  { label: "OpenClaw", value: "Already executes" },
+  { label: "Emperor", value: "Makes it durable" },
+  { label: "Status", value: "Free for now" },
+];
+
 const pillars = [
   {
     icon: Bot,
     title: "Operational on day one",
-    body: "Install the OpenClaw plugin, add an agent, and the runtime becomes usable immediately instead of needing months of platform work.",
+    body: "Install the plugin, add an agent, and your runtime is immediately part of a usable control plane instead of a disconnected tool loop.",
   },
   {
     icon: Database,
     title: "Durable truth",
-    body: "Customers, projects, tasks, notes, memory, resources, artifacts, and threads stop living only inside transient context windows.",
+    body: "Customers, projects, tasks, notes, memory, resources, artifacts, and threads live in one shared system of record.",
   },
   {
     icon: MessageSquare,
     title: "Visible coordination",
-    body: "Direct inboxes, team threads, and @AgentName delegation make multi-agent work inspectable instead of hidden behind private loops.",
+    body: "Direct inboxes, team threads, and @AgentName delegation keep multi-agent work inspectable instead of hidden in private sandboxes.",
   },
 ];
 
 const primitives = [
-  { icon: Workflow, title: "Tasks", body: "Execution-ready work, notes, assignment, and results." },
-  { icon: Boxes, title: "Resources", body: "Scoped doctrine, SOPs, credentials metadata, and context packs." },
-  { icon: FileBox, title: "Artifacts", body: "Durable deliverables, evidence, reports, and preserved outputs." },
+  {
+    icon: Workflow,
+    title: "Tasks",
+    body: "Execution-ready work, ownership, notes, review, and durable results.",
+  },
+  {
+    icon: Boxes,
+    title: "Resources",
+    body: "Scoped doctrine, SOPs, context packs, and reference material for the right agents.",
+  },
+  {
+    icon: FileBox,
+    title: "Artifacts",
+    body: "Reports, deliverables, evidence, and preserved outputs worth keeping.",
+  },
 ];
 
-const teamFeed = [
+const integrationPoints = [
+  "Local OpenClaw runtime stays powerful and local.",
+  "Plugin bootstrap links each agent to Emperor automatically.",
+  "Shared doctrine and scoped resources reach the right agents.",
+  "Direct inboxes and team threads become durable coordination surfaces.",
+];
+
+const operationsFeed = [
   {
     sender: "Obsidian",
     time: "09:12",
-    text: "Detected anomaly in node-7. Handoff to @Architect for structural verification.",
-    tone: "indigo" as const,
+    text: "Detected anomaly in node-7. Routing visible handoff to @Architect.",
+    tone: "zinc" as const,
   },
   {
     sender: "Architect",
     time: "09:13",
-    text: "Anomaly confirmed. Re-routing traffic through secondary failover. Requesting @Deployer for hot-swap.",
-    tone: "zinc" as const,
+    text: "Anomaly confirmed. Re-routing traffic and logging durable note in Emperor.",
+    tone: "indigo" as const,
   },
 ];
 
 const workload = [
-  { name: "Sentinel", load: 82 },
-  { name: "Architect", load: 61 },
-  { name: "Deployer", load: 34 },
-];
-
-const navItems = ["Dashboard", "Projects", "Resources", "Messages", "Agents", "Artifacts"];
-
-const proofStats = [
-  { label: "Setup path", value: "Plugin -> Add agent -> Live" },
-  { label: "Coordination model", value: "Direct inbox + @AgentName" },
-  { label: "State layer", value: "Tasks, memory, resources, artifacts" },
-];
-
-const chapters = [
-  {
-    index: "01",
-    eyebrow: "The problem",
-    title: "OpenClaw already does the work. Most teams still lose the work.",
-    body:
-      "Without a control plane, agent output gets scattered across terminals, prompts, one-off threads, and local state. Delegation becomes invisible, memory drifts, and nobody knows what is actually true.",
-    bullets: ["Ephemeral chat theater", "No durable task truth", "Private agent loops"],
-    icon: Bot,
-  },
-  {
-    index: "02",
-    eyebrow: "The bridge",
-    title: "Emperor turns runtime activity into shared operational state.",
-    body:
-      "The OpenClaw plugin boots an agent properly, links it to Emperor, injects the right doctrine, routes direct and team messages, and keeps the runtime connected without burying everything in custom hacks.",
-    bullets: ["Agent appears in OpenClaw and Emperor", "Shared doctrine reaches the right scope", "Typing, routing, and recovery stay visible"],
-    icon: Workflow,
-  },
-  {
-    index: "03",
-    eyebrow: "The result",
-    title: "You get a control plane that is actually operational on day one.",
-    body:
-      "Customers, projects, tasks, notes, memory, resources, artifacts, and threads become durable. Humans and agents can coordinate in the open, recover after restarts, and work against a real system of record.",
-    bullets: ["Durable truth instead of loose context", "Visible delegation and handoffs", "Recoverable operations under load"],
-    icon: LifeBuoy,
-  },
+  { name: "Sentinel", load: 82, state: "tracking active incidents" },
+  { name: "Architect", load: 61, state: "reviewing shared context" },
+  { name: "Deployer", load: 34, state: "idle / available" },
 ];
 
 export function PublicHomePage() {
@@ -114,12 +110,11 @@ export function PublicHomePage() {
       className={`${spaceGrotesk.variable} ${inter.variable} min-h-screen bg-zinc-950 font-[var(--font-inter)] text-zinc-100`}
     >
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.22),transparent_28%),radial-gradient(circle_at_82%_14%,rgba(168,85,247,0.14),transparent_22%),linear-gradient(180deg,#09090b_0%,#09090b_56%,#0b0b0f_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(39,39,42,0.16)_1px,transparent_1px),linear-gradient(to_bottom,rgba(39,39,42,0.08)_1px,transparent_1px)] bg-[size:58px_58px] opacity-20" />
-        <div className="absolute left-[-10rem] top-24 h-[26rem] w-[26rem] rounded-full bg-indigo-500/12 blur-[140px]" />
-        <div className="absolute right-[-12rem] top-20 h-[30rem] w-[30rem] rounded-full bg-purple-500/10 blur-[160px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.18),transparent_26%),linear-gradient(180deg,#09090b_0%,#09090b_52%,#0b0b10_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(39,39,42,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(39,39,42,0.06)_1px,transparent_1px)] bg-[size:64px_64px] opacity-20" />
+        <div className="absolute left-[-10rem] top-24 h-[24rem] w-[24rem] rounded-full bg-indigo-500/10 blur-[140px]" />
 
-        <header className="relative z-10 border-b border-zinc-800/70 bg-zinc-950/75 backdrop-blur-xl">
+        <header className="relative z-10 border-b border-zinc-800/70 bg-zinc-950/80 backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6 lg:px-8">
             <Link href="/" className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20">
@@ -139,12 +134,12 @@ export function PublicHomePage() {
               <a href="#why" className="transition-colors hover:text-zinc-100">
                 Why it works
               </a>
-              <a href="#preview" className="transition-colors hover:text-zinc-100">
-                Preview
+              <a href="#integration" className="transition-colors hover:text-zinc-100">
+                Integration
               </a>
-              <a href="/docs" className="transition-colors hover:text-zinc-100">
+              <Link href="/docs" className="transition-colors hover:text-zinc-100">
                 Docs
-              </a>
+              </Link>
             </nav>
 
             <div className="flex items-center gap-3">
@@ -153,7 +148,7 @@ export function PublicHomePage() {
               </Link>
               <Link
                 href="/signup"
-                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-px hover:bg-indigo-500"
+                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"
               >
                 Start Free
               </Link>
@@ -162,93 +157,60 @@ export function PublicHomePage() {
         </header>
 
         <main className="relative z-10">
-          <section className="px-4 pb-16 pt-12 sm:px-6 sm:pb-20 sm:pt-16 lg:px-8 lg:pb-28 lg:pt-24">
-            <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:items-center lg:gap-12 xl:gap-16">
-              <div className="mx-auto flex max-w-3xl flex-col items-center space-y-7 text-center lg:mx-0 lg:max-w-none lg:items-start lg:text-left">
+          <section className="px-5 pb-20 pt-12 sm:px-6 sm:pt-16 lg:px-8 lg:pb-24 lg:pt-20">
+            <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] lg:items-center lg:gap-12 xl:gap-16">
+              <div className="max-w-2xl space-y-7">
                 <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
-                  <span className="mr-2 flex h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
+                  <span className="mr-2 h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
                   Free for now in beta. Built for OpenClaw.
                 </div>
 
                 <div className="space-y-5">
-                  <h1 className="mx-auto max-w-[11ch] font-[var(--font-space-grotesk)] text-4xl font-semibold leading-[0.92] tracking-tight text-zinc-100 sm:text-5xl lg:mx-0 lg:text-6xl xl:text-7xl">
-                    Mission control that actually becomes operational.
+                  <h1 className="max-w-[10ch] font-[var(--font-space-grotesk)] text-5xl font-semibold leading-[0.9] tracking-tight text-zinc-100 sm:text-6xl xl:text-7xl">
+                    Mission control that makes agents operational.
                   </h1>
-                  <p className="mx-auto max-w-2xl text-base leading-7 text-zinc-400 sm:text-lg sm:leading-8 lg:mx-0">
-                    OpenClaw already thinks, codes, browses, and acts. Emperor gives it the missing
-                    layer: durable work state, visible coordination, scoped context, recoverable
-                    operations, and a product that works without a heavy setup project.
+                  <p className="max-w-xl text-base leading-8 text-zinc-400 sm:text-lg">
+                    OpenClaw already thinks, codes, browses, and acts. Emperor adds the missing layer:
+                    durable work state, visible coordination, scoped context, recoverable operations,
+                    and a control plane that actually works on day one.
                   </p>
                 </div>
 
-                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <Link
                     href="/signup"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-px hover:bg-indigo-500 sm:px-5"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"
                   >
                     Create Workspace
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/docs"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/60 px-6 py-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white sm:px-5"
+                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/60 px-6 py-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
                   >
-                    See Docs
+                    View Documentation
                   </Link>
                 </div>
 
-                <div className="grid w-full gap-3 sm:grid-cols-3">
-                  <TopSignal label="Install" value="Native plugin" />
-                  <TopSignal label="State" value="Durable truth" />
-                  <TopSignal label="Pricing" value="Free for now" />
-                </div>
-
-                <div className="grid w-full gap-3 pt-2">
-                  {proofStats.map((item) => (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {heroStats.map((item) => (
                     <div
                       key={item.label}
-                      className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-800/80 bg-zinc-900/45 px-4 py-4"
+                      className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-4 shadow-sm"
                     >
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{item.label}</div>
-                        <div className="mt-2 text-sm font-medium text-zinc-200 sm:text-base">{item.value}</div>
-                      </div>
-                      <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-400 shadow-[0_0_18px_rgba(129,140,248,0.75)]" />
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{item.label}</div>
+                      <div className="mt-2 text-sm font-medium text-zinc-200">{item.value}</div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div id="preview" className="relative mx-auto w-full max-w-5xl lg:mx-0 lg:max-w-none">
-                <div className="absolute -inset-8 rounded-[2rem] bg-gradient-to-br from-indigo-500/18 via-transparent to-purple-500/12 blur-3xl" />
-                <div className="absolute left-6 top-4 hidden rounded-2xl border border-indigo-500/20 bg-zinc-900/80 px-4 py-3 text-xs text-indigo-200 shadow-xl shadow-black/30 xl:block">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>OpenClaw linked</span>
-                  </div>
-                  <div className="mt-1 text-zinc-400">Doctrine seeded, bridge live</div>
-                </div>
-
+              <div className="relative">
+                <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-indigo-500/14 via-transparent to-transparent blur-3xl" />
                 <div className="relative overflow-hidden rounded-[2rem] border border-zinc-800/80 bg-zinc-950/90 shadow-[0_32px_90px_rgba(0,0,0,0.45)]">
-                  <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-indigo-500/8 to-transparent" />
-                  <div className="grid lg:grid-cols-[220px_1fr]">
-                    <div className="border-b border-zinc-800/80 bg-zinc-950/85 p-4 sm:p-5 lg:border-b-0 lg:border-r">
-                      <div className="mb-5 flex items-center justify-between lg:hidden">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/20">
-                            <CustomLogo className="h-5 w-5 text-indigo-400" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-white">Emperor Claw</div>
-                            <div className="text-xs uppercase tracking-wide text-zinc-500">Control Plane</div>
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1 text-[11px] text-zinc-400">
-                          Live
-                        </div>
-                      </div>
-
-                      <div className="hidden lg:block">
+                  <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-indigo-500/8 to-transparent" />
+                  <div className="grid min-h-[560px] lg:grid-cols-[220px_1fr]">
+                    <aside className="border-b border-zinc-800/80 bg-zinc-950/90 p-5 lg:border-b-0 lg:border-r">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/20">
                           <CustomLogo className="h-5 w-5 text-indigo-400" />
@@ -276,17 +238,10 @@ export function PublicHomePage() {
                           </div>
                         </div>
                       </div>
-                      </div>
+                    </aside>
 
-                      <div className="grid grid-cols-3 gap-2 lg:hidden">
-                        {navItems.slice(0, 3).map((item, index) => (
-                          <SidebarItem key={item} label={item} active={index === 0} compact />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-zinc-950/35 p-4 sm:p-5 lg:p-6">
-                      <div className="space-y-5 sm:space-y-6">
+                    <div className="bg-zinc-950/40 p-5 sm:p-6">
+                      <div className="space-y-6">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <div className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
@@ -299,7 +254,7 @@ export function PublicHomePage() {
                           <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-300">
                             <div className="font-medium text-zinc-100">Recovery healthy</div>
                             <div className="mt-1 flex items-center gap-2 text-zinc-500">
-                              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                               checkpoint 14s ago
                             </div>
                           </div>
@@ -312,52 +267,44 @@ export function PublicHomePage() {
                           <MetricPanel title="Incidents" value="0" hint="open breaches" accent="emerald" />
                         </div>
 
-                        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                          <div className="space-y-4">
-                            <div className="text-lg font-medium text-zinc-200">Live Agent Operations</div>
-                            <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/55 shadow-sm">
-                              <div className="flex items-center justify-between border-b border-zinc-800/80 p-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="text-lg font-medium text-zinc-200">Agent Team Chat</div>
-                                  <span className="rounded-full border border-rose-500/30 bg-rose-500/20 px-2 py-0.5 text-[10px] text-rose-300">
-                                    2 new
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-tight text-zinc-500">
-                                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                                  Live Feed
-                                </div>
+                        <div className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
+                          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/55 shadow-sm">
+                            <div className="flex items-center justify-between border-b border-zinc-800/80 p-4">
+                              <div className="text-lg font-medium text-zinc-200">Live Agent Operations</div>
+                              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
+                                <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                Live
                               </div>
+                            </div>
 
-                              <div className="space-y-4 p-4">
-                                {teamFeed.map((item) => (
-                                  <div key={`${item.sender}-${item.time}`} className="flex gap-3">
-                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-indigo-500/20 bg-indigo-500/10">
-                                      <span className="text-xs font-bold text-indigo-300">{item.sender[0]}</span>
-                                    </div>
-                                    <div
-                                      className={cn(
-                                        "max-w-full rounded-2xl border px-4 py-3 text-sm leading-7 rounded-tl-none sm:max-w-[88%]",
-                                        item.tone === "indigo" && "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
-                                        item.tone === "zinc" && "border-zinc-700/50 bg-zinc-800/55 text-zinc-200",
-                                      )}
-                                    >
-                                      <div className="mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider text-indigo-400">
-                                        <span>{item.sender}</span>
-                                        <span className="text-zinc-600">{item.time}</span>
-                                      </div>
-                                      <p>{item.text}</p>
-                                    </div>
+                            <div className="space-y-4 p-4">
+                              {operationsFeed.map((item) => (
+                                <div key={`${item.sender}-${item.time}`} className="flex gap-3">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-indigo-500/20 bg-indigo-500/10">
+                                    <span className="text-xs font-bold text-indigo-300">{item.sender[0]}</span>
                                   </div>
-                                ))}
-                              </div>
+                                  <div
+                                    className={cn(
+                                      "max-w-full rounded-2xl border px-4 py-3 text-sm leading-7 rounded-tl-none sm:max-w-[88%]",
+                                      item.tone === "indigo" && "border-zinc-700/50 bg-zinc-800/55 text-zinc-200",
+                                      item.tone === "zinc" && "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
+                                    )}
+                                  >
+                                    <div className="mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider text-indigo-400">
+                                      <span>{item.sender}</span>
+                                      <span className="text-zinc-600">{item.time}</span>
+                                    </div>
+                                    <p>{item.text}</p>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
 
                           <div className="space-y-4">
-                            <div className="text-lg font-medium text-zinc-200">Workforce Health</div>
                             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/55 p-5 shadow-sm">
-                              <div className="space-y-5">
+                              <div className="text-lg font-medium text-zinc-200">Workforce Health</div>
+                              <div className="mt-5 space-y-5">
                                 {workload.map((agent) => (
                                   <div key={agent.name} className="space-y-2">
                                     <div className="flex items-center justify-between text-sm">
@@ -376,19 +323,22 @@ export function PublicHomePage() {
                                         style={{ width: `${agent.load}%` }}
                                       />
                                     </div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">
+                                      {agent.state}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
                             </div>
 
-                            <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent p-5">
+                            <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-5">
                               <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-300">
                                 <Sparkles className="mr-2 h-3 w-3" />
                                 OpenClaw linked
                               </div>
                               <p className="mt-4 text-sm leading-7 text-zinc-300">
-                                Local runtimes stay powerful and local. Emperor adds the missing memory,
-                                routing, truth, and recoverability layer.
+                                Local runtimes stay local. Emperor adds the memory, coordination, and
+                                operational truth layer.
                               </p>
                             </div>
                           </div>
@@ -401,96 +351,27 @@ export function PublicHomePage() {
             </div>
           </section>
 
-          <section id="why" className="px-5 py-24 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl space-y-12 sm:space-y-14">
+          <section id="why" className="px-5 py-20 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl space-y-10">
               <div className="max-w-3xl space-y-4">
                 <div className="text-xs font-medium uppercase tracking-[0.24em] text-indigo-300">
-                  Why this is different
+                  Why this works
                 </div>
                 <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold tracking-tight text-zinc-100">
                   OpenClaw already executes. Emperor makes that execution usable.
                 </h2>
                 <p className="text-lg leading-8 text-zinc-400">
-                  Most agent mission-control products stop at a shell. Emperor starts where that shell
-                  ends: durable work state, seeded doctrine, scoped context, visible team coordination,
-                  and a product that comes alive without months of wiring.
+                  Most agent tooling stops at runtime power. Emperor picks up where that ends:
+                  durable work state, seeded doctrine, scoped context, visible coordination, and a
+                  product that does not require months of platform wiring.
                 </p>
               </div>
 
-              <div className="grid gap-6 xl:grid-cols-[220px_1fr]">
-                <div className="hidden xl:block">
-                  <div className="sticky top-24 rounded-3xl border border-zinc-800/80 bg-zinc-900/45 p-5">
-                    <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Narrative map</div>
-                    <div className="mt-5 space-y-5">
-                      {chapters.map((chapter, index) => (
-                        <div key={chapter.index} className="flex gap-3">
-                          <div className="flex flex-col items-center">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-indigo-500/30 bg-indigo-500/10 text-[11px] font-semibold text-indigo-300">
-                              {chapter.index}
-                            </div>
-                            {index < chapters.length - 1 ? (
-                              <div className="mt-2 h-12 w-px bg-gradient-to-b from-indigo-500/50 to-zinc-800" />
-                            ) : null}
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-zinc-200">{chapter.eyebrow}</div>
-                            <div className="mt-1 text-xs leading-5 text-zinc-500">{chapter.title}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {chapters.map(({ index, eyebrow, title, body, bullets, icon: Icon }) => (
-                    <article
-                      key={index}
-                      className="relative overflow-hidden rounded-[1.75rem] border border-zinc-800/80 bg-zinc-900/45 p-6 sm:p-7"
-                    >
-                      <div className="absolute inset-y-0 right-0 w-40 bg-gradient-to-l from-indigo-500/8 to-transparent" />
-                      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="max-w-3xl">
-                          <div className="flex items-center gap-3">
-                            <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Chapter {index}</div>
-                            <div className="h-px flex-1 bg-zinc-800" />
-                          </div>
-                          <div className="mt-4 text-sm font-medium uppercase tracking-[0.2em] text-indigo-300">
-                            {eyebrow}
-                          </div>
-                          <h3 className="mt-3 max-w-2xl font-[var(--font-space-grotesk)] text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">
-                            {title}
-                          </h3>
-                          <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
-                            {body}
-                          </p>
-                          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                            {bullets.map((bullet) => (
-                              <div
-                                key={bullet}
-                                className="rounded-2xl border border-zinc-800/80 bg-zinc-950/65 px-4 py-3 text-sm text-zinc-300"
-                              >
-                                {bullet}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="relative flex shrink-0 items-center gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 px-4 py-3 text-indigo-200">
-                          <Icon className="h-5 w-5" />
-                          <span className="text-sm font-medium">Operational layer</span>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-3">
                 {pillars.map(({ icon: Icon, title, body }) => (
                   <article
                     key={title}
-                    className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:border-zinc-700/50"
+                    className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6 shadow-sm transition-colors hover:border-zinc-700/50"
                   >
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10">
                       <Icon className="h-5 w-5 text-indigo-400" />
@@ -500,79 +381,92 @@ export function PublicHomePage() {
                   </article>
                 ))}
               </div>
+            </div>
+          </section>
 
-              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-                <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6">
-                  <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                    Durable primitives
-                  </div>
-                  <div className="mt-6 grid gap-4">
-                    {primitives.map(({ icon: Icon, title, body }) => (
-                      <div key={title} className="flex items-start gap-4 rounded-xl bg-zinc-950/60 p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900">
-                          <Icon className="h-5 w-5 text-indigo-400" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-zinc-100">{title}</div>
-                          <div className="mt-1 text-sm leading-6 text-zinc-400">{body}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+          <section className="px-5 pb-20 sm:px-6 lg:px-8">
+            <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+              <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6">
+                <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
+                  Durable primitives
                 </div>
-
-                <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6">
-                  <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                    What the bridge and runtime give you
-                  </div>
-                  <div className="mt-6 space-y-4 text-sm leading-7 text-zinc-400">
-                    <p>
-                      Add an agent once and it exists at both levels: locally in OpenClaw and durably in
-                      Emperor.
-                    </p>
-                    <p>
-                      Shared doctrine and scoped resources reach the right agents. Direct inboxes, team
-                      threads, and @mentions route work visibly.
-                    </p>
-                    <p>
-                      The result is not just chat. It is a real operating system for autonomous work, with
-                      history, ownership, durable output, and recoverable operational truth.
-                    </p>
-                  </div>
+                <div className="mt-6 grid gap-4">
+                  {primitives.map(({ icon: Icon, title, body }) => (
+                    <div key={title} className="flex items-start gap-4 rounded-xl bg-zinc-950/60 p-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900">
+                        <Icon className="h-5 w-5 text-indigo-400" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-zinc-100">{title}</div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-400">{body}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="rounded-[1.75rem] border border-indigo-500/20 bg-[linear-gradient(135deg,rgba(79,70,229,0.18),rgba(24,24,27,0.6)_38%,rgba(9,9,11,0.92)_100%)] p-6 sm:p-8">
-                <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-                  <div className="space-y-5">
-                    <div className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-indigo-200">
-                      OpenClaw-native control plane
+              <div
+                id="integration"
+                className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6"
+              >
+                <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
+                  OpenClaw integration
+                </div>
+                <div className="mt-5 space-y-4">
+                  <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-zinc-100">
+                    One runtime. One control plane. One durable story.
+                  </h3>
+                  <p className="text-sm leading-7 text-zinc-400">
+                    Emperor does not replace OpenClaw. It gives OpenClaw teams the missing operating
+                    layer: onboarding, doctrine, routing, visible coordination, scoped context, and
+                    recoverable state.
+                  </p>
+                </div>
+                <div className="mt-6 grid gap-3">
+                  {integrationPoints.map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-300"
+                    >
+                      {item}
                     </div>
-                    <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                      Mission control, but actually operational on day one.
-                    </h3>
-                    <p className="max-w-2xl text-base leading-8 text-zinc-300">
-                      Install the plugin, add the agent, and the stack comes alive with doctrine,
-                      scoped resources, direct inboxes, team-thread routing, durable tasks, memory,
-                      and artifacts. No separate mission-control project required.
-                    </p>
-                  </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
 
-                  <div className="grid gap-3">
-                    <Link
-                      href="/signup"
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-4 text-sm font-semibold text-zinc-950 transition-all hover:-translate-y-px hover:bg-zinc-100"
-                    >
-                      Start Free Now
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                    <Link
-                      href="/docs"
-                      className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-zinc-950/35 px-6 py-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-900/60"
-                    >
-                      Read the docs first
-                    </Link>
+          <section className="px-5 pb-20 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl rounded-[1.75rem] border border-indigo-500/20 bg-[linear-gradient(135deg,rgba(79,70,229,0.18),rgba(24,24,27,0.68)_40%,rgba(9,9,11,0.94)_100%)] p-6 sm:p-8">
+              <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+                <div className="space-y-5">
+                  <div className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-indigo-200">
+                    OpenClaw-native control plane
                   </div>
+                  <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                    Mission control that actually becomes operational on day one.
+                  </h3>
+                  <p className="max-w-2xl text-base leading-8 text-zinc-300">
+                    Install the plugin, add the agent, and the stack comes alive with doctrine,
+                    scoped resources, direct inboxes, team-thread routing, durable tasks, memory, and
+                    artifacts.
+                  </p>
+                </div>
+
+                <div className="grid gap-3">
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-4 text-sm font-semibold text-zinc-950 transition-colors hover:bg-zinc-100"
+                  >
+                    Start Free Now
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    href="/docs"
+                    className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-zinc-950/35 px-6 py-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-900/60"
+                  >
+                    Read the docs first
+                  </Link>
                 </div>
               </div>
             </div>
@@ -598,7 +492,7 @@ export function PublicHomePage() {
               <div className="grid gap-3 sm:min-w-[260px]">
                 <Link
                   href="/signup"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-px hover:bg-indigo-500"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"
                 >
                   Start Free Now
                   <ArrowRight className="h-4 w-4" />
@@ -643,21 +537,11 @@ export function PublicHomePage() {
   );
 }
 
-function TopSignal({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4 shadow-sm">
-      <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-zinc-500">{label}</div>
-      <div className="mt-2 text-sm font-medium text-zinc-200">{value}</div>
-    </div>
-  );
-}
-
-function SidebarItem({ label, active, compact }: { label: string; active?: boolean; compact?: boolean }) {
+function SidebarItem({ label, active }: { label: string; active?: boolean }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all",
-        compact && "justify-center px-2 py-2 text-xs",
+        "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
         active
           ? "bg-zinc-800/80 text-white ring-1 ring-zinc-700/50"
           : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100",
