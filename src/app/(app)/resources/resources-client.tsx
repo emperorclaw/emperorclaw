@@ -126,7 +126,7 @@ export default function ResourcesClient({
     const [searchQuery, setSearchQuery] = useState("");
     const [isPreview, setIsPreview] = useState(false);
     const [configViewMode, setConfigViewMode] = useState<"raw" | "preview">("preview");
-    const [createContentMode, setCreateContentMode] = useState<"raw" | "preview">("preview");
+    const [createContentMode, setCreateContentMode] = useState<"raw" | "preview">("raw");
     const [copied, setCopied] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
     const [showAdvancedCreate, setShowAdvancedCreate] = useState(false);
@@ -217,7 +217,7 @@ export default function ResourcesClient({
         applyTemplate("external_account");
         setIsShared(false);
         setShowAdvancedCreate(false);
-        setCreateContentMode("preview");
+        setCreateContentMode("raw");
         setHasCustomKey(false);
         setIsCreateOpen(true);
     };
