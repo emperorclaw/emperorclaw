@@ -163,6 +163,7 @@ export async function updateThreadExecutionState(input: {
     )).orderBy(desc(threadMessages.createdAt)).limit(1);
 
     if (!latestHumanMessage) return null;
+    if (latestHumanMessage.deliveryState === targetState) return null;
 
     const [updated] = await db.update(threadMessages).set({
         deliveryState: targetState,
