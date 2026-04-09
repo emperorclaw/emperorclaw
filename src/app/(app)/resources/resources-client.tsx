@@ -111,6 +111,7 @@ export default function ResourcesClient({
     const [configViewMode, setConfigViewMode] = useState<"raw" | "preview">("preview");
     const [copied, setCopied] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
+    const [showAdvancedCreate, setShowAdvancedCreate] = useState(false);
 
     const scopeOptions = useMemo(() => ({
         customer: customers,
@@ -195,6 +196,7 @@ export default function ResourcesClient({
         updateScopeType("project");
         applyTemplate("external_account");
         setIsShared(false);
+        setShowAdvancedCreate(false);
         setIsCreateOpen(true);
     };
 
@@ -302,11 +304,14 @@ export default function ResourcesClient({
                         </button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[720px] border-zinc-800 bg-zinc-950 text-zinc-200">
-                        {/* Creation Modal Content - Keep mostly same but simplified if needed */}
                         <DialogHeader>
-                            <DialogTitle className="text-xl font-medium tracking-tight">Create Scoped Resource</DialogTitle>
+                            <DialogTitle className="text-xl font-medium tracking-tight">Create Resource</DialogTitle>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-sm leading-6 text-zinc-400">
+                                Start with the scope, what kind of resource this is, the durable key, and the content you want agents to use.
+                                Provider and display metadata are optional unless you need a special integration shape.
+                            </div>
                              <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
                                     <span className="text-zinc-500">Scope</span>
@@ -339,60 +344,38 @@ export default function ResourcesClient({
                                     </select>
                                 </label>
                             </div>
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
                                     <span className="text-zinc-500">Resource Type</span>
-                                    <input
-                                        list="resource-types-list-modal"
+                                    <select
                                         value={resourceType}
                                         onChange={(event) => {
                                             setResourceType(event.target.value);
-                                            if (RESOURCE_TEMPLATES[event.target.value]) {
-                                                applyTemplate(event.target.value);
-                                            }
+                                            applyTemplate(event.target.value);
                                         }}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="mailbox, identity..."
-                                    />
-                                    <datalist id="resource-types-list-modal">
+                                    >
                                         {RESOURCE_TYPE_OPTIONS.map((option) => (
-                                            <option key={option} value={option} />
+                                            <option key={option} value={option}>{option}</option>
                                         ))}
-                                    </datalist>
+                                    </select>
                                 </label>
-                                <label className="space-y-1.5 text-sm md:col-span-2">
-                                    <span className="text-zinc-500">Provider</span>
-                                    <input
-                                        value={provider}
-                                        onChange={(event) => setProvider(event.target.value)}
-                                        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="generic, email, github, stripe, drive..."
-                                    />
-                                </label>
-                            </div>
-                            <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Name</span>
+                                    <span className="text-zinc-500">Name / Key</span>
                                     <input
                                         value={name}
                                         onChange={(event) => setName(event.target.value)}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="finance-inbox..."
-                                    />
-                                </label>
-                                <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Display Name</span>
-                                    <input
-                                        value={displayName}
-                                        onChange={(event) => setDisplayName(event.target.value)}
-                                        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="ACME Finance"
+                                        placeholder="finance-inbox"
                                     />
                                 </label>
                             </div>
+                            <div className="rounded-xl border border-indigo-500/10 bg-indigo-500/5 p-4 text-xs leading-relaxed text-indigo-300/80">
+                                {selectedTemplate.helper}
+                            </div>
                             <div className="grid gap-4">
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Initial Configuration</span>
+                                    <span className="text-zinc-500">Content</span>
                                     <textarea
                                         value={configText}
                                         onChange={(event) => setConfigText(event.target.value)}
@@ -400,12 +383,49 @@ export default function ResourcesClient({
                                     />
                                 </label>
                             </div>
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdvancedCreate((current) => !current)}
+                                    className="flex w-full items-center justify-between text-left"
+                                >
+                                    <div>
+                                        <div className="text-sm font-medium text-zinc-200">Advanced details</div>
+                                        <div className="mt-1 text-xs text-zinc-500">
+                                            Optional display label and provider override.
+                                        </div>
+                                    </div>
+                                    {showAdvancedCreate ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+                                </button>
+                                {showAdvancedCreate ? (
+                                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                        <label className="space-y-1.5 text-sm">
+                                            <span className="text-zinc-500">Display Name</span>
+                                            <input
+                                                value={displayName}
+                                                onChange={(event) => setDisplayName(event.target.value)}
+                                                className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                                placeholder="ACME Finance"
+                                            />
+                                        </label>
+                                        <label className="space-y-1.5 text-sm">
+                                            <span className="text-zinc-500">Provider</span>
+                                            <input
+                                                value={provider}
+                                                onChange={(event) => setProvider(event.target.value)}
+                                                className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                                placeholder="generic, email, github, stripe..."
+                                            />
+                                        </label>
+                                    </div>
+                                ) : null}
+                            </div>
                             <div className="flex items-center justify-between py-2 px-1">
                                 <div className="flex items-center gap-2 group relative">
-                                    <span className="text-sm font-medium text-zinc-300">Force Sharing</span>
+                                    <span className="text-sm font-medium text-zinc-300">Force Inject</span>
                                     <div className="h-4 w-4 rounded-full border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-500 cursor-help">?</div>
                                     <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
-                                        When enabled, this resource will be explicitly passed to every agent in the scope per instruction, regardless of standard access policies.
+                                        When enabled, this resource is explicitly injected by the bridge for agents in scope. Leave it off for resources that should stay discoverable but not always injected.
                                     </div>
                                 </div>
                                 <button 
@@ -428,7 +448,7 @@ export default function ResourcesClient({
                                 disabled={!name.trim() || isSaving}
                                 className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-indigo-500"
                             >
-                                {isSaving ? "Saving..." : "Create Resource"}
+                                {isSaving ? "Saving..." : editingResource ? "Save Resource" : "Create Resource"}
                             </button>
                         </div>
                     </DialogContent>
