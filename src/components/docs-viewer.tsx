@@ -27,8 +27,8 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
   // Group pages by category (heuristic: use sections or just list them)
   const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'installation', 'activation'].includes(p.slug));
-  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'mcp', 'configuration'].includes(p.slug));
-  const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'best-practices', 'usage'].includes(p.slug));
+  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'lifecycle', 'messaging', 'incidents', 'retention', 'mcp', 'configuration'].includes(p.slug));
+  const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'best-practices', 'usage', 'skill-development', 'troubleshooting'].includes(p.slug));
 
   const filteredPages = selectedVersion.pages.filter((p: DocPage) => 
     p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
