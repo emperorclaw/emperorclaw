@@ -37,7 +37,7 @@ export function registerStatusCommand(api: any, paths: EmperorPluginPaths): void
         }).length,
         manifestsNeedingUpgrade: upgradePreview.needingUpgrade,
         threadOwnerCount: Object.keys(owners).length,
-        hasBridgeAsset: fs.existsSync(`${paths.pluginRoot}/examples/bridge.js`),
+        hasBridgeAsset: fs.existsSync(`${paths.pluginRoot}/runtime/bridge.cjs`),
         hasDoctorScript: fs.existsSync(`${paths.pluginRoot}/scripts/doctor-local.sh`),
         declaresChannelInManifest: fs.readFileSync(`${paths.pluginRoot}/openclaw.plugin.json`, "utf8").includes("\"channels\""),
         hasSessionKeyApi: fs.existsSync(`${paths.pluginRoot}/session-key-api.ts`),
