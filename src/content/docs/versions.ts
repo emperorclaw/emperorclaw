@@ -18,7 +18,7 @@ export const versions: DocVersion[] = [
       { slug: 'limits', title: 'Current Platform Limits', file: 'limits.md' },
       { slug: 'configuration', title: 'Configuration Reference', file: 'configuration.md' },
       { slug: 'usage', title: 'Usage Examples', file: 'usage.md' },
-      { slug: 'skill-development', title: 'Skill & Agent Development', file: 'skill-development.md' },
+      { slug: 'skill-development', title: 'Plugin & Agent Development', file: 'skill-development.md' },
       { slug: 'troubleshooting', title: 'Troubleshooting', file: 'troubleshooting.md' },
       { slug: 'mcp', title: 'MCP Payloads', file: 'mcp.md' },
       { slug: 'api-reference', title: 'API Reference', file: 'api-reference.md' },
