@@ -25,15 +25,6 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
-const navItems = [
-  "Dashboard",
-  "Projects",
-  "Resources",
-  "Messages",
-  "Approvals",
-  "Agents",
-];
-
 const heroStats = [
   { label: "OpenClaw", value: "Already executes" },
   { label: "Emperor", value: "Makes it durable" },
@@ -209,38 +200,32 @@ export function PublicHomePage() {
                 <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-indigo-500/14 via-transparent to-transparent blur-3xl" />
                 <div className="relative overflow-hidden rounded-[2rem] border border-zinc-800/80 bg-zinc-950/90 shadow-[0_32px_90px_rgba(0,0,0,0.45)]">
                   <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-indigo-500/8 to-transparent" />
-                  <div className="grid min-h-[560px] lg:grid-cols-[220px_1fr]">
-                    <aside className="border-b border-zinc-800/80 bg-zinc-950/90 p-5 lg:border-b-0 lg:border-r">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/20">
-                          <CustomLogo className="h-5 w-5 text-indigo-400" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-white">Emperor Claw</div>
-                          <div className="text-xs uppercase tracking-wide text-zinc-500">Control Plane</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-8 space-y-2">
-                        {navItems.map((item, index) => (
-                          <SidebarItem key={item} label={item} active={index === 0} />
-                        ))}
-                      </div>
-
-                      <div className="mt-8 rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold text-zinc-300">
-                            A
+                  <div className="min-h-[500px] bg-zinc-950/40 p-4 sm:p-5 lg:p-6">
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/90 px-4 py-3 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20">
+                              <CustomLogo className="h-5 w-5 text-indigo-400" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-white">Emperor Claw</div>
+                              <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                                Control Plane
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-sm font-medium text-zinc-200">Admin</div>
-                            <div className="text-xs text-zinc-500">owner</div>
+                          <div className="flex items-center gap-2">
+                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-[11px] text-zinc-400">
+                              12 agents live
+                            </div>
+                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-[11px] text-zinc-400">
+                              28 inbox
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </aside>
 
-                    <div className="bg-zinc-950/40 p-5 sm:p-6">
                       <div className="space-y-6">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
@@ -533,22 +518,6 @@ export function PublicHomePage() {
           </div>
         </footer>
       </div>
-    </div>
-  );
-}
-
-function SidebarItem({ label, active }: { label: string; active?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-        active
-          ? "bg-zinc-800/80 text-white ring-1 ring-zinc-700/50"
-          : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100",
-      )}
-    >
-      <div className={cn("h-2 w-2 rounded-full", active ? "bg-indigo-400" : "bg-zinc-700")} />
-      <span>{label}</span>
     </div>
   );
 }
