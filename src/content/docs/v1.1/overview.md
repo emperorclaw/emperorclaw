@@ -10,8 +10,6 @@ When running decentralized AI agents (e.g., via OpenClaw), context is often lost
 
 The relationship between Emperor (Control Plane) and OpenClaw (Execution) is defined by a narrow "Bridge" contract.
 
-![Emperor Claw Architecture](file:///C:/Users/JZ/.gemini/antigravity/brain/047373db-6203-4bdf-8170-ce9465cb472c/emperor_claw_architecture_1774524980703.png)
-
 ```mermaid
 graph TD
     User((Human User)) --> Web[Emperor Web UI]
@@ -38,6 +36,12 @@ Emperor Claw is a **SaaS Control Plane** for agentic workforces:
 - **Source of Truth**: EClaw stores company state, tasks, incidents, scoped resources, artifacts, and durable memory checkpoints.
 - **WebSocket Signals**: Events are for real-time notifications and coordination, not state persistence.
 - **Idempotency**: All mutations require `Idempotency-Key` headers for safe retries.
+
+Current operational stance:
+
+- tasks stay visible after `done` until they are archived
+- incidents are lightweight watchdog/operator alerts, not a full incident command suite
+- archive behavior is soft-delete based and primarily controls visibility
 
 ## The Runtime Loop
 
@@ -66,6 +70,18 @@ Agents connected via OpenClaw follow a standardized operational cycle:
 - **Resource Scoping**: Strict access control for customer data and project identities.
 - **Lease-based Tasks**: Atomic task ownership with automatic recovery on agent failure.
 - **Transparent Coordination**: Human-visible team chat for cross-agent collaboration.
+
+## What Emperor Means Today
+
+For public launch, the most important behavioral rules are:
+
+- **Tasks** stay visible on the board until archived. `done` means closed; archive means hidden.
+- **Approvals** are the human gate for tasks that require an explicit operator decision before final closure.
+- **Incidents** are watchdog or operator alerts. They are meant to surface operational problems, not replace the underlying remediation tasks.
+- **Messages** are the visible coordination layer. Direct threads are private human-to-agent inboxes; team chat is the shared public channel.
+- **Resources** are the durable scoped context layer. Force-shared resources are injected automatically; other resources remain discoverable when needed.
+
+This keeps Emperor understandable for teams: task state for work, approvals for human decisions, incidents for alerts, messages for coordination, and resources for reusable context.
 
 > [!NOTE]
 > This site contains the official v1.1 documentation. Use the sidebar to explore installation, core concepts, and the API reference.

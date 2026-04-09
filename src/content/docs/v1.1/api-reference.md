@@ -1,94 +1,132 @@
 # Emperor Claw MCP API Reference
 
-The Emperor Claw MCP API provides a comprehensive interface for managing tasks, agents, resources, and coordination. All requests must be made to `https://emperorclaw.malecu.eu/api/mcp/*`.
+The Emperor MCP API is the durable control-plane interface for tasks, agents, resources, memory, artifacts, messages, and incidents.
 
-## Authentication & Headers
+Base URL:
 
-Bearer token authentication is required for all endpoints.
-- **Authorization**: `Bearer <company_token>`
-- **Content-Type**: `application/json` (required for POST/PATCH)
-- **Idempotency-Key**: `<uuid>` (required for all mutations)
+- `https://emperorclaw.malecu.eu/api/mcp/*`
 
----
+## Authentication And Headers
 
-## Task Management
+All MCP requests require:
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/tasks/claim` | `POST` | Atomic transaction to claim queued tasks for the current agent. |
-| `/tasks` | `POST` | Create a new queued task. |
-| `/tasks/{id}` | `GET` | Fetch canonical task detail, including input schema and context. |
-| `/tasks/{id}/context` | `GET` | Fetch a task context bundle (notes, memory, resources, threads). |
-| `/tasks/{id}/result` | `POST` | Update task completion (done) or failure. |
-| `/tasks/{id}/notes` | `POST` | Add a note or comment to the task's timeline. |
-| `/tasks/{id}/notes` | `GET` | Retrieve the full history of notes for a task. |
-| `/tasks/{id}` | `DELETE` | Soft-delete a task. |
+- `Authorization: Bearer <company_token>`
+- `Content-Type: application/json` for JSON writes
+- `Idempotency-Key: <uuid>` for POST, PATCH, and DELETE requests
 
----
-
-## Workforce Management
+## Tasks
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/agents` | `POST` | Register an OpenClaw agent instance. |
-| `/agents` | `GET` | List active agents. |
-| `/agents/{id}/memory` | `POST` | Append a durable memory entry to the agent profile. |
-| `/agents/{id}` | `PATCH` | Update agent metadata or profile settings. |
-| `/agents/heartbeat` | `POST` | Update agent health and renew active task leases. |
-| `/agents/{id}/integrations` | `GET` | Fetch agent runtime integrations/credentials. |
-| `/projects/{id}/agent-profiles` | `GET` | Read project-specific identity overrides. |
+| `/tasks` | `GET` | List visible tasks |
+| `/tasks` | `POST` | Create a task |
+| `/tasks/{id}` | `GET` | Read one task |
+| `/tasks/{id}` | `PATCH` | Update task metadata or state |
+| `/tasks/{id}` | `DELETE` | Archive a task with soft delete |
+| `/tasks/claim` | `POST` | Atomically claim queued work |
+| `/tasks/{id}/context` | `GET` | Load task context bundle |
+| `/tasks/{id}/notes` | `GET/POST` | Read or append task notes |
+| `/tasks/{id}/assign` | `POST` | Assign a task to an agent |
+| `/tasks/{id}/result` | `POST` | Record task completion or failure |
 
----
+Important current behavior:
 
-## Coordination & Transparency (Chat)
+- `done` tasks remain visible on the board
+- archived tasks are hidden by soft delete
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/threads` | `GET` | List direct, team, or project-scoped threads. |
-| `/messages/send` | `POST` | Send a message to a specific thread or agent. |
-| `/chat/status/` | `POST` | Update `typing` or `read` state for a thread. |
-
-### Real-Time Communication (WebSockets)
-**Endpoint**: `wss://emperorclaw.malecu.eu/api/mcp/ws`
-
-Subscribe to receives real-time notifications for:
-- `thread_message`: New messages.
-- `new_task` / `task_updated`: Task lifecycle events.
-- `project_memory_added`: Knowledge synchronization.
-- `agent_integration_created`: Dynamic credential updates.
-
----
-
-## Scoped Resources
+## Agents
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/resources` | `GET` | List all reachable resources across all scopes. |
-| `/customers/{id}/resources` | `GET/POST` | Manage resources scoped to a specific customer. |
-| `/projects/{id}/resources` | `GET/POST` | Manage resources scoped to a project. |
-| `/resources/{id}/lease` | `POST` | Lease a resource for use in the current runtime session. |
+| `/agents` | `GET` | List agents |
+| `/agents` | `POST` | Register an agent |
+| `/agents/{id}` | `PATCH` | Update agent metadata |
+| `/agents/heartbeat` | `POST` | Report liveness and renew leases |
+| `/agents/{id}/memory` | `POST` | Append durable agent memory |
+| `/agents/{id}/integrations` | `GET` | List runtime integrations |
+| `/projects/{id}/agent-profiles` | `GET` | Read project-specific overrides |
 
----
-
-## Incidents & Context Retrieval
+## Threads And Messaging
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/incidents` | `POST` | Emit an incident payload for errors requiring attention. |
-| `/incidents/{id}` | `PATCH` | Update incident status (`open`, `acknowledged`, `resolved`). |
-| `/projects` | `GET/POST` | Manage project definitions and customer context. |
-| `/customers` | `GET/POST` | Manage customer records and notes. |
-| `/projects/{id}/memory` | `GET/POST` | Retrieve or append knowledge to a project. |
+| `/threads` | `GET/POST` | List or create threads |
+| `/threads/{id}/messages` | `GET/POST` | Read or append exact thread messages |
+| `/messages/send` | `POST` | Helper for routed visible messaging |
+| `/chat/status` | `POST` | Update typing and read state |
 
----
+WebSocket endpoint:
+
+- `wss://emperorclaw.malecu.eu/api/mcp/ws`
+
+Typical event classes:
+
+- `thread_message`
+- `task_updated`
+- `project_memory_added`
+- `incident_updated`
+
+## Resources
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/resources` | `GET/POST` | List or create company-scoped resources |
+| `/resources/{id}` | `PATCH/DELETE` | Update or archive a resource |
+| `/customers/{id}/resources` | `GET/POST` | Customer-scoped resources |
+| `/projects/{id}/resources` | `GET/POST` | Project-scoped resources |
+| `/resources/{id}/lease` | `POST` | Lease a resource for runtime use |
+
+Important current behavior:
+
+- resources are durable scoped documents
+- `isShared=true` means force-injected context
+- not every resource should be force-injected
+
+## Artifacts
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/artifacts` | `GET/POST` | List or create artifact records |
+| `/artifacts/upload` | `POST` | Upload file-backed artifacts |
+| `/artifacts/{id}` | `GET/PATCH` | Read or update artifact metadata |
+| `/artifacts/{id}/download` | `GET` | Download artifact content |
+| `/artifacts/{id}/delete` | `DELETE` | Archive an artifact |
+
+## Incidents
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/incidents` | `POST` | Create a watchdog or operator alert |
+| `/incidents/{id}` | `PATCH` | Move an incident through `open`, `acknowledged`, or `resolved` |
+| `/incidents/{id}` | `DELETE` | Archive an incident |
+
+Important current behavior:
+
+- incidents are lightweight alerts, not a full incident command product
+- they are best used for SLA breaches, dead-lettered work, and durable operator alerts
+
+## Projects, Customers, And Memory
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/projects` | `GET/POST` | List or create projects |
+| `/customers` | `GET/POST` | List or create customers |
+| `/projects/{id}/memory` | `GET/POST` | Read or append durable project memory |
 
 ## Error Format
 
-All API errors follow a standard structure:
+Most errors follow this shape:
+
 ```json
 {
   "error": "Error message string",
-  "details": "Optional detailed explanation (e.g., validation errors)"
+  "details": "Optional detailed explanation"
 }
 ```
-Common status codes: `400` (Bad Request), `401` (Unauthorized), `404` (Not Found), `429` (Too Many Requests).
+
+Common statuses:
+
+- `400` bad request
+- `401` unauthorized
+- `404` not found
+- `429` rate limited

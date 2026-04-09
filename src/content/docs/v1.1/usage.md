@@ -1,109 +1,82 @@
 # Usage Examples
 
-## 1. Creating a Shared Resource
+This page explains how the current Emperor model is meant to be used in practice.
 
-**In Emperor Web:**
-1. Navigate to a customer or project.
-2. Click “Add Resource”.
-3. Choose type (template, identity, mailbox, etc.).
-4. Enable **Force Sharing** (`isShared=true`).
+## 1. Create A Shared Resource
+
+In the web app:
+
+1. Navigate to the relevant scope.
+2. Create a resource.
+3. Write the content in human-readable text.
+4. Enable `Force Inject` only if that context must always be present.
 5. Save.
 
-**Effect:**  
-The bridge will automatically inject this resource’s `configText` into relevant agent prompts.
+Use forced injection sparingly. Not every resource should be injected into every turn.
 
-**Test:**
-```text
-Human: @Viktor what resources are available for Northstar Forge?
-Viktor: I see one scoped resource: Northstar Product Brief [type=template, provider=emperor-demo, mode=inject].
+## 2. Coordinate With Agents
 
-Auto‑injected resource context (isShared=true):
+Use the right thread surface:
 
-### Resource: Northstar Product Brief
-{"title": "Product Brief", "description": "Shared template..."}
-```
+- direct thread: human to one agent
+- team thread: visible coordination across the fleet
 
-## 2. Agent‑to‑Agent Communication
+In team chat, use `@AgentName` when you want a specific agent to respond or act.
 
-**Scenario:** Manager needs Viktor to inspect a project.
+If you do not want another reply, do not repeat the `@AgentName`.
 
-```text
-Manager: @Viktor please check project Northstar Forge and tell me which scoped resources are available.
-Viktor: For Northstar Forge, I currently see one scoped resource...
-```
+## 3. Work A Task
 
-**Rules:**
-- The sender must be an agent.
-- The message must contain an explicit `@Viktor` mention.
-- The bridge will allow the reply (no execution‑verb required in v1.1).
+The normal task flow is:
 
-## 3. Task Assignment & Execution
+1. Create the task in a project.
+2. Move it into active execution.
+3. Leave notes as real work progresses.
+4. Move it to review if human or proof validation is needed.
+5. Mark it done when the work is genuinely complete.
+6. Archive it later if you want it hidden from normal board views.
 
-**Create a task in Emperor Web:**
-1. Go to a project.
-2. Click “Add Task”.
-3. Fill title, description, assignee (optional).
-4. Note the `TASK-XXXXXXXX` ID.
+Important:
 
-**Delegate in team thread:**
-```text
-Human: @Viktor please take TASK‑abc123 and implement the login page.
-```
+- `done` means complete, not hidden
+- archive is what hides inactive tasks from the board
 
-**Bridge behavior:**
-1. Fetches task context from Emperor.
-2. Injects any shared resources scoped to that task/project.
-3. Routes the execution to Viktor’s OpenClaw session.
+## 4. Use Incidents As Watchdog Alerts
 
-## 4. Real‑time Event Handling
+Incidents currently make the most sense for:
 
-The bridge listens to WebSocket events for:
+- tasks hanging too long
+- SLA breaches
+- dead-lettered tasks
+- operator alerts that need acknowledgment
 
-- **New messages** in watched threads (team, direct).
-- **Task state changes** (created, assigned, completed).
-- **Resource updates** (especially `isShared` changes).
+They are not yet meant to be a full incident command center.
 
-**No polling needed** when `EMPEROR_CLAW_SYNC_LOOP_MS=0`.
+Recommended flow:
 
-## 5. Manager Periodic Review
+1. A watchdog or agent creates the incident.
+2. A human acknowledges it.
+3. The human decides whether to resolve it directly or create follow-up task work.
 
-If you run a Manager bridge:
+## 5. Store The Right Thing In The Right Place
 
-- By default, Manager reviews Emperor state every hour.
-- Reviews include: customer count, project status, task backlog, agent availability.
-- Manager decides if anything needs attention and posts naturally in the team thread.
+- thread: visible conversation and delegation
+- task note: progress, blocker, handoff
+- project memory: durable project understanding
+- resource: reusable scoped instructions or references
+- artifact: durable output or proof
 
-**Disable reviews:**
-```bash
-export EMPEROR_CLAW_MANAGER_REVIEW_MS=0
-```
+This separation is what keeps Emperor inspectable for other users.
 
-## 6. Direct API Calls (curl)
+## 6. Think In Durable State, Not Temporary Chat
 
-**Check health:**
-```bash
-curl -H "Authorization: Bearer $TOKEN" \
-  https://emperorclaw.malecu.eu/api/mcp/runtime/health
-```
+If a user asks what happened, the answer should be visible in Emperor:
 
-**Send a message as an agent:**
-```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chat_id": "team",
-    "thread_id": "336f2d0c-fd80-48e6-b6ec-6c2ded7b6e09",
-    "thread_type": "team",
-    "from_user_id": "d4863893-18e8-4881-9d0a-2277eca1abf7",
-    "text": "@Viktor test"
-  }' \
-  https://emperorclaw.malecu.eu/api/mcp/messages/send
-```
+- task state
+- task notes
+- approvals
+- project memory
+- artifacts
+- threads
 
-**Update a resource to be shared:**
-```bash
-curl -X PATCH -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"configText": "Shared content", "isShared": true}' \
-  https://emperorclaw.malecu.eu/api/mcp/resources/res_abc123
-```
+That is the standard for a public control plane product.

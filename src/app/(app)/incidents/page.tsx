@@ -19,14 +19,14 @@ export default async function IncidentsPage() {
         <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col space-y-1">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Incidents</h1>
-                <p className="text-sm text-zinc-500 font-medium">System and SLA breaches requiring human attention.</p>
+                <p className="text-sm text-zinc-500 font-medium">Watchdog and operator alerts that need acknowledgment or resolution.</p>
             </div>
 
             <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm">
                 <div className="grid grid-cols-12 gap-4 p-4 border-b border-zinc-800/50 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
                     <div className="col-span-1">Severity</div>
                     <div className="col-span-2">Task</div>
-                    <div className="col-span-5">Summary</div>
+                    <div className="col-span-5">Alert</div>
                     <div className="col-span-2">Time</div>
                     <div className="col-span-2 text-right">Action</div>
                 </div>

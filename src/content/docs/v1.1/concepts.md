@@ -1,70 +1,111 @@
 # Core Concepts
 
-Understanding the fundamental architecture and principles of Emperor Claw.
+Emperor is the durable control plane for OpenClaw-style execution. It is not just chat and it is not just a task list. The product only makes sense if each surface has a clear job.
 
 ## Operating Doctrine
 
-Emperor is not just a chat platform; it is the **operating system for work**. When interacting with Emperor entities, agents must keep the system state honest:
+The core rule is simple:
 
-- **State Integrity**: Chat, task state, notes, results, and delegation should never drift apart.
-- **Speech vs State**: If you say "I'm done" in chat, the task state must reflect that completion.
-- **Honest Notes**: Prefer detailed task notes over vague chat updates to keep the workflow inspectable.
+- chat should reflect real state
+- tasks should reflect real execution
+- notes should reflect real progress
+- artifacts should hold real deliverables
+- resources should hold reusable context
+- project memory should hold durable shared understanding
+
+If the system says something happened, another user should be able to inspect Emperor and see that it really happened.
 
 ## Core Entities
 
-- **Customer**: The long-lived relationship context. Stores durable business context and billing rules.
-- **Project**: A scoped workstream under a customer. Groups tasks, memory, resources, and artifacts.
-- **Task**: A concrete unit of work with a defined execution lifecycle.
-- **Thread**: A communication surface (Direct, Team, or Project-scoped).
-- **Resource**: A reusable scoped asset (Templates, SOPs, API Keys).
-- **Artifact**: A concrete output or deliverable (not a log file).
+- Customer: the durable account or client context
+- Project: the container for a workstream, initiative, or deliverable track
+- Task: a concrete unit of execution inside a project
+- Thread: a communication surface for direct or shared coordination
+- Resource: reusable scoped context such as doctrine, SOPs, templates, and references
+- Artifact: a durable file, deliverable, proof, or preserved work product
+- Incident: a watchdog or operator alert that requires acknowledgment or resolution
 
-## Durable Memory & Checkpoints
+## Task Lifecycle
 
-Unlike traditional AI runtimes where memory is transient, Emperor Claw treats agent memory as a first-class, durable asset. 
+The current product model is:
 
-- **Checkpoints**: Every significant memory update is checkpointed back to the SaaS control plane.
-- **Resumability**: If a local runtime crashes, it fetches its latest checkpoint from Emperor to resume with full context.
-- **Context Integrity**: Large memory payloads are deduplicated and versioned.
-
-## Deep Task Lifecycle
-
-Tasks in Emperor follow a strict stewardship model across several lanes:
-
-| Lane | Meaning |
+| State | Meaning |
 |---|---|
-| `inbox` | New tasks requiring triage. |
-| `queued` | Tasks ready for an agent to claim. |
-| `in_progress` | A worker has claimed the task and work is underway. |
-| `review` | Work is complete and awaits human or peer validation. |
-| `done` | Task completed successfully with proof delivered. |
-| `failed` | Task halted due to terminal error (missing inputs/credentials). |
-| `recurrent` | Blueprint for scheduled work. |
+| `inbox` | New work waiting for triage or claim |
+| `in_progress` | A worker is actively executing |
+| `review` | Work is waiting for human or proof-based review |
+| `done` | Work is complete and still visible on the board |
+| `failed` | Terminal failure |
+| `dead_letter` | Repeated retries failed and the watchdog escalated it |
 
-### Lease-Based Management
+### Important Visibility Rule
 
-- **Claiming**: An agent "claims" a task from `queued`.
-- **Lease**: The agent holds a lease for a fixed duration.
-- **Heartbeat**: The agent must send regular heartbeats to renew the lease.
-- **Expiry**: If heartbeats stop, the task returns to `queued` for another agent.
+- `done` does not mean hidden
+- a task stays visible until it is archived
+- archiving is currently a soft delete via `deletedAt`
 
-## Resource Scoping
+That means "closed" and "hidden" are different concepts in Emperor today.
 
-Emperor Claw uses a strict scoping model for resources (mailboxes, API keys, templates).
+## Review And Approval
 
-- **Company Scope**: Global resources available to all agents across all projects.
-- **Customer Scope**: Resources restricted to a specific client (e.g., client branding, support mailboxes).
-- **Project Scope**: The most common scope. Resources restricted to a single project workflow for data isolation.
-- **Agent Scope**: Private resources specific to a single agent (e.g., personalized credentials).
+Review and approval are separate ideas:
 
-### Configuration Formats
+- `review` means the task is waiting for a human or proof check
+- an `approval` is a durable human gate that can block completion
 
-- **Markdown & YAML Preferred**: `configText` is typically stored as human-readable Markdown or YAML.
-- **No JSON Requirements**: Programmatic accessors treat configuration as plain text, allowing for easier manual editing.
+If project policy requires approval or review before done, the task should move through `review` instead of skipping directly to `done`.
 
-### Force Sharing (`isShared`)
+## Archiving
 
-If a resource is marked as `isShared=true`, the Control Plane explicitly injects its configuration into every agent's context within that scope. This is the preferred method for delivering project-wide instructions.
+Archiving is currently soft-delete based:
 
-> [!IMPORTANT]
-> Always use `Idempotency-Key` headers when claiming tasks or reporting results to prevent duplicate state transitions.
+- archived tasks disappear from normal board views
+- archived incidents disappear from active views
+- archived artifacts and folders are hidden from normal workspace browsing
+
+This is a visibility control, not yet a full retention policy.
+
+## Storage And Retention
+
+Emperor currently treats durable state as retained source-of-truth data:
+
+- threads keep coordination history
+- tasks keep execution history
+- notes keep execution breadcrumbs
+- resources keep scoped reference context
+- artifacts keep durable outputs
+
+Automatic retention compaction is not the primary model yet. Public users should think of Emperor as durable operational storage first, with archiving used to hide inactive records from day-to-day views.
+
+## Incidents
+
+Incidents are intentionally lightweight right now.
+
+They are best understood as watchdog or operator alerts for conditions like:
+
+- SLA breaches
+- dead-lettered tasks
+- other durable conditions requiring human acknowledgment or resolution
+
+They are not yet a full incident command system with deep response workflows, ownership trees, and postmortems.
+
+## Resources And Memory
+
+Resources are for reusable scoped context.
+
+Use resources for:
+
+- doctrine
+- SOPs
+- templates
+- account notes
+- operating references
+
+Use project memory for:
+
+- durable project decisions
+- shared assumptions
+- next-step summaries
+- lessons the project should retain
+
+Do not treat chat history as the only memory layer. Conversation history is the raw record; resources and project memory are the usable long-lived context.
