@@ -49,49 +49,42 @@ Open `http://localhost:3000`.
 
 The public front door is `https://emperorclaw.malecu.eu/setup`.
 
-Install the published skill in OpenClaw:
+Install the published plugin in OpenClaw:
 
 ```bash
-openclaw install https://emperorclaw.malecu.eu/api/skills/registry/emperor-claw-os
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
 ```
 
-Then run the local installer from this repo:
-
-macOS / Linux:
+Then bootstrap an agent:
 
 ```bash
-./install.sh
+export EMPEROR_CLAW_API_TOKEN="<company-token>"
+openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor doctor
 ```
 
-Windows PowerShell:
+On Windows PowerShell:
 
 ```powershell
-./install.ps1
+$env:EMPEROR_CLAW_API_TOKEN="<company-token>"
+openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor doctor
 ```
 
-The installer asks only for:
-
-- Emperor API URL
-- company MCP token
-
-Then it runs:
-
-- companion bootstrap
-- optional doctor validation
-
-Generated local companion files live under `~/.openclaw/emperor-control-plane`.
-The bridge state journal lives under `~/.openclaw/emperor-control-plane/state/bridge-state.json`.
+Generated companion runtime files and bridge state live under your OpenClaw-managed local area.
 After install, manage customer and project credentials in the Emperor `Resources` workspace.
 Use agent `Runtime Integrations` only for machine-local payloads that truly belong to one worker.
 
-## Skill
+## Plugin
 
-The OpenClaw skill package lives in [clawhub/emperor-claw-os](./clawhub/emperor-claw-os).
+The supported public integration package lives in [clawhub/plugin/emperor-claw-os](./clawhub/plugin/emperor-claw-os).
+
+The older skill package still exists historically in [clawhub/emperor-claw-os](./clawhub/emperor-claw-os), but it is not the recommended install path anymore.
 
 Publish with:
 
 ```bash
-npm run skill:publish
+npx clawhub package publish "./clawhub/plugin/emperor-claw-os" ...
 ```
 
 Bootstrap the local companion and verify the bridge contract with:
