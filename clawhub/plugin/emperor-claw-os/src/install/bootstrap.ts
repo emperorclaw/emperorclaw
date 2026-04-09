@@ -371,7 +371,7 @@ WantedBy=default.target
 
 function copyRuntimeAssets(pluginRoot: string, runtimeDir: string, companionDir: string): void {
   ensureDir(runtimeDir);
-  fs.copyFileSync(path.join(pluginRoot, "examples", "bridge.js"), path.join(runtimeDir, "bridge.js"));
+  fs.copyFileSync(path.join(pluginRoot, "runtime", "bridge.cjs"), path.join(runtimeDir, "bridge.js"));
   const controlPlaneUrl = `${process.env.EMPEROR_CLAW_API_URL || "https://emperorclaw.malecu.eu"}/downloads/control-plane.js`;
   execSync(`curl -fsSL ${JSON.stringify(controlPlaneUrl)} -o ${JSON.stringify(path.join(runtimeDir, "control-plane.js"))}`, { stdio: "inherit" });
   fs.chmodSync(path.join(runtimeDir, "bridge.js"), 0o755);
@@ -477,7 +477,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     threadPolicy: { ...DEFAULT_THREAD_POLICY },
     bridgeContract: createDefaultBridgeContract(),
     installedAt: new Date().toISOString(),
-    version: "0.1.0"
+    version: "0.1.5"
   };
 
   const manifestPath = writeManifest(paths, slug, manifest);

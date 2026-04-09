@@ -1,9 +1,36 @@
 {
   "name": "@malecu/emperor-claw-os-plugin",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": false,
   "type": "module",
   "description": "Native OpenClaw plugin for Emperor bridge installation and agent lifecycle management",
+  "author": "Jose Zuma",
+  "homepage": "https://github.com/josezuma/emperorclaw/tree/main/clawhub/plugin/emperor-claw-os",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josezuma/emperorclaw.git",
+    "directory": "clawhub/plugin/emperor-claw-os"
+  },
+  "bugs": {
+    "url": "https://github.com/josezuma/emperorclaw/issues"
+  },
+  "files": [
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "index.ts",
+    "openclaw.plugin.json",
+    "README.md",
+    "session-key-api.ts",
+    "setup-entry.ts",
+    "tsconfig.json",
+    "runtime",
+    "scripts",
+    "src",
+    "references"
+  ],
+  "scripts": {
+    "validate:local": "bash scripts/validate-local.sh"
+  },
   "openclaw": {
     "compat": {
       "pluginApi": ">=2026.3.24-beta.2",
