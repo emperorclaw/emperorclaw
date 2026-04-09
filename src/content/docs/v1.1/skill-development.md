@@ -1,78 +1,67 @@
-# Skill & Agent Development
+# Plugin And Agent Development
 
-A **skill** is a behavioral contract that teaches an OpenClaw runtime how to operate in a specific domain. Skills are text-only and defined entirely in Markdown.
+This page describes the current supported extension model around Emperor and OpenClaw.
 
-## 1. Skill Directory Structure
+## Current Public Model
 
-Every skill lives in its own folder and contains two primary files:
+The supported integration path is the **plugin**, not the legacy skill package.
 
-```
-clawhub/
-└── your-skill-name/
-    ├── SKILL.md      ← Behavioral contract (required)
-    └── README.md     ← Human-facing guide (required)
-```
+Use the plugin when you want:
 
-### 1.1 SKILL.md — The Contract
+- local agent bootstrap
+- bridge lifecycle management
+- doctrine seeding
+- repair and doctor flows
+- Emperor-connected runtime behavior
 
-This file governs everything the agent does. It must include YAML frontmatter for machine discovery:
+## Legacy Skill Note
 
-```yaml
----
-name: your-skill-slug
-description: "Brief summary of the skill's purpose."
-version: 1.0.0
-secrets:
-  - name: API_TOKEN
-    description: "Token for authentication."
-    required: true
----
-```
+Older Emperor materials may still mention a separate skill-based package. That still exists historically, but it is no longer the primary public install path.
 
-### 1.2 Required Section Order
-
-For optimal parsing by LLMs, follow this section hierarchy:
-1. **Purpose**: 2-4 bullets on what the skill achieves.
-2. **Role Model**: Define Owner, Manager (the skill), and Agents (workers).
-3. **Core Principles**: Non-negotiable behavioral rules (Idempotency, OS mentality).
-4. **API Integration**: Exact endpoints, payloads, and bootstrap sequences.
-5. **Communication Guidelines**: Style rules (natural language, standard status patterns).
-
----
-
-## 2. Agent Directory Structure
-
-Beyond the skill, each deployed agent maintains a local state directory under `agents/`:
-
-| File | Purpose |
-|---|---|
-| `IDENTITY.md` | Name, slug, domain, and primary objective. |
-| `SOUL.md` | Personality, communication style, and behavioral constraints. |
-| `AGENTS.md` | The full operational contract (mission, skill pack). |
-| `TOOLS.md` | Detailed toolset, handoff rules, and communication protocols. |
-| `MEMORY.md` | Persistent scratchpad for recurring patterns and blockers. |
-| `USER.md` | Human stakeholder preferences (proactive vs concise). |
-
----
-
-## 3. Core Principles for Every Skill
-
-1. **Idempotency**: All mutations must send an `Idempotency-Key` header.
-2. **SaaS System of Record**: Immediate API push for any local state changes.
-3. **Proof-Gated Completion**: Tasks cannot move to `done` without validated proof.
-4. **Coordination Visibility**: Every delegation or block must be posted to the Agent Team Chat.
-5. **No Robotic Logs**: Speak naturally in chat, summarizing root causes and actions.
-
----
-
-## 4. Publishing to ClawHub
-
-Use the ClawHub CLI to register your skill for distribution:
+For current users, the supported surface is:
 
 ```bash
-npx clawhub publish . \
-  --slug my-skill \
-  --name "Display Name" \
-  --version 1.0.0 \
-  --tags latest
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
 ```
+
+## What The Plugin Owns
+
+The plugin is responsible for:
+
+- local bridge/runtime assets
+- agent bootstrap
+- workspace doctrine files
+- repair/restart flows
+- Emperor/OpenClaw glue behavior
+
+## What Emperor Owns
+
+Emperor owns the durable operational state:
+
+- tasks
+- approvals
+- incidents
+- resources
+- artifacts
+- threads
+- project memory
+
+## Watchdogs And Incidents
+
+The current watchdog logic belongs in Emperor, not in the plugin.
+
+Why:
+
+- incidents are durable control-plane records
+- lease expiry and SLA logic depend on canonical Emperor task state
+- all users should see the same incident behavior from the same source of truth
+
+Today those watchdog rules are mostly fixed defaults in the server:
+
+- lease expiry can retry a task until `maxRetries`
+- dead-lettering after max retries raises an incident
+- SLA breach on tracked task states raises an incident
+
+This is acceptable for launch as long as it is documented clearly.
+
+Plugin-side checks can still exist for local runtime health, but the canonical watchdog that mutates task/incident state should stay in Emperor.
