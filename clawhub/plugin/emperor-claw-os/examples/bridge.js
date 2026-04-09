@@ -66,6 +66,11 @@ const OPENCLAW_NODE_BIN = process.env.EMPEROR_CLAW_NODE_BIN || process.execPath;
 const OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH
   || (process.platform === "win32" ? "openclaw.cmd" : "/home/jose/.npm-global/bin/openclaw");
 const OPENCLAW_CLI_JS_PATH = process.env.OPENCLAW_CLI_JS_PATH || null;
+const EMPEROR_CLAW_BRAIN_MODE = String(process.env.EMPEROR_CLAW_BRAIN_MODE || "auto").trim().toLowerCase();
+const EMPEROR_CLAW_LONG_TURN_MESSAGE_MS = Number(process.env.EMPEROR_CLAW_LONG_TURN_MESSAGE_MS || 20000);
+const EMPEROR_CLAW_LONG_TURN_MESSAGE_TEXT = String(
+  process.env.EMPEROR_CLAW_LONG_TURN_MESSAGE_TEXT || "I am working on this. I will reply with the final result as soon as it is ready.",
+).trim();
 const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "false").toLowerCase() === "true";
 const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
   || ((String(AGENT_NAME).toLowerCase() === "manager" || String(LOCAL_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
@@ -294,7 +299,31 @@ function sanitizeAgentReplyText(text) {
   return value;
 }
 
-async function callLocalOpenClawAgent(message, options = {}) {
+function resolveLocalBrainAdapter() {
+  if (EMPEROR_CLAW_BRAIN_MODE === "cli" || EMPEROR_CLAW_BRAIN_MODE === "cli-subprocess" || EMPEROR_CLAW_BRAIN_MODE === "auto") {
+    return {
+      mode: "cli-subprocess",
+      run: (message, options = {}) => callLocalOpenClawAgentCli(message, options),
+    };
+  }
+
+  console.warn(`[bridge] unsupported EMPEROR_CLAW_BRAIN_MODE=${EMPEROR_CLAW_BRAIN_MODE}; falling back to cli-subprocess`);
+  return {
+    mode: "cli-subprocess",
+    run: (message, options = {}) => callLocalOpenClawAgentCli(message, options),
+  };
+}
+
+async function runLocalBrainTurn(message, options = {}) {
+  const adapter = resolveLocalBrainAdapter();
+  const result = await adapter.run(message, options);
+  return {
+    ...result,
+    adapterMode: adapter.mode,
+  };
+}
+
+async function callLocalOpenClawAgentCli(message, options = {}) {
   const agentArgs = [
     "agent",
     "--local",
@@ -363,7 +392,32 @@ async function callLocalOpenClawAgent(message, options = {}) {
     raw: parsed,
     stderr,
     text: extractedText,
+    adapterMode: "cli-subprocess",
     sessionId: result?.meta?.agentMeta?.sessionId || result?.sessionId || result?.session?.id || result?.session_id || parsed?.sessionId || null,
+  };
+}
+
+function startLongTurnNotice(bridge, input) {
+  const delayMs = EMPEROR_CLAW_LONG_TURN_MESSAGE_MS;
+  const text = EMPEROR_CLAW_LONG_TURN_MESSAGE_TEXT;
+  if (!bridge || !input?.threadId || !text || !Number.isFinite(delayMs) || delayMs <= 0) return null;
+  if (!input.isHuman) return null;
+  if (input.isAgentSender) return null;
+  if (!input.isDirectThread && !input.explicitAtMention) return null;
+
+  const timer = setTimeout(() => {
+    void bridge.sendMessage(text, {
+      thread_id: input.threadId,
+      thread_type: input.threadType,
+    }).catch((error) => {
+      console.error("[bridge] long-turn notice failed:", error.message);
+    });
+  }, delayMs);
+
+  return {
+    cancel() {
+      clearTimeout(timer);
+    },
   };
 }
 
@@ -514,6 +568,7 @@ class EmperorBridge {
       ids: new Set(),
     };
     this.typingKeepaliveTimers = new Map();
+    this.threadTurnQueues = new Map();
     this.onMessage = null;
     this.onTask = null;
   }
@@ -996,8 +1051,21 @@ class EmperorBridge {
   async handleThreadMessage(message, thread) {
     if (!message || !thread) return;
     if (message.senderId === this.agent?.id) return;
-    if (this.onMessage) {
-      await this.onMessage(message, thread);
+    if (!this.onMessage) return;
+
+    const threadKey = String(thread.id || "team");
+    const previous = this.threadTurnQueues.get(threadKey) || Promise.resolve();
+    const next = previous
+      .catch(() => null)
+      .then(() => this.onMessage(message, thread));
+
+    this.threadTurnQueues.set(threadKey, next);
+    try {
+      await next;
+    } finally {
+      if (this.threadTurnQueues.get(threadKey) === next) {
+        this.threadTurnQueues.delete(threadKey);
+      }
     }
   }
 
@@ -1125,6 +1193,15 @@ class EmperorBridge {
     }
 
     const typingToken = this.startTypingKeepalive(thread.id, { markRead: true });
+    const longTurnNotice = startLongTurnNotice(this, {
+      threadId: thread.id,
+      threadType: thread.type,
+      isHuman,
+      isAgentSender,
+      isDirectThread,
+      explicitAtMention,
+    });
+    let resolvedTurn = false;
     try {
       await this.writeMemory(
         `Observed thread ${thread.id} message mentioning ${agentName} from ${message.senderType || "unknown"} at ${new Date().toISOString()}.`,
@@ -1262,7 +1339,7 @@ class EmperorBridge {
       try {
       const knownSessionId = this.bridgeState.localBrainSessionId || null;
       const useFreshSession = false;
-      const agentResult = await callLocalOpenClawAgent(prompt, {
+      const agentResult = await runLocalBrainTurn(prompt, {
         sessionId: useFreshSession ? null : knownSessionId,
         thinking: LOCAL_BRAIN_THINKING,
         timeoutSeconds: 120,
@@ -1344,6 +1421,7 @@ class EmperorBridge {
         thread_id: thread.id,
         thread_type: thread.type,
       });
+      resolvedTurn = true;
       if (directThread && thread?.id && this.agent?.id && intendedAgentId === this.agent.id) {
         this.updateThreadOwner(thread.id, this.agent.id);
       }
@@ -1358,7 +1436,8 @@ class EmperorBridge {
         `Processed thread ${thread.id}`,
       );
     } finally {
-      await this.stopTypingKeepalive(thread.id, typingToken);
+      longTurnNotice?.cancel();
+      await this.stopTypingKeepalive(thread.id, typingToken, resolvedTurn ? "resolved" : "seen");
     }
   }
 
@@ -2343,14 +2422,14 @@ class EmperorBridge {
     return token;
   }
 
-  async stopTypingKeepalive(threadId, token = null) {
+  async stopTypingKeepalive(threadId, token = null, terminalState = "seen") {
     if (token && this.typingKeepaliveTimers.has(token)) {
       clearInterval(this.typingKeepaliveTimers.get(token));
       this.typingKeepaliveTimers.delete(token);
     }
     if (!threadId) return;
     try {
-      await this.updateChatStatus(threadId, false, false, "seen");
+      await this.updateChatStatus(threadId, false, false, terminalState);
     } catch (error) {
       console.error("[bridge] typing keepalive shutdown failed:", error.message);
     }
