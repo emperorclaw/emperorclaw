@@ -48,6 +48,12 @@ That means:
 - the current thresholds/behaviors are mostly fixed by product logic
 - the plugin/runtime should not be the main source of truth for incident mutation
 
+Current documented defaults:
+
+- watchdog loop runs every `60 seconds`
+- SLA tracking currently applies to tasks in `inbox`, `in_progress`, and `review`
+- dead-lettering occurs after a task exceeds its configured `maxRetries`
+
 This is acceptable for launch, but it must be documented clearly so users understand what is automatic and what is configurable.
 
 ## Human And Agent Usage

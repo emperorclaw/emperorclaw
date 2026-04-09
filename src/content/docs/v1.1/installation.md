@@ -10,10 +10,10 @@ Install the published Emperor plugin from ClawHub:
 openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
 ```
 
-If you want to pin a version explicitly:
+If you want to pin a version explicitly, replace `<version>` with the release you want:
 
 ```bash
-openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin@0.1.6
+openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin@<version>
 ```
 
 ## 2. Configure Access

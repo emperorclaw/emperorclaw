@@ -30,6 +30,12 @@ Examples:
 - dead-lettering after max retries raises an incident
 - SLA breach on tracked task states raises an incident
 
+Current documented defaults:
+
+- watchdog evaluation loop runs every `60 seconds`
+- SLA tracking applies to tasks in `inbox`, `in_progress`, and `review`
+- severity defaults are currently product-defined for automatic incidents
+
 These are not yet exposed as a rich customer-facing policy engine.
 
 ## Beta Storage Limit
