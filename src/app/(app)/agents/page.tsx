@@ -22,8 +22,6 @@ type AgentCardProps = {
     uptime: string;
     tasksCompleted: number;
     currentLoad: number;
-    skills: string[];
-    memory: string | null;
     integrations: AgentIntegrationRow[];
 };
 
@@ -83,8 +81,6 @@ export default async function AgentsPage() {
                             uptime="99.9%"
                             tasksCompleted={completedMap[agent.id] || 0}
                             currentLoad={agent.concurrencyLimit > 0 ? Math.round((agent.currentLoad / agent.concurrencyLimit) * 100) : 0}
-                            skills={((agent.skillsJson as string[]) || [])}
-                            memory={agent.memory}
                             integrations={integrationMap[agent.id] || []}
                         />
                     ))
@@ -94,7 +90,7 @@ export default async function AgentsPage() {
     );
 }
 
-function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, currentLoad, skills, memory, integrations }: AgentCardProps) {
+function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, currentLoad, integrations }: AgentCardProps) {
     const statusColor = {
         online: "bg-emerald-500",
         degraded: "bg-amber-500",
@@ -181,21 +177,20 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                 </div>
             )}
 
-            <div>
-                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Registered Skills</div>
-                <div className="flex flex-wrap gap-2">
-                    {skills.length > 0 ? skills.map((s: string) => (
-                        <span key={s} className="px-2 py-1 rounded bg-indigo-500/10 text-indigo-400/80 border border-indigo-500/20 text-[10px] font-mono">
-                            {s}
-                        </span>
-                    )) : <span className="text-xs text-zinc-600 font-mono italic">None</span>}
-                </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-zinc-800/80">
-                <div className="text-xs text-zinc-500 mb-2">Internal Memory / Scratchpad</div>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 max-h-32 overflow-y-auto font-mono text-xs text-zinc-300 whitespace-pre-wrap shadow-inner">
-                    {memory ? memory : <span className="text-zinc-600 italic">No memory initialized.</span>}
+            <div className="mt-6 rounded-xl border border-zinc-800/80 bg-zinc-950/50 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Context model</div>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                    This card tracks runtime health and machine-local integrations only. Agent doctrine,
+                    credentials metadata, and scoped operating context should live in Resources, not as
+                    ad hoc per-agent config.
+                </p>
+                <div className="mt-4">
+                    <Link
+                        href={`/agents/${id}`}
+                        className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-300 transition-colors hover:text-indigo-200"
+                    >
+                        Open full agent detail
+                    </Link>
                 </div>
             </div>
 
