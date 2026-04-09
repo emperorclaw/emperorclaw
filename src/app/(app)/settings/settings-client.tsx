@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Save, ScrollText, Cable, Trash2 } from "lucide-react";
+import { KeyRound, Plus, Copy, CheckCircle2, AlertTriangle, Cable, Trash2 } from "lucide-react";
 
 type SettingsToken = {
     id: string;
@@ -12,11 +12,8 @@ type SettingsToken = {
     lastUsedAt: string | null;
 };
 
-export default function SettingsClient({ initialTokens, initialContextNotes }: { initialTokens: SettingsToken[], initialContextNotes: string }) {
+export default function SettingsClient({ initialTokens }: { initialTokens: SettingsToken[] }) {
     const [tokens, setTokens] = useState(initialTokens);
-    const [contextNotes, setContextNotes] = useState(initialContextNotes);
-    const [isSavingNotes, setIsSavingNotes] = useState(false);
-    const [notesSaved, setNotesSaved] = useState(false);
     const [newTokenName, setNewTokenName] = useState("");
     const [generating, setGenerating] = useState(false);
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
@@ -57,25 +54,6 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const handleSaveContext = async () => {
-        setIsSavingNotes(true);
-        try {
-            const res = await fetch("/api/settings/company", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contextNotes }),
-            });
-            if (res.ok) {
-                setNotesSaved(true);
-                setTimeout(() => setNotesSaved(false), 3000);
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setIsSavingNotes(false);
-        }
-    };
-
     const handleRevokeToken = async (tokenId: string) => {
         if (revokingTokenId) return;
         setRevokingTokenId(tokenId);
@@ -104,34 +82,7 @@ export default function SettingsClient({ initialTokens, initialContextNotes }: {
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col space-y-2">
                 <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Workspace Settings</h1>
-                <p className="text-zinc-500 font-medium">Manage your company mission and authenticate your OpenClaw workforce.</p>
-            </div>
-
-            {/* Company Mission Pane */}
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-medium text-zinc-200 flex items-center">
-                        <ScrollText className="w-5 h-5 mr-2 text-indigo-400" />
-                        Global Company Context
-                    </h2>
-                    <button
-                        onClick={handleSaveContext}
-                        disabled={isSavingNotes || contextNotes === initialContextNotes && !notesSaved}
-                        className="bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center transition-colors disabled:opacity-50"
-                    >
-                        {notesSaved ? <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-400" /> : <Save className="w-4 h-4 mr-2" />}
-                        {isSavingNotes ? "Saving..." : notesSaved ? "Saved" : "Save Changes"}
-                    </button>
-                </div>
-                <div className="space-y-2">
-                    <p className="text-sm text-zinc-400 mb-2">Define the overarching mission or &quot;System Prompt&quot; for your company. All OpenClaw agents pull this context automatically, regardless of customer assignments.</p>
-                    <textarea
-                        value={contextNotes}
-                        onChange={(e) => setContextNotes(e.target.value)}
-                        placeholder="e.g. We are an outbound lead generation agency. Our tone is always professional and aggressive..."
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 min-h-[120px] resize-y"
-                    />
-                </div>
+                <p className="text-zinc-500 font-medium">Manage company tokens and authenticate your OpenClaw workforce.</p>
             </div>
 
             {/* Token Generation Pane */}
