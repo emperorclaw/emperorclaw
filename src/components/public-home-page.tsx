@@ -467,11 +467,12 @@ export function PublicHomePage() {
                 <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold tracking-tight text-zinc-100">
                   Powerful now. Still beta.
                 </h2>
-                <p className="max-w-3xl text-lg leading-8 text-zinc-400">
-                  Emperor Claw is free for now while in beta. We do not guarantee safety, retention,
-                  recovery, or suitability of stored data. You remain responsible for what you store
-                  here, and you should not place critical or irreplaceable information in the system.
-                </p>
+                  <p className="max-w-3xl text-lg leading-8 text-zinc-400">
+                   Emperor Claw is free for now while in beta. Current beta storage is limited to 1 GB per user.
+                   We do not guarantee safety, retention, recovery, or suitability of stored data. You remain
+                   responsible for what you store here, and you should not place critical or irreplaceable
+                   information in the system.
+                  </p>
               </div>
 
               <div className="grid gap-3 sm:min-w-[260px]">
