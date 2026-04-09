@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Eye } from "lucide-react";
 
 type IncidentSeverity = "high" | "medium" | "low" | string;
 type IncidentStatus = "open" | "acknowledged" | "resolved" | string;
@@ -19,40 +19,25 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
     const [currentStatus, setCurrentStatus] = useState(status);
     const [isPending, setIsPending] = useState(false);
     const isResolved = currentStatus === 'resolved';
+    const isAcknowledged = currentStatus === "acknowledged";
 
-    const handleNotifyAgent = async () => {
-        try {
-            await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: `URGENT INCIDENT (${severity}): Review incident ${id} on task ${taskId}. Please investigate the blockage and report back.`,
-                })
-            });
-            // Show optimistic feedback in a real app, for now just log success
-            console.log(`Instructed OpenClaw agent to address incident: ${id}`);
-        } catch (error: unknown) {
-            console.error("Failed to notify agent", error);
-        }
-    };
-
-    const handleResolve = async () => {
-        if (isPending || isResolved) return;
+    const updateStatus = async (nextStatus: "acknowledged" | "resolved") => {
+        if (isPending || currentStatus === nextStatus) return;
         setIsPending(true);
         try {
             const res = await fetch(`/api/incidents/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "resolved" }),
+                body: JSON.stringify({ status: nextStatus }),
             });
 
             if (!res.ok) {
-                throw new Error("Failed to resolve incident");
+                throw new Error(`Failed to update incident to ${nextStatus}`);
             }
 
-            setCurrentStatus("resolved");
+            setCurrentStatus(nextStatus);
         } catch (error: unknown) {
-            console.error("Failed to resolve incident", error);
+            console.error("Failed to update incident", error);
         } finally {
             setIsPending(false);
         }
@@ -85,13 +70,17 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
                 {!isResolved ? (
                     <div className="flex justify-end items-center gap-2">
                         <button
-                            onClick={handleNotifyAgent}
-                            className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded border border-indigo-500/20"
+                            onClick={() => updateStatus("acknowledged")}
+                            disabled={isPending || isAcknowledged}
+                            className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded border border-indigo-500/20 disabled:opacity-50"
                         >
-                            Notify Agent
+                            <span className="inline-flex items-center gap-1.5">
+                                <Eye className="w-3.5 h-3.5" />
+                                {isAcknowledged ? "Acknowledged" : "Acknowledge"}
+                            </span>
                         </button>
                         <button
-                            onClick={handleResolve}
+                            onClick={() => updateStatus("resolved")}
                             disabled={isPending}
                             className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded border border-emerald-500/20 disabled:opacity-50"
                         >

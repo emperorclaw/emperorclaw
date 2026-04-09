@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { agents, tasks, incidents } from "@/db/schema";
-import { eq, inArray, and, sql, isNull } from "drizzle-orm";
+import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
@@ -25,10 +25,10 @@ export default async function DashboardPage() {
   const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
   const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.inbox), isNull(tasks.deletedAt)));
   const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.review), isNull(tasks.deletedAt)));
-  const [{ count: slaBreaches }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
+  const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
 
   // 2. Incident List
-  const recentIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(incidents.createdAt).limit(3);
+  const recentIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(3);
 
   // 3. Workforce Health / Agent Load
   const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
         <KpiCard title="Tasks In Inbox" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
         <KpiCard title="Needs Review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
-        <KpiCard title="SLA Breaches" value={slaBreaches.toString()} trend="Live" trendLabel="open incidents" alert={slaBreaches > 0} good={slaBreaches === 0} />
+        <KpiCard title="Open Incidents" value={openIncidents.toString()} trend="Live" trendLabel="watchdog or operator alerts" alert={openIncidents > 0} good={openIncidents === 0} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
