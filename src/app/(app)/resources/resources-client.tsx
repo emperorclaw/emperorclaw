@@ -80,6 +80,23 @@ function scopeLabel(scopeType: string) {
     }[scopeType] || scopeType;
 }
 
+function toTitleCaseLabel(value: string) {
+    return value
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function slugifyResourceKey(value: string) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80);
+}
+
 export default function ResourcesClient({
     initialResources,
     customers,
@@ -109,9 +126,11 @@ export default function ResourcesClient({
     const [searchQuery, setSearchQuery] = useState("");
     const [isPreview, setIsPreview] = useState(false);
     const [configViewMode, setConfigViewMode] = useState<"raw" | "preview">("preview");
+    const [createContentMode, setCreateContentMode] = useState<"raw" | "preview">("preview");
     const [copied, setCopied] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'customer', 'project', 'agent']));
     const [showAdvancedCreate, setShowAdvancedCreate] = useState(false);
+    const [hasCustomKey, setHasCustomKey] = useState(false);
 
     const scopeOptions = useMemo(() => ({
         customer: customers,
@@ -172,6 +191,7 @@ export default function ResourcesClient({
         setIsShared(resource.isShared || false);
         setCopied(false);
         setConfigViewMode("preview");
+        setHasCustomKey(true);
     };
 
     const copyToClipboard = (text: string) => {
@@ -197,6 +217,8 @@ export default function ResourcesClient({
         applyTemplate("external_account");
         setIsShared(false);
         setShowAdvancedCreate(false);
+        setCreateContentMode("preview");
+        setHasCustomKey(false);
         setIsCreateOpen(true);
     };
 
@@ -214,7 +236,9 @@ export default function ResourcesClient({
     };
 
     const handleCreate = async () => {
-        if (!name.trim() || isSaving) return;
+        const resolvedDisplayName = displayName.trim();
+        const resolvedName = name.trim() || slugifyResourceKey(resolvedDisplayName);
+        if ((!resolvedDisplayName && !resolvedName) || isSaving) return;
         setIsSaving(true);
         setError(null);
 
@@ -224,8 +248,8 @@ export default function ResourcesClient({
                 scopeId: scopeType === "company" ? null : scopeId || null,
                 provider: provider.trim() || "generic",
                 resourceType,
-                name: name.trim(),
-                displayName: displayName.trim() || null,
+                name: resolvedName,
+                displayName: resolvedDisplayName || null,
                 configText: configText,
                 secretText: "",
                 isShared: isShared,
@@ -309,8 +333,8 @@ export default function ResourcesClient({
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-sm leading-6 text-zinc-400">
-                                Start with the scope, what kind of resource this is, the durable key, and the content you want agents to use.
-                                Provider and display metadata are optional unless you need a special integration shape.
+                                Start with the scope, a human-friendly display name, the resource type, and the content you want agents to use.
+                                The internal key is auto-generated unless you override it.
                             </div>
                              <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
@@ -347,26 +371,43 @@ export default function ResourcesClient({
                             <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
                                     <span className="text-zinc-500">Resource Type</span>
-                                    <select
+                                    <input
+                                        list="resource-types-list-modal"
                                         value={resourceType}
                                         onChange={(event) => {
-                                            setResourceType(event.target.value);
-                                            applyTemplate(event.target.value);
+                                            const nextType = event.target.value;
+                                            setResourceType(nextType);
+                                            if (RESOURCE_TEMPLATES[nextType]) {
+                                                applyTemplate(nextType);
+                                            }
                                         }}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                    >
+                                        placeholder="knowledge_base, doctrine, mailbox..."
+                                    />
+                                    <datalist id="resource-types-list-modal">
                                         {RESOURCE_TYPE_OPTIONS.map((option) => (
-                                            <option key={option} value={option}>{option}</option>
+                                            <option key={option} value={option}>
+                                                {toTitleCaseLabel(option)}
+                                            </option>
                                         ))}
-                                    </select>
+                                    </datalist>
+                                    <span className="text-xs text-zinc-600">
+                                        Flexible field. Use any stable type that helps humans and agents understand what this resource is.
+                                    </span>
                                 </label>
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Name / Key</span>
+                                    <span className="text-zinc-500">Display Name</span>
                                     <input
-                                        value={name}
-                                        onChange={(event) => setName(event.target.value)}
+                                        value={displayName}
+                                        onChange={(event) => {
+                                            const nextDisplayName = event.target.value;
+                                            setDisplayName(nextDisplayName);
+                                            if (!hasCustomKey) {
+                                                setName(slugifyResourceKey(nextDisplayName));
+                                            }
+                                        }}
                                         className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="finance-inbox"
+                                        placeholder="ACME Finance Inbox"
                                     />
                                 </label>
                             </div>
@@ -376,11 +417,52 @@ export default function ResourcesClient({
                             <div className="grid gap-4">
                                 <label className="space-y-1.5 text-sm">
                                     <span className="text-zinc-500">Content</span>
-                                    <textarea
-                                        value={configText}
-                                        onChange={(event) => setConfigText(event.target.value)}
-                                        className="h-32 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                    />
+                                    <div className="overflow-hidden rounded-xl border border-zinc-800">
+                                        <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/70 px-3 py-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Markdown-friendly content</span>
+                                            <div className="flex rounded-md border border-zinc-800 bg-zinc-950/60 p-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCreateContentMode("preview")}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
+                                                        createContentMode === "preview" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                    )}
+                                                >
+                                                    <Eye className="h-3 w-3" />
+                                                    Preview
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCreateContentMode("raw")}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm transition-all",
+                                                        createContentMode === "raw" ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-400"
+                                                    )}
+                                                >
+                                                    <Code className="h-3 w-3" />
+                                                    Edit source
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {createContentMode === "raw" ? (
+                                            <textarea
+                                                value={configText}
+                                                onChange={(event) => setConfigText(event.target.value)}
+                                                className="h-40 w-full resize-y border-0 bg-zinc-900 p-3 font-mono text-sm text-zinc-300 outline-none focus:ring-0"
+                                            />
+                                        ) : (
+                                            <div className="min-h-40 bg-zinc-950/60 p-4">
+                                                {configText.trim() ? (
+                                                    <MarkdownRenderer content={configText} className="text-sm prose-invert" />
+                                                ) : (
+                                                    <div className="text-sm italic text-zinc-600">
+                                                        Nothing to preview yet.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </label>
                             </div>
                             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4">
@@ -392,7 +474,7 @@ export default function ResourcesClient({
                                     <div>
                                         <div className="text-sm font-medium text-zinc-200">Advanced details</div>
                                         <div className="mt-1 text-xs text-zinc-500">
-                                            Optional display label and provider override.
+                                            Optional internal key and provider override.
                                         </div>
                                     </div>
                                     {showAdvancedCreate ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
@@ -400,13 +482,19 @@ export default function ResourcesClient({
                                 {showAdvancedCreate ? (
                                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                                         <label className="space-y-1.5 text-sm">
-                                            <span className="text-zinc-500">Display Name</span>
+                                            <span className="text-zinc-500">Internal Key</span>
                                             <input
-                                                value={displayName}
-                                                onChange={(event) => setDisplayName(event.target.value)}
+                                                value={name}
+                                                onChange={(event) => {
+                                                    setHasCustomKey(true);
+                                                    setName(slugifyResourceKey(event.target.value));
+                                                }}
                                                 className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                                placeholder="ACME Finance"
+                                                placeholder="acme-finance-inbox"
                                             />
+                                            <span className="text-xs text-zinc-600">
+                                                Auto-generated from the display name unless you override it.
+                                            </span>
                                         </label>
                                         <label className="space-y-1.5 text-sm">
                                             <span className="text-zinc-500">Provider</span>
@@ -416,6 +504,9 @@ export default function ResourcesClient({
                                                 className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                                 placeholder="generic, email, github, stripe..."
                                             />
+                                            <span className="text-xs text-zinc-600">
+                                                Mainly for integration shape and internal classification. Most resources can keep the default provider.
+                                            </span>
                                         </label>
                                     </div>
                                 ) : null}
@@ -445,7 +536,7 @@ export default function ResourcesClient({
                         <div className="flex justify-end border-t border-zinc-900 pt-2">
                             <button
                                 onClick={() => void handleCreate()}
-                                disabled={!name.trim() || isSaving}
+                                disabled={!(displayName.trim() || name.trim()) || isSaving}
                                 className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-indigo-500"
                             >
                                 {isSaving ? "Saving..." : editingResource ? "Save Resource" : "Create Resource"}
