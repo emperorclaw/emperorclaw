@@ -241,7 +241,7 @@ export async function runDoctor(paths: EmperorPluginPaths): Promise<{ globalChec
     checkPath("manifestRoot", paths.manifestRoot),
     checkPath("stateRoot", paths.stateRoot),
     checkPath("threadOwners", paths.threadOwnerPath),
-    checkPath("bridgeAsset", path.join(paths.pluginRoot, "examples", "bridge.js")),
+    checkPath("bridgeAsset", path.join(paths.pluginRoot, "runtime", "bridge.cjs")),
     checkPath("bridgeContractReference", path.join(paths.pluginRoot, "references", "BRIDGE-CONTRACT.md")),
     checkPath("channelManifest", path.join(paths.pluginRoot, "openclaw.plugin.json")),
     checkPath("sessionKeyApi", path.join(paths.pluginRoot, "session-key-api.ts")),
