@@ -300,6 +300,7 @@ function writeBridgeConfig(companionDir: string, values: Record<string, string>)
     brainMode: values.EMPEROR_CLAW_BRAIN_MODE,
     thinking: values.EMPEROR_CLAW_BRAIN_THINKING,
     longTurnMessageMs: values.EMPEROR_CLAW_LONG_TURN_MESSAGE_MS,
+    enableManagerReview: values.EMPEROR_CLAW_ENABLE_MANAGER_REVIEW,
     stateDir: values.EMPEROR_CLAW_STATE_DIR,
     bridgeStatePath: values.EMPEROR_CLAW_BRIDGE_STATE_PATH
   };
@@ -438,6 +439,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     EMPEROR_CLAW_LONG_TURN_MESSAGE_MS: "20000",
     EMPEROR_CLAW_BRAIN_WORKSPACE: workspaceDir,
     EMPEROR_CLAW_AUTO_CLAIM: "false",
+    EMPEROR_CLAW_ENABLE_MANAGER_REVIEW: "false",
     EMPEROR_CLAW_USE_EXECUTOR: "true",
     EMPEROR_CLAW_DEBUG_PROMPTS: "false",
     EMPEROR_CLAW_NODE_BIN: process.execPath,
@@ -477,7 +479,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     threadPolicy: { ...DEFAULT_THREAD_POLICY },
     bridgeContract: createDefaultBridgeContract(),
     installedAt: new Date().toISOString(),
-    version: "0.1.5"
+    version: "0.1.6"
   };
 
   const manifestPath = writeManifest(paths, slug, manifest);
