@@ -75,6 +75,7 @@ const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "f
 const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
   || ((String(AGENT_NAME).toLowerCase() === "manager" || String(LOCAL_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
 const EMPEROR_CLAW_MANAGER_REVIEW_MS = Number(process.env.EMPEROR_CLAW_MANAGER_REVIEW_MS || 1800000);
+const EMPEROR_CLAW_ENABLE_MANAGER_REVIEW = String(process.env.EMPEROR_CLAW_ENABLE_MANAGER_REVIEW || "false").toLowerCase() === "true";
 const IS_MANAGER_PROFILE = EMPEROR_CLAW_AGENT_PROFILE === "manager";
 const IS_WINDOWS_PROMPT_CONSTRAINED = process.platform === "win32";
 const DIRECT_THREAD_CACHE_MS = Number(process.env.EMPEROR_CLAW_DIRECT_THREAD_CACHE_MS || 15000);
@@ -537,6 +538,21 @@ function isProjectCreationIntent(text) {
     || /\bcreate\b.{0,40}\b(tasks|task list|plan)\b/.test(value);
 }
 
+function isReplyWorthyTeamMention(text) {
+  const value = String(text || "").trim().toLowerCase();
+  if (!value) return false;
+  if (/\?/.test(value)) return true;
+  return /\b(please|can you|could you|would you|need you|review|check|investigate|look at|look into|help|handle|take|claim|work on|pick up|reply|respond|status|update|assign|delegate|blocker|blocked|why|what|how|when)\b/.test(value);
+}
+
+function isActionableAgentMessage(text, options = {}) {
+  const value = String(text || "").trim().toLowerCase();
+  if (!value) return false;
+  if (options.taskRef || extractTaskRef(value)) return true;
+  if (/\?/.test(value)) return true;
+  return /\b(please|can you|could you|would you|need you|review|check|investigate|look at|look into|help|handle|take|claim|work on|pick up|start|reply|respond|status|update|assign|delegate|blocker|blocked|verify|confirm)\b/.test(value);
+}
+
 class EmperorBridge {
   constructor() {
     this.agent = null;
@@ -948,7 +964,7 @@ class EmperorBridge {
     };
 
     void loop();
-    this.syncTimer = setInterval(loop, 15000);
+    this.syncTimer = setInterval(loop, SYNC_MS);
   }
 
   stopSyncFallback() {
@@ -1097,16 +1113,16 @@ class EmperorBridge {
     const text = String(message?.text || "").trim();
     const agentName = String(this.agent?.name || AGENT_NAME || "Viktor").trim();
     const lowered = text.toLowerCase();
-    const mentionsAgent = agentName
-      ? lowered.includes(`@${agentName.toLowerCase()}`) || lowered.includes(agentName.toLowerCase())
-      : false;
     const isDirectThread = String(thread?.type || "").toLowerCase() === "direct";
     const senderType = String(message?.senderType || "unknown").toLowerCase();
     const isHuman = senderType === "human" || senderType === "user";
     const isAgentSender = senderType === "agent";
+    const isSupportedSender = isHuman || isAgentSender;
     const lowSignal = !text || text.length < 4;
     const taskRef = extractTaskRef(text);
     const explicitAtMention = agentName ? lowered.includes(`@${agentName.toLowerCase()}`) : false;
+    const replyWorthyTeamMention = isReplyWorthyTeamMention(text);
+    const actionableAgentMessage = isActionableAgentMessage(text, { taskRef });
 
     const metadata = message?.metadataJson || {};
     const targetAgentHint = message?.targetAgentId || metadata.targetAgentId || metadata.target_agent_id || metadata.target_agent || null;
@@ -1114,6 +1130,7 @@ class EmperorBridge {
     const threadOwner = (this.bridgeState.threadOwners || {})[thread.id] || null;
     let intendedAgentId = threadOwner;
     let ownedDirectThreadIds = null;
+    let isOwnedDirectThread = false;
 
     if (directThread && this.agent?.id) {
       try {
@@ -1121,7 +1138,7 @@ class EmperorBridge {
       } catch (error) {
         console.error("[bridge] direct-thread ownership lookup failed:", error.message);
       }
-      const isOwnedDirectThread = ownedDirectThreadIds?.has(thread.id);
+      isOwnedDirectThread = Boolean(ownedDirectThreadIds?.has(thread.id));
       if (threadOwner === this.agent.id && !isOwnedDirectThread) {
         console.log(`[bridge] clearing stale direct-thread owner for ${thread.id} on ${this.agent.id}`);
         delete this.bridgeState.threadOwners[thread.id];
@@ -1130,26 +1147,30 @@ class EmperorBridge {
       }
     }
 
+    if (!isSupportedSender) {
+      console.log(`[bridge] ignoring thread ${thread.id} message from unsupported senderType=${senderType}`);
+      return;
+    }
+
+    if (directThread && !isOwnedDirectThread) {
+      console.log(`[bridge] skipping direct thread ${thread.id} because ownership could not be verified for ${this.agent?.id || AGENT_NAME}`);
+      return;
+    }
+
     if (targetAgentHint) {
       intendedAgentId = targetAgentHint;
-      this.updateThreadOwner(thread.id, targetAgentHint);
-    } else if (directThread && explicitAtMention && this.agent?.id) {
+      if (directThread && targetAgentHint === this.agent?.id) {
+        this.updateThreadOwner(thread.id, targetAgentHint);
+      }
+    } else if (directThread && this.agent?.id) {
       intendedAgentId = this.agent.id;
       this.updateThreadOwner(thread.id, this.agent.id);
-    } else if (directThread && this.agent?.id) {
-      if (ownedDirectThreadIds?.has(thread.id)) {
-        intendedAgentId = this.agent.id;
-        this.updateThreadOwner(thread.id, this.agent.id);
-      }
+    } else if (explicitAtMention && this.agent?.id) {
+      intendedAgentId = this.agent.id;
     }
 
     if (directThread && intendedAgentId && this.agent?.id && intendedAgentId !== this.agent.id) {
       console.log(`[bridge] skipping thread ${thread.id} message targeted at ${intendedAgentId}`);
-      return;
-    }
-
-    if (directThread && !intendedAgentId) {
-      console.log(`[bridge] skipping direct thread ${thread.id} because ownership could not be verified for ${this.agent?.id || AGENT_NAME}`);
       return;
     }
 
@@ -1164,14 +1185,29 @@ class EmperorBridge {
     }
 
     if (IS_MANAGER_PROFILE) {
-      const isAllowedSender = isHuman || isAgentSender;
-      if (!isAllowedSender || lowSignal || !explicitAtMention) {
-        console.log(`[bridge] manager ignoring thread ${thread.id} message (senderType=${senderType} lowSignal=${lowSignal} mentions=${explicitAtMention})`);
+      if (lowSignal) {
+        console.log(`[bridge] manager ignoring low-signal message in thread ${thread.id}`);
+        return;
+      }
+      if (isDirectThread) {
+        if (isAgentSender && !explicitAtMention && !targetAgentHint) {
+          console.log(`[bridge] manager ignoring direct thread ${thread.id} agent message without explicit target or @${agentName} mention`);
+          return;
+        }
+        if (isAgentSender && !actionableAgentMessage) {
+          console.log(`[bridge] manager ignoring non-actionable direct agent message in ${thread.id}`);
+          return;
+        }
+      } else if (!explicitAtMention || !(isHuman ? replyWorthyTeamMention : actionableAgentMessage)) {
+        console.log(`[bridge] manager ignoring team thread ${thread.id} message (senderType=${senderType} mentions=${explicitAtMention} actionable=${isHuman ? replyWorthyTeamMention : actionableAgentMessage})`);
         return;
       }
     } else if (!isDirectThread && !explicitAtMention) {
       // For non-manager profiles, in team threads, require @mention regardless of sender type
       console.log(`[bridge] ignoring thread ${thread.id} message without explicit @${agentName} mention (senderType=${senderType})`);
+      return;
+    } else if (isAgentSender && !actionableAgentMessage) {
+      console.log(`[bridge] ignoring non-actionable agent message in ${thread.id}`);
       return;
     }
     // If we reach here, message is allowed:
@@ -2252,7 +2288,7 @@ class EmperorBridge {
   }
 
   async maybeRunManagerReview(snapshot, reason = "timer") {
-    if (!IS_MANAGER_PROFILE) return null;
+    if (!IS_MANAGER_PROFILE || !EMPEROR_CLAW_ENABLE_MANAGER_REVIEW) return null;
     const now = Date.now();
     const lastAt = this.bridgeState.lastManagerReviewAt ? Date.parse(this.bridgeState.lastManagerReviewAt) : 0;
     if (lastAt && Number.isFinite(lastAt) && now - lastAt < EMPEROR_CLAW_MANAGER_REVIEW_MS) {
