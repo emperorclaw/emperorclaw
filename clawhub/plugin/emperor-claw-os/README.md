@@ -162,6 +162,7 @@ Useful checks:
 - `npm run build`
 - `node --check runtime/bridge.cjs`
 - `scripts/validate-local.sh`
+- `references/USER-E2E-TEST-PLAN.md`
 
 ## Contributing
 
