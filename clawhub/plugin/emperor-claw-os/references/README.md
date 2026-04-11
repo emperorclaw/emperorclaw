@@ -9,3 +9,4 @@ Start here:
 - `CHANNEL-CONFIG.md`
 - `PLUGIN-STATUS.md`
 - `NEXT-STEPS.md`
+- `USER-E2E-TEST-PLAN.md`
