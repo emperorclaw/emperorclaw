@@ -479,7 +479,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     threadPolicy: { ...DEFAULT_THREAD_POLICY },
     bridgeContract: createDefaultBridgeContract(),
     installedAt: new Date().toISOString(),
-    version: "0.1.6"
+    version: "0.1.7"
   };
 
   const manifestPath = writeManifest(paths, slug, manifest);
