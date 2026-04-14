@@ -76,9 +76,20 @@ const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
   || ((String(AGENT_NAME).toLowerCase() === "manager" || String(LOCAL_BRAIN_AGENT_ID).toLowerCase() === "manager") ? "manager" : "operator");
 const EMPEROR_CLAW_MANAGER_REVIEW_MS = Number(process.env.EMPEROR_CLAW_MANAGER_REVIEW_MS || 1800000);
 const EMPEROR_CLAW_ENABLE_MANAGER_REVIEW = String(process.env.EMPEROR_CLAW_ENABLE_MANAGER_REVIEW || "false").toLowerCase() === "true";
+const EMPEROR_CLAW_LOG_LEVEL = String(process.env.EMPEROR_CLAW_LOG_LEVEL || "info").trim().toLowerCase();
+const EMPEROR_CLAW_LOG_FORMAT = String(process.env.EMPEROR_CLAW_LOG_FORMAT || "jsonl").trim().toLowerCase();
+const EMPEROR_CLAW_LOG_PROMPTS = String(process.env.EMPEROR_CLAW_LOG_PROMPTS || "false").toLowerCase() === "true";
 const IS_MANAGER_PROFILE = EMPEROR_CLAW_AGENT_PROFILE === "manager";
 const IS_WINDOWS_PROMPT_CONSTRAINED = process.platform === "win32";
 const DIRECT_THREAD_CACHE_MS = Number(process.env.EMPEROR_CLAW_DIRECT_THREAD_CACHE_MS || 15000);
+const LOG_DIR = process.env.EMPEROR_CLAW_LOG_DIR || path.join(COMPANION_DIR, "logs");
+const LOG_FILE_PATH = process.env.EMPEROR_CLAW_LOG_PATH || path.join(LOG_DIR, "bridge-events.jsonl");
+const LOG_LEVEL_PRIORITY = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+};
 
 if (!API_TOKEN) {
   console.error("EMPEROR_CLAW_API_TOKEN is required");
@@ -116,6 +127,73 @@ function toStringList(value) {
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function shouldLog(level) {
+  const threshold = LOG_LEVEL_PRIORITY[EMPEROR_CLAW_LOG_LEVEL] ?? LOG_LEVEL_PRIORITY.info;
+  const current = LOG_LEVEL_PRIORITY[level] ?? LOG_LEVEL_PRIORITY.info;
+  return current <= threshold;
+}
+
+function redactString(value) {
+  let result = String(value || "");
+  if (API_TOKEN) {
+    result = result.split(API_TOKEN).join("[REDACTED_TOKEN]");
+  }
+  result = result.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
+  result = result.replace(/ec_[A-Za-z0-9]+/g, "[REDACTED_TOKEN]");
+  return result;
+}
+
+function sanitizeForLog(value) {
+  if (value == null) return value;
+  if (typeof value === "string") return redactString(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((item) => sanitizeForLog(item));
+  if (typeof value === "object") {
+    const result = {};
+    for (const [key, entry] of Object.entries(value)) {
+      result[key] = /token|authorization|secret|password/i.test(key)
+        ? "[REDACTED]"
+        : sanitizeForLog(entry);
+    }
+    return result;
+  }
+  return String(value);
+}
+
+function writeBridgeLog(level, event, message, fields = {}) {
+  if (!shouldLog(level)) return;
+
+  const entry = {
+    at: new Date().toISOString(),
+    level,
+    event,
+    message: redactString(message),
+    runtimeId: RUNTIME_ID,
+    agentId: AGENT_ID || null,
+    agentName: AGENT_NAME,
+    profile: EMPEROR_CLAW_AGENT_PROFILE,
+    fields: sanitizeForLog(fields),
+  };
+
+  try {
+    if (EMPEROR_CLAW_LOG_FORMAT === "jsonl") {
+      ensureDir(LOG_DIR);
+      fs.appendFileSync(LOG_FILE_PATH, `${JSON.stringify(entry)}\n`, "utf8");
+    }
+  } catch (error) {
+    console.error("[bridge] structured log write failed:", error.message);
+  }
+
+  const line = `[bridge:${level}] ${event} ${entry.message}`;
+  if (level === "error") {
+    console.error(line);
+  } else if (level === "warn") {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
 }
 
 function firstExistingPath(candidates) {
@@ -411,7 +489,16 @@ function startLongTurnNotice(bridge, input) {
       thread_id: input.threadId,
       thread_type: input.threadType,
     }).catch((error) => {
+      writeBridgeLog("error", "long_turn_notice_failed", "Failed to send long-turn notice.", {
+        threadId: input.threadId,
+        threadType: input.threadType,
+        error: error.message,
+      });
       console.error("[bridge] long-turn notice failed:", error.message);
+    });
+    writeBridgeLog("info", "long_turn_notice_sent", "Sent long-turn notice.", {
+      threadId: input.threadId,
+      threadType: input.threadType,
     });
   }, delayMs);
 
@@ -465,6 +552,10 @@ function appendDebugLog(baseDir, entry) {
     const path = `${baseDir}/delegation-debug.log`;
     const line = JSON.stringify({ at: new Date().toISOString(), ...entry });
     fs.appendFileSync(path, `${line}\n`, "utf8");
+    writeBridgeLog("debug", "legacy_debug_log", "Wrote legacy delegation debug entry.", {
+      baseDir,
+      kind: entry?.kind || null,
+    });
   } catch (error) {
     console.error("[bridge] debug log write failed:", error.message);
   }
@@ -1123,6 +1214,9 @@ class EmperorBridge {
     const explicitAtMention = agentName ? lowered.includes(`@${agentName.toLowerCase()}`) : false;
     const replyWorthyTeamMention = isReplyWorthyTeamMention(text);
     const actionableAgentMessage = isActionableAgentMessage(text, { taskRef });
+    const turnId = message?.id
+      ? `turn:${message.id}`
+      : `turn:${stableHash({ threadId: thread?.id || null, createdAt: message?.createdAt || null, senderId: message?.senderId || null, text })}`;
 
     const metadata = message?.metadataJson || {};
     const targetAgentHint = message?.targetAgentId || metadata.targetAgentId || metadata.target_agent_id || metadata.target_agent || null;
@@ -1148,11 +1242,23 @@ class EmperorBridge {
     }
 
     if (!isSupportedSender) {
+      writeBridgeLog("info", "message_skipped", "Ignored unsupported sender type.", {
+        turnId,
+        threadId: thread.id,
+        threadType: thread.type,
+        senderType,
+      });
       console.log(`[bridge] ignoring thread ${thread.id} message from unsupported senderType=${senderType}`);
       return;
     }
 
     if (directThread && !isOwnedDirectThread) {
+      writeBridgeLog("warn", "message_skipped", "Skipped direct thread because ownership could not be verified.", {
+        turnId,
+        threadId: thread.id,
+        threadType: thread.type,
+        senderType,
+      });
       console.log(`[bridge] skipping direct thread ${thread.id} because ownership could not be verified for ${this.agent?.id || AGENT_NAME}`);
       return;
     }
@@ -1170,43 +1276,85 @@ class EmperorBridge {
     }
 
     if (directThread && intendedAgentId && this.agent?.id && intendedAgentId !== this.agent.id) {
+      writeBridgeLog("debug", "message_skipped", "Skipped message targeted at another agent.", {
+        turnId,
+        threadId: thread.id,
+        intendedAgentId,
+        currentAgentId: this.agent.id,
+      });
       console.log(`[bridge] skipping thread ${thread.id} message targeted at ${intendedAgentId}`);
       return;
     }
 
     if (isAgentSender && this.agent?.id && message?.senderId === this.agent.id) {
+      writeBridgeLog("debug", "message_skipped", "Ignored self-authored message.", {
+        turnId,
+        threadId: thread.id,
+      });
       console.log(`[bridge] ignoring self-authored direct thread message in ${thread.id}`);
       return;
     }
 
     if (directThread && isAgentSender && !explicitAtMention && !targetAgentHint) {
+      writeBridgeLog("info", "message_skipped", "Ignored direct agent message without explicit target or mention.", {
+        turnId,
+        threadId: thread.id,
+      });
       console.log(`[bridge] ignoring direct thread ${thread.id} agent message without explicit target or @${agentName} mention`);
       return;
     }
 
     if (IS_MANAGER_PROFILE) {
       if (lowSignal) {
+        writeBridgeLog("info", "message_skipped", "Manager ignored low-signal message.", {
+          turnId,
+          threadId: thread.id,
+        });
         console.log(`[bridge] manager ignoring low-signal message in thread ${thread.id}`);
         return;
       }
       if (isDirectThread) {
         if (isAgentSender && !explicitAtMention && !targetAgentHint) {
+          writeBridgeLog("info", "message_skipped", "Manager ignored direct agent message without explicit target or mention.", {
+            turnId,
+            threadId: thread.id,
+          });
           console.log(`[bridge] manager ignoring direct thread ${thread.id} agent message without explicit target or @${agentName} mention`);
           return;
         }
         if (isAgentSender && !actionableAgentMessage) {
+          writeBridgeLog("info", "message_skipped", "Manager ignored non-actionable direct agent message.", {
+            turnId,
+            threadId: thread.id,
+          });
           console.log(`[bridge] manager ignoring non-actionable direct agent message in ${thread.id}`);
           return;
         }
       } else if (!explicitAtMention || !(isHuman ? replyWorthyTeamMention : actionableAgentMessage)) {
+        writeBridgeLog("info", "message_skipped", "Manager ignored team-thread message that was not actionable enough.", {
+          turnId,
+          threadId: thread.id,
+          senderType,
+          explicitAtMention,
+          actionable: isHuman ? replyWorthyTeamMention : actionableAgentMessage,
+        });
         console.log(`[bridge] manager ignoring team thread ${thread.id} message (senderType=${senderType} mentions=${explicitAtMention} actionable=${isHuman ? replyWorthyTeamMention : actionableAgentMessage})`);
         return;
       }
     } else if (!isDirectThread && !explicitAtMention) {
       // For non-manager profiles, in team threads, require @mention regardless of sender type
+      writeBridgeLog("info", "message_skipped", "Ignored team-thread message without explicit mention.", {
+        turnId,
+        threadId: thread.id,
+        senderType,
+      });
       console.log(`[bridge] ignoring thread ${thread.id} message without explicit @${agentName} mention (senderType=${senderType})`);
       return;
     } else if (isAgentSender && !actionableAgentMessage) {
+      writeBridgeLog("info", "message_skipped", "Ignored non-actionable agent message.", {
+        turnId,
+        threadId: thread.id,
+      });
       console.log(`[bridge] ignoring non-actionable agent message in ${thread.id}`);
       return;
     }
@@ -1218,6 +1366,15 @@ class EmperorBridge {
     if (isAgentSender) {
       console.log(`[bridge] processing agent message from ${message.senderId} with @mention=${explicitAtMention}`);
     }
+    writeBridgeLog("info", "turn_started", "Accepted message for processing.", {
+      turnId,
+      threadId: thread.id,
+      threadType: thread.type,
+      senderType,
+      explicitAtMention,
+      targetAgentHint,
+      taskRef,
+    });
 
     const explicitClaimRequest = /\b(claim|take|start working on|work on|pick up|handle)\b.*\b(task|ticket|job)\b|\b(next task)\b/.test(lowered);
     const explicitDelegationRequest = /\b(delegate|assign)\b/.test(lowered) && Boolean(taskRef);
@@ -1375,10 +1532,29 @@ class EmperorBridge {
       try {
       const knownSessionId = this.bridgeState.localBrainSessionId || null;
       const useFreshSession = false;
+      writeBridgeLog("debug", "brain_invocation_started", "Invoking local brain for accepted turn.", {
+        turnId,
+        threadId: thread.id,
+        sessionId: knownSessionId,
+        thinking: LOCAL_BRAIN_THINKING,
+      });
+      if (EMPEROR_CLAW_LOG_PROMPTS) {
+        writeBridgeLog("debug", "brain_prompt", "Captured local brain prompt.", {
+          turnId,
+          threadId: thread.id,
+          prompt,
+        });
+      }
       const agentResult = await runLocalBrainTurn(prompt, {
         sessionId: useFreshSession ? null : knownSessionId,
         thinking: LOCAL_BRAIN_THINKING,
         timeoutSeconds: 120,
+      });
+      writeBridgeLog("debug", "brain_invocation_completed", "Local brain completed.", {
+        turnId,
+        threadId: thread.id,
+        adapterMode: agentResult?.adapterMode || null,
+        nextSessionId: agentResult?.sessionId || null,
       });
       const nextSessionId = agentResult?.sessionId || null;
       if (nextSessionId) {
@@ -1436,11 +1612,23 @@ class EmperorBridge {
       }
       } catch (error) {
       console.error("[bridge] viktor brain handoff failed:", error.message);
+      writeBridgeLog("error", "brain_invocation_failed", "Local brain handoff failed.", {
+        turnId,
+        threadId: thread.id,
+        error: error.message,
+      });
       replyText = IS_MANAGER_PROFILE ? null : "I hit a local brain handoff issue just now. Please try again in a moment.";
     }
 
       if (!replyText || !String(replyText).trim()) {
         if (IS_MANAGER_PROFILE || explicitDelegationRequest || explicitProjectCreationRequest) {
+          writeBridgeLog("warn", "reply_suppressed", "Suppressed unusable reply.", {
+            turnId,
+            threadId: thread.id,
+            manager: IS_MANAGER_PROFILE,
+            explicitDelegationRequest,
+            explicitProjectCreationRequest,
+          });
           console.log("[bridge] suppressing unusable reply");
           return;
         }
@@ -1449,6 +1637,10 @@ class EmperorBridge {
 
       const finalReplyText = sanitizeAgentReplyText(replyText);
       if (!finalReplyText) {
+        writeBridgeLog("warn", "reply_suppressed", "Suppressed malformed or partial reply text.", {
+          turnId,
+          threadId: thread.id,
+        });
         console.log("[bridge] suppressing malformed or partial reply text");
         return;
       }
@@ -1456,6 +1648,11 @@ class EmperorBridge {
       await this.sendMessage(finalReplyText, {
         thread_id: thread.id,
         thread_type: thread.type,
+      });
+      writeBridgeLog("info", "reply_sent", "Sent final reply.", {
+        turnId,
+        threadId: thread.id,
+        threadType: thread.type,
       });
       resolvedTurn = true;
       if (directThread && thread?.id && this.agent?.id && intendedAgentId === this.agent.id) {
@@ -1474,6 +1671,11 @@ class EmperorBridge {
     } finally {
       longTurnNotice?.cancel();
       await this.stopTypingKeepalive(thread.id, typingToken, resolvedTurn ? "resolved" : "seen");
+      writeBridgeLog("debug", "turn_finished", "Finished turn processing.", {
+        turnId,
+        threadId: thread.id,
+        resolvedTurn,
+      });
     }
   }
 
@@ -2391,6 +2593,12 @@ class EmperorBridge {
   }
 
   async sendMessage(text, options = {}) {
+    writeBridgeLog("debug", "message_send_attempt", "Sending thread message.", {
+      threadId: options.thread_id || null,
+      threadType: options.thread_type || (options.targetAgentId ? "direct" : "team"),
+      targetAgentId: options.targetAgentId || null,
+      textPreview: compactTextBlock(text, 160),
+    });
     return http("/api/mcp/messages/send", {
       method: "POST",
       idempotencyKey: options.idempotencyKey || this.messageSendKey(text, options),
@@ -2500,6 +2708,11 @@ class EmperorBridge {
 }
 
 async function main() {
+  writeBridgeLog("info", "bridge_starting", "Starting emperor bridge adapter.", {
+    companionDir: COMPANION_DIR,
+    statePath: BRIDGE_STATE_PATH,
+    logFilePath: LOG_FILE_PATH,
+  });
   console.log("[bridge] starting emperor bridge adapter...");
   const bridge = new EmperorBridge();
   
