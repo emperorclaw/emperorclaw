@@ -124,6 +124,26 @@ The plugin lifecycle/control code remains TypeScript under:
 
 That split exists because the bridge is copied into companion directories and executed directly by Node as a standalone runtime script.
 
+## Bridge Logs
+
+Each companion runtime now writes structured bridge logs by default:
+- JSONL file: `logs/bridge-events.jsonl` under the agent companion directory
+- fallback process output: `bridge-fallback.log`
+
+Useful environment variables:
+- `EMPEROR_CLAW_LOG_LEVEL=info|debug|warn|error`
+- `EMPEROR_CLAW_LOG_FORMAT=jsonl`
+- `EMPEROR_CLAW_LOG_PROMPTS=false|true`
+
+The structured log is meant for debugging:
+- wake/skip reasons
+- direct-thread ownership failures
+- local brain invocation lifecycle
+- long-turn notices
+- final reply send attempts
+
+Prompt logging stays off by default.
+
 ## Implementation Notes
 
 This plugin is functionally usable and validated on a real OpenClaw host. It includes:

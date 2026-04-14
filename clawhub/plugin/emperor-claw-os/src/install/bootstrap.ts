@@ -301,6 +301,8 @@ function writeBridgeConfig(companionDir: string, values: Record<string, string>)
     thinking: values.EMPEROR_CLAW_BRAIN_THINKING,
     longTurnMessageMs: values.EMPEROR_CLAW_LONG_TURN_MESSAGE_MS,
     enableManagerReview: values.EMPEROR_CLAW_ENABLE_MANAGER_REVIEW,
+    logLevel: values.EMPEROR_CLAW_LOG_LEVEL,
+    logFormat: values.EMPEROR_CLAW_LOG_FORMAT,
     stateDir: values.EMPEROR_CLAW_STATE_DIR,
     bridgeStatePath: values.EMPEROR_CLAW_BRIDGE_STATE_PATH
   };
@@ -440,6 +442,9 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     EMPEROR_CLAW_BRAIN_WORKSPACE: workspaceDir,
     EMPEROR_CLAW_AUTO_CLAIM: "false",
     EMPEROR_CLAW_ENABLE_MANAGER_REVIEW: "false",
+    EMPEROR_CLAW_LOG_LEVEL: "info",
+    EMPEROR_CLAW_LOG_FORMAT: "jsonl",
+    EMPEROR_CLAW_LOG_PROMPTS: "false",
     EMPEROR_CLAW_USE_EXECUTOR: "true",
     EMPEROR_CLAW_DEBUG_PROMPTS: "false",
     EMPEROR_CLAW_NODE_BIN: process.execPath,
