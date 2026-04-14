@@ -1,7 +1,7 @@
 import {
   createChannelPluginBase,
   createChatChannelPlugin
-} from "openclaw/plugin-sdk/core";
+} from "openclaw/plugin-sdk/channel-core";
 import {
   EMPEROR_CHANNEL_ID,
   inspectEmperorChannelAccount,

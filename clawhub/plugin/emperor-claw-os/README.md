@@ -134,6 +134,7 @@ Useful environment variables:
 - `EMPEROR_CLAW_LOG_LEVEL=info|debug|warn|error`
 - `EMPEROR_CLAW_LOG_FORMAT=jsonl`
 - `EMPEROR_CLAW_LOG_PROMPTS=false|true`
+- `EMPEROR_CLAW_BRAIN_MODE=auto|gateway-cli|local-cli`
 
 The structured log is meant for debugging:
 - wake/skip reasons
@@ -143,6 +144,12 @@ The structured log is meant for debugging:
 - final reply send attempts
 
 Prompt logging stays off by default.
+
+Brain mode behavior:
+- `auto` prefers the normal Gateway-backed `openclaw agent` path first
+- if the Gateway path is unavailable, `auto` falls back to `openclaw agent --local`
+- `gateway-cli` forces the Gateway-backed path
+- `local-cli` forces the local embedded CLI path
 
 ## Implementation Notes
 

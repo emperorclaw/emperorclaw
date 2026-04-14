@@ -39,7 +39,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const execFileAsync = promisify(execFile);
 const OPENCLAW_GATEWAY_PORT = Number(process.env.OPENCLAW_GATEWAY_PORT || 18789);
-const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "***REMOVED***";
+const OPENCLAW_GATEWAY_TOKEN = String(process.env.OPENCLAW_GATEWAY_TOKEN || "").trim();
 const LOCAL_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
 const LOCAL_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
 const LOCAL_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || `hook:${LOCAL_BRAIN_AGENT_ID}:emperor-brain`;
@@ -207,6 +207,19 @@ function writeJsonFile(filePath, value) {
   fs.renameSync(tempPath, filePath);
 }
 
+function resolveOpenClawConfigPathForGateway() {
+  const configured = String(process.env.OPENCLAW_CONFIG_PATH || "").trim();
+  if (configured) return configured;
+  return path.join(os.homedir(), ".openclaw", "openclaw.json");
+}
+
+function resolveGatewayCliToken() {
+  if (OPENCLAW_GATEWAY_TOKEN) return OPENCLAW_GATEWAY_TOKEN;
+  const config = readJsonFile(resolveOpenClawConfigPathForGateway());
+  const token = String(config?.gateway?.remote?.token || config?.gateway?.auth?.token || "").trim();
+  return token || null;
+}
+
 async function http(path, options = {}) {
   const headers = {
     Authorization: `Bearer ${API_TOKEN}`,
@@ -284,17 +297,53 @@ function sanitizeAgentReplyText(text) {
 }
 
 function resolveLocalBrainAdapter() {
-  if (EMPEROR_CLAW_BRAIN_MODE === "cli" || EMPEROR_CLAW_BRAIN_MODE === "cli-subprocess" || EMPEROR_CLAW_BRAIN_MODE === "auto") {
+  if (EMPEROR_CLAW_BRAIN_MODE === "auto") {
+    return {
+      mode: "gateway-cli+local-fallback",
+      run: async (message, options = {}) => {
+        try {
+          return await callGatewayOpenClawAgentCli(message, options);
+        } catch (error) {
+          if (!shouldFallbackToLocalAgentCli(error)) throw error;
+          writeBridgeLog("warn", "brain_gateway_fallback", "Gateway-backed agent call failed; falling back to local CLI.", {
+            error: error?.message || String(error),
+          });
+          return callLocalOpenClawAgentCli(message, options);
+        }
+      },
+    };
+  }
+
+  if (EMPEROR_CLAW_BRAIN_MODE === "gateway" || EMPEROR_CLAW_BRAIN_MODE === "gateway-cli") {
+    return {
+      mode: "gateway-cli",
+      run: (message, options = {}) => callGatewayOpenClawAgentCli(message, options),
+    };
+  }
+
+  if (
+    EMPEROR_CLAW_BRAIN_MODE === "cli"
+    || EMPEROR_CLAW_BRAIN_MODE === "cli-subprocess"
+    || EMPEROR_CLAW_BRAIN_MODE === "local"
+    || EMPEROR_CLAW_BRAIN_MODE === "local-cli"
+  ) {
     return {
       mode: "cli-subprocess",
       run: (message, options = {}) => callLocalOpenClawAgentCli(message, options),
     };
   }
 
-  console.warn(`[bridge] unsupported EMPEROR_CLAW_BRAIN_MODE=${EMPEROR_CLAW_BRAIN_MODE}; falling back to cli-subprocess`);
+  console.warn(`[bridge] unsupported EMPEROR_CLAW_BRAIN_MODE=${EMPEROR_CLAW_BRAIN_MODE}; falling back to gateway-cli+local-fallback`);
   return {
-    mode: "cli-subprocess",
-    run: (message, options = {}) => callLocalOpenClawAgentCli(message, options),
+    mode: "gateway-cli+local-fallback",
+    run: async (message, options = {}) => {
+      try {
+        return await callGatewayOpenClawAgentCli(message, options);
+      } catch (error) {
+        if (!shouldFallbackToLocalAgentCli(error)) throw error;
+        return callLocalOpenClawAgentCli(message, options);
+      }
+    },
   };
 }
 
@@ -307,10 +356,26 @@ async function runLocalBrainTurn(message, options = {}) {
   };
 }
 
-async function callLocalOpenClawAgentCli(message, options = {}) {
+function shouldFallbackToLocalAgentCli(error) {
+  const text = String(error?.message || error || "").toLowerCase();
+  return [
+    "gateway not connected",
+    "gateway request timeout",
+    "gateway closed",
+    "gateway connect failed",
+    "gateway token mismatch",
+    "provide gateway auth token",
+    "set gateway.remote.token to match gateway.auth.token",
+    "econnrefused",
+    "connect econnrefused",
+    "connect failed",
+    "websocket",
+  ].some((needle) => text.includes(needle));
+}
+
+async function invokeOpenClawAgentCli(message, options = {}, executionMode = "local") {
   const agentArgs = [
     "agent",
-    "--local",
     "--agent",
     options.agentId || LOCAL_BRAIN_AGENT_ID,
     "--message",
@@ -322,12 +387,17 @@ async function callLocalOpenClawAgentCli(message, options = {}) {
     "--json",
   ];
 
+  if (executionMode === "local") {
+    agentArgs.splice(1, 0, "--local");
+  }
+
   if (options.sessionId) {
     agentArgs.push("--session-id", options.sessionId);
   }
 
   const invocation = resolveOpenClawCliInvocation();
   const args = [...invocation.argsPrefix, ...agentArgs];
+  const gatewayToken = executionMode === "gateway" ? resolveGatewayCliToken() : null;
 
   let stdout;
   let stderr;
@@ -338,6 +408,7 @@ async function callLocalOpenClawAgentCli(message, options = {}) {
       env: {
         ...process.env,
         OPENCLAW_GATEWAY_PORT: String(OPENCLAW_GATEWAY_PORT),
+        ...(gatewayToken ? { OPENCLAW_GATEWAY_TOKEN: gatewayToken } : {}),
       },
       shell: invocation.mode === "shell-cli-fallback" && /\.(cmd|bat)$/i.test(String(OPENCLAW_CLI_PATH || "")),
       maxBuffer: 1024 * 1024,
@@ -345,7 +416,7 @@ async function callLocalOpenClawAgentCli(message, options = {}) {
   } catch (error) {
     const launcher = [invocation.command, ...args].join(" ");
     console.error(
-      `[bridge] local brain invocation failed mode=${invocation.mode} cli_js=${invocation.resolvedCliJsPath || "none"} launcher=${launcher}`,
+      `[bridge] ${executionMode} brain invocation failed mode=${invocation.mode} cli_js=${invocation.resolvedCliJsPath || "none"} launcher=${launcher}`,
     );
     throw error;
   }
@@ -376,9 +447,17 @@ async function callLocalOpenClawAgentCli(message, options = {}) {
     raw: parsed,
     stderr,
     text: extractedText,
-    adapterMode: "cli-subprocess",
+    adapterMode: executionMode === "local" ? "cli-subprocess" : "gateway-cli",
     sessionId: result?.meta?.agentMeta?.sessionId || result?.sessionId || result?.session?.id || result?.session_id || parsed?.sessionId || null,
   };
+}
+
+async function callGatewayOpenClawAgentCli(message, options = {}) {
+  return invokeOpenClawAgentCli(message, options, "gateway");
+}
+
+async function callLocalOpenClawAgentCli(message, options = {}) {
+  return invokeOpenClawAgentCli(message, options, "local");
 }
 
 function startLongTurnNotice(bridge, input) {
