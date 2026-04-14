@@ -1,4 +1,4 @@
-import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
+import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { registerInstallCommand } from "./src/commands/install.js";
 import { registerDoctorCommand } from "./src/commands/doctor.js";
 import { registerAddAgentCommand } from "./src/commands/add-agent.js";
