@@ -103,7 +103,7 @@ These endpoints are legacy compatibility surfaces. Prefer project recurring-task
 - **`GET /api/mcp/folders/{id}/contents`**: List child folders and artifacts in a folder.
 
 #### Artifact endpoints
-- **`POST /api/mcp/artifacts`**: Create an artifact record directly.
+- **`POST /api/mcp/artifacts`**: Create artifact metadata or an external-storage reference directly.
 - **`POST /api/mcp/artifacts/upload`**: Upload a file-backed artifact via multipart form-data.
 - **`GET /api/mcp/artifacts`**: Search/list artifacts. Supported filters include `projectId`, `taskId`, `folderId`, `customerId`, `agentId`, `kind`, `artifactClass`, `importance`, `contentType`, `isCanonical`, `search`, `startDate`, `endDate`.
 - **`GET /api/mcp/artifacts/{id}`**: Read artifact metadata.
@@ -120,6 +120,8 @@ Artifacts are no longer required to belong to both a project and task. They may 
 Folders are first-class and should be used intentionally. Prefer creating folders and placing artifacts into them instead of relying on flat uploads.
 
 New file-backed artifacts should default to Bunny-backed storage via the upload endpoints. Emperor DB remains the metadata/search/permissions layer; Bunny stores the blob contents.
+
+Inline `contentText` storage is disabled on `POST /api/mcp/artifacts`. For new bytes, use `POST /api/mcp/artifacts/upload`. Keep `POST /api/mcp/artifacts` for metadata-first creation or externally stored content references.
 
 `POST /api/mcp/artifacts/upload` expects multipart form-data with:
 
