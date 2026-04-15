@@ -86,11 +86,17 @@ Important current behavior:
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/artifacts` | `GET/POST` | List or create artifact records |
+| `/artifacts` | `GET/POST` | List artifacts or create metadata/external-reference records |
 | `/artifacts/upload` | `POST` | Upload file-backed artifacts |
 | `/artifacts/{id}` | `GET/PATCH` | Read or update artifact metadata |
 | `/artifacts/{id}/download` | `GET` | Download artifact content |
 | `/artifacts/{id}/delete` | `DELETE` | Archive an artifact |
+
+Important storage rule:
+
+- new artifact bytes should go through `/artifacts/upload`
+- `/artifacts` should be treated as metadata/external-reference creation, not inline blob storage
+- inline `contentText` storage for new artifact content is disabled on the MCP create route
 
 ### Uploading File-Backed Artifacts
 
@@ -148,6 +154,7 @@ curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
 Behavior summary:
 
 - use `/artifacts/upload` when you are creating a new file-backed artifact
+- use `/artifacts` when you are creating metadata around already-stored external content
 - use `/artifacts/{id}` when you are editing metadata only
 - use `/artifacts/{id}/replace` when new bytes should replace the existing artifact identity
 - use `/artifacts/{id}/move` when the file should stay the same but move folder/path

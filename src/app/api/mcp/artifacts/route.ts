@@ -177,6 +177,12 @@ export async function POST(req: NextRequest) {
             path,
         } = body;
 
+        if (typeof contentText === "string" && contentText.length > 0) {
+            return NextResponse.json({
+                error: "Inline artifact content is disabled. Use /artifacts/upload for new bytes and keep /artifacts for metadata or external storage references.",
+            }, { status: 400 });
+        }
+
         let internalAgentId = null;
         if (agentId) {
             internalAgentId = await resolveAgentId(companyId, agentId);
