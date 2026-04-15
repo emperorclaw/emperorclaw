@@ -121,6 +121,12 @@ Folders are first-class and should be used intentionally. Prefer creating folder
 
 New file-backed artifacts should default to Bunny-backed storage via the upload endpoints. Emperor DB remains the metadata/search/permissions layer; Bunny stores the blob contents.
 
+`POST /api/mcp/artifacts/upload` expects multipart form-data with:
+
+- required: `file`, `kind`, and one of `projectId` or `customerId`
+- optional: `taskId`, `folderId`, `title`, `artifactClass`, `importance`, `contentType`, `metadataJson`, `agentId`, `visibility`, `retentionPolicy`, `checksum`
+- rule: `taskId` requires `projectId`
+
 Canonical tenant-safe Bunny keys follow this shape:
 
 ```text
