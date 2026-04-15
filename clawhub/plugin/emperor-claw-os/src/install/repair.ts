@@ -24,28 +24,41 @@ function parseEnvValue(rawValue: string): string {
 export async function repairAllAgents(paths: EmperorPluginPaths, api: any): Promise<string[]> {
   const manifests = loadManifests(paths);
   const repaired: string[] = [];
+  const pluginConfig = api?.pluginConfig || {};
+  const defaultApiUrl = String(pluginConfig.apiUrl || "https://emperorclaw.malecu.eu");
+  const defaultToken = String(
+    pluginConfig.apiToken
+    || pluginConfig.token
+    || pluginConfig.emperorToken
+    || "",
+  );
+  const defaultOwnerName = String(pluginConfig.defaultOwnerName || "Admin");
+  const defaultOwnerTimezone = String(pluginConfig.defaultOwnerTimezone || "UTC");
   for (const manifest of manifests) {
     const envFile = `${manifest.companionDir}/.env`;
-    if (!fs.existsSync(envFile)) continue;
-    const envText = fs.readFileSync(envFile, "utf8");
-    const vars = Object.fromEntries(
-      envText.split(/\n+/).filter(Boolean).map((line) => {
-        const idx = line.indexOf("=");
-        const key = line.slice(0, idx);
-        const value = parseEnvValue(line.slice(idx + 1));
-        return [key, value];
-      })
-    );
+    const vars = fs.existsSync(envFile)
+      ? Object.fromEntries(
+          fs.readFileSync(envFile, "utf8").split(/\n+/).filter(Boolean).map((line) => {
+            const idx = line.indexOf("=");
+            const key = line.slice(0, idx);
+            const value = parseEnvValue(line.slice(idx + 1));
+            return [key, value];
+          }),
+        )
+      : {};
+
+    const token = String(vars.EMPEROR_CLAW_API_TOKEN || defaultToken || "").trim();
+    if (!token) continue;
 
     await bootstrapAgent(paths, {
-      apiUrl: String(vars.EMPEROR_CLAW_API_URL || api.pluginConfig?.apiUrl || "https://emperorclaw.malecu.eu"),
-      token: String(vars.EMPEROR_CLAW_API_TOKEN || ""),
+      apiUrl: String(vars.EMPEROR_CLAW_API_URL || defaultApiUrl),
+      token,
       agentName: String(vars.EMPEROR_CLAW_AGENT_NAME || manifest.agentName),
       localBrainAgentId: String(vars.EMPEROR_CLAW_BRAIN_AGENT_ID || manifest.localBrainAgentId),
       profile: String(vars.EMPEROR_CLAW_AGENT_PROFILE || manifest.profile || "operator") as "operator" | "manager",
-      ownerName: String(api.pluginConfig?.defaultOwnerName || "Admin"),
-      ownerTimezone: String(api.pluginConfig?.defaultOwnerTimezone || "UTC"),
-      thinking: String(vars.EMPEROR_CLAW_BRAIN_THINKING || "medium")
+      ownerName: defaultOwnerName,
+      ownerTimezone: defaultOwnerTimezone,
+      thinking: String(vars.EMPEROR_CLAW_BRAIN_THINKING || "medium"),
     });
     repaired.push(manifest.agentName);
   }
