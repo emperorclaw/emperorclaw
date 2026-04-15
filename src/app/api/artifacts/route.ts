@@ -33,7 +33,6 @@ export async function GET() {
             importance: artifacts.importance,
             contentType: artifacts.contentType,
             contentText: artifacts.contentText,
-            storageUrl: artifacts.storageUrl,
             originalFilename: artifacts.originalFilename,
             sizeBytes: artifacts.sizeBytes,
             isCanonical: artifacts.isCanonical,

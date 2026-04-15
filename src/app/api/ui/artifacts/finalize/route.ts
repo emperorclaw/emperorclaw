@@ -9,6 +9,7 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { buildChildPath } from "@/lib/path-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 
 export async function POST(req: NextRequest) {
     try {
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
             retentionPolicy: retentionPolicy || null,
         }).returning();
 
-        return NextResponse.json({ message: "Artifact finalized", artifact }, { status: 201 });
+        return NextResponse.json({ message: "Artifact finalized", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });

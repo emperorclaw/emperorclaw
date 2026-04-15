@@ -96,8 +96,6 @@ export async function GET(req: NextRequest) {
             contentType: artifacts.contentType,
             contentText: artifacts.contentText,
             previewText: artifacts.previewText,
-            storageKey: artifacts.storageKey,
-            storageUrl: artifacts.storageUrl,
             originalFilename: artifacts.originalFilename,
             sizeBytes: artifacts.sizeBytes,
             sha256: artifacts.sha256,
