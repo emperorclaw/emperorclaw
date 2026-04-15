@@ -8,6 +8,11 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import {
+    ArtifactStorageQuotaError,
+    assertCanStoreArtifactBytes,
+    buildArtifactQuotaErrorResponse,
+} from "@/lib/artifact-quota";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/replace">) {
     const auth = await verifyMcpToken(req);
@@ -62,6 +67,11 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
             "application/octet-stream";
 
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
+        await assertCanStoreArtifactBytes({
+            companyId,
+            incomingSizeBytes: buffer.length,
+            replacingArtifactSizeBytes: artifact.sizeBytes,
+        });
         const uploadResult = await storageAdapter.upload({
             companyId,
             logicalPath: newLogicalPath,
@@ -102,6 +112,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
 
         return NextResponse.json({ artifact: updatedArtifact });
     } catch (error) {
+        if (error instanceof ArtifactStorageQuotaError) {
+            return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
+        }
         const message = error instanceof Error ? error.message : "Unable to replace artifact";
         return NextResponse.json({ error: message }, { status: 500 });
     }

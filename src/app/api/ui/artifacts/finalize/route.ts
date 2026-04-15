@@ -10,6 +10,11 @@ import { prepareArtifactRecord } from "@/lib/artifacts";
 import { buildChildPath } from "@/lib/path-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
+import {
+    ArtifactStorageQuotaError,
+    assertCanStoreArtifactBytes,
+    buildArtifactQuotaErrorResponse,
+} from "@/lib/artifact-quota";
 
 export async function POST(req: NextRequest) {
     try {
@@ -80,6 +85,11 @@ export async function POST(req: NextRequest) {
             logicalPath: resolvedPath,
         });
 
+        await assertCanStoreArtifactBytes({
+            companyId,
+            incomingSizeBytes: download.sizeBytes,
+        });
+
         const checksum = createHash("sha256").update(download.buffer).digest("hex");
         const storageUrl = storageAdapter.getDownloadUrl({ companyId, logicalPath: resolvedPath });
         const storageKey = storageAdapter.buildStorageKey(companyId, resolvedPath);
@@ -115,6 +125,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ message: "Artifact finalized", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
     } catch (error) {
+        if (error instanceof ArtifactStorageQuotaError) {
+            return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
+        }
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
     }

@@ -9,6 +9,11 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
+import {
+    ArtifactStorageQuotaError,
+    assertCanStoreArtifactBytes,
+    buildArtifactQuotaErrorResponse,
+} from "@/lib/artifact-quota";
 
 export async function POST(req: NextRequest) {
     try {
@@ -72,6 +77,11 @@ export async function POST(req: NextRequest) {
         const checksum = getFormStringValue(form, "checksum");
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
 
+        await assertCanStoreArtifactBytes({
+            companyId,
+            incomingSizeBytes: buffer.length,
+        });
+
         const uploadResult = await storageAdapter.upload({
             companyId,
             logicalPath,
@@ -114,6 +124,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ message: "Artifact uploaded", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
     } catch (error) {
+        if (error instanceof ArtifactStorageQuotaError) {
+            return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
+        }
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
     }
