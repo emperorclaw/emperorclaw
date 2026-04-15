@@ -27,9 +27,12 @@ import {
     FolderOpen,
     FolderPlus,
     Loader2,
+    Maximize2,
     MoreHorizontal,
     PencilLine,
+    Plus,
     RefreshCcw,
+    Save,
     Search,
     Settings2,
     Trash2,
@@ -190,7 +193,7 @@ type PreviewState =
     | { state: "markdown"; text: string }
     | { state: "json"; text: string }
     | { state: "text"; text: string }
-    | { state: "csv"; rows: string[][] }
+    | { state: "csv"; rows: string[][]; text: string }
     | { state: "image"; url: string }
     | { state: "pdf"; url: string }
     | { state: "unsupported"; message: string };
@@ -252,6 +255,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [isSavingArtifact, setIsSavingArtifact] = useState(false);
     const [isSavingLocation, setIsSavingLocation] = useState(false);
     const [isSavingFolder, setIsSavingFolder] = useState(false);
+    const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
+    const [previewDialogTab, setPreviewDialogTab] = useState("preview");
+    const [csvEditorRows, setCsvEditorRows] = useState<string[][]>([]);
+    const [csvRawDraft, setCsvRawDraft] = useState("");
+    const [csvSourceText, setCsvSourceText] = useState("");
+    const [csvRawError, setCsvRawError] = useState<string | null>(null);
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -326,6 +335,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             artifactLocationDraft.folderId !== (artifactDetail.folderId ?? ROOT_ID)
         )
     );
+    const isCsvArtifact = preview.state === "csv";
+    const isCsvDirty = normalizeTextForCompare(csvRawDraft) !== normalizeTextForCompare(csvSourceText);
 
     async function loadFolder(folderId: string, options?: { silent?: boolean }) {
         if (!options?.silent) {
@@ -474,6 +485,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         if (!artifactDetail) {
             setArtifactDraft(DEFAULT_ARTIFACT_DRAFT);
             setArtifactLocationDraft(DEFAULT_LOCATION_DRAFT);
+            setIsPreviewDialogOpen(false);
+            setPreviewDialogTab("preview");
+            setCsvEditorRows([]);
+            setCsvRawDraft("");
+            setCsvSourceText("");
+            setCsvRawError(null);
             return;
         }
         setArtifactDraft({
@@ -494,6 +511,25 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             folderId: artifactDetail.folderId ?? ROOT_ID,
         });
     }, [artifactDetail?.id, artifactDetail?.updatedAt]);
+
+    useEffect(() => {
+        if (preview.state !== "csv") {
+            setCsvEditorRows([]);
+            setCsvRawDraft("");
+            setCsvSourceText("");
+            setCsvRawError(null);
+            if (previewDialogTab !== "preview") {
+                setPreviewDialogTab("preview");
+            }
+            return;
+        }
+
+        const normalizedRows = normalizeCsvRows(parseCsvDocument(preview.text));
+        setCsvEditorRows(normalizedRows);
+        setCsvRawDraft(preview.text);
+        setCsvSourceText(preview.text);
+        setCsvRawError(null);
+    }, [artifactDetail?.id, preview.state === "csv" ? preview.text : ""]);
 
     useEffect(() => {
         if (!artifactDetail) {
@@ -526,7 +562,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         return;
                     }
                     if (previewMode === "csv") {
-                        setPreview({ state: "csv", rows: parseCsvPreview(text) });
+                        setPreview({ state: "csv", rows: parseCsvPreview(text), text });
                         return;
                     }
                     setPreview({ state: "text", text });
@@ -787,7 +823,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
     async function handleReplaceArtifact(file: File) {
         if (!artifactDetail) {
-            return;
+            return false;
         }
 
         const formData = new FormData();
@@ -814,10 +850,90 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 await fetchSearchResults();
             }
             toast.success("Artifact content replaced");
+            return true;
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Unable to replace artifact");
+            return false;
         } finally {
             setIsSavingArtifact(false);
+        }
+    }
+
+    function updateCsvRows(nextRows: string[][]) {
+        const normalizedRows = normalizeCsvRows(nextRows);
+        setCsvEditorRows(normalizedRows);
+        setCsvRawDraft(serializeCsv(normalizedRows));
+        setCsvRawError(null);
+    }
+
+    function handleCsvCellChange(rowIndex: number, columnIndex: number, value: string) {
+        updateCsvRows(
+            csvEditorRows.map((row, currentRowIndex) =>
+                currentRowIndex === rowIndex
+                    ? row.map((cell, currentColumnIndex) => currentColumnIndex === columnIndex ? value : cell)
+                    : row
+            )
+        );
+    }
+
+    function handleAddCsvRow() {
+        const columnCount = getCsvColumnCount(csvEditorRows);
+        updateCsvRows([...csvEditorRows, Array.from({ length: columnCount }, () => "")]);
+    }
+
+    function handleDeleteCsvRow(rowIndex: number) {
+        const nextRows = csvEditorRows.filter((_, currentRowIndex) => currentRowIndex !== rowIndex);
+        updateCsvRows(nextRows.length ? nextRows : [[""]]);
+    }
+
+    function handleAddCsvColumn() {
+        updateCsvRows(csvEditorRows.map((row) => [...row, ""]));
+    }
+
+    function handleDeleteCsvColumn(columnIndex: number) {
+        const columnCount = getCsvColumnCount(csvEditorRows);
+        if (columnCount <= 1) {
+            updateCsvRows(csvEditorRows.map(() => [""]));
+            return;
+        }
+        updateCsvRows(csvEditorRows.map((row) => row.filter((_, currentColumnIndex) => currentColumnIndex !== columnIndex)));
+    }
+
+    function handleResetCsvDraft() {
+        const normalizedRows = normalizeCsvRows(parseCsvDocument(csvSourceText));
+        setCsvEditorRows(normalizedRows);
+        setCsvRawDraft(csvSourceText);
+        setCsvRawError(null);
+    }
+
+    function handleApplyRawCsvToGrid() {
+        try {
+            const normalizedRows = normalizeCsvRows(parseCsvDocument(csvRawDraft));
+            setCsvEditorRows(normalizedRows);
+            setCsvRawError(null);
+            toast.success("CSV grid refreshed");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to parse CSV";
+            setCsvRawError(message);
+            toast.error(message);
+        }
+    }
+
+    async function handleSaveCsvDraft() {
+        if (!artifactDetail) {
+            return;
+        }
+
+        const nextFileName =
+            artifactLocationDraft.name.trim() ||
+            artifactDetail.originalFilename ||
+            `${deriveDisplayName(artifactDetail)}.csv`;
+        const file = new window.File([csvRawDraft], nextFileName, { type: "text/csv;charset=utf-8" });
+        const didReplace = await handleReplaceArtifact(file);
+        if (didReplace) {
+            setCsvSourceText(csvRawDraft);
+            setCsvRawError(null);
+            setPreviewDialogTab("preview");
         }
     }
 
@@ -1323,6 +1439,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         onReplace={() => replaceInputRef.current?.click()}
                                         onDownload={() => handleDownloadArtifact(artifactDetail.id)}
                                         onDelete={() => void handleDeleteArtifact(artifactDetail.id)}
+                                        onOpenLargePreview={() => {
+                                            setPreviewDialogTab("preview");
+                                            setIsPreviewDialogOpen(true);
+                                        }}
                                     />
                                 )}
                             </div>
@@ -1371,6 +1491,32 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onCustomerChange={setUploadCustomerId}
                 onMetadataJsonChange={setUploadMetadataJson}
                 onSubmit={() => void handleUpload()}
+            />
+
+            <PreviewDialog
+                open={isPreviewDialogOpen}
+                onOpenChange={setIsPreviewDialogOpen}
+                artifact={artifactDetail}
+                preview={preview}
+                activeTab={previewDialogTab}
+                onTabChange={setPreviewDialogTab}
+                csvRows={csvEditorRows}
+                csvRawDraft={csvRawDraft}
+                csvRawError={csvRawError}
+                isSavingCsv={isSavingArtifact}
+                isCsvDirty={isCsvDirty}
+                onCsvCellChange={handleCsvCellChange}
+                onAddCsvRow={handleAddCsvRow}
+                onDeleteCsvRow={handleDeleteCsvRow}
+                onAddCsvColumn={handleAddCsvColumn}
+                onDeleteCsvColumn={handleDeleteCsvColumn}
+                onCsvRawDraftChange={(value) => {
+                    setCsvRawDraft(value);
+                    setCsvRawError(null);
+                }}
+                onApplyRawCsvToGrid={handleApplyRawCsvToGrid}
+                onResetCsvDraft={handleResetCsvDraft}
+                onSaveCsvDraft={() => void handleSaveCsvDraft()}
             />
 
             <input ref={replaceInputRef} type="file" className="hidden" onChange={handleReplaceInput} />
@@ -1661,6 +1807,7 @@ function ArtifactInspector(props: {
     onReplace: () => void;
     onDownload: () => void;
     onDelete: () => void;
+    onOpenLargePreview: () => void;
 }) {
     return (
         <Tabs value={props.inspectorTab} onValueChange={props.onInspectorTabChange}>
@@ -1693,6 +1840,10 @@ function ArtifactInspector(props: {
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onDownload}>
                             <ArrowDownToLine className="size-4" />
                             Download
+                        </Button>
+                        <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onOpenLargePreview}>
+                            <Maximize2 className="size-4" />
+                            {props.preview.state === "csv" ? "Open CSV Workspace" : "Open Large View"}
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onReplace}>
                             <PencilLine className="size-4" />
@@ -2066,6 +2217,229 @@ function UploadDialog(props: {
     );
 }
 
+function PreviewDialog(props: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    artifact: ArtifactDetail | null;
+    preview: PreviewState;
+    activeTab: string;
+    onTabChange: (value: string) => void;
+    csvRows: string[][];
+    csvRawDraft: string;
+    csvRawError: string | null;
+    isSavingCsv: boolean;
+    isCsvDirty: boolean;
+    onCsvCellChange: (rowIndex: number, columnIndex: number, value: string) => void;
+    onAddCsvRow: () => void;
+    onDeleteCsvRow: (rowIndex: number) => void;
+    onAddCsvColumn: () => void;
+    onDeleteCsvColumn: (columnIndex: number) => void;
+    onCsvRawDraftChange: (value: string) => void;
+    onApplyRawCsvToGrid: () => void;
+    onResetCsvDraft: () => void;
+    onSaveCsvDraft: () => void;
+}) {
+    const isCsvPreview = props.preview.state === "csv";
+    const title = props.artifact ? deriveDisplayName(props.artifact) : "Artifact preview";
+
+    return (
+        <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+            <DialogContent className="max-h-[92vh] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 sm:max-w-6xl">
+                <div className="flex h-full max-h-[92vh] flex-col">
+                    <DialogHeader className="border-b border-zinc-800 px-6 py-5">
+                        <DialogTitle>{title}</DialogTitle>
+                        <DialogDescription className="text-zinc-400">
+                            {isCsvPreview
+                                ? "Review the file in a larger workspace and edit CSV content without leaving the artifact panel."
+                                : "Expanded preview for comfortable reading and verification."}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="min-h-0 flex-1 overflow-hidden px-6 py-5">
+                        {isCsvPreview ? (
+                            <Tabs value={props.activeTab} onValueChange={props.onTabChange} className="flex h-full min-h-0 flex-col">
+                                <TabsList variant="line" className="mb-4 border-b border-zinc-800 pb-1">
+                                    <TabsTrigger value="preview">Preview</TabsTrigger>
+                                    <TabsTrigger value="table">Grid Editor</TabsTrigger>
+                                    <TabsTrigger value="raw">Raw CSV</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="preview" className="min-h-0 flex-1">
+                                    <div className="h-full overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+                                        <PreviewPanel preview={props.preview} />
+                                    </div>
+                                </TabsContent>
+                                <TabsContent value="table" className="min-h-0 flex-1">
+                                    <CsvGridEditor
+                                        rows={props.csvRows}
+                                        onCellChange={props.onCsvCellChange}
+                                        onAddRow={props.onAddCsvRow}
+                                        onDeleteRow={props.onDeleteCsvRow}
+                                        onAddColumn={props.onAddCsvColumn}
+                                        onDeleteColumn={props.onDeleteCsvColumn}
+                                    />
+                                </TabsContent>
+                                <TabsContent value="raw" className="min-h-0 flex-1">
+                                    <div className="flex h-full min-h-0 flex-col gap-4">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+                                            <span>
+                                                Edit the raw CSV directly when you need exact control over formatting or pasted data.
+                                            </span>
+                                            <Button
+                                                variant="outline"
+                                                className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                                                onClick={props.onApplyRawCsvToGrid}
+                                            >
+                                                Refresh Grid
+                                            </Button>
+                                        </div>
+                                        <Textarea
+                                            value={props.csvRawDraft}
+                                            onChange={(event) => props.onCsvRawDraftChange(event.target.value)}
+                                            className="min-h-0 flex-1 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
+                                        />
+                                        {props.csvRawError && (
+                                            <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                                                {props.csvRawError}
+                                            </div>
+                                        )}
+                                    </div>
+                                </TabsContent>
+                            </Tabs>
+                        ) : (
+                            <div className="h-full overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+                                <PreviewPanel preview={props.preview} />
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="border-t border-zinc-800 px-6 py-4 sm:justify-between">
+                        <div className="text-xs text-zinc-500">
+                            {isCsvPreview
+                                ? "Saving replaces the current CSV file while keeping the artifact record."
+                                : "Downloads and replacements still happen through the artifact actions."}
+                        </div>
+                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                            {isCsvPreview && (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                                        onClick={props.onResetCsvDraft}
+                                        disabled={props.isSavingCsv || !props.isCsvDirty}
+                                    >
+                                        <RefreshCcw className="size-4" />
+                                        Reset
+                                    </Button>
+                                    <Button onClick={props.onSaveCsvDraft} disabled={props.isSavingCsv || !props.isCsvDirty}>
+                                        {props.isSavingCsv ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                        Save CSV
+                                    </Button>
+                                </>
+                            )}
+                            <Button
+                                variant="outline"
+                                className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                                onClick={() => props.onOpenChange(false)}
+                            >
+                                Close
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function CsvGridEditor(props: {
+    rows: string[][];
+    onCellChange: (rowIndex: number, columnIndex: number, value: string) => void;
+    onAddRow: () => void;
+    onDeleteRow: (rowIndex: number) => void;
+    onAddColumn: () => void;
+    onDeleteColumn: (columnIndex: number) => void;
+}) {
+    const columnCount = getCsvColumnCount(props.rows);
+
+    return (
+        <div className="flex h-full min-h-0 flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-zinc-500">
+                    Grid editing is best for quick corrections, column cleanup, and row-level fixes.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onAddColumn}>
+                        <Plus className="size-4" />
+                        Add Column
+                    </Button>
+                    <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onAddRow}>
+                        <Plus className="size-4" />
+                        Add Row
+                    </Button>
+                </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80">
+                <table className="min-w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
+                        <tr>
+                            <th className="w-28 border-b border-r border-zinc-800 px-3 py-3 text-left text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                                Row
+                            </th>
+                            {Array.from({ length: columnCount }, (_, columnIndex) => (
+                                <th key={`column-${columnIndex}`} className="min-w-52 border-b border-zinc-800 px-3 py-3 text-left">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                                            Column {columnIndex + 1}
+                                        </span>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            className="text-zinc-500 hover:text-zinc-100"
+                                            onClick={() => props.onDeleteColumn(columnIndex)}
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </Button>
+                                    </div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {props.rows.map((row, rowIndex) => (
+                            <tr key={`csv-row-${rowIndex}`} className={rowIndex === 0 ? "bg-zinc-900/60" : ""}>
+                                <td className="border-r border-zinc-800 px-3 py-2 align-top">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs text-zinc-500">
+                                            {rowIndex === 0 ? "Header" : `Row ${rowIndex + 1}`}
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            className="text-zinc-500 hover:text-zinc-100"
+                                            onClick={() => props.onDeleteRow(rowIndex)}
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </Button>
+                                    </div>
+                                </td>
+                                {row.map((cell, columnIndex) => (
+                                    <td key={`csv-cell-${rowIndex}-${columnIndex}`} className="border-l border-t border-zinc-800 p-2 align-top first:border-l-0">
+                                        <Input
+                                            value={cell}
+                                            onChange={(event) => props.onCellChange(rowIndex, columnIndex, event.target.value)}
+                                            className="border-zinc-700 bg-zinc-900 text-zinc-100"
+                                        />
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 function PreviewPanel({ preview }: { preview: PreviewState }) {
     if (preview.state === "idle" || preview.state === "loading") {
         return (
@@ -2288,11 +2662,88 @@ function formatJsonSafely(value: string) {
 }
 
 function parseCsvPreview(value: string) {
-    return value
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .slice(0, 25)
-        .map((line) => line.split(",").map((cell) => cell.trim()));
+    return normalizeCsvRows(parseCsvDocument(value).slice(0, 25));
+}
+
+function parseCsvDocument(value: string) {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cell = "";
+    let inQuotes = false;
+
+    for (let index = 0; index < value.length; index += 1) {
+        const current = value[index];
+        const next = value[index + 1];
+
+        if (current === "\"") {
+            if (inQuotes && next === "\"") {
+                cell += "\"";
+                index += 1;
+                continue;
+            }
+            inQuotes = !inQuotes;
+            continue;
+        }
+
+        if (!inQuotes && current === ",") {
+            row.push(cell);
+            cell = "";
+            continue;
+        }
+
+        if (!inQuotes && (current === "\n" || current === "\r")) {
+            if (current === "\r" && next === "\n") {
+                index += 1;
+            }
+            row.push(cell);
+            rows.push(row);
+            row = [];
+            cell = "";
+            continue;
+        }
+
+        cell += current;
+    }
+
+    if (cell.length > 0 || row.length > 0) {
+        row.push(cell);
+        rows.push(row);
+    }
+
+    return rows.length ? rows : [[""]];
+}
+
+function serializeCsv(rows: string[][]) {
+    return rows
+        .map((row) => row.map(escapeCsvCell).join(","))
+        .join("\n");
+}
+
+function escapeCsvCell(value: string) {
+    if (/[",\n\r]/.test(value)) {
+        return `"${value.replace(/"/g, "\"\"")}"`;
+    }
+    return value;
+}
+
+function normalizeCsvRows(rows: string[][]) {
+    const safeRows = rows.length ? rows.filter((row) => row.length > 0) : [[""]];
+    const columnCount = Math.max(1, ...safeRows.map((row) => row.length));
+    return safeRows.map((row) => {
+        const nextRow = [...row];
+        while (nextRow.length < columnCount) {
+            nextRow.push("");
+        }
+        return nextRow;
+    });
+}
+
+function getCsvColumnCount(rows: string[][]) {
+    return Math.max(1, ...rows.map((row) => row.length));
+}
+
+function normalizeTextForCompare(value: string) {
+    return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
 }
 
 function formatBytes(value: number) {

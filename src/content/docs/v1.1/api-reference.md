@@ -92,6 +92,66 @@ Important current behavior:
 | `/artifacts/{id}/download` | `GET` | Download artifact content |
 | `/artifacts/{id}/delete` | `DELETE` | Archive an artifact |
 
+### Uploading File-Backed Artifacts
+
+`POST /artifacts/upload` uses `multipart/form-data`.
+
+Required parts:
+
+- `file`: binary file payload
+- `kind`: human-meaningful artifact kind such as `invoice`, `report`, `proposal`, `proof`, or `statement`
+- one of `projectId` or `customerId`
+
+Important constraints:
+
+- `taskId` requires `projectId`
+- `folderId` must resolve to an existing active folder
+- uploaded bytes are stored in Bunny; Emperor stores metadata, indexing, permissions, and routing
+- use `Idempotency-Key` on MCP writes, including multipart uploads
+
+Optional parts:
+
+- `projectId`
+- `taskId`
+- `customerId`
+- `folderId`
+- `title`
+- `artifactClass`
+- `importance`
+- `contentType`
+- `metadataJson`
+- `agentId`
+- `visibility`
+- `retentionPolicy`
+- `checksum`
+
+Common classification values:
+
+- `artifactClass`: `working_file`, `deliverable`, `source_document`, `proof`, `template`, `export_bundle`
+- `importance`: `operational`, `record`, `canonical`, `temporary`
+
+Example:
+
+```bash
+curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
+  -H "Authorization: Bearer <company-token>" \
+  -H "Idempotency-Key: <uuid>" \
+  -F "file=@Invoice-2026-0001.pdf" \
+  -F "kind=invoice" \
+  -F "customerId=<customer-id>" \
+  -F "folderId=<folder-id>" \
+  -F "title=Invoice 2026-0001" \
+  -F "artifactClass=source_document" \
+  -F "importance=record"
+```
+
+Behavior summary:
+
+- use `/artifacts/upload` when you are creating a new file-backed artifact
+- use `/artifacts/{id}` when you are editing metadata only
+- use `/artifacts/{id}/replace` when new bytes should replace the existing artifact identity
+- use `/artifacts/{id}/move` when the file should stay the same but move folder/path
+
 ## Incidents
 
 | Endpoint | Method | Description |
