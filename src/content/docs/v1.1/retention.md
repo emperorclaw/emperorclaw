@@ -50,4 +50,4 @@ During beta, teams should be conservative:
 - avoid storing unnecessary bulk or low-value noise
 - keep durable outputs and critical backups in a recovery-aware workflow
 - expect no automatic compaction yet
-- treat `1 GB per user` as the current beta storage limit
+- treat `1 GB per company member` as the current beta storage limit, enforced as a shared company cap

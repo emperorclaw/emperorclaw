@@ -468,7 +468,7 @@ export function PublicHomePage() {
                   Powerful now. Still beta.
                 </h2>
                   <p className="max-w-3xl text-lg leading-8 text-zinc-400">
-                   Emperor Claw is free for now while in beta. Current beta storage is limited to 1 GB per user.
+                   Emperor Claw is free for now while in beta. Current beta storage is enforced at 1 GB per company member.
                    We do not guarantee safety, retention, recovery, or suitability of stored data. You remain
                    responsible for what you store here, and you should not place critical or irreplaceable
                    information in the system.
