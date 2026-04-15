@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
             kind: body.kind || "folder",
             metadataJson: body.metadataJson || {},
             createdByType: CREATED_BY_TYPE,
-            createdById: auth.companyToken?.id || null,
+            createdById: null,
         }).returning();
 
         const [folder] = (inserted as ArtifactFolderRecord[]);
