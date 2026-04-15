@@ -8,6 +8,7 @@ import { buildChildPath, deriveArtifactLogicalPath, sanitizePathSegment } from "
 import { storageAdapter } from "@/lib/storage";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/replace">) {
     try {
@@ -85,7 +86,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             eq(artifacts.companyId, companyId),
         )).returning();
 
-        return NextResponse.json({ artifact: updatedArtifact });
+        return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to replace artifact";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });

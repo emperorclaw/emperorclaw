@@ -8,6 +8,7 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 
 export async function POST(req: NextRequest) {
     try {
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
             retentionPolicy: retentionPolicy || null,
         }).returning();
 
-        return NextResponse.json({ message: "Artifact uploaded", artifact }, { status: 201 });
+        return NextResponse.json({ message: "Artifact uploaded", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });

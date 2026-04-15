@@ -7,6 +7,7 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { relocateArtifactBlob } from "@/lib/artifact-storage";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/move">) {
     try {
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             eq(artifacts.companyId, companyId),
         )).returning();
 
-        return NextResponse.json({ artifact: updatedArtifact });
+        return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to move artifact";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });

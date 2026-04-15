@@ -3,6 +3,7 @@ import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
+import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
@@ -34,9 +35,7 @@ export async function GET(
             contentText: artifacts.contentText,
             previewText: artifacts.previewText,
             searchText: artifacts.searchText,
-            storageUrl: artifacts.storageUrl,
             storageProvider: artifacts.storageProvider,
-            storageKey: artifacts.storageKey,
             originalFilename: artifacts.originalFilename,
             sourceKind: artifacts.sourceKind,
             sourceRef: artifacts.sourceRef,
@@ -67,7 +66,7 @@ export async function GET(
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
-        return NextResponse.json({ artifact });
+        return NextResponse.json({ artifact: sanitizeArtifactClientPayload(artifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
@@ -153,7 +152,7 @@ export async function PATCH(
             eq(artifacts.companyId, companyId),
         )).returning();
 
-        return NextResponse.json({ artifact: updatedArtifact });
+        return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });

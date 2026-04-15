@@ -64,6 +64,14 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    ARTIFACT_CLASS_OPTIONS,
+    ARTIFACT_IMPORTANCE_OPTIONS,
+    DEFAULT_ARTIFACT_CLASS,
+    DEFAULT_ARTIFACT_IMPORTANCE,
+    getArtifactClassLabel,
+    getArtifactImportanceLabel,
+} from "@/lib/artifact-taxonomy";
 import { cn } from "@/lib/utils";
 
 type ProjectOption = {
@@ -192,8 +200,8 @@ const ROOT_ID = "root";
 const DEFAULT_ARTIFACT_DRAFT: ArtifactDraft = {
     title: "",
     kind: "report",
-    artifactClass: "working_file",
-    importance: "operational",
+    artifactClass: DEFAULT_ARTIFACT_CLASS,
+    importance: DEFAULT_ARTIFACT_IMPORTANCE,
     visibility: "private",
     retentionPolicy: "",
     projectId: "",
@@ -249,8 +257,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [uploadTitle, setUploadTitle] = useState("");
     const [uploadKind, setUploadKind] = useState("report");
-    const [uploadArtifactClass, setUploadArtifactClass] = useState("working_file");
-    const [uploadImportance, setUploadImportance] = useState("operational");
+    const [uploadArtifactClass, setUploadArtifactClass] = useState(DEFAULT_ARTIFACT_CLASS);
+    const [uploadImportance, setUploadImportance] = useState(DEFAULT_ARTIFACT_IMPORTANCE);
     const [uploadProjectId, setUploadProjectId] = useState("");
     const [uploadTaskId, setUploadTaskId] = useState("");
     const [uploadCustomerId, setUploadCustomerId] = useState("");
@@ -1671,6 +1679,8 @@ function ArtifactInspector(props: {
                             <p className="truncate text-sm text-zinc-400">{props.artifact.path || props.artifact.originalFilename || props.artifact.kind}</p>
                             <div className="mt-2 flex flex-wrap gap-2">
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">{props.artifact.kind}</Badge>
+                                <Badge variant="outline" className="border-zinc-700 text-zinc-300">{getArtifactClassLabel(props.artifact.artifactClass)}</Badge>
+                                <Badge variant="outline" className="border-zinc-700 text-zinc-300">{getArtifactImportanceLabel(props.artifact.importance)}</Badge>
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">{props.artifact.contentType}</Badge>
                                 {props.artifact.isCanonical && <Badge className="bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/15">canonical</Badge>}
                             </div>
@@ -1716,32 +1726,6 @@ function ArtifactInspector(props: {
                             >
                                 <option value="private">private</option>
                                 <option value="company">company</option>
-                            </select>
-                        </Field>
-                        <Field label="Artifact class">
-                            <select
-                                value={props.draft.artifactClass}
-                                onChange={(event) => props.onDraftChange((current) => ({ ...current, artifactClass: event.target.value }))}
-                                className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
-                            >
-                                <option value="source_document">source_document</option>
-                                <option value="working_file">working_file</option>
-                                <option value="proof">proof</option>
-                                <option value="deliverable">deliverable</option>
-                                <option value="template">template</option>
-                                <option value="export_bundle">export_bundle</option>
-                            </select>
-                        </Field>
-                        <Field label="Importance">
-                            <select
-                                value={props.draft.importance}
-                                onChange={(event) => props.onDraftChange((current) => ({ ...current, importance: event.target.value }))}
-                                className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
-                            >
-                                <option value="temporary">temporary</option>
-                                <option value="operational">operational</option>
-                                <option value="record">record</option>
-                                <option value="canonical">canonical</option>
                             </select>
                         </Field>
                         <Field label="Project">
@@ -1792,14 +1776,55 @@ function ArtifactInspector(props: {
                                 ))}
                             </select>
                         </Field>
-                        <Field label="Retention policy">
-                            <Input
-                                value={props.draft.retentionPolicy}
-                                onChange={(event) => props.onDraftChange((current) => ({ ...current, retentionPolicy: event.target.value }))}
-                                className="border-zinc-800 bg-zinc-900 text-zinc-100"
-                            />
-                        </Field>
                     </div>
+                    <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
+                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">
+                            Classification & advanced
+                        </summary>
+                        <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
+                            <p className="text-xs text-zinc-500">
+                                These fields are mostly filing hints for the system. Most users only need title, scope, location, and canonical state.
+                            </p>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <Field label="Artifact class">
+                                    <select
+                                        value={props.draft.artifactClass}
+                                        onChange={(event) => props.onDraftChange((current) => ({ ...current, artifactClass: event.target.value }))}
+                                        className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                                    >
+                                        {ARTIFACT_CLASS_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field label="Lifecycle">
+                                    <select
+                                        value={props.draft.importance}
+                                        onChange={(event) => props.onDraftChange((current) => ({ ...current, importance: event.target.value }))}
+                                        className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                                    >
+                                        {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field label="Retention policy">
+                                    <Input
+                                        value={props.draft.retentionPolicy}
+                                        onChange={(event) => props.onDraftChange((current) => ({ ...current, retentionPolicy: event.target.value }))}
+                                        className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                                    />
+                                </Field>
+                            </div>
+                            <Field label="Metadata JSON">
+                                <Textarea
+                                    value={props.draft.metadataJson}
+                                    onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
+                                    className="min-h-40 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
+                                />
+                            </Field>
+                        </div>
+                    </details>
                     <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-300">
                         <input
                             type="checkbox"
@@ -1826,13 +1851,6 @@ function ArtifactInspector(props: {
                                 <option key={folder.id} value={folder.id}>{folder.pathLabel}</option>
                             ))}
                         </select>
-                    </Field>
-                    <Field label="Metadata JSON">
-                        <Textarea
-                            value={props.draft.metadataJson}
-                            onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
-                            className="min-h-40 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
-                        />
                     </Field>
                     <div className="grid gap-3 text-xs text-zinc-400 sm:grid-cols-2">
                         <InfoPill label="Path" value={props.artifact.path || "-"} />
@@ -2007,7 +2025,7 @@ function UploadDialog(props: {
                         </summary>
                         <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
                             <p className="text-xs text-zinc-500">
-                                Defaults are usually right: `report`, `working_file`, `operational`.
+                                Defaults are usually right. Most uploads only need a title and the right project or customer scope.
                             </p>
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label="Kind">
@@ -2015,20 +2033,16 @@ function UploadDialog(props: {
                                 </Field>
                                 <Field label="Artifact class">
                                     <select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                        <option value="source_document">source_document</option>
-                                        <option value="working_file">working_file</option>
-                                        <option value="proof">proof</option>
-                                        <option value="deliverable">deliverable</option>
-                                        <option value="template">template</option>
-                                        <option value="export_bundle">export_bundle</option>
+                                        {ARTIFACT_CLASS_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
                                     </select>
                                 </Field>
-                                <Field label="Importance">
+                                <Field label="Lifecycle">
                                     <select value={props.uploadImportance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
-                                        <option value="temporary">temporary</option>
-                                        <option value="operational">operational</option>
-                                        <option value="record">record</option>
-                                        <option value="canonical">canonical</option>
+                                        {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
                                     </select>
                                 </Field>
                             </div>
@@ -2320,8 +2334,8 @@ function resetUploadState(
     setUploadFile(null);
     setUploadTitle("");
     setUploadKind("report");
-    setUploadArtifactClass("working_file");
-    setUploadImportance("operational");
+    setUploadArtifactClass(DEFAULT_ARTIFACT_CLASS);
+    setUploadImportance(DEFAULT_ARTIFACT_IMPORTANCE);
     setUploadMetadataJson("{}");
     setUploadProjectId(projectId);
     setUploadCustomerId(customerId);

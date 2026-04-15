@@ -1,23 +1,17 @@
 import { createHash } from "crypto";
+import {
+    ARTIFACT_CLASS_OPTIONS,
+    ARTIFACT_IMPORTANCE_OPTIONS,
+    DEFAULT_ARTIFACT_CLASS,
+    DEFAULT_ARTIFACT_IMPORTANCE,
+} from "@/lib/artifact-taxonomy";
 
-const ALLOWED_ARTIFACT_CLASSES = new Set([
-    "source_document",
-    "working_file",
-    "proof",
-    "deliverable",
-    "template",
-    "export_bundle",
-]);
+const ALLOWED_ARTIFACT_CLASSES = new Set<string>(ARTIFACT_CLASS_OPTIONS.map((option) => option.value));
 
-const ALLOWED_IMPORTANCE = new Set([
-    "temporary",
-    "operational",
-    "record",
-    "canonical",
-]);
+const ALLOWED_IMPORTANCE = new Set<string>(ARTIFACT_IMPORTANCE_OPTIONS.map((option) => option.value));
 
 export function normalizeArtifactClass(value?: string | null) {
-    const normalized = (value || "working_file").trim().toLowerCase();
+    const normalized = (value || DEFAULT_ARTIFACT_CLASS).trim().toLowerCase();
     if (!ALLOWED_ARTIFACT_CLASSES.has(normalized)) {
         throw new Error(`Unsupported artifactClass: ${value}`);
     }
@@ -25,7 +19,9 @@ export function normalizeArtifactClass(value?: string | null) {
 }
 
 export function normalizeArtifactImportance(value?: string | null, artifactClass?: string | null) {
-    const fallback = artifactClass === "deliverable" || artifactClass === "export_bundle" ? "record" : "operational";
+    const fallback = artifactClass === "deliverable" || artifactClass === "export_bundle"
+        ? "record"
+        : DEFAULT_ARTIFACT_IMPORTANCE;
     const normalized = (value || fallback).trim().toLowerCase();
     if (!ALLOWED_IMPORTANCE.has(normalized)) {
         throw new Error(`Unsupported importance: ${value}`);
@@ -70,6 +66,16 @@ export function sanitizeArtifact<T extends { metadataJson?: unknown }>(artifact:
         ...artifact,
         metadataJson: artifact.metadataJson || {},
     };
+}
+
+export function sanitizeArtifactClientPayload<T extends Record<string, unknown>>(artifact: T): Omit<T, "storageUrl" | "storageKey"> {
+    const { storageUrl, storageKey, ...rest } = artifact as T & {
+        storageUrl?: unknown;
+        storageKey?: unknown;
+    };
+    void storageUrl;
+    void storageKey;
+    return rest;
 }
 
 export type PreparedArtifactRecord = {

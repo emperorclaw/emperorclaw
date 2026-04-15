@@ -71,8 +71,6 @@ export async function GET(req: NextRequest) {
             importance: artifacts.importance,
             contentType: artifacts.contentType,
             previewText: artifacts.previewText,
-            storageUrl: artifacts.storageUrl,
-            storageKey: artifacts.storageKey,
             sizeBytes: artifacts.sizeBytes,
             folderId: artifacts.folderId,
             path: artifacts.path,
