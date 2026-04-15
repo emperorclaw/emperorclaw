@@ -113,6 +113,8 @@ Important constraints:
 - `taskId` requires `projectId`
 - `folderId` must resolve to an existing active folder
 - uploaded bytes are stored in Bunny; Emperor stores metadata, indexing, permissions, and routing
+- beta storage quota is enforced in code before upload and replace operations
+- the current beta allowance is `1 GB` per company member, enforced as a company-scoped total
 - use `Idempotency-Key` on MCP writes, including multipart uploads
 
 Optional parts:
@@ -158,6 +160,7 @@ Behavior summary:
 - use `/artifacts/{id}` when you are editing metadata only
 - use `/artifacts/{id}/replace` when new bytes should replace the existing artifact identity
 - use `/artifacts/{id}/move` when the file should stay the same but move folder/path
+- expect `413` if the enforced storage quota would be exceeded
 
 ## Incidents
 

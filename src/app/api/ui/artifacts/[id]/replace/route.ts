@@ -9,6 +9,11 @@ import { storageAdapter } from "@/lib/storage";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
+import {
+    ArtifactStorageQuotaError,
+    assertCanStoreArtifactBytes,
+    buildArtifactQuotaErrorResponse,
+} from "@/lib/artifact-quota";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/replace">) {
     try {
@@ -54,6 +59,11 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             "application/octet-stream";
 
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
+        await assertCanStoreArtifactBytes({
+            companyId,
+            incomingSizeBytes: buffer.length,
+            replacingArtifactSizeBytes: artifact.sizeBytes,
+        });
         const uploadResult = await storageAdapter.upload({
             companyId,
             logicalPath: nextLogicalPath,
@@ -88,6 +98,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
 
         return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
+        if (error instanceof ArtifactStorageQuotaError) {
+            return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
+        }
         const message = error instanceof Error ? error.message : "Unable to replace artifact";
         return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
     }

@@ -14,6 +14,10 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import {
+    ArtifactStorageQuotaError,
+    assertCanStoreArtifactBytes,
+} from "@/lib/artifact-quota";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -94,6 +98,11 @@ export async function POST(req: NextRequest) {
 
         const checksum = getFormStringValue(form, "checksum");
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
+
+        await assertCanStoreArtifactBytes({
+            companyId,
+            incomingSizeBytes: buffer.length,
+        });
 
         const uploadResult = await storageAdapter.upload({
             companyId,
@@ -188,6 +197,9 @@ async function loadCustomer(companyId: string, customerId: string) {
 }
 
 function mapErrorStatus(error: unknown) {
+    if (error instanceof ArtifactStorageQuotaError) {
+        return 413;
+    }
     if (error instanceof Error) {
         const message = error.message.toLowerCase();
         if (message.includes("not found")) {

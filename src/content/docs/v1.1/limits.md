@@ -42,7 +42,13 @@ These are not yet exposed as a rich customer-facing policy engine.
 
 Current beta storage policy:
 
-- `1 GB` per user
+- `1 GB` per company member, enforced as a shared company storage cap
+
+Operational meaning:
+
+- a one-person company gets `1 GB`
+- a three-member company gets `3 GB`
+- the quota is enforced in code on artifact upload and replace flows, not just documented in prose
 
 This should be treated as a working beta limit, not as a long-term guaranteed pricing or quota model.
 
