@@ -83,6 +83,21 @@ function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+function readConfiguredAgentIds(configPath: string): Set<string> {
+  if (!configPath || !fs.existsSync(configPath)) return new Set();
+  try {
+    const payload = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    const rows = Array.isArray(payload?.agents?.list) ? payload.agents.list : [];
+    return new Set(
+      rows
+        .map((row: any) => String(row?.id || "").trim())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 async function ensureRuntimeDeps(runtimeDir: string): Promise<void> {
   const packageJsonPath = path.join(runtimeDir, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
@@ -263,7 +278,12 @@ async function reconcileEmperorAgentProfile(
   });
 }
 
-async function ensureLocalBrainAgent(localBrainAgentId: string, workspaceDir: string, agentName: string): Promise<void> {
+async function ensureLocalBrainAgent(
+  localBrainAgentId: string,
+  workspaceDir: string,
+  agentName: string,
+  openclawConfigPath: string,
+): Promise<void> {
   const openclaw = resolveOpenClawCliPath();
   let exists = false;
   try {
@@ -271,15 +291,22 @@ async function ensureLocalBrainAgent(localBrainAgentId: string, workspaceDir: st
     const rows = JSON.parse(stdout);
     exists = Array.isArray(rows) && rows.some((row) => row?.id === localBrainAgentId);
   } catch {
-    exists = false;
+    exists = readConfiguredAgentIds(openclawConfigPath).has(localBrainAgentId);
   }
   if (!exists) {
-    await execOpenClawCli(openclaw, [
-      "agents", "add", localBrainAgentId,
-      "--workspace", workspaceDir,
-      "--model", "openai-codex/gpt-5.4",
-      "--non-interactive"
-    ]);
+    try {
+      await execOpenClawCli(openclaw, [
+        "agents", "add", localBrainAgentId,
+        "--workspace", workspaceDir,
+        "--model", "openai-codex/gpt-5.4",
+        "--non-interactive",
+      ]);
+    } catch (error: any) {
+      const message = String(error?.message || error || "");
+      if (!/already exists/i.test(message)) {
+        throw error;
+      }
+    }
   }
   await execOpenClawCli(openclaw, ["agents", "set-identity", "--agent", localBrainAgentId, "--name", agentName, "--emoji", "brain"]);
 }
@@ -416,7 +443,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   copyRuntimeAssets(pluginRoot, runtimeDir, companionDir);
   await ensureRuntimeDeps(runtimeDir);
   await runControlPlaneBootstrap(runtimeDir, companionDir, stateDir, bridgeStatePath, input, runtimeId);
-  await ensureLocalBrainAgent(input.localBrainAgentId, workspaceDir, input.agentName);
+  await ensureLocalBrainAgent(input.localBrainAgentId, workspaceDir, input.agentName, openclawConfigPath);
   normalizeOpenClawProfileConfig(openclawConfigPath);
   writeWorkspaceBootstrap({
     workspaceDir,
@@ -484,7 +511,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
     threadPolicy: { ...DEFAULT_THREAD_POLICY },
     bridgeContract: createDefaultBridgeContract(),
     installedAt: new Date().toISOString(),
-    version: "0.1.7"
+    version: "0.1.8",
   };
 
   const manifestPath = writeManifest(paths, slug, manifest);
