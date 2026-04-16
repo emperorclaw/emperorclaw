@@ -108,8 +108,8 @@ These endpoints are legacy compatibility surfaces. Prefer project recurring-task
 - **`GET /api/mcp/artifacts`**: Search/list artifacts. Supported filters include `projectId`, `taskId`, `folderId`, `customerId`, `agentId`, `kind`, `artifactClass`, `importance`, `contentType`, `isCanonical`, `search`, `startDate`, `endDate`.
 - **`GET /api/mcp/artifacts/{id}`**: Read artifact metadata.
 - **`PATCH /api/mcp/artifacts/{id}`**: Update artifact metadata.
-- **`POST /api/mcp/artifacts/{id}/move`**: Move an artifact into another folder/path.
-- **`POST /api/mcp/artifacts/{id}/replace`**: Replace an artifact's file/blob while preserving metadata identity.
+- **`PATCH /api/mcp/artifacts/{id}/move`**: Move an artifact into another folder/path.
+- **`PATCH /api/mcp/artifacts/{id}/replace`**: Replace an artifact's file/blob while preserving metadata identity.
 - **`GET /api/mcp/artifacts/{id}/download`**: Download the artifact content.
 - **`DELETE /api/mcp/artifacts/{id}/delete`**: Soft-delete artifact.
 
@@ -122,6 +122,33 @@ Folders are first-class and should be used intentionally. Prefer creating folder
 New file-backed artifacts should default to Bunny-backed storage via the upload endpoints. Emperor DB remains the metadata/search/permissions layer; Bunny stores the blob contents.
 
 Inline `contentText` storage is disabled on `POST /api/mcp/artifacts`. For new bytes, use `POST /api/mcp/artifacts/upload`. Keep `POST /api/mcp/artifacts` for metadata-first creation or externally stored content references.
+
+Folder CRUD expectations:
+
+- `POST /api/mcp/folders` requires `name`
+- `parentFolderId` is optional and creates a child folder under an existing folder
+- the server derives the folder `path`; agents should not invent `path` on create
+- `GET /api/mcp/folders/{id}/contents` returns direct child folders plus direct artifacts in that folder
+- `PATCH /api/mcp/folders/{id}` renames the folder or moves it under a new parent folder
+- `DELETE /api/mcp/folders/{id}` archives the folder subtree and hides it from normal browsing
+
+Artifact CRUD expectations:
+
+- search first with `GET /api/mcp/artifacts` and/or inspect folder contents before creating duplicates
+- use `POST /api/mcp/artifacts/upload` for fresh file bytes
+- use `POST /api/mcp/artifacts` only for metadata or external-storage references
+- use `PATCH /api/mcp/artifacts/{id}` for metadata-only changes
+- use `PATCH /api/mcp/artifacts/{id}/move` when the file should keep the same identity but move folder/path
+- use `PATCH /api/mcp/artifacts/{id}/replace` when the file should keep the same identity but get new bytes
+- use `DELETE /api/mcp/artifacts/{id}/delete` to archive an artifact from normal views
+
+Recommended operator flow:
+
+1. Read the current folder contents or search existing artifacts.
+2. Create missing folders first.
+3. Upload the new file into the chosen folder.
+4. Patch metadata only if needed after upload.
+5. Prefer move/replace over creating duplicate near-identical files.
 
 `POST /api/mcp/artifacts/upload` expects multipart form-data with:
 
@@ -139,6 +166,25 @@ Visible logical paths should remain human-readable, for example:
 
 ```text
 artifacts/malecu/2026/2026-03/invoices/2026-03-10-invoice-2026-0001-northstar-forge.pdf
+```
+
+Folder creation examples:
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "<customer-id>",
+  "name": "2026-04"
+}
+```
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "<customer-id>",
+  "parentFolderId": "<2026-04-folder-id>",
+  "name": "invoices"
+}
 ```
 
 ### Scoped Resources
