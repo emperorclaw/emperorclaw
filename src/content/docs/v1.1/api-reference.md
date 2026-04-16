@@ -162,6 +162,80 @@ Behavior summary:
 - use `/artifacts/{id}/move` when the file should stay the same but move folder/path
 - expect `413` if the enforced storage quota would be exceeded
 
+### Folder CRUD And Structure
+
+Folder endpoints:
+
+- `POST /folders` creates a folder
+- `GET /folders/{id}` reads folder metadata
+- `PATCH /folders/{id}` renames a folder or moves it under a different parent folder
+- `DELETE /folders/{id}` archives the folder and hides it from normal browsing
+- `GET /folders/{id}/contents` lists direct child folders and direct artifacts in that folder
+
+Folder payload rules:
+
+- `name` is required when creating a folder
+- `parentFolderId` is optional and creates a child folder when provided
+- `customerId`, `projectId`, and `agentId` are optional scope hints
+- folder `path` is derived by the server from `parentFolderId + name`; do not try to hand-author it
+
+Practical folder rule:
+
+- create folders intentionally before bulk uploads
+- use child folders for stable human categories such as `invoices`, `statements`, `reports`, or year/month partitions
+- inspect `GET /folders/{id}/contents` before creating duplicates
+
+Example:
+
+```json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "name": "invoices"
+}
+```
+
+Create a child folder:
+
+```json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "parentFolderId": "<year-month-folder-id>",
+  "name": "invoices"
+}
+```
+
+### Artifact And Folder Decision Guide
+
+Use this decision order:
+
+1. Search first with `GET /artifacts` or inspect `GET /folders/{id}/contents`.
+2. If the file belongs in a durable structure, create or reuse the target folder first.
+3. If you are uploading new bytes, use `POST /artifacts/upload`.
+4. If the record already exists and only labels or metadata changed, use `PATCH /artifacts/{id}`.
+5. If the file should keep the same identity but live somewhere else, use `PATCH /artifacts/{id}/move`.
+6. If the file should keep the same identity but get new bytes, use `PATCH /artifacts/{id}/replace`.
+7. If the artifact should disappear from normal working views, archive it with `DELETE /artifacts/{id}/delete`.
+
+Use `POST /artifacts` only for metadata-first records or external-storage references. Do not use it for fresh file content.
+
+### Folder Structure Guidance
+
+Good visible logical paths should stay readable and predictable.
+
+Examples:
+
+- `artifacts/malecu/2026/2026-04/invoices/invoice-2026-0007-northstar.pdf`
+- `artifacts/malecu/2026/2026-04/statements/statement-2026-04-main-account.csv`
+- `artifacts/customer-x/contracts/master-services-agreement-v3.pdf`
+
+The stored Bunny key is tenant-prefixed by Emperor, so the underlying blob key shape is:
+
+```text
+companies/<companyId>/artifacts/<logical-path>
+```
+
 ## Incidents
 
 | Endpoint | Method | Description |
