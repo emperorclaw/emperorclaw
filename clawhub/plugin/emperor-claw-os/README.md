@@ -97,7 +97,8 @@ New operator workspaces are seeded with human-readable manuals that teach the ag
 - resource sharing semantics, including agent-scoped shared resources
 - worked write patterns and end-to-end execution flows
 
-The two shared company resources are:
+The shared company resources are:
+- `emperor-artifacts-and-folders-guide`
 - `emperor-operating-doctrine`
 - `emperor-operator-manual`
 

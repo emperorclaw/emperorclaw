@@ -475,6 +475,14 @@ Artifact CRUD rule:
 
 When work produces a real file or document, prefer artifact storage over dumping the result only into chat.`;
 
+const ARTIFACTS_AND_FOLDERS_QUICK_GUIDE = `# Artifact And Folder Quick Guide
+
+- Search first with GET /artifacts or GET /folders/{id}/contents.
+- Create folders first with POST /folders. Use parentFolderId for child folders. The server derives path from parent + name.
+- Upload fresh file bytes with POST /artifacts/upload and pass file, kind, one of customerId/projectId, and folderId when the file belongs in a folder.
+- Use POST /artifacts only for metadata-first records or external-storage references.
+- Use PATCH /artifacts/{id} for metadata only, PATCH /artifacts/{id}/move for folder/path moves, PATCH /artifacts/{id}/replace for new bytes with the same artifact identity.`;
+
 const THREADING_AND_DELEGATION = `# Threading And Delegation
 
 ## Direct threads
@@ -2197,6 +2205,14 @@ export function getWorkspaceDoctrineFiles(profile: DoctrineProfile): Array<{ fil
 
 export function getSharedDoctrineResourceSpecs(): DoctrineResourceSpec[] {
   return [
+    {
+      name: "emperor-artifacts-and-folders-guide",
+      displayName: "Emperor Artifacts And Folders Guide",
+      provider: "emperor-claw-plugin",
+      resourceType: "knowledge_base",
+      isShared: true,
+      configText: ARTIFACTS_AND_FOLDERS_QUICK_GUIDE,
+    },
     {
       name: "emperor-operating-doctrine",
       displayName: "Emperor Operating Doctrine",
