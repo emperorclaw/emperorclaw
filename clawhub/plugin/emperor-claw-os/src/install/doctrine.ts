@@ -436,14 +436,20 @@ Write surfaces:
 - POST /artifacts
 - POST /artifacts/upload
 - PATCH /artifacts/{id}
-- POST /artifacts/{id}/move
-- POST /artifacts/{id}/replace
+- PATCH /artifacts/{id}/move
+- PATCH /artifacts/{id}/replace
 - DELETE /artifacts/{id}/delete
 
 Artifact scoping rules:
 - customerId or projectId is required for creation
 - taskId requires projectId
 - use the narrowest durable scope that makes sense
+
+Folder rules:
+- Folders are first-class and should be created intentionally before bulk uploads.
+- parentFolderId creates a child folder under an existing folder.
+- The server derives folder path from parentFolderId + name. Do not invent folder path manually on create.
+- Use GET /folders/{id}/contents to inspect the target location before creating duplicate folders or duplicate files.
 
 Use artifacts for:
 - reports
@@ -458,6 +464,14 @@ Do not use artifacts for:
 - raw logs
 - thread chatter
 - temporary scratch notes
+
+Artifact CRUD rule:
+- POST /artifacts/upload for fresh file bytes
+- POST /artifacts only for metadata-first records or external-storage references
+- PATCH /artifacts/{id} for metadata-only changes
+- PATCH /artifacts/{id}/move when the file should keep the same identity but move folder/path
+- PATCH /artifacts/{id}/replace when the file should keep the same identity but get new bytes
+- DELETE /artifacts/{id}/delete to archive from normal working views
 
 When work produces a real file or document, prefer artifact storage over dumping the result only into chat.`;
 
@@ -869,8 +883,8 @@ Important note:
 - POST /artifacts/upload
 - GET /artifacts/{id}
 - PATCH /artifacts/{id}
-- POST /artifacts/{id}/move
-- POST /artifacts/{id}/replace
+- PATCH /artifacts/{id}/move
+- PATCH /artifacts/{id}/replace
 - GET /artifacts/{id}/download
 - DELETE /artifacts/{id}/delete
 
@@ -1552,6 +1566,8 @@ Purpose:
 Important create rule:
 - customerId or projectId is required
 - taskId requires projectId
+- inline contentText is disabled for fresh file content
+- use this route for metadata-first records or external-storage references, not for new bytes
 
 Typical body:
 - projectId
@@ -1559,8 +1575,8 @@ Typical body:
 - customerId
 - kind
 - contentType
-- contentText
 - storageUrl or storageKey
+- storageProvider
 - originalFilename
 - title
 - artifactClass
@@ -1573,6 +1589,29 @@ Typical body:
 ### POST /artifacts/upload
 Purpose:
 - upload multipart file-backed artifact
+
+Required parts:
+- file
+- kind
+- one of customerId or projectId
+
+Optional parts:
+- taskId
+- folderId
+- title
+- artifactClass
+- importance
+- contentType
+- metadataJson
+- agentId
+- visibility
+- retentionPolicy
+- checksum
+
+Rules:
+- taskId requires projectId
+- folderId must resolve to an existing active folder
+- expect 413 when the enforced storage quota would be exceeded
 
 ### GET /artifacts/{id}
 Purpose:
@@ -1604,6 +1643,21 @@ Purpose:
 Purpose:
 - create folder
 
+Required fields:
+- name
+
+Optional fields:
+- parentFolderId
+- customerId
+- projectId
+- agentId
+- kind
+- metadataJson
+
+Important rule:
+- the server derives folder path from parentFolderId + name
+- create child folders intentionally instead of relying on flat uploads
+
 ### GET /folders/{id}
 Purpose:
 - read folder metadata
@@ -1619,6 +1673,7 @@ Purpose:
 ### GET /folders/{id}/contents
 Purpose:
 - list folder contents
+- returns direct child folders and direct artifacts in that folder
 
 ## Actions
 
@@ -1926,21 +1981,54 @@ POST /messages/send
 }
 \`\`\`
 
-## Create artifact metadata
+## Create artifact metadata or external reference
 \`\`\`json
 POST /artifacts
 {
-  "projectId": "<project-id>",
-  "taskId": "<task-id>",
-  "customerId": "<customer-id-or-null>",
+  "customerId": "<customer-id>",
   "kind": "deliverable",
-  "contentType": "text/markdown",
-  "contentText": "# Final Report\\n...",
+  "contentType": "application/pdf",
   "title": "Final Report",
-  "artifactClass": "report",
-  "importance": "high",
+  "storageProvider": "external",
+  "storageUrl": "https://files.example.com/final-report.pdf",
+  "sha256": "<real-file-sha256>",
+  "sizeBytes": 482193,
+  "artifactClass": "deliverable",
+  "importance": "canonical",
   "isCanonical": true
 }
+\`\`\`
+
+## Create folder
+\`\`\`json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "name": "2026-04"
+}
+\`\`\`
+
+## Create child folder
+\`\`\`json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "parentFolderId": "<2026-04-folder-id>",
+  "name": "invoices"
+}
+\`\`\`
+
+## Upload file-backed artifact to folder
+\`\`\`text
+POST /artifacts/upload
+multipart/form-data:
+- file: <binary>
+- kind: invoice
+- customerId: <customer-id>
+- folderId: <invoices-folder-id>
+- title: Invoice 2026-0001
+- artifactClass: source_document
+- importance: record
 \`\`\`
 
 ## Create project memory

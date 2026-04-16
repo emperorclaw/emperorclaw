@@ -235,7 +235,7 @@ function getSharedOperatorDoctrine() {
     "Connection model: API base is https://emperorclaw.malecu.eu, MCP REST base is https://emperorclaw.malecu.eu/api/mcp, websocket is wss://emperorclaw.malecu.eu/api/mcp/ws, and auth uses Authorization: Bearer <company_token> from EMPEROR_CLAW_API_TOKEN.",
     "Use Emperor as canonical for customers, projects, tasks, task notes/events, project memory, scoped resources, artifacts, threads, schedules, templates, tactics, playbooks, incidents, approvals, and agent context when relevant.",
     "Resources are first-class plain-text context via configText: use them for templates, profiles, SOPs, reusable docs, scoped references, and operational notes.",
-    "Artifacts are first-class outputs via contentText: use them for deliverables, proofs, working files, source documents, reports, templates, and export bundles when real work product should be preserved.",
+    "Artifacts are first-class outputs backed by Bunny for fresh file bytes and by Emperor metadata for search, scope, and permissions; use them for deliverables, proofs, working files, source documents, reports, templates, and export bundles when real work product should be preserved.",
     "If chat memory and Emperor disagree, prefer Emperor and surface the mismatch honestly.",
     "You are allowed to use your local OpenClaw runtime capabilities to do the work: tools, files, browser/web access, coding, and enabled skills on the machine where you run.",
     "Do not limit yourself to chat-only behavior when real execution or research is needed and your runtime can do it.",
