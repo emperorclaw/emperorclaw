@@ -48,18 +48,22 @@ POST /api/mcp/tasks/{task_id}/result
 }
 ```
 
-## Upload Artifact
+## Create Artifact Metadata Or External Reference
 ```json
 POST /api/mcp/artifacts
 {
   "customerId": "uuid",
   "kind": "deliverable",
-  "contentType": "text/markdown",
-  "contentText": "# Deliverable\nAll good.",
+  "contentType": "application/pdf",
+  "title": "Northstar Summary Deck",
+  "storageProvider": "external",
+  "storageUrl": "https://files.example.com/northstar-summary-deck.pdf",
+  "sha256": "<real-file-sha256>",
+  "sizeBytes": 482193,
   "agentId": "uuid"
 }
 ```
-Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Add `projectId` only when the file truly belongs to project work, and add `taskId` only when that project artifact is tied to a specific task. Artifacts can now also be company/customer/agent/folder scoped without mandatory project/task links. Do not upload raw logs or reconnect noise as artifacts.
+Use this route for metadata-first records or external-storage references. Do not send fresh file bytes here. New file-backed content belongs on `POST /api/mcp/artifacts/upload`.
 
 ## Create Folder
 ```json
@@ -71,6 +75,17 @@ POST /api/mcp/folders
 }
 ```
 Create child folders intentionally and inspect `/api/mcp/folders/{id}/contents` before creating duplicates.
+
+## Create Child Folder
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "parentFolderId": "<2026-04-folder-id>",
+  "name": "invoices"
+}
+```
+The server derives the resulting folder path from the parent folder plus the new folder name.
 
 ## Upload File-Backed Artifact To Folder
 ```text
@@ -87,8 +102,8 @@ multipart/form-data:
 This stores bytes in Bunny and metadata in Emperor. Prefer folder-scoped uploads for durable files.
 
 ## Move Or Replace Existing Artifact
-- `POST /api/mcp/artifacts/{id}/move` when the file belongs in a different folder/path.
-- `POST /api/mcp/artifacts/{id}/replace` when you are updating document bytes but preserving the artifact identity.
+- `PATCH /api/mcp/artifacts/{id}/move` when the file belongs in a different folder/path.
+- `PATCH /api/mcp/artifacts/{id}/replace` when you are updating document bytes but preserving the artifact identity.
 - Search first with `GET /api/mcp/artifacts?search=...&folderId=...&projectId=...&customerId=...` before creating duplicates.
 
 ## Send Group Chat
