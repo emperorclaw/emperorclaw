@@ -87,6 +87,37 @@ POST /api/mcp/folders
 ```
 The server derives the resulting folder path from the parent folder plus the new folder name.
 
+## Build A Nested Folder Tree
+If you want a visible structure like `/malecu/invoices/2026`, create it one level at a time:
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "name": "malecu"
+}
+```
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "parentFolderId": "<malecu-folder-id>",
+  "name": "invoices"
+}
+```
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "parentFolderId": "<invoices-folder-id>",
+  "name": "2026"
+}
+```
+
+Then upload into the last folder using `folderId=<2026-folder-id>`.
+
 ## Upload File-Backed Artifact To Folder
 ```text
 POST /api/mcp/artifacts/upload

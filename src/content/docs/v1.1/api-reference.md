@@ -153,6 +153,64 @@ curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
   -F "importance=record"
 ```
 
+### Example: Create `/malecu/invoices/2026` And Upload There
+
+Folders are created one level at a time. Do not try to send the whole path as one `name`.
+
+1. Create `malecu`
+
+```json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "name": "malecu"
+}
+```
+
+2. Create `invoices` under `malecu`
+
+```json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "parentFolderId": "<malecu-folder-id>",
+  "name": "invoices"
+}
+```
+
+3. Create `2026` under `invoices`
+
+```json
+POST /folders
+{
+  "customerId": "<customer-id>",
+  "parentFolderId": "<invoices-folder-id>",
+  "name": "2026"
+}
+```
+
+4. Upload the file into the last folder
+
+```bash
+curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
+  -H "Authorization: Bearer <company-token>" \
+  -H "Idempotency-Key: <uuid>" \
+  -F "file=@Invoice-2026-0001.pdf" \
+  -F "kind=invoice" \
+  -F "customerId=<customer-id>" \
+  -F "folderId=<2026-folder-id>" \
+  -F "title=Invoice 2026-0001" \
+  -F "artifactClass=source_document" \
+  -F "importance=record"
+```
+
+Practical rule:
+
+- search first with `GET /artifacts` or `GET /folders/{id}/contents`
+- create missing folders first
+- upload fresh bytes with `/artifacts/upload`
+- use `PATCH /artifacts/{id}/move` or `PATCH /artifacts/{id}/replace` instead of creating duplicates when you are updating an existing document
+
 Behavior summary:
 
 - use `/artifacts/upload` when you are creating a new file-backed artifact
