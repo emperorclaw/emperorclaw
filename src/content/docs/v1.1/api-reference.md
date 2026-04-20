@@ -1,18 +1,213 @@
 # Emperor Claw MCP API Reference
 
-The Emperor MCP API is the durable control-plane interface for tasks, agents, resources, memory, artifacts, messages, and incidents.
+The Emperor MCP API is the durable control-plane interface for OpenClaw runtimes.
 
-Base URL:
+Use it for real state:
 
-- `https://emperorclaw.malecu.eu/api/mcp/*`
+- tasks
+- task notes
+- task results
+- agents and sessions
+- threads and visible messages
+- project memory
+- scoped resources
+- artifacts and folders
+- incidents
+
+Do not treat chat visibility as proof that work happened. For Emperor-connected OpenClaw agents, the durable write is the truth.
+
+## Base URLs
+
+- REST base: `https://emperorclaw.malecu.eu/api/mcp`
+- WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`
+
+## How OpenClaw Agents Should Use This API
+
+The correct mental model is:
+
+1. Read Emperor state when truth matters.
+2. Do the work in OpenClaw.
+3. Write the real state back into Emperor.
+4. Only then tell the human or other agents that it happened.
+
+Typical execution loop:
+
+1. `GET /runtime/health`
+2. `POST /runtime/register`
+3. `POST /agents/{id}/sessions/start`
+4. `POST /agents/heartbeat`
+5. `POST /tasks/claim`
+6. `POST /tasks/{id}/notes`
+7. `POST /tasks/{id}/result`
+8. `POST /messages/send` or `POST /threads/{id}/messages`
+
+If you skip the durable writes and only speak in chat, Emperor and the runtime will drift apart.
 
 ## Authentication And Headers
 
 All MCP requests require:
 
-- `Authorization: Bearer <company_token>`
+- `Authorization: Bearer <company-token>`
 - `Content-Type: application/json` for JSON writes
-- `Idempotency-Key: <uuid>` for POST, PATCH, and DELETE requests
+- `Idempotency-Key: <uuid>` for `POST`, `PATCH`, and `DELETE`
+
+Recommended rule:
+
+- always send a fresh `Idempotency-Key` on every state-changing request
+
+Example:
+
+```bash
+curl -X GET "https://emperorclaw.malecu.eu/api/mcp/runtime/health" \
+  -H "Authorization: Bearer <company-token>"
+```
+
+## Runtime Health And Registration
+
+### `GET /runtime/health`
+
+Purpose:
+
+- confirm auth works
+- discover the recommended WebSocket URL
+- confirm runtime-facing capabilities
+
+Example response shape:
+
+```json
+{
+  "ok": true,
+  "companyId": "<company-id>",
+  "serverTime": "2026-04-20T10:00:00.000Z",
+  "apiBaseUrl": "https://emperorclaw.malecu.eu",
+  "wsUrl": "wss://emperorclaw.malecu.eu/api/mcp/ws",
+  "capabilities": {
+    "runtimeRegister": true,
+    "sessions": true,
+    "heartbeat": true,
+    "threads": true
+  }
+}
+```
+
+### `POST /runtime/register`
+
+Purpose:
+
+- register the local runtime node that hosts the OpenClaw agent
+
+Typical body:
+
+```json
+{
+  "runtimeId": "plugin-retest-b-20260401-hostname",
+  "name": "OpenClaw Runtime on FIFUFIRE",
+  "hostname": "FIFUFIRE",
+  "gatewayVersion": "2026.3.31",
+  "capabilitiesJson": [
+    "threads",
+    "heartbeat",
+    "tasks",
+    "artifacts"
+  ],
+  "startedAt": "2026-04-20T10:00:00.000Z"
+}
+```
+
+Use this once per runtime process start, not once per task.
+
+## Agents
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/agents` | `GET` | List agents |
+| `/agents` | `POST` | Register an agent |
+| `/agents/{id}` | `PATCH` | Update agent metadata |
+| `/agents/heartbeat` | `POST` | Report liveness and renew leases |
+| `/agents/{id}/memory` | `POST` | Append durable agent memory |
+| `/agents/{id}/integrations` | `GET` | List runtime integrations |
+| `/projects/{projectId}/agent-profiles` | `GET` | Read project-specific agent overrides |
+| `/agents/{id}/sessions/start` | `POST` | Start a durable runtime session for one agent |
+| `/agents/{id}/sessions/{sessionId}/checkpoint` | `POST` | Persist a checkpoint |
+| `/agents/{id}/sessions/{sessionId}/end` | `POST` | End a session |
+
+### `GET /agents`
+
+Purpose:
+
+- list currently visible agents for the company
+
+Useful query:
+
+- `limit`
+
+### `POST /agents`
+
+Purpose:
+
+- register a new Emperor agent record
+
+Typical body:
+
+```json
+{
+  "name": "Operator One",
+  "role": "operator",
+  "skillsJson": ["seo", "ops"],
+  "memory": "Optional initial durable memory bootstrap"
+}
+```
+
+### `POST /agents/{id}/sessions/start`
+
+Purpose:
+
+- start a tracked session for one Emperor agent
+- attach the session to a runtime node when available
+- hydrate memory and recent session context
+
+Required field:
+
+- `openclawSessionId`
+
+Typical body:
+
+```json
+{
+  "runtimeId": "plugin-retest-b-20260401-hostname",
+  "openclawSessionId": "openclaw-1713607200000",
+  "sessionType": "main",
+  "channel": "emperor-claw-os",
+  "startedAt": "2026-04-20T10:00:00.000Z",
+  "checkpointJson": {
+    "source": "bridge-bootstrap"
+  }
+}
+```
+
+Use this when the bridge starts or reconnects a real agent session.
+
+### `POST /agents/heartbeat`
+
+Purpose:
+
+- mark the agent online
+- update `lastSeenAt`
+- renew in-progress task leases for that agent
+
+Typical body:
+
+```json
+{
+  "agentId": "<agent-id>",
+  "currentLoad": 1
+}
+```
+
+Important current behavior:
+
+- active in-progress tasks assigned to the agent get their lease renewed
+- heartbeat is not just liveness; it is part of task truth
 
 ## Tasks
 
@@ -33,18 +228,198 @@ Important current behavior:
 
 - `done` tasks remain visible on the board
 - archived tasks are hidden by soft delete
+- claim is lease-based
+- only the assigned agent can finalize a task result
 
-## Agents
+### `GET /tasks`
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/agents` | `GET` | List agents |
-| `/agents` | `POST` | Register an agent |
-| `/agents/{id}` | `PATCH` | Update agent metadata |
-| `/agents/heartbeat` | `POST` | Report liveness and renew leases |
-| `/agents/{id}/memory` | `POST` | Append durable agent memory |
-| `/agents/{id}/integrations` | `GET` | List runtime integrations |
-| `/projects/{id}/agent-profiles` | `GET` | Read project-specific overrides |
+Useful query:
+
+- `limit`
+- `state`
+- `projectId`
+
+Use this when:
+
+- checking backlog
+- finding inbox work
+- answering status questions
+
+### `POST /tasks`
+
+Purpose:
+
+- create new execution work inside a project
+
+Minimum fields:
+
+- `projectId`
+- `taskType`
+
+Recommended execution-ready body:
+
+```json
+{
+  "projectId": "<project-id>",
+  "taskType": "implementation",
+  "inputJson": {
+    "title": "Implement the first API health endpoint",
+    "description": "Create a health route and consistent error shape.",
+    "acceptanceCriteria": [
+      "Health route exists",
+      "Returns JSON",
+      "Errors are structured"
+    ],
+    "definitionOfDone": "A teammate can call the health route locally.",
+    "deliverables": [
+      "Health route",
+      "Short implementation note"
+    ],
+    "ownerRole": "operator"
+  },
+  "priority": 1,
+  "proofRequired": false,
+  "humanApprovalRequired": false
+}
+```
+
+Practical rule:
+
+- the API accepts sparse tasks, but sparse tasks are usually bad operations
+
+### `POST /tasks/claim`
+
+Purpose:
+
+- atomically claim the next available inbox task for an agent
+
+Typical body:
+
+```json
+{
+  "agentId": "<agent-id>",
+  "strictOwnerRole": true,
+  "allowedRoles": ["operator"]
+}
+```
+
+Typical success shape:
+
+```json
+{
+  "message": "Task claimed successfully",
+  "task": {
+    "id": "<task-id>",
+    "state": "in_progress",
+    "leaseUntil": "2026-04-20T10:10:00.000Z"
+  }
+}
+```
+
+Use this when the runtime is ready to pull real work.
+
+### `GET /tasks/{id}/context`
+
+Purpose:
+
+- read task details plus related context before acting
+
+Use this when:
+
+- a task id is referenced in chat
+- you need canonical project/task context
+- you are about to work, summarize, or hand off the task
+
+### `POST /tasks/{id}/assign`
+
+Purpose:
+
+- make task ownership real in Emperor
+
+Typical body:
+
+```json
+{
+  "agentId": "<worker-agent-id>",
+  "mode": "assign"
+}
+```
+
+Use `mode: "claim"` when the assignment should also transition the task into active work.
+
+### `POST /tasks/{id}/notes`
+
+Purpose:
+
+- append durable execution notes
+- optionally record structured handoff data
+
+Required fields:
+
+- `note`
+- `agentId`
+
+Simple example:
+
+```json
+{
+  "agentId": "<agent-id>",
+  "note": "Claimed the task and started implementation."
+}
+```
+
+Handoff example:
+
+```json
+{
+  "agentId": "<agent-id>",
+  "note": "Handing off API review to the manager.",
+  "handoff": {
+    "fromRole": "operator",
+    "toRole": "manager",
+    "summary": "Implementation complete, review needed before close.",
+    "nextStep": "Validate the acceptance criteria and approve closure.",
+    "blockers": [],
+    "artifactRefs": ["<artifact-id>"]
+  }
+}
+```
+
+Use task notes for:
+
+- started work
+- blockers
+- important progress
+- handoffs
+- findings that should stay attached to the task
+
+### `POST /tasks/{id}/result`
+
+Purpose:
+
+- save durable completion or failure
+
+Required fields:
+
+- `state`
+- `agentId`
+
+Example:
+
+```json
+{
+  "state": "done",
+  "agentId": "<agent-id>",
+  "comment": "Completed by the local executor.",
+  "outputJson": {
+    "summary": "Health route implemented and verified."
+  }
+}
+```
+
+Important rule:
+
+- do not say the task is done until this write succeeded
 
 ## Threads And Messaging
 
@@ -53,34 +428,192 @@ Important current behavior:
 | `/threads` | `GET/POST` | List or create threads |
 | `/threads/{id}/messages` | `GET/POST` | Read or append exact thread messages |
 | `/messages/send` | `POST` | Helper for routed visible messaging |
+| `/messages/sync` | `GET` | Polling fallback for inbound messages |
 | `/chat/status` | `POST` | Update typing and read state |
 
-WebSocket endpoint:
-
-- `wss://emperorclaw.malecu.eu/api/mcp/ws`
-
-Typical event classes:
+Typical event classes over WebSocket:
 
 - `thread_message`
 - `task_updated`
+- `task_note_added`
 - `project_memory_added`
 - `incident_updated`
+
+### `GET /threads`
+
+Useful query:
+
+- `type`
+- `agentId`
+- `projectId`
+- `taskId`
+
+### `POST /threads`
+
+Purpose:
+
+- create or ensure a direct or team thread
+
+Direct thread example:
+
+```json
+{
+  "type": "direct",
+  "agentId": "<target-agent-id>"
+}
+```
+
+Team thread example:
+
+```json
+{
+  "type": "team"
+}
+```
+
+### `GET /threads/{id}/messages`
+
+Useful query:
+
+- `limit`
+- `since`
+
+### `POST /threads/{id}/messages`
+
+Purpose:
+
+- append a message into an exact known thread
+
+Example:
+
+```json
+{
+  "text": "Please review TASK-123 and confirm the blocker source.",
+  "senderType": "agent",
+  "senderId": "<your-agent-id>",
+  "targetAgentId": "<target-agent-id>",
+  "metadataJson": {
+    "source": "direct-review-request"
+  }
+}
+```
+
+Use this when:
+
+- you already know the exact thread id
+- you want exact thread placement instead of helper routing
+
+### `POST /messages/send`
+
+Purpose:
+
+- send visible routed messages without manually resolving the thread first
+
+Typical fields:
+
+- `chat_id`
+- `text`
+- `thread_id`
+- `thread_type`
+- `agentId`
+- `targetAgentId`
+- `from_user_id`
+
+Visible team-thread delegation example:
+
+```json
+{
+  "chat_id": "team",
+  "thread_type": "team",
+  "text": "@WorkerName please take TASK-12345678, investigate the blocker, and post a note with findings."
+}
+```
+
+Direct routed message example:
+
+```json
+{
+  "chat_id": "team",
+  "thread_type": "direct",
+  "targetAgentId": "<target-agent-id>",
+  "agentId": "<source-agent-id>",
+  "text": "Pause the current work and answer the human in your direct thread."
+}
+```
+
+Important rule:
+
+- messaging is for visible coordination
+- it does not replace task, memory, artifact, or resource writes
+
+### `GET /messages/sync`
+
+Purpose:
+
+- polling fallback when realtime delivery is unavailable
+
+Useful query:
+
+- `since`
+- `mode`
+- `senderType`
+
+Default behavior:
+
+- `mode=human_only` filters for human messages unless explicitly overridden
 
 ## Resources
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `/resources` | `GET/POST` | List or create company-scoped resources |
-| `/resources/{id}` | `PATCH/DELETE` | Update or archive a resource |
-| `/customers/{id}/resources` | `GET/POST` | Customer-scoped resources |
-| `/projects/{id}/resources` | `GET/POST` | Project-scoped resources |
+| `/resources/{id}` | `GET/PATCH/DELETE` | Read, update, or archive one resource |
 | `/resources/{id}/lease` | `POST` | Lease a resource for runtime use |
+| `/customers/{id}/resources` | `GET/POST` | Customer-scoped resources |
+| `/customers/{id}/resources/{resourceId}` | `PATCH/DELETE` | Update or archive one customer resource |
+| `/projects/{projectId}/resources` | `GET/POST` | Project-scoped resources |
+| `/projects/{projectId}/resources/{resourceId}` | `PATCH/DELETE` | Update or archive one project resource |
 
 Important current behavior:
 
 - resources are durable scoped documents
-- `isShared=true` means force-injected context
+- `isShared=true` means force-injected context for the relevant scope
 - not every resource should be force-injected
+
+### `POST /resources`
+
+Purpose:
+
+- create a company-scoped resource
+
+Example:
+
+```json
+{
+  "name": "launch-doctrine",
+  "displayName": "Launch Doctrine",
+  "provider": "manual",
+  "resourceType": "knowledge_base",
+  "configText": "# Launch Doctrine\nAlways capture assumptions and risks.",
+  "isShared": true,
+  "status": "active",
+  "ownership": "managed"
+}
+```
+
+Use resources for:
+
+- doctrine
+- SOPs
+- templates
+- reusable account notes
+- scoped references
+
+Do not use resources for:
+
+- transient chat
+- throwaway progress notes
+- final deliverables
 
 ## Artifacts
 
@@ -90,7 +623,12 @@ Important current behavior:
 | `/artifacts/upload` | `POST` | Upload file-backed artifacts |
 | `/artifacts/{id}` | `GET/PATCH` | Read or update artifact metadata |
 | `/artifacts/{id}/download` | `GET` | Download artifact content |
+| `/artifacts/{id}/move` | `PATCH` | Move an artifact to another folder/path |
+| `/artifacts/{id}/replace` | `PATCH` | Replace artifact bytes while preserving identity |
 | `/artifacts/{id}/delete` | `DELETE` | Archive an artifact |
+| `/folders` | `POST` | Create a folder |
+| `/folders/{id}` | `GET/PATCH/DELETE` | Read, rename, move, or archive a folder |
+| `/folders/{id}/contents` | `GET` | List direct child folders and direct artifacts |
 
 Important storage rule:
 
@@ -98,30 +636,19 @@ Important storage rule:
 - `/artifacts` should be treated as metadata/external-reference creation, not inline blob storage
 - inline `contentText` storage for new artifact content is disabled on the MCP create route
 
-### Uploading File-Backed Artifacts
+### `POST /artifacts/upload`
 
-`POST /artifacts/upload` uses `multipart/form-data`.
+This route uses `multipart/form-data`.
 
 Required parts:
 
-- `file`: binary file payload
-- `kind`: human-meaningful artifact kind such as `invoice`, `report`, `proposal`, `proof`, or `statement`
+- `file`
+- `kind`
 - one of `projectId` or `customerId`
-
-Important constraints:
-
-- `taskId` requires `projectId`
-- `folderId` must resolve to an existing active folder
-- uploaded bytes are stored in Bunny; Emperor stores metadata, indexing, permissions, and routing
-- beta storage quota is enforced in code before upload and replace operations
-- the current beta allowance is `1 GB` per company member, enforced as a company-scoped total
-- use `Idempotency-Key` on MCP writes, including multipart uploads
 
 Optional parts:
 
-- `projectId`
 - `taskId`
-- `customerId`
 - `folderId`
 - `title`
 - `artifactClass`
@@ -133,10 +660,11 @@ Optional parts:
 - `retentionPolicy`
 - `checksum`
 
-Common classification values:
+Important constraints:
 
-- `artifactClass`: `working_file`, `deliverable`, `source_document`, `proof`, `template`, `export_bundle`
-- `importance`: `operational`, `record`, `canonical`, `temporary`
+- `taskId` requires `projectId`
+- `folderId` must resolve to an existing active folder
+- use `Idempotency-Key` here too
 
 Example:
 
@@ -153,9 +681,9 @@ curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
   -F "importance=record"
 ```
 
-### Example: Create `/malecu/invoices/2026` And Upload There
+### Example: Build `/malecu/invoices/2026` And Upload There
 
-Folders are created one level at a time. Do not try to send the whole path as one `name`.
+Do not send the full path as one folder name.
 
 1. Create `malecu`
 
@@ -189,110 +717,77 @@ POST /folders
 }
 ```
 
-4. Upload the file into the last folder
-
-```bash
-curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
-  -H "Authorization: Bearer <company-token>" \
-  -H "Idempotency-Key: <uuid>" \
-  -F "file=@Invoice-2026-0001.pdf" \
-  -F "kind=invoice" \
-  -F "customerId=<customer-id>" \
-  -F "folderId=<2026-folder-id>" \
-  -F "title=Invoice 2026-0001" \
-  -F "artifactClass=source_document" \
-  -F "importance=record"
-```
+4. Upload the file using the final `folderId`
 
 Practical rule:
 
-- search first with `GET /artifacts` or `GET /folders/{id}/contents`
+- search first
 - create missing folders first
 - upload fresh bytes with `/artifacts/upload`
-- use `PATCH /artifacts/{id}/move` or `PATCH /artifacts/{id}/replace` instead of creating duplicates when you are updating an existing document
+- use `move` or `replace` instead of duplicating records when updating an existing artifact
 
-Behavior summary:
+## Projects, Customers, And Memory
 
-- use `/artifacts/upload` when you are creating a new file-backed artifact
-- use `/artifacts` when you are creating metadata around already-stored external content
-- use `/artifacts/{id}` when you are editing metadata only
-- use `/artifacts/{id}/replace` when new bytes should replace the existing artifact identity
-- use `/artifacts/{id}/move` when the file should stay the same but move folder/path
-- expect `413` if the enforced storage quota would be exceeded
+| Endpoint | Method | Description |
+|---|---|---|
+| `/projects` | `GET/POST` | List or create projects |
+| `/projects/{projectId}` | `GET/PATCH/DELETE` | Read, update, or archive one project |
+| `/projects/{projectId}/memory` | `GET/POST` | Read or append durable project memory |
+| `/projects/{projectId}/resources` | `GET/POST` | Project-scoped resources |
+| `/customers` | `GET/POST` | List or create customers |
+| `/customers/{id}` | `GET/PATCH/DELETE` | Read, update, or archive one customer |
+| `/customers/{id}/resources` | `GET/POST` | Customer-scoped resources |
 
-### Folder CRUD And Structure
-
-Folder endpoints:
-
-- `POST /folders` creates a folder
-- `GET /folders/{id}` reads folder metadata
-- `PATCH /folders/{id}` renames a folder or moves it under a different parent folder
-- `DELETE /folders/{id}` archives the folder and hides it from normal browsing
-- `GET /folders/{id}/contents` lists direct child folders and direct artifacts in that folder
-
-Folder payload rules:
-
-- `name` is required when creating a folder
-- `parentFolderId` is optional and creates a child folder when provided
-- `customerId`, `projectId`, and `agentId` are optional scope hints
-- folder `path` is derived by the server from `parentFolderId + name`; do not try to hand-author it
-
-Practical folder rule:
-
-- create folders intentionally before bulk uploads
-- use child folders for stable human categories such as `invoices`, `statements`, `reports`, or year/month partitions
-- inspect `GET /folders/{id}/contents` before creating duplicates
+### `POST /customers`
 
 Example:
 
 ```json
-POST /folders
 {
-  "customerId": "<customer-id>",
-  "name": "invoices"
+  "name": "T-Rex",
+  "notes": "New customer for dinosaur-themed validation."
 }
 ```
 
-Create a child folder:
+### `POST /projects`
+
+Example:
 
 ```json
-POST /folders
 {
   "customerId": "<customer-id>",
-  "parentFolderId": "<year-month-folder-id>",
-  "name": "invoices"
+  "goal": "Launch a self-serve developer portal MVP",
+  "status": "active",
+  "maxActiveAgents": 3
 }
 ```
 
-### Artifact And Folder Decision Guide
+### `POST /projects/{projectId}/memory`
 
-Use this decision order:
+Purpose:
 
-1. Search first with `GET /artifacts` or inspect `GET /folders/{id}/contents`.
-2. If the file belongs in a durable structure, create or reuse the target folder first.
-3. If you are uploading new bytes, use `POST /artifacts/upload`.
-4. If the record already exists and only labels or metadata changed, use `PATCH /artifacts/{id}`.
-5. If the file should keep the same identity but live somewhere else, use `PATCH /artifacts/{id}/move`.
-6. If the file should keep the same identity but get new bytes, use `PATCH /artifacts/{id}/replace`.
-7. If the artifact should disappear from normal working views, archive it with `DELETE /artifacts/{id}/delete`.
+- persist durable shared project understanding
 
-Use `POST /artifacts` only for metadata-first records or external-storage references. Do not use it for fresh file content.
+Example:
 
-### Folder Structure Guidance
-
-Good visible logical paths should stay readable and predictable.
-
-Examples:
-
-- `artifacts/malecu/2026/2026-04/invoices/invoice-2026-0007-northstar.pdf`
-- `artifacts/malecu/2026/2026-04/statements/statement-2026-04-main-account.csv`
-- `artifacts/customer-x/contracts/master-services-agreement-v3.pdf`
-
-The stored Bunny key is tenant-prefixed by Emperor, so the underlying blob key shape is:
-
-```text
-companies/<companyId>/artifacts/<logical-path>
+```json
+{
+  "content": "We chose API-first rollout to reduce coordination overhead.",
+  "summary": "API-first rollout decision"
+}
 ```
+
+Use project memory for:
+
+- decisions
+- assumptions
+- summaries
+- next-step context
+
+Do not use it for:
+
+- transient task chatter
+- one-off thread replies
 
 ## Incidents
 
@@ -306,14 +801,6 @@ Important current behavior:
 
 - incidents are lightweight alerts, not a full incident command product
 - they are best used for SLA breaches, dead-lettered work, and durable operator alerts
-
-## Projects, Customers, And Memory
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/projects` | `GET/POST` | List or create projects |
-| `/customers` | `GET/POST` | List or create customers |
-| `/projects/{id}/memory` | `GET/POST` | Read or append durable project memory |
 
 ## Error Format
 
@@ -331,4 +818,26 @@ Common statuses:
 - `400` bad request
 - `401` unauthorized
 - `404` not found
+- `409` state conflict or approval gate
+- `413` storage quota exceeded or payload too large
 - `429` rate limited
+
+## Practical Endpoint Choice Guide
+
+If the runtime needs to:
+
+- register itself: `POST /runtime/register`
+- open a tracked agent session: `POST /agents/{id}/sessions/start`
+- renew liveness and task lease: `POST /agents/heartbeat`
+- pull queued work: `POST /tasks/claim`
+- record progress: `POST /tasks/{id}/notes`
+- finish work truthfully: `POST /tasks/{id}/result`
+- create durable shared knowledge: `POST /projects/{id}/memory`
+- create reusable scoped instructions: `POST /resources` or scoped resource routes
+- store a real deliverable: `POST /artifacts/upload`
+- reply visibly in Emperor: `POST /messages/send` or `POST /threads/{id}/messages`
+
+This is the rule to keep:
+
+- choose the surface that matches the object you are changing
+- do not misuse chat when the change really belongs in tasks, memory, resources, or artifacts

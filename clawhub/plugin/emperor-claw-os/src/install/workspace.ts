@@ -22,6 +22,56 @@ function upsertAppend(filePath: string, heading: string, content: string): void 
   fs.writeFileSync(filePath, next, "utf8");
 }
 
+function normalizeSectionTitle(heading: string): string {
+  return heading.replace(/^#+\s*/, "").trim().toLowerCase();
+}
+
+function upsertSectionItems(filePath: string, heading: string, items: string[]): void {
+  const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "# AGENTS.md\n";
+  const cleanItems = items.map((item) => item.trim()).filter(Boolean);
+  if (cleanItems.length === 0) return;
+
+  const headingTitle = normalizeSectionTitle(heading);
+  const lines = current.split(/\r?\n/);
+  const headingIndex = lines.findIndex((line) => {
+    const match = line.trim().match(/^(##|###)\s+(.+)$/);
+    return Boolean(match && normalizeSectionTitle(match[2]) === headingTitle);
+  });
+
+  if (headingIndex === -1) {
+    const next = `${current.trimEnd()}\n\n## ${heading.replace(/^#+\s*/, "").trim()}\n\n${cleanItems.join("\n")}\n`;
+    fs.writeFileSync(filePath, next, "utf8");
+    return;
+  }
+
+  let endIndex = lines.length;
+  for (let index = headingIndex + 1; index < lines.length; index += 1) {
+    if (/^##\s+/.test(lines[index].trim())) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  const sectionLines = lines.slice(headingIndex, endIndex);
+  const sectionText = sectionLines.join("\n");
+  const missingItems = cleanItems.filter((item) => !sectionText.includes(item));
+  if (missingItems.length === 0) return;
+
+  while (sectionLines.length > 0 && sectionLines[sectionLines.length - 1].trim() === "") {
+    sectionLines.pop();
+  }
+
+  const nextLines = [
+    ...lines.slice(0, headingIndex),
+    ...sectionLines,
+    "",
+    ...missingItems,
+    ...lines.slice(endIndex),
+  ];
+  const next = `${nextLines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
+  fs.writeFileSync(filePath, next, "utf8");
+}
+
 export function writeWorkspaceBootstrap(input: WorkspaceBootstrapInput): void {
   const { workspaceDir, agentName, ownerName, ownerTimezone, profile } = input;
   for (const doctrineFile of getWorkspaceDoctrineFiles(profile)) {
@@ -32,36 +82,39 @@ export function writeWorkspaceBootstrap(input: WorkspaceBootstrapInput): void {
     writeFile(path.join(workspaceDir, "BOOTSTRAP.md"), `# BOOTSTRAP.md - Manager Bootstrap
 
 You are already configured. Do not ask who you are.
+Do not delete this file.
 
 Before replying, read:
 1. AGENTS.md
 2. SOUL.md
 3. USER.md
 4. IDENTITY.md
-5. EMPEROR_OPERATING_DOCTRINE.md
-6. EMPEROR_MCP_DIRECT_USAGE.md
-7. EMPEROR_CUSTOMERS_AND_PROJECTS.md
-8. EMPEROR_TASK_LIFECYCLE.md
-9. EMPEROR_DECISION_MATRIX.md
-10. EMPEROR_HOW_TO_OPERATE.md
-11. EMPEROR_RESOURCE_SHARING.md
-12. EMPEROR_ARTIFACTS_AND_EVIDENCE.md
-13. EMPEROR_THREADING_AND_DELEGATION.md
-14. EMPEROR_API_REFERENCE.md
-15. EMPEROR_API_OPERATIONS.md
-16. EMPEROR_TASK_CREATION_GUIDE.md
-17. EMPEROR_EXECUTION_HONESTY.md
-18. EMPEROR_COORDINATION_VISIBILITY.md
-19. EMPEROR_END_TO_END_FLOWS.md
-20. EMPEROR_WORKED_API_PATTERNS.md
-21. EMPEROR_MANAGER_ADDON.md
-22. EMPEROR_USER_FLOW.md
+5. EMPEROR_OPENCLAW_AGENT_RUNTIME.md
+6. EMPEROR_OPERATING_DOCTRINE.md
+7. EMPEROR_MCP_DIRECT_USAGE.md
+8. EMPEROR_CUSTOMERS_AND_PROJECTS.md
+9. EMPEROR_TASK_LIFECYCLE.md
+10. EMPEROR_DECISION_MATRIX.md
+11. EMPEROR_HOW_TO_OPERATE.md
+12. EMPEROR_RESOURCE_SHARING.md
+13. EMPEROR_ARTIFACTS_AND_EVIDENCE.md
+14. EMPEROR_THREADING_AND_DELEGATION.md
+15. EMPEROR_API_REFERENCE.md
+16. EMPEROR_API_OPERATIONS.md
+17. EMPEROR_TASK_CREATION_GUIDE.md
+18. EMPEROR_EXECUTION_HONESTY.md
+19. EMPEROR_COORDINATION_VISIBILITY.md
+20. EMPEROR_END_TO_END_FLOWS.md
+21. EMPEROR_WORKED_API_PATTERNS.md
+22. EMPEROR_MANAGER_ADDON.md
+23. EMPEROR_USER_FLOW.md
 
 You are the Emperor-facing manager agent for this OpenClaw deployment.
 Your job is to monitor work health, summarize what matters, detect blockers or stale work, and recommend next actions without being noisy.
 Emperor Claw is your source of truth for customers, projects, tasks, resources, artifacts, and thread state.
 Prefer current Emperor state over guesses.
 Do not pretend work is complete unless a real executor produced a result.
+AGENTS.md sections named Session Startup and Red Lines survive compaction in OpenClaw. Treat them as durable operating law.
 `);
     writeFile(path.join(workspaceDir, "IDENTITY.md"), `# IDENTITY.md - Who Am I?
 
@@ -109,6 +162,18 @@ Check Emperor for:
 If nothing important changed, reply HEARTBEAT_OK.
 If something needs attention, summarize only the actionable items.
 `);
+    upsertSectionItems(path.join(workspaceDir, "AGENTS.md"), "Session Startup", [
+      "- Read BOOTSTRAP.md before replying in Emperor work and do not delete it.",
+      "- Read EMPEROR_OPENCLAW_AGENT_RUNTIME.md and the Emperor doctrine files named in BOOTSTRAP.md.",
+      "- When a customer, project, task, resource, artifact, or thread is referenced, check Emperor before asserting state.",
+      "- In team Emperor threads, require an explicit @mention unless your role doctrine says otherwise.",
+    ]);
+    upsertSectionItems(path.join(workspaceDir, "AGENTS.md"), "Red Lines", [
+      "- Do not claim work changed durable state unless the matching Emperor write succeeded.",
+      "- Do not report a task done unless POST /tasks/{id}/result or another durable proof surface succeeded.",
+      "- Do not leak non-shared or agent-scoped resource content into team chat.",
+      "- Do not delete AGENTS.md, BOOTSTRAP.md, SOUL.md, USER.md, IDENTITY.md, HEARTBEAT.md, or Emperor doctrine files unless the human explicitly asks.",
+    ]);
     upsertAppend(path.join(workspaceDir, "AGENTS.md"), "## Emperor Claw Manager Rules", `- Monitor Emperor state for stale tasks, blocked work, idle projects, and missing ownership.
 - In team threads, speak when there is genuine signal: blockers, stale work, overload, or a useful summary.
 - In direct threads, answer status questions clearly and concisely.
@@ -122,34 +187,37 @@ If something needs attention, summarize only the actionable items.
   writeFile(path.join(workspaceDir, "BOOTSTRAP.md"), `# BOOTSTRAP.md - Emperor Operator Bootstrap
 
 You are already configured. Do not ask who you are.
+Do not delete this file.
 
 Before replying, read:
 1. AGENTS.md
 2. SOUL.md
 3. USER.md
 4. IDENTITY.md
-5. EMPEROR_OPERATING_DOCTRINE.md
-6. EMPEROR_MCP_DIRECT_USAGE.md
-7. EMPEROR_CUSTOMERS_AND_PROJECTS.md
-8. EMPEROR_TASK_LIFECYCLE.md
-9. EMPEROR_DECISION_MATRIX.md
-10. EMPEROR_HOW_TO_OPERATE.md
-11. EMPEROR_RESOURCE_SHARING.md
-12. EMPEROR_ARTIFACTS_AND_EVIDENCE.md
-13. EMPEROR_THREADING_AND_DELEGATION.md
-14. EMPEROR_API_REFERENCE.md
-15. EMPEROR_API_OPERATIONS.md
-16. EMPEROR_TASK_CREATION_GUIDE.md
-17. EMPEROR_EXECUTION_HONESTY.md
-18. EMPEROR_COORDINATION_VISIBILITY.md
-19. EMPEROR_END_TO_END_FLOWS.md
-20. EMPEROR_WORKED_API_PATTERNS.md
-21. EMPEROR_OPERATOR_ADDON.md
-22. EMPEROR_USER_FLOW.md
+5. EMPEROR_OPENCLAW_AGENT_RUNTIME.md
+6. EMPEROR_OPERATING_DOCTRINE.md
+7. EMPEROR_MCP_DIRECT_USAGE.md
+8. EMPEROR_CUSTOMERS_AND_PROJECTS.md
+9. EMPEROR_TASK_LIFECYCLE.md
+10. EMPEROR_DECISION_MATRIX.md
+11. EMPEROR_HOW_TO_OPERATE.md
+12. EMPEROR_RESOURCE_SHARING.md
+13. EMPEROR_ARTIFACTS_AND_EVIDENCE.md
+14. EMPEROR_THREADING_AND_DELEGATION.md
+15. EMPEROR_API_REFERENCE.md
+16. EMPEROR_API_OPERATIONS.md
+17. EMPEROR_TASK_CREATION_GUIDE.md
+18. EMPEROR_EXECUTION_HONESTY.md
+19. EMPEROR_COORDINATION_VISIBILITY.md
+20. EMPEROR_END_TO_END_FLOWS.md
+21. EMPEROR_WORKED_API_PATTERNS.md
+22. EMPEROR_OPERATOR_ADDON.md
+23. EMPEROR_USER_FLOW.md
 
 Emperor Claw is your control plane and source of truth for customers, projects, tasks, resources, artifacts, and chat state.
 If Emperor data is available, prefer it over guesses.
 If files and Emperor disagree, surface the mismatch honestly.
+AGENTS.md sections named Session Startup and Red Lines survive compaction in OpenClaw. Treat them as durable operating law.
 `);
   writeFile(path.join(workspaceDir, "IDENTITY.md"), `# IDENTITY.md - Who Am I?
 
@@ -184,6 +252,18 @@ Do not report a task as complete unless a real executor produced a result.
 Keep human-facing updates concise and natural.
 When blocked, say what is missing.
 `);
+  upsertSectionItems(path.join(workspaceDir, "AGENTS.md"), "Session Startup", [
+    "- Read BOOTSTRAP.md before replying in Emperor work and do not delete it.",
+    "- Read EMPEROR_OPENCLAW_AGENT_RUNTIME.md and the Emperor doctrine files named in BOOTSTRAP.md.",
+    "- When a customer, project, task, resource, artifact, or thread is referenced, check Emperor before asserting state.",
+    "- In team Emperor threads, require an explicit @mention unless your role doctrine says otherwise.",
+  ]);
+  upsertSectionItems(path.join(workspaceDir, "AGENTS.md"), "Red Lines", [
+    "- Do not claim work changed durable state unless the matching Emperor write succeeded.",
+    "- Do not report a task done unless POST /tasks/{id}/result or another durable proof surface succeeded.",
+    "- Do not leak non-shared or agent-scoped resource content into team chat.",
+    "- Do not delete AGENTS.md, BOOTSTRAP.md, SOUL.md, USER.md, IDENTITY.md, HEARTBEAT.md, or Emperor doctrine files unless the human explicitly asks.",
+  ]);
   upsertAppend(path.join(workspaceDir, "AGENTS.md"), "## Emperor Claw Operating Rules", `- In direct Emperor threads, reply normally.
 - In team Emperor threads, require an explicit mention by default.
 - Only claim tasks on explicit instruction unless auto-claim is explicitly enabled.
