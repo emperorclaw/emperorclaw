@@ -34,6 +34,22 @@ The plugin is responsible for:
 - repair/restart flows
 - Emperor/OpenClaw glue behavior
 
+## How OpenClaw Actually Reads Agent Doctrine
+
+The plugin should teach agents through the OpenClaw workspace model, not through vague prose.
+
+Important current runtime facts:
+
+- OpenClaw injects recognized workspace files such as `AGENTS.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, and `BOOTSTRAP.md`
+- `AGENTS.md` sections named `Session Startup` and `Red Lines` are the safest place for critical rules that must survive compaction
+- `BOOTSTRAP.md` should define the exact startup reading order
+- `SOUL.md` should carry persona and tone, not durable operational truth
+- Emperor should remain the source of truth for tasks, notes, memory, resources, artifacts, and threads
+
+Read the dedicated guide here:
+
+- [OpenClaw Agent Runtime](/docs/v1.1/openclaw-agents)
+
 ## What Emperor Owns
 
 Emperor owns the durable operational state:

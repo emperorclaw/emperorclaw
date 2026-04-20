@@ -10,6 +10,7 @@ export const versions: DocVersion[] = [
       { slug: 'overview', title: 'Architecture Overview', file: 'overview.md' },
       { slug: 'installation', title: 'Installation Guide', file: 'installation.md' },
       { slug: 'activation', title: 'Activation Protocol', file: 'activation.md' },
+      { slug: 'openclaw-agents', title: 'OpenClaw Agent Runtime', file: 'openclaw-agents.md' },
       { slug: 'concepts', title: 'Core Concepts', file: 'concepts.md' },
       { slug: 'lifecycle', title: 'Work Lifecycle', file: 'lifecycle.md' },
       { slug: 'messaging', title: 'Messaging & Inbox Rules', file: 'messaging.md' },
