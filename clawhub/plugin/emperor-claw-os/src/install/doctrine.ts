@@ -479,7 +479,13 @@ const ARTIFACTS_AND_FOLDERS_QUICK_GUIDE = `# Artifact And Folder Quick Guide
 
 - Search first with GET /artifacts or GET /folders/{id}/contents.
 - Create folders first with POST /folders. Use parentFolderId for child folders. The server derives path from parent + name.
+- Never send a full folder path like /malecu/invoices/2026 as one folder name.
+- To build /malecu/invoices/2026, create three folders in sequence:
+  1. POST /folders { customerId, name: "malecu" }
+  2. POST /folders { customerId, parentFolderId: <malecu-id>, name: "invoices" }
+  3. POST /folders { customerId, parentFolderId: <invoices-id>, name: "2026" }
 - Upload fresh file bytes with POST /artifacts/upload and pass file, kind, one of customerId/projectId, and folderId when the file belongs in a folder.
+- Then upload into the last folder with POST /artifacts/upload and folderId=<2026-folder-id>.
 - Use POST /artifacts only for metadata-first records or external-storage references.
 - Use PATCH /artifacts/{id} for metadata only, PATCH /artifacts/{id}/move for folder/path moves, PATCH /artifacts/{id}/replace for new bytes with the same artifact identity.`;
 
@@ -2087,6 +2093,92 @@ POST /tasks/{taskId}/notes
 }
 \`\`\``;
 
+const OPENCLAW_AGENT_RUNTIME_GUIDE = `# OpenClaw Agent Runtime Guide
+
+OpenClaw does not magically understand Emperor. It understands the workspace files and prompt context you give it.
+
+Current local runtime reality:
+
+- OpenClaw injects recognized workspace bootstrap files into prompt context.
+- Recognized basenames include AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md, BOOTSTRAP.md, MEMORY.md, and memory.md.
+- HEARTBEAT.md can be the only bootstrap file loaded for lightweight heartbeat runs.
+- AGENTS.md sections named Session Startup and Red Lines are re-injected after compaction.
+- The default bootstrap budget is finite. Bloated doctrine will be truncated.
+
+What this means for Emperor-connected agents:
+
+- Put durable rules in AGENTS.md.
+- Put startup reading order in BOOTSTRAP.md.
+- Put persona and tone in SOUL.md.
+- Put machine-local operational hints in TOOLS.md.
+- Put compact self-description in IDENTITY.md.
+- Put human preferences in USER.md.
+- Keep HEARTBEAT.md short and operational.
+- Keep volatile execution truth in Emperor, not in AGENTS.md.
+
+Recommended file responsibilities:
+
+- AGENTS.md -> stable operating rules, startup law, safety boundaries
+- SOUL.md -> voice, tone, persona, interpersonal style
+- TOOLS.md -> local machine tips, helper scripts, safe operational hints
+- IDENTITY.md -> concise identity anchors
+- USER.md -> who the human is and how to work with them
+- BOOTSTRAP.md -> exact startup sequence and reading order
+- HEARTBEAT.md -> periodic review checklist and HEARTBEAT_OK behavior
+- MEMORY.md -> local working continuity only when that memory belongs locally
+
+Critical OpenClaw instruction rule:
+
+- If a rule must survive long sessions and compaction, put it under AGENTS.md headings named Session Startup or Red Lines.
+
+Why:
+
+- OpenClaw re-injects those sections after compaction so the runtime re-runs the critical startup and safety logic.
+- A random Emperor-specific heading may be useful context, but it is not the safest place for non-negotiable rules.
+
+Recommended AGENTS.md content:
+
+## Session Startup
+- read BOOTSTRAP.md before replying
+- read the Emperor doctrine files listed there
+- check Emperor before asserting task, customer, project, resource, artifact, or thread state
+- require explicit @mention in team threads unless role doctrine says otherwise
+
+## Red Lines
+- do not claim durable state changed unless the Emperor write succeeded
+- do not claim a task is done unless POST /tasks/{id}/result or equivalent durable proof succeeded
+- do not leak non-shared or agent-scoped resources into team chat
+- do not delete BOOTSTRAP.md or doctrine files unless explicitly instructed
+
+Bad instruction pattern:
+
+- storing current project status inside AGENTS.md
+- mixing persona, live state, and one-off tasks in one file
+- writing vague motivational doctrine instead of operational rules
+- telling the runtime to rely on chat instead of Emperor state
+
+Good instruction pattern:
+
+- keep AGENTS.md short, stable, and compaction-safe
+- keep BOOTSTRAP.md explicit and ordered
+- keep SOUL.md short and tonal
+- move reusable heavy doctrine into dedicated Emperor doctrine files
+- move durable operational truth into Emperor objects such as tasks, notes, project memory, resources, and artifacts
+
+Prompt-budget discipline:
+
+- keep HEARTBEAT.md small
+- keep AGENTS.md high-signal
+- move large examples into dedicated doctrine files
+- remember that per-file and total bootstrap limits can truncate oversized files
+
+Emperor runtime rule:
+
+- Emperor is the system of record.
+- OpenClaw is the local executor.
+- The bridge exists for routing, session continuity, context injection, and reply delivery.
+- Normal CRUD work should use Emperor MCP directly when real state must change.`;
+
 const OPERATOR_ADDON = `# Emperor Operator Add-On
 
 You are an Emperor-connected operator.
@@ -2133,6 +2225,7 @@ function getSharedOperatingDoctrineText(): string {
 function getSharedOperatorManualText(): string {
   return [
     MCP_DIRECT_USAGE,
+    OPENCLAW_AGENT_RUNTIME_GUIDE,
     CUSTOMERS_AND_PROJECTS_GUIDE,
     TASK_LIFECYCLE_GUIDE,
     ARTIFACTS_AND_EVIDENCE_GUIDE,
@@ -2176,6 +2269,7 @@ export function getWorkspaceDoctrineFiles(profile: DoctrineProfile): Array<{ fil
   const files = [
     { fileName: "EMPEROR_OPERATING_DOCTRINE.md", content: getSharedOperatingDoctrineText() },
     { fileName: "EMPEROR_USER_FLOW.md", content: USER_FLOW_DOCTRINE },
+    { fileName: "EMPEROR_OPENCLAW_AGENT_RUNTIME.md", content: OPENCLAW_AGENT_RUNTIME_GUIDE },
     { fileName: "EMPEROR_MCP_DIRECT_USAGE.md", content: MCP_DIRECT_USAGE },
     { fileName: "EMPEROR_CUSTOMERS_AND_PROJECTS.md", content: CUSTOMERS_AND_PROJECTS_GUIDE },
     { fileName: "EMPEROR_TASK_LIFECYCLE.md", content: TASK_LIFECYCLE_GUIDE },
