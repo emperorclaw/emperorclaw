@@ -8,6 +8,10 @@ The short version:
 - OpenClaw is the local runtime that thinks, reads files, uses tools, writes code, and replies.
 - The plugin does not replace the OpenClaw agent model. It seeds and shapes it.
 
+If you need the repo-level architecture and the difference between repo `agents/*`, plugin state, and live OpenClaw workspaces, read:
+
+- [Project & Plugin Architecture](/docs/v1.1/project-architecture)
+
 ## What OpenClaw Actually Loads
 
 OpenClaw injects recognized workspace bootstrap files into the agent's prompt context. On the local `2026.3.31` runtime used here, the recognized basenames are:
@@ -55,6 +59,35 @@ Think of an Emperor-connected OpenClaw agent as three layers:
    - is the truth source for operational state
 
 The plugin should therefore instruct the agent in a way that fits the OpenClaw runtime model instead of fighting it.
+
+## What The Plugin Owns On Disk
+
+The plugin manages more than the workspace files themselves.
+
+For each installed Emperor-connected agent, the plugin also creates:
+
+- a companion directory under `~/.openclaw/emperor-control-plane-<slug>`
+- a runtime bridge config and local `.env`
+- a bridge state journal used for reconnect and dedupe safety
+- a manifest under `~/.openclaw/emperor/agents/*.json`
+- thread ownership state under the plugin state root
+
+That manifest tracks the durable local install shape for the agent, including:
+
+- Emperor agent id
+- local brain agent id
+- runtime id
+- companion directory
+- service name
+- profile
+- shared doctrine resource ids
+- `threadPolicy`
+- `bridgeContract`
+
+Important distinction:
+
+- repo `agents/*` folders are reference role packs
+- plugin-generated `~/.openclaw/workspace-<brain-id>` folders are the actual runtime workspaces used by installed agents
 
 ## What Each Workspace File Should Do
 
