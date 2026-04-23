@@ -157,6 +157,7 @@ Use it for:
 ## Resources
 Resources are reusable scoped context.
 They are not chat messages and not task logs.
+Think of a resource as a scoped wiki page, operating manual, or reusable memory entry that should still be useful in later turns.
 Use them for:
 - doctrine
 - SOPs
@@ -165,8 +166,15 @@ Use them for:
 - account notes
 - scoped reference docs
 
+Examples:
+- company-wide operator doctrine
+- customer-specific mailbox or billing notes
+- project-local launch checklist
+- one agent's private shared operating preferences
+
 ## Artifacts
 Artifacts are durable outputs or evidence.
+Think of an artifact as a durable file or evidence object, not as prose living in chat.
 Use them for:
 - deliverables
 - reports
@@ -174,6 +182,13 @@ Use them for:
 - proofs
 - working files worth preserving
 - templates
+
+Examples:
+- final PDF report
+- invoice PDF
+- screenshot proof for a fix
+- CSV export
+- reusable template file
 
 ## Threads
 Threads are visible coordination surfaces.
@@ -373,6 +388,7 @@ Honesty rules:
 const RESOURCE_SHARING_DOCTRINE = `# Resource Sharing Semantics
 
 Resources are scoped context, not random notes.
+Think of them as wiki-style reusable memory for a scope, not as chat backlog.
 
 Scope model:
 - company scope: available across the company
@@ -390,6 +406,12 @@ Operational meaning:
 - Agent-scoped shared resources are private operating context for one agent.
 - Company/customer/project shared resources are team-operating context for that scope.
 - configText is the canonical readable body.
+
+Concrete examples:
+- company resource: global operator doctrine or company SOP
+- customer resource: customer-specific account notes, mailbox rules, billing conventions
+- project resource: project-local rollout checklist, style guide, or implementation brief
+- agent resource: one worker's private injected operating notes or preferences
 
 Read surfaces:
 - GET /resources
@@ -426,6 +448,7 @@ Bridge expectation:
 const ARTIFACTS_AND_EVIDENCE_GUIDE = `# Artifacts And Evidence
 
 Artifacts are durable outputs or evidence.
+Think of them as the file cabinet and proof locker for Emperor, not as chat text.
 
 Read surfaces:
 - GET /artifacts
@@ -458,6 +481,13 @@ Use artifacts for:
 - source documents
 - working files worth preserving
 - templates
+
+Concrete examples:
+- a final PDF report
+- a contract or invoice PDF
+- a screenshot proving a UI state or bug reproduction
+- a CSV export or spreadsheet
+- a reusable template document
 
 Do not use artifacts for:
 - reconnect noise
@@ -516,6 +546,13 @@ const THREADING_AND_DELEGATION = `# Threading And Delegation
 - POST /messages/send for visible coordination
 - POST /threads/{threadId}/messages when you already have the exact thread and want to post there directly
 - POST /threads to ensure a direct or team thread first when needed
+
+## Read your inbox and history
+- Use GET /threads to enumerate the direct and team threads you can access.
+- Use GET /threads/{threadId}/messages to read the actual history of one thread.
+- Use limit and since to page through long threads or continue from the last seen message.
+- Use GET /messages/sync as the polling fallback for new inbound activity since a cursor, not as the primary replacement for thread history reads.
+- If the user asks what was already said in chat, read the thread history directly instead of guessing from memory.
 
 ## Coordination rule
 - Speech and state should not drift apart.
@@ -1382,6 +1419,10 @@ Typical fields:
 Purpose:
 - list threads
 
+Use this when:
+- you need to inspect your inbox surfaces
+- you need to discover the thread id before reading or replying
+
 Query:
 - type
 - agentId
@@ -1407,6 +1448,10 @@ Special behavior:
 ### GET /threads/{threadId}/messages
 Purpose:
 - list messages in a thread
+
+Important use:
+- this is the primary read path for actual thread history
+- if you need to know what has already been said in a direct or team chat, read this endpoint
 
 Query:
 - limit
@@ -1459,6 +1504,10 @@ Important note:
 ### GET /messages/sync
 Purpose:
 - polling fallback for inbound messages
+
+Important use:
+- good for "what changed since my last cursor?"
+- not the primary replacement for reading full thread history
 
 Query:
 - since
@@ -1972,6 +2021,21 @@ POST /resources
   "status": "active",
   "ownership": "managed"
 }
+\`\`\`
+
+## Read inbox threads for one agent
+\`\`\`text
+GET /threads?type=direct&agentId=<your-agent-id>
+\`\`\`
+
+## Read the message history of one thread
+\`\`\`text
+GET /threads/{threadId}/messages?limit=100
+\`\`\`
+
+## Poll for new inbound chat activity
+\`\`\`text
+GET /messages/sync?since=<last-seen-timestamp>&mode=all
 \`\`\`
 
 ## Send direct delegation message
