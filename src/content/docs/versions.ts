@@ -8,6 +8,7 @@ export const versions: DocVersion[] = [
     description: 'Includes isShared injection, agent-to-agent replies, and durable checkpoints.',
     pages: [
       { slug: 'overview', title: 'Architecture Overview', file: 'overview.md' },
+      { slug: 'project-architecture', title: 'Project & Plugin Architecture', file: 'project-architecture.md' },
       { slug: 'installation', title: 'Installation Guide', file: 'installation.md' },
       { slug: 'activation', title: 'Activation Protocol', file: 'activation.md' },
       { slug: 'openclaw-agents', title: 'OpenClaw Agent Runtime', file: 'openclaw-agents.md' },
