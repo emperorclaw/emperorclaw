@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { projects, tasks, companyMembers, customers } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -9,13 +8,14 @@ import ArtifactsManager from "./artifacts-manager";
 export const dynamic = "force-dynamic";
 
 export default async function ArtifactsPage() {
-    const sessionUser = (await getServerSession(authOptions))?.user as { id?: string } | undefined;
-    if (!sessionUser?.id) {
+    const session = await getValidatedServerSession();
+    const sessionUserId = session?.user?.id;
+    if (!sessionUserId) {
         redirect("/login");
     }
 
     const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, sessionUser.id))
+        .where(eq(companyMembers.userId, sessionUserId))
         .limit(1);
 
     if (!membership) {

@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, resolveAgentId, resolveMcpActorContext } from "@/lib/mcp";
 import { getLatestManagedSecret, logCredentialAccess } from "@/lib/control-plane";
 import { decryptSecretPayload } from "@/lib/secrets";
-import { getAgentIntegration, updateIntegrationLeaseState } from "@/lib/agent-integrations";
+import { getAgentIntegration, getIntegrationLeaseAccessViolation, updateIntegrationLeaseState } from "@/lib/agent-integrations";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string; integrationId: string }> }
 ) {
-    const auth = await verifyMcpToken(req);
+    const auth = await verifyMcpToken(req, { requiredScope: "mcp_danger" });
     if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
@@ -21,14 +20,33 @@ export async function POST(
     try {
         const body = await req.json();
         const { sessionId, reason } = body;
+        const actor = await resolveMcpActorContext(companyId, {
+            agentId: typeof body.agentId === "string" ? body.agentId : null,
+            sessionId: typeof sessionId === "string" ? sessionId : null,
+        });
+        const resolvedAgentId = await resolveAgentId(companyId, agentId);
 
-        const integration = await getAgentIntegration(companyId, agentId, integrationId);
+        const integration = await getAgentIntegration(companyId, resolvedAgentId, integrationId);
 
         if (!integration) {
             return NextResponse.json({ error: "Integration not found" }, { status: 404 });
         }
 
-        const resolvedAgentId = await resolveAgentId(companyId, agentId);
+        const accessViolation = getIntegrationLeaseAccessViolation(integration, actor.callerAgentId);
+        if (accessViolation) {
+            await logCredentialAccess({
+                companyId,
+                integrationId,
+                agentId: actor.callerAgentId,
+                sessionId: sessionId || null,
+                action: "lease",
+                status: "forbidden",
+                reason: accessViolation,
+                metadataJson: { requestedReason: reason || null },
+            });
+
+            return NextResponse.json({ error: `Access denied: ${accessViolation}` }, { status: 403 });
+        }
 
         if (integration.compatMode === "legacy-inline" && integration.secretJson && Object.keys(integration.secretJson).length > 0) {
             await logCredentialAccess({
@@ -128,13 +146,29 @@ export async function POST(
             },
         });
     } catch (error: any) {
-        if (!isMissingSchemaError(error)) {
+        const message = error?.message || "Internal Server Error";
+        if (
+            !isMissingSchemaError(error) &&
+            !message.startsWith("Access denied") &&
+            !message.startsWith("Agent not found") &&
+            !message.startsWith("Integration not found") &&
+            !message.startsWith("Session not found")
+        ) {
             await updateIntegrationLeaseState(integrationId, {
                 lastFailureAt: new Date(),
-                lastFailureReason: error.message || "lease failed",
+                lastFailureReason: message,
             });
         }
 
-        return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+        const status =
+            message.startsWith("Agent not found") ||
+            message.startsWith("Integration not found") ||
+            message.startsWith("Session not found")
+                ? 404
+                : message.startsWith("Access denied")
+                    ? 403
+                    : 500;
+
+        return NextResponse.json({ error: message }, { status });
     }
 }

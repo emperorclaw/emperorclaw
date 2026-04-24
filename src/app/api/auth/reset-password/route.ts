@@ -3,10 +3,31 @@ import { db } from "@/db";
 import { users, passwordResets, sessions } from "@/db/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { hash } from "argon2";
+import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
+
+function normalizeEmail(value: unknown): string {
+    return String(value ?? "").trim().toLowerCase();
+}
 
 export async function POST(req: NextRequest) {
     try {
-        const { email, token, newPassword } = await req.json();
+        const { email: rawEmail, token, newPassword } = await req.json();
+        const email = normalizeEmail(rawEmail);
+
+        const rateLimit = consumeRateLimit({
+            key: `auth:reset:${getClientIp(req)}:${email || "unknown"}`,
+            limit: 10,
+            windowMs: 15 * 60 * 1000,
+        });
+        if (!rateLimit.allowed) {
+            return NextResponse.json(
+                { error: "Too many reset attempts. Try again later." },
+                {
+                    status: 429,
+                    headers: { "Retry-After": Math.ceil(rateLimit.retryAfterMs / 1000).toString() },
+                },
+            );
+        }
 
         if (!email || !token || !newPassword) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -21,9 +42,6 @@ export async function POST(req: NextRequest) {
         if (!user) {
             return NextResponse.json({ error: "Invalid reset request" }, { status: 400 });
         }
-
-        // 2. Hash provided token to match the DB
-        const tokenHash = await hash(token);
 
         // We can't directly query by hash using eq because Argon2 generates a salt.
         // Argon2 strings are unique even for the same input. 
@@ -66,9 +84,9 @@ export async function POST(req: NextRequest) {
                 .set({ passwordHash: newPasswordHash })
                 .where(eq(users.id, user.id));
 
-            // Clean up used token
+            // Clean up all pending reset links after a successful reset.
             await tx.delete(passwordResets)
-                .where(eq(passwordResets.id, validResetId));
+                .where(eq(passwordResets.userId, user.id));
 
             // Best practice: Invalidate active sessions since password changed
             await tx.delete(sessions)

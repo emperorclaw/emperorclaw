@@ -4,6 +4,7 @@ import type {
     StorageDeleteParams,
     StorageDownloadParams,
     StorageDownloadResult,
+    StorageStatResult,
     StorageUploadParams,
     StorageUploadResult,
 } from "./types";
@@ -139,6 +140,26 @@ export class BunnyStorageAdapter implements StorageAdapter {
             buffer,
             contentType: response.headers.get("Content-Type") ?? undefined,
             sizeBytes: buffer.length,
+        };
+    }
+
+    async stat(params: StorageDownloadParams): Promise<StorageStatResult> {
+        const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
+        const response = await fetch(this.buildObjectUrl(storageKey), {
+            method: "HEAD",
+            headers: {
+                AccessKey: this.config.accessKey,
+            },
+        });
+
+        await this.ensureSuccess(response, "stat");
+
+        const contentLength = response.headers.get("Content-Length");
+        const parsedLength = contentLength ? Number.parseInt(contentLength, 10) : NaN;
+
+        return {
+            contentType: response.headers.get("Content-Type") ?? undefined,
+            sizeBytes: Number.isFinite(parsedLength) && parsedLength >= 0 ? parsedLength : 0,
         };
     }
 

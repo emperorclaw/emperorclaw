@@ -10,8 +10,10 @@ import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import {
+    ArtifactFileTooLargeError,
     ArtifactStorageQuotaError,
-    assertCanStoreArtifactBytes,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
     buildArtifactQuotaErrorResponse,
 } from "@/lib/artifact-quota";
 
@@ -75,55 +77,72 @@ export async function POST(req: NextRequest) {
 
         const metadataJson = parseJsonMetadata(form.get("metadataJson"));
         const checksum = getFormStringValue(form, "checksum");
+        await assertArtifactIngressAllowed({
+            companyId,
+            incomingSizeBytes: fileEntry.size,
+        });
+
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
 
-        await assertCanStoreArtifactBytes({
-            companyId,
-            incomingSizeBytes: buffer.length,
-        });
+        let uploadCompleted = false;
 
-        const uploadResult = await storageAdapter.upload({
-            companyId,
-            logicalPath,
-            data: buffer,
-            contentType,
-            checksum: checksum || undefined,
-        });
+        try {
+            const uploadResult = await storageAdapter.upload({
+                companyId,
+                logicalPath,
+                data: buffer,
+                contentType,
+                checksum: checksum || undefined,
+            });
+            uploadCompleted = true;
 
-        const preparedArtifact = prepareArtifactRecord({
-            kind,
-            artifactClass,
-            importance,
-            title,
-            contentType: uploadResult.contentType,
-            storageProvider: "bunny",
-            storageUrl: uploadResult.storageUrl,
-            storageKey: uploadResult.storageKey,
-            originalFilename: fileEntry.name,
-            sha256: uploadResult.checksum,
-            sizeBytes: uploadResult.sizeBytes,
-            metadataJson,
-        });
+            const preparedArtifact = prepareArtifactRecord({
+                kind,
+                artifactClass,
+                importance,
+                title,
+                contentType: uploadResult.contentType,
+                storageProvider: "bunny",
+                storageUrl: uploadResult.storageUrl,
+                storageKey: uploadResult.storageKey,
+                originalFilename: fileEntry.name,
+                sha256: uploadResult.checksum,
+                sizeBytes: uploadResult.sizeBytes,
+                metadataJson,
+            });
 
-        const visibility = getFormStringValue(form, "visibility") || "private";
-        const retentionPolicy = getFormStringValue(form, "retentionPolicy");
+            const visibility = getFormStringValue(form, "visibility") || "private";
+            const retentionPolicy = getFormStringValue(form, "retentionPolicy");
 
-        const [artifact] = await db.insert(artifacts).values({
-            companyId,
-            projectId: project?.id ?? null,
-            taskId: task?.id ?? null,
-            folderId: folder ? folder.id : null,
-            customerId: project?.customerId ?? customer?.id ?? null,
-            path: logicalPath,
-            ...preparedArtifact,
-            createdByType: "human",
-            createdById: userId,
-            visibility,
-            retentionPolicy: retentionPolicy || null,
-        }).returning();
+            const [artifact] = await db.insert(artifacts).values({
+                companyId,
+                projectId: project?.id ?? null,
+                taskId: task?.id ?? null,
+                folderId: folder ? folder.id : null,
+                customerId: project?.customerId ?? customer?.id ?? null,
+                path: logicalPath,
+                ...preparedArtifact,
+                createdByType: "human",
+                createdById: userId,
+                visibility,
+                retentionPolicy: retentionPolicy || null,
+            }).returning();
 
-        return NextResponse.json({ message: "Artifact uploaded", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
+            return NextResponse.json({ message: "Artifact uploaded", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
+        } catch (error) {
+            if (uploadCompleted) {
+                try {
+                    await storageAdapter.delete({ companyId, logicalPath });
+                } catch (cleanupError) {
+                    console.warn("Unable to clean up failed artifact upload:", cleanupError);
+                }
+            }
+            throw error;
+        }
     } catch (error) {
+        if (error instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(error), { status: 413 });
+        }
         if (error instanceof ArtifactStorageQuotaError) {
             return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
         }

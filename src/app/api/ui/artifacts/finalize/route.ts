@@ -11,8 +11,10 @@ import { buildChildPath } from "@/lib/path-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import {
+    ArtifactFileTooLargeError,
     ArtifactStorageQuotaError,
-    assertCanStoreArtifactBytes,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
     buildArtifactQuotaErrorResponse,
 } from "@/lib/artifact-quota";
 
@@ -80,14 +82,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "logicalPath or filename/title is required" }, { status: 400 });
         }
 
-        const download = await storageAdapter.download({
+        const objectInfo = await storageAdapter.stat({
             companyId,
             logicalPath: resolvedPath,
         });
 
-        await assertCanStoreArtifactBytes({
+        await assertArtifactIngressAllowed({
             companyId,
-            incomingSizeBytes: download.sizeBytes,
+            incomingSizeBytes: objectInfo.sizeBytes,
+        });
+
+        const download = await storageAdapter.download({
+            companyId,
+            logicalPath: resolvedPath,
         });
 
         const checksum = createHash("sha256").update(download.buffer).digest("hex");
@@ -125,6 +132,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ message: "Artifact finalized", artifact: sanitizeArtifactClientPayload(artifact) }, { status: 201 });
     } catch (error) {
+        if (error instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(error), { status: 413 });
+        }
         if (error instanceof ArtifactStorageQuotaError) {
             return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
         }

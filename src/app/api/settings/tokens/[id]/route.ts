@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers, companyTokens } from "@/db/schema";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { serializeCompanyToken } from "@/lib/mcp";
 
 async function getUserCompanyId() {
-    const session = await getServerSession(authOptions);
-    const sessionUserId = session?.user && "id" in session.user ? session.user.id as string | undefined : undefined;
-    if (!session || !session.user || !sessionUserId) return null;
+    const session = await getValidatedServerSession();
+    const sessionUserId = session?.user?.id;
+    if (!session || !sessionUserId) return null;
 
     const [membership] = await db.select().from(companyMembers)
         .where(eq(companyMembers.userId, sessionUserId))
@@ -28,13 +28,7 @@ export async function DELETE(
     const { id } = await params;
 
     try {
-        const [existingToken] = await db.select({
-            id: companyTokens.id,
-            name: companyTokens.name,
-            scope: companyTokens.scope,
-            createdAt: companyTokens.createdAt,
-            lastUsedAt: companyTokens.lastUsedAt,
-        }).from(companyTokens).where(and(
+        const [existingToken] = await db.select().from(companyTokens).where(and(
             eq(companyTokens.companyId, companyId),
             eq(companyTokens.id, id),
             isNull(companyTokens.revokedAt),
@@ -46,21 +40,14 @@ export async function DELETE(
 
         const [revokedToken] = await db.update(companyTokens).set({
             revokedAt: new Date(),
-        }).where(eq(companyTokens.id, existingToken.id)).returning({
-            id: companyTokens.id,
-            name: companyTokens.name,
-            scope: companyTokens.scope,
-            createdAt: companyTokens.createdAt,
-            lastUsedAt: companyTokens.lastUsedAt,
-            revokedAt: companyTokens.revokedAt,
-        });
+        }).where(eq(companyTokens.id, existingToken.id)).returning();
 
         await broadcastMcpEvent(companyId, {
             type: "company_token_revoked",
-            token: revokedToken,
+            token: serializeCompanyToken(revokedToken),
         });
 
-        return NextResponse.json({ token: revokedToken });
+        return NextResponse.json({ token: serializeCompanyToken(revokedToken) });
     } catch (err) {
         console.error("Error revoking token:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { resourceAccessLogs, scopedResources } from "@/db/schema";
+import type { McpTaskScopeContext } from "@/lib/mcp";
 
 export const RESOURCE_SCOPE_TYPES = ["company", "customer", "project", "agent"] as const;
 export const RESOURCE_TYPES = [
@@ -167,6 +168,7 @@ export async function leaseScopedResource(input: {
   sessionId?: string | null;
   taskId?: string | null;
   reason?: string | null;
+  task?: McpTaskScopeContext | null;
 }) {
   const resource = await getScopedResource(input.companyId, input.resourceId);
   if (!resource) {
@@ -175,6 +177,33 @@ export async function leaseScopedResource(input: {
 
   if (resource.status !== "active") {
     throw new Error("Resource is not active");
+  }
+
+  const accessViolation = getResourceLeaseAccessViolation(resource, {
+    callerAgentId: input.agentId || null,
+    task: input.task || null,
+  });
+
+  if (accessViolation) {
+    await db.insert(resourceAccessLogs).values({
+      companyId: input.companyId,
+      resourceId: resource.id,
+      agentId: input.agentId || null,
+      sessionId: input.sessionId || null,
+      taskId: input.taskId || null,
+      action: "lease",
+      status: "forbidden",
+      reason: accessViolation,
+      metadataJson: {
+        provider: resource.provider,
+        resourceType: resource.resourceType,
+        scopeType: resource.scopeType,
+        scopeId: resource.scopeId,
+        ownership: resource.ownership,
+      },
+    });
+
+    throw new Error(`Access denied: ${accessViolation}`);
   }
 
   await db.insert(resourceAccessLogs).values({
@@ -203,6 +232,45 @@ export async function leaseScopedResource(input: {
   }).where(eq(scopedResources.id, resource.id)).returning();
 
   return updated;
+}
+
+function getResourceLeaseAccessViolation(
+  resource: typeof scopedResources.$inferSelect,
+  context: {
+    callerAgentId: string | null;
+    task: McpTaskScopeContext | null;
+  }
+) {
+  const scope = normalizeScopeType(resource.scopeType);
+  const scopeId = resource.scopeId || null;
+
+  if (scope === "company") {
+    return null;
+  }
+
+  if (scope === "agent") {
+    if (!context.callerAgentId) {
+      return "agent-scoped resources require an authenticated runtime agent";
+    }
+    if (!scopeId || scopeId !== context.callerAgentId) {
+      return "resource is scoped to a different agent";
+    }
+    return null;
+  }
+
+  if (!context.task) {
+    return `${scope}-scoped resources require matching task context`;
+  }
+
+  if (scope === "project") {
+    return context.task.projectId === scopeId ? null : "resource is outside the active task project scope";
+  }
+
+  if (scope === "customer") {
+    return context.task.customerId === scopeId ? null : "resource is outside the active task customer scope";
+  }
+
+  return "resource scope is not leasable";
 }
 
 export function resolveResourceScope(resource: {

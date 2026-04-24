@@ -4,7 +4,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/db";
 import { users, sessions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import * as argon2 from "argon2";
 
 type AuthToken = JWT & {
@@ -16,6 +16,29 @@ type SessionWithUserId = Session & {
     user: Session["user"] & { id?: string };
     sessionId?: string;
 };
+
+async function getActiveBrowserSession(sessionId?: string | null) {
+    if (!sessionId) {
+        return null;
+    }
+
+    const [session] = await db.select().from(sessions).where(and(
+        eq(sessions.id, sessionId),
+        gt(sessions.expiresAt, new Date()),
+    )).limit(1);
+
+    return session || null;
+}
+
+function stripAuthToken(token: AuthToken): AuthToken {
+    delete token.id;
+    delete token.sessionId;
+    delete token.sub;
+    delete token.email;
+    delete token.name;
+    delete token.picture;
+    return token;
+}
 
 export const authOptions: NextAuthOptions = {
     providers: [
@@ -73,33 +96,49 @@ export const authOptions: NextAuthOptions = {
                 }).returning();
 
                 authToken.sessionId = newSession.id;
+                return authToken;
             }
+
+            const activeSession = await getActiveBrowserSession(authToken.sessionId);
+            if (!activeSession || (authToken.id && activeSession.userId !== authToken.id)) {
+                return stripAuthToken(authToken);
+            }
+
             return authToken;
         },
         async session({ session, token }) {
             const authSession = session as SessionWithUserId;
             const authToken = token as AuthToken;
-            if (session.user) {
-                if (authToken.id) {
-                    authSession.user.id = authToken.id;
-                }
-                if (authToken.sessionId) {
-                    authSession.sessionId = authToken.sessionId;
-                }
-
-                // Verification that the DB session still exists and is valid could happen here
-                // For performance, we trust the JWT in Edge/middleware, but we have the DB record 
-                // to implement exact revocation if needed in the API.
+            const activeSession = await getActiveBrowserSession(authToken.sessionId);
+            if (!session.user || !authToken.id || !authToken.sessionId || !activeSession || activeSession.userId !== authToken.id) {
+                return null as any;
             }
+
+            authSession.user.id = authToken.id;
+            authSession.sessionId = authToken.sessionId;
             return authSession;
         }
     }
 };
 
-export async function getCompanyId() {
+export async function getValidatedServerSession() {
     const { getServerSession } = await import("next-auth/next");
     const session = await getServerSession(authOptions);
     const typedSession = session as SessionWithUserId | null;
+    if (!typedSession || !typedSession.user || !typedSession.user.id || !typedSession.sessionId) {
+        return null;
+    }
+
+    const activeSession = await getActiveBrowserSession(typedSession.sessionId);
+    if (!activeSession || activeSession.userId !== typedSession.user.id) {
+        return null;
+    }
+
+    return typedSession;
+}
+
+export async function getCompanyId() {
+    const typedSession = await getValidatedServerSession();
     if (!typedSession || !typedSession.user || !typedSession.user.id) {
         return null;
     }
@@ -113,9 +152,7 @@ export async function getCompanyId() {
 }
 
 export async function getUserId() {
-    const { getServerSession } = await import("next-auth/next");
-    const session = await getServerSession(authOptions);
-    const typedSession = session as SessionWithUserId | null;
+    const typedSession = await getValidatedServerSession();
     if (!typedSession || !typedSession.user || !typedSession.user.id) {
         return null;
     }

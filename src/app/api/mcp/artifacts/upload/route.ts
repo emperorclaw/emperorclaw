@@ -15,8 +15,10 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import {
+    ArtifactFileTooLargeError,
     ArtifactStorageQuotaError,
-    assertCanStoreArtifactBytes,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
 } from "@/lib/artifact-quota";
 
 export async function POST(req: NextRequest) {
@@ -97,73 +99,90 @@ export async function POST(req: NextRequest) {
             "application/octet-stream";
 
         const checksum = getFormStringValue(form, "checksum");
+        await assertArtifactIngressAllowed({
+            companyId,
+            incomingSizeBytes: fileEntry.size,
+        });
+
         const buffer = Buffer.from(await fileEntry.arrayBuffer());
 
-        await assertCanStoreArtifactBytes({
-            companyId,
-            incomingSizeBytes: buffer.length,
-        });
+        let uploadCompleted = false;
 
-        const uploadResult = await storageAdapter.upload({
-            companyId,
-            logicalPath,
-            data: buffer,
-            contentType,
-            checksum: checksum || undefined,
-        });
+        try {
+            const uploadResult = await storageAdapter.upload({
+                companyId,
+                logicalPath,
+                data: buffer,
+                contentType,
+                checksum: checksum || undefined,
+            });
+            uploadCompleted = true;
 
-        const preparedArtifact = prepareArtifactRecord({
-            kind,
-            artifactClass,
-            importance,
-            title,
-            contentType: uploadResult.contentType,
-            storageProvider: "bunny",
-            storageUrl: uploadResult.storageUrl,
-            storageKey: uploadResult.storageKey,
-            originalFilename: fileEntry.name,
-            sha256: uploadResult.checksum,
-            sizeBytes: uploadResult.sizeBytes,
-            metadataJson,
-        });
+            const preparedArtifact = prepareArtifactRecord({
+                kind,
+                artifactClass,
+                importance,
+                title,
+                contentType: uploadResult.contentType,
+                storageProvider: "bunny",
+                storageUrl: uploadResult.storageUrl,
+                storageKey: uploadResult.storageKey,
+                originalFilename: fileEntry.name,
+                sha256: uploadResult.checksum,
+                sizeBytes: uploadResult.sizeBytes,
+                metadataJson,
+            });
 
-        const visibility = getFormStringValue(form, "visibility") || "private";
-        const retentionPolicy = getFormStringValue(form, "retentionPolicy");
+            const visibility = getFormStringValue(form, "visibility") || "private";
+            const retentionPolicy = getFormStringValue(form, "retentionPolicy");
 
-        const [artifact] = await db.insert(artifacts).values({
-            companyId,
-            projectId: project?.id ?? null,
-            taskId: task?.id ?? null,
-            folderId: folder ? folder.id : null,
-            customerId: project?.customerId ?? customer?.id ?? null,
-            agentId: internalAgentId,
-            path: logicalPath,
-            ...preparedArtifact,
-            createdByType: "agent",
-            createdById: internalAgentId,
-            visibility,
-            retentionPolicy: retentionPolicy || null,
-        }).returning();
-        const artifactIdValue = artifact.id as string;
+            const [artifact] = await db.insert(artifacts).values({
+                companyId,
+                projectId: project?.id ?? null,
+                taskId: task?.id ?? null,
+                folderId: folder ? folder.id : null,
+                customerId: project?.customerId ?? customer?.id ?? null,
+                agentId: internalAgentId,
+                path: logicalPath,
+                ...preparedArtifact,
+                createdByType: "agent",
+                createdById: internalAgentId,
+                visibility,
+                retentionPolicy: retentionPolicy || null,
+            }).returning();
+            const artifactIdValue = artifact.id as string;
 
-        await logAudit(companyId, "agent", internalAgentId, "upload_artifact", "artifact", artifactIdValue, {
-            kind,
-            projectId,
-            taskId,
-            folderId: folder?.id ?? null,
-            logicalPath,
-        });
+            await logAudit(companyId, "agent", internalAgentId, "upload_artifact", "artifact", artifactIdValue, {
+                kind,
+                projectId,
+                taskId,
+                folderId: folder?.id ?? null,
+                logicalPath,
+            });
 
-        const response = { message: "Artifact uploaded", artifact };
-        await saveIdempotencyResponse(
-            companyId,
-            "/api/mcp/artifacts/upload",
-            requestHash,
-            response
-        );
+            const response = { message: "Artifact uploaded", artifact };
+            await saveIdempotencyResponse(
+                companyId,
+                "/api/mcp/artifacts/upload",
+                requestHash,
+                response
+            );
 
-        return NextResponse.json(response, { status: 201 });
+            return NextResponse.json(response, { status: 201 });
+        } catch (error) {
+            if (uploadCompleted) {
+                try {
+                    await storageAdapter.delete({ companyId, logicalPath });
+                } catch (cleanupError) {
+                    console.warn("Unable to clean up failed MCP artifact upload:", cleanupError);
+                }
+            }
+            throw error;
+        }
     } catch (error) {
+        if (error instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(error), { status: 413 });
+        }
         const message = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json({ error: message }, { status: mapErrorStatus(error) });
     }
@@ -197,6 +216,9 @@ async function loadCustomer(companyId: string, customerId: string) {
 }
 
 function mapErrorStatus(error: unknown) {
+    if (error instanceof ArtifactFileTooLargeError) {
+        return 413;
+    }
     if (error instanceof ArtifactStorageQuotaError) {
         return 413;
     }

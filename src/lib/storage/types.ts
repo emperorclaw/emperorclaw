@@ -30,10 +30,16 @@ export interface StorageDownloadResult {
     sizeBytes: number;
 }
 
+export interface StorageStatResult {
+    contentType?: string;
+    sizeBytes: number;
+}
+
 export interface StorageAdapter {
     upload(params: StorageUploadParams): Promise<StorageUploadResult>;
     delete(params: StorageDeleteParams): Promise<void>;
     download(params: StorageDownloadParams): Promise<StorageDownloadResult>;
+    stat(params: StorageDownloadParams): Promise<StorageStatResult>;
     getDownloadUrl(params: StorageDownloadParams): string;
     buildStorageKey(companyId: string, logicalPath: string): string;
 }

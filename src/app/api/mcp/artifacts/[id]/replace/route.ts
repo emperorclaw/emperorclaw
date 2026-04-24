@@ -9,8 +9,10 @@ import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import {
+    ArtifactFileTooLargeError,
     ArtifactStorageQuotaError,
-    assertCanStoreArtifactBytes,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
     buildArtifactQuotaErrorResponse,
 } from "@/lib/artifact-quota";
 
@@ -66,52 +68,73 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
             (typeof artifact.contentType === "string" ? artifact.contentType : undefined) ||
             "application/octet-stream";
 
-        const buffer = Buffer.from(await fileEntry.arrayBuffer());
-        await assertCanStoreArtifactBytes({
+        await assertArtifactIngressAllowed({
             companyId,
-            incomingSizeBytes: buffer.length,
+            incomingSizeBytes: fileEntry.size,
             replacingArtifactSizeBytes: artifact.sizeBytes,
         });
-        const uploadResult = await storageAdapter.upload({
-            companyId,
-            logicalPath: newLogicalPath,
-            data: buffer,
-            contentType,
-        });
+        const buffer = Buffer.from(await fileEntry.arrayBuffer());
+        let uploadCompleted = false;
 
-        if (newLogicalPath !== currentLogicalPath) {
-            await storageAdapter.delete({
+        try {
+            const uploadResult = await storageAdapter.upload({
                 companyId,
-                logicalPath: currentLogicalPath,
+                logicalPath: newLogicalPath,
+                data: buffer,
+                contentType,
             });
+            uploadCompleted = true;
+
+            const metadataJson = parseJsonMetadata(form.get("metadataJson"));
+
+            const [updatedArtifact] = await db.update(artifacts).set({
+                folderId: targetFolderIdValue,
+                path: newLogicalPath,
+                storageKey: uploadResult.storageKey,
+                storageUrl: uploadResult.storageUrl,
+                sizeBytes: uploadResult.sizeBytes,
+                sha256: uploadResult.checksum,
+                contentType: uploadResult.contentType,
+                originalFilename: nameSegment,
+                title: getFormStringValue(form, "title") || artifact.title,
+                metadataJson: Object.keys(metadataJson).length ? metadataJson : artifact.metadataJson,
+                updatedAt: new Date(),
+            }).where(and(
+                eq(artifacts.id, artifact.id),
+                eq(artifacts.companyId, companyId),
+            )).returning();
+
+            if (newLogicalPath !== currentLogicalPath) {
+                try {
+                    await storageAdapter.delete({
+                        companyId,
+                        logicalPath: currentLogicalPath,
+                    });
+                } catch (cleanupError) {
+                    console.warn("Unable to purge previous MCP artifact blob after replace:", cleanupError);
+                }
+            }
+
+            await logAudit(companyId, "agent", null, "replace_artifact", "artifact", artifactIdValue, {
+                path: newLogicalPath,
+                folderId: targetFolderIdValue,
+            });
+
+            return NextResponse.json({ artifact: updatedArtifact });
+        } catch (error) {
+            if (uploadCompleted && newLogicalPath !== currentLogicalPath) {
+                try {
+                    await storageAdapter.delete({ companyId, logicalPath: newLogicalPath });
+                } catch (cleanupError) {
+                    console.warn("Unable to clean up failed MCP artifact replacement:", cleanupError);
+                }
+            }
+            throw error;
         }
-
-        const metadataJson = parseJsonMetadata(form.get("metadataJson"));
-
-        const [updatedArtifact] = await db.update(artifacts).set({
-            folderId: targetFolderIdValue,
-            path: newLogicalPath,
-            storageKey: uploadResult.storageKey,
-            storageUrl: uploadResult.storageUrl,
-            sizeBytes: uploadResult.sizeBytes,
-            sha256: uploadResult.checksum,
-            contentType: uploadResult.contentType,
-            originalFilename: nameSegment,
-            title: getFormStringValue(form, "title") || artifact.title,
-            metadataJson: Object.keys(metadataJson).length ? metadataJson : artifact.metadataJson,
-            updatedAt: new Date(),
-        }).where(and(
-            eq(artifacts.id, artifact.id),
-            eq(artifacts.companyId, companyId),
-        )).returning();
-
-        await logAudit(companyId, "agent", null, "replace_artifact", "artifact", artifactIdValue, {
-            path: newLogicalPath,
-            folderId: targetFolderIdValue,
-        });
-
-        return NextResponse.json({ artifact: updatedArtifact });
     } catch (error) {
+        if (error instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(error), { status: 413 });
+        }
         if (error instanceof ArtifactStorageQuotaError) {
             return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
         }

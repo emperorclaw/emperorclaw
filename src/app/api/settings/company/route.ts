@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companies, companyMembers } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -8,9 +7,9 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function PATCH(req: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-        const sessionUserId = session?.user && "id" in session.user ? session.user.id as string | undefined : undefined;
-        if (!session?.user || !sessionUserId) {
+        const session = await getValidatedServerSession();
+        const sessionUserId = session?.user?.id;
+        if (!sessionUserId) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 

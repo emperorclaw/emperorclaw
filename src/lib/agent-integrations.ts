@@ -92,6 +92,21 @@ export async function getAgentIntegration(companyId: string, agentId: string, in
     return integrations[0];
 }
 
+export function getIntegrationLeaseAccessViolation(
+    integration: Pick<AgentIntegrationCompat, "agentId">,
+    callerAgentId?: string | null
+) {
+    if (!callerAgentId) {
+        return "integration leasing requires an authenticated runtime agent";
+    }
+
+    if (integration.agentId !== callerAgentId) {
+        return "integration belongs to a different agent";
+    }
+
+    return null;
+}
+
 export async function createAgentIntegration(input: {
     companyId: string;
     agentId: string;

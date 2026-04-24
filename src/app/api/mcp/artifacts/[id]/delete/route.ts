@@ -40,6 +40,8 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/a
     const now = new Date();
     await db.update(artifacts).set({
         deletedAt: now,
+        storageUrl: deleteContent ? null : artifact.storageUrl,
+        storageKey: deleteContent ? null : artifact.storageKey,
     }).where(and(
         eq(artifacts.id, artifactIdValue),
         eq(artifacts.companyId, companyId),

@@ -4,6 +4,7 @@ import { users, companies, companyMembers } from "@/db/schema";
 import { hash } from "argon2";
 import { eq } from "drizzle-orm";
 import { sendEmail, getWelcomeEmailHtml } from "@/lib/email";
+import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 
 interface RegisterRequestBody {
     email: string;
@@ -29,6 +30,21 @@ export async function POST(req: NextRequest) {
         const password = String(body.password ?? "");
         const companyName = normalizeCompanyName(body.companyName);
         const acceptBetaDisclaimer = body.acceptBetaDisclaimer === true;
+
+        const rateLimit = consumeRateLimit({
+            key: `auth:register:${getClientIp(req)}:${email || "unknown"}`,
+            limit: 5,
+            windowMs: 15 * 60 * 1000,
+        });
+        if (!rateLimit.allowed) {
+            return NextResponse.json(
+                { error: "Too many signup attempts. Try again later." },
+                {
+                    status: 429,
+                    headers: { "Retry-After": Math.ceil(rateLimit.retryAfterMs / 1000).toString() },
+                },
+            );
+        }
 
         if (!email || !password || !companyName) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });

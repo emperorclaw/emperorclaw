@@ -10,8 +10,10 @@ import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import {
+    ArtifactFileTooLargeError,
     ArtifactStorageQuotaError,
-    assertCanStoreArtifactBytes,
+    assertArtifactIngressAllowed,
+    buildArtifactFileTooLargeErrorResponse,
     buildArtifactQuotaErrorResponse,
 } from "@/lib/artifact-quota";
 
@@ -58,46 +60,67 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             (typeof artifact.contentType === "string" ? artifact.contentType : undefined) ||
             "application/octet-stream";
 
-        const buffer = Buffer.from(await fileEntry.arrayBuffer());
-        await assertCanStoreArtifactBytes({
+        await assertArtifactIngressAllowed({
             companyId,
-            incomingSizeBytes: buffer.length,
+            incomingSizeBytes: fileEntry.size,
             replacingArtifactSizeBytes: artifact.sizeBytes,
         });
-        const uploadResult = await storageAdapter.upload({
-            companyId,
-            logicalPath: nextLogicalPath,
-            data: buffer,
-            contentType,
-        });
+        const buffer = Buffer.from(await fileEntry.arrayBuffer());
+        let uploadCompleted = false;
 
-        if (artifact.storageKey && nextLogicalPath !== currentLogicalPath) {
-            await storageAdapter.delete({
+        try {
+            const uploadResult = await storageAdapter.upload({
                 companyId,
-                logicalPath: currentLogicalPath,
+                logicalPath: nextLogicalPath,
+                data: buffer,
+                contentType,
             });
+            uploadCompleted = true;
+
+            const metadataJson = parseJsonMetadata(form.get("metadataJson"));
+            const [updatedArtifact] = await db.update(artifacts).set({
+                folderId: folder ? folder.id : artifact.folderId,
+                path: nextLogicalPath,
+                storageKey: uploadResult.storageKey,
+                storageUrl: uploadResult.storageUrl,
+                sizeBytes: uploadResult.sizeBytes,
+                sha256: uploadResult.checksum,
+                contentType: uploadResult.contentType,
+                originalFilename: nameSegment,
+                title: getFormStringValue(form, "title") || artifact.title,
+                metadataJson: Object.keys(metadataJson).length ? metadataJson : artifact.metadataJson,
+                updatedAt: new Date(),
+            }).where(and(
+                eq(artifacts.id, artifact.id),
+                eq(artifacts.companyId, companyId),
+            )).returning();
+
+            if (artifact.storageKey && nextLogicalPath !== currentLogicalPath) {
+                try {
+                    await storageAdapter.delete({
+                        companyId,
+                        logicalPath: currentLogicalPath,
+                    });
+                } catch (cleanupError) {
+                    console.warn("Unable to purge previous artifact blob after replace:", cleanupError);
+                }
+            }
+
+            return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
+        } catch (error) {
+            if (uploadCompleted && nextLogicalPath !== currentLogicalPath) {
+                try {
+                    await storageAdapter.delete({ companyId, logicalPath: nextLogicalPath });
+                } catch (cleanupError) {
+                    console.warn("Unable to clean up failed artifact replacement:", cleanupError);
+                }
+            }
+            throw error;
         }
-
-        const metadataJson = parseJsonMetadata(form.get("metadataJson"));
-        const [updatedArtifact] = await db.update(artifacts).set({
-            folderId: folder ? folder.id : artifact.folderId,
-            path: nextLogicalPath,
-            storageKey: uploadResult.storageKey,
-            storageUrl: uploadResult.storageUrl,
-            sizeBytes: uploadResult.sizeBytes,
-            sha256: uploadResult.checksum,
-            contentType: uploadResult.contentType,
-            originalFilename: nameSegment,
-            title: getFormStringValue(form, "title") || artifact.title,
-            metadataJson: Object.keys(metadataJson).length ? metadataJson : artifact.metadataJson,
-            updatedAt: new Date(),
-        }).where(and(
-            eq(artifacts.id, artifact.id),
-            eq(artifacts.companyId, companyId),
-        )).returning();
-
-        return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
+        if (error instanceof ArtifactFileTooLargeError) {
+            return NextResponse.json(buildArtifactFileTooLargeErrorResponse(error), { status: 413 });
+        }
         if (error instanceof ArtifactStorageQuotaError) {
             return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
         }
