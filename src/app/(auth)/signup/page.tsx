@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
-import { signIn } from "next-auth/react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
 
@@ -70,17 +69,7 @@ export default function SignupPage() {
                 throw new Error(data.error || "Failed to register");
             }
 
-            const loginRes = await signIn("credentials", {
-                redirect: false,
-                email: normalizedEmail,
-                password,
-            });
-
-            if (loginRes?.error) {
-                throw new Error("Login failed after registration");
-            }
-
-            router.push("/");
+            router.push(`/signup/check-email?email=${encodeURIComponent(normalizedEmail)}`);
             router.refresh();
         } catch (err: any) {
             setError(err.message);
@@ -103,7 +92,7 @@ export default function SignupPage() {
                 <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)]">
                     <div className="text-center mb-8">
                         <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Create an account</h1>
-                        <p className="text-zinc-500 text-sm mt-2">Set up your Emperor Claw workspace.</p>
+                        <p className="text-zinc-500 text-sm mt-2">Set up your Emperor Claw workspace and verify your email to activate it.</p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -183,11 +172,14 @@ export default function SignupPage() {
                                 <div className="space-y-2">
                                     <p className="font-medium text-amber-200">Beta notice</p>
                                     <p className="text-zinc-300/90">
-                                        Emperor Claw is still in beta. We do not guarantee safety, retention, recovery, or suitability of stored data.
-                                        You are responsible for the data you place here.
+                                        Emperor Claw is beta software provided as-is. We do not guarantee safety, retention, recovery, availability, or suitability of stored data or agent output.
+                                        You are responsible for how the system is used and for the data you place here.
                                     </p>
                                     <p className="text-zinc-400">
                                         Do not store critical secrets, regulated data, production-only credentials, or other information you cannot afford to expose, lose, or recreate.
+                                    </p>
+                                    <p className="text-zinc-500">
+                                        By creating a workspace, you confirm you are authorized to use this email address for the company you enter below.
                                     </p>
                                 </div>
                             </div>
@@ -202,7 +194,7 @@ export default function SignupPage() {
                                 required
                             />
                             <span>
-                                I understand this product is in beta, that I am responsible for the data I store here, and that I should not place critical or sensitive information in this workspace.
+                                I understand this product is in beta, is provided without warranty, and that I am responsible for the data and operations I run inside this workspace.
                             </span>
                         </label>
 
@@ -210,7 +202,7 @@ export default function SignupPage() {
                             <div className="flex items-start gap-2">
                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
                                 <p>
-                                    Create only one workspace per company unless you intentionally want separate isolated datasets and agent state.
+                                    We will send a verification link to this email before the workspace can be used. Create only one workspace per company unless you intentionally want separate isolated datasets and agent state.
                                 </p>
                             </div>
                         </div>

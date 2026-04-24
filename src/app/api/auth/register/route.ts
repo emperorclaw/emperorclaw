@@ -3,8 +3,10 @@ import { db } from "@/db";
 import { users, companies, companyMembers } from "@/db/schema";
 import { hash } from "argon2";
 import { eq } from "drizzle-orm";
-import { sendEmail, getWelcomeEmailHtml } from "@/lib/email";
+import { sendEmail, getEmailVerificationEmailHtml } from "@/lib/email";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
+import { issueEmailVerificationToken } from "@/lib/email-verification";
+import { getAppUrl } from "@/lib/env";
 
 interface RegisterRequestBody {
     email: string;
@@ -104,14 +106,23 @@ export async function POST(req: NextRequest) {
             return { user: { id: newUser.id, email: newUser.email }, company: newCompany };
         });
 
-        // Fire-and-forget the welcome email
-        sendEmail({
-            to: email,
-            subject: "Welcome to Emperor Claw",
-            html: getWelcomeEmailHtml(email)
-        }).catch(err => console.error("Failed to send welcome email in background", err));
+        const { rawToken } = await issueEmailVerificationToken(result.user.id);
+        const verificationUrl = `${getAppUrl(req)}/signup/verify?token=${rawToken}&email=${encodeURIComponent(email)}`;
 
-        return NextResponse.json({ message: "Account created successfully", data: result }, { status: 201 });
+        await sendEmail({
+            to: email,
+            subject: "Verify your Emperor Claw email",
+            html: getEmailVerificationEmailHtml(email, verificationUrl, result.company.name),
+        });
+
+        return NextResponse.json({
+            message: "Account created. Check your inbox to verify your email before logging in.",
+            data: {
+                email,
+                companyId: result.company.id,
+                companyName: result.company.name,
+            },
+        }, { status: 201 });
 
     } catch (err: unknown) {
         console.error("Registration error:", err);

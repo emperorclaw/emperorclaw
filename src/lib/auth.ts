@@ -70,6 +70,10 @@ export const authOptions: NextAuthOptions = {
                     return null;
                 }
 
+                if (!userRecord.emailVerifiedAt) {
+                    throw new Error("EMAIL_NOT_VERIFIED");
+                }
+
                 return {
                     id: userRecord.id,
                     email: userRecord.email,
