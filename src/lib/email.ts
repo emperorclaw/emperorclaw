@@ -1,9 +1,9 @@
 import nodemailer from "nodemailer";
 
-// Use environment variables for SMTP configuration.
-// Fallback to empty strings to avoid crashing if unset (will fail on send instead).
+// Temporary hardcoded SMTP defaults for deployment bootstrap.
+// Environment variables still override these values when present.
 const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "465", 10);
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const SMTP_FROM = process.env.SMTP_FROM;
