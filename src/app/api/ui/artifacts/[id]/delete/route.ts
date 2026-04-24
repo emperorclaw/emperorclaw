@@ -33,7 +33,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         }
 
         const now = new Date();
-        await db.update(artifacts).set({ deletedAt: now }).where(and(
+        await db.update(artifacts).set({
+            deletedAt: now,
+            storageUrl: purge ? null : artifact.storageUrl,
+            storageKey: purge ? null : artifact.storageKey,
+        }).where(and(
             eq(artifacts.id, artifact.id),
             eq(artifacts.companyId, companyId),
         ));

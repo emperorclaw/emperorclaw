@@ -13,3 +13,37 @@ export function optionalEnv(name: string): string | undefined {
     }
     return value === "" ? undefined : value;
 }
+
+function normalizeBaseUrl(url: string): string {
+    return url.trim().replace(/\/+$/, "");
+}
+
+export function getAppUrl(request?: {
+    nextUrl?: { origin?: string };
+    headers?: { get(name: string): string | null };
+}): string {
+    const configured =
+        optionalEnv("APP_URL") ||
+        optionalEnv("NEXTAUTH_URL") ||
+        optionalEnv("EMPEROR_PUBLIC_URL");
+
+    if (configured) {
+        return normalizeBaseUrl(configured);
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+        const requestOrigin = request?.nextUrl?.origin;
+        if (requestOrigin) {
+            return normalizeBaseUrl(requestOrigin);
+        }
+
+        const headers = request?.headers;
+        const host = headers?.get("x-forwarded-host") || headers?.get("host");
+        if (host) {
+            const proto = headers?.get("x-forwarded-proto") || "http";
+            return normalizeBaseUrl(`${proto}://${host}`);
+        }
+    }
+
+    return "https://emperorclaw.malecu.eu";
+}

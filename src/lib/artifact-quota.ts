@@ -1,8 +1,9 @@
 import { db } from "@/db";
 import { artifacts, companyMembers } from "@/db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 export const BETA_STORAGE_BYTES_PER_MEMBER = 1024 * 1024 * 1024;
+export const DEFAULT_MAX_ARTIFACT_FILE_BYTES = 100 * 1024 * 1024;
 
 export class ArtifactStorageQuotaError extends Error {
     readonly quotaBytes: number;
@@ -25,6 +26,45 @@ export class ArtifactStorageQuotaError extends Error {
     }
 }
 
+export class ArtifactFileTooLargeError extends Error {
+    readonly attemptedBytes: number;
+    readonly maxBytes: number;
+
+    constructor(params: { attemptedBytes: number; maxBytes: number }) {
+        super("Artifact file exceeds the maximum allowed upload size");
+        this.name = "ArtifactFileTooLargeError";
+        this.attemptedBytes = params.attemptedBytes;
+        this.maxBytes = params.maxBytes;
+    }
+}
+
+function getPositiveIntegerEnv(name: string): number | null {
+    const raw = process.env[name];
+    if (!raw) {
+        return null;
+    }
+
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function getArtifactMaxFileBytes() {
+    return (
+        getPositiveIntegerEnv("EMPEROR_ARTIFACT_MAX_UPLOAD_BYTES") ||
+        getPositiveIntegerEnv("ARTIFACT_MAX_UPLOAD_BYTES") ||
+        DEFAULT_MAX_ARTIFACT_FILE_BYTES
+    );
+}
+
+export function assertArtifactFileSizeWithinLimit(sizeBytes: number) {
+    const attemptedBytes = Math.max(0, sizeBytes);
+    const maxBytes = getArtifactMaxFileBytes();
+
+    if (attemptedBytes > maxBytes) {
+        throw new ArtifactFileTooLargeError({ attemptedBytes, maxBytes });
+    }
+}
+
 export async function getArtifactStorageQuotaSnapshot(companyId: string) {
     const [{ memberCount }] = await db
         .select({ memberCount: sql<number>`count(*)` })
@@ -40,7 +80,7 @@ export async function getArtifactStorageQuotaSnapshot(companyId: string) {
             and(
                 eq(artifacts.companyId, companyId),
                 eq(artifacts.storageProvider, "bunny"),
-                isNull(artifacts.deletedAt),
+                isNotNull(artifacts.storageKey),
             ),
         );
 
@@ -81,6 +121,15 @@ export async function assertCanStoreArtifactBytes(params: {
     return snapshot;
 }
 
+export async function assertArtifactIngressAllowed(params: {
+    companyId: string;
+    incomingSizeBytes: number;
+    replacingArtifactSizeBytes?: number | null;
+}) {
+    assertArtifactFileSizeWithinLimit(params.incomingSizeBytes);
+    return assertCanStoreArtifactBytes(params);
+}
+
 export function buildArtifactQuotaErrorResponse(error: ArtifactStorageQuotaError) {
     return {
         error: "Artifact storage quota exceeded",
@@ -89,6 +138,16 @@ export function buildArtifactQuotaErrorResponse(error: ArtifactStorageQuotaError
             usedBytes: error.usedBytes,
             attemptedIncreaseBytes: error.attemptedIncreaseBytes,
             memberCount: error.memberCount,
+        },
+    };
+}
+
+export function buildArtifactFileTooLargeErrorResponse(error: ArtifactFileTooLargeError) {
+    return {
+        error: "Artifact file exceeds the maximum allowed upload size",
+        details: {
+            attemptedBytes: error.attemptedBytes,
+            maxBytes: error.maxBytes,
         },
     };
 }

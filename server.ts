@@ -3,11 +3,8 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { WebSocket, WebSocketServer } from 'ws';
-import { db } from './src/db';
-import { companyTokens } from './src/db/schema';
-import { eq } from 'drizzle-orm';
-import * as crypto from 'crypto';
 import { Pool, PoolClient } from 'pg';
+import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
@@ -35,30 +32,17 @@ app.prepare().then(() => {
     const { pathname } = parse(request.url || '');
 
     if (pathname === '/api/mcp/ws') {
-        const authHeader = request.headers['authorization'];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-            socket.destroy();
-            return;
-        }
-
-        const token = authHeader.split(" ")[1];
-        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
         try {
-            const [companyToken] = await db.select().from(companyTokens).where(
-                eq(companyTokens.tokenHash, tokenHash)
-            ).limit(1);
-
-            if (!companyToken || companyToken.revokedAt) {
-                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+            const auth = await verifyMcpAuthorizationHeader(request.headers['authorization']);
+            if (auth.error || !auth.companyToken) {
+                socket.write(`HTTP/1.1 ${auth.status} ${auth.status === 403 ? 'Forbidden' : 'Unauthorized'}\r\n\r\n`);
                 socket.destroy();
                 return;
             }
 
             wss.handleUpgrade(request, socket, head, (ws) => {
                 const companySocket = ws as CompanySocket;
-                companySocket.companyId = companyToken.companyId;
+                companySocket.companyId = auth.companyToken.companyId;
                 wss.emit('connection', companySocket, request);
             });
         } catch(e) {

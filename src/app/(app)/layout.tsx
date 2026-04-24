@@ -2,6 +2,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { OpenClawChat } from "@/components/openclaw-chat";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { getCompanyId } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function AppLayout({
     children,
@@ -11,7 +12,7 @@ export default async function AppLayout({
     const companyId = await getCompanyId();
 
     if (!companyId) {
-        return <>{children}</>;
+        redirect("/login");
     }
 
     return (

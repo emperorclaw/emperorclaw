@@ -1,22 +1,21 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { eq } from "drizzle-orm";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
 import { createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
 
 async function getMembership() {
-  const session = await getServerSession(authOptions);
-  const user = session?.user as { id?: string } | undefined;
-  if (!user?.id) {
+  const session = await getValidatedServerSession();
+  const userId = session?.user?.id;
+  if (!userId) {
     return null;
   }
 
   const [membership] = await db.select().from(companyMembers)
-    .where(eq(companyMembers.userId, user.id))
+    .where(eq(companyMembers.userId, userId))
     .limit(1);
 
   return membership || null;

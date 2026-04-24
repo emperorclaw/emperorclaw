@@ -3,14 +3,14 @@ import { db } from "@/db";
 import { companyTokens, companyMembers } from "@/db/schema";
 import { randomBytes, createHash } from "crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { isCompanyTokenScope, serializeCompanyToken } from "@/lib/mcp";
 
 async function getUserCompanyId() {
-    const session = await getServerSession(authOptions);
-    const sessionUserId = session?.user && "id" in session.user ? session.user.id as string | undefined : undefined;
-    if (!session || !session.user || !sessionUserId) return null;
+    const session = await getValidatedServerSession();
+    const sessionUserId = session?.user?.id;
+    if (!session || !sessionUserId) return null;
 
     const [membership] = await db.select().from(companyMembers)
         .where(eq(companyMembers.userId, sessionUserId))
@@ -24,20 +24,14 @@ export async function GET() {
     if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        const tokens = await db.select({
-            id: companyTokens.id,
-            name: companyTokens.name,
-            scope: companyTokens.scope,
-            lastUsedAt: companyTokens.lastUsedAt,
-            createdAt: companyTokens.createdAt,
-        }).from(companyTokens)
+        const tokens = await db.select().from(companyTokens)
             .where(and(
                 eq(companyTokens.companyId, companyId),
                 isNull(companyTokens.revokedAt),
             ))
             .orderBy(desc(companyTokens.createdAt));
 
-        return NextResponse.json({ tokens });
+        return NextResponse.json({ tokens: tokens.map(serializeCompanyToken) });
     } catch (err) {
         console.error("Error fetching tokens:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -50,9 +44,15 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { name } = body;
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        const requestedScope = body.scope;
 
         if (!name) return NextResponse.json({ error: "Token name is required" }, { status: 400 });
+        if (requestedScope !== undefined && !isCompanyTokenScope(requestedScope)) {
+            return NextResponse.json({ error: "Invalid token scope" }, { status: 400 });
+        }
+
+        const scope = requestedScope ?? "mcp_danger";
 
         const rawToken = `ec_${randomBytes(24).toString('hex')}`;
         const tokenHash = createHash("sha256").update(rawToken).digest("hex");
@@ -60,21 +60,16 @@ export async function POST(req: NextRequest) {
         const [newToken] = await db.insert(companyTokens).values({
             companyId,
             name,
-            scope: "mcp_full",
+            scope,
             tokenHash,
-        }).returning({
-            id: companyTokens.id,
-            name: companyTokens.name,
-            scope: companyTokens.scope,
-            createdAt: companyTokens.createdAt,
-        });
+        }).returning();
 
         await broadcastMcpEvent(companyId, {
             type: "company_token_created",
-            token: newToken,
+            token: serializeCompanyToken(newToken),
         });
 
-        return NextResponse.json({ token: newToken, secret: rawToken }, { status: 201 });
+        return NextResponse.json({ token: serializeCompanyToken(newToken), secret: rawToken }, { status: 201 });
 
     } catch (err) {
         console.error("Error creating token:", err);

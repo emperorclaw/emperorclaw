@@ -1,16 +1,16 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers, companyTokens } from "@/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import SettingsClient from "./settings-client";
+import { serializeCompanyToken } from "@/lib/mcp";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-    const session = await getServerSession(authOptions);
-    const sessionUserId = (session?.user as { id?: string } | undefined)?.id;
+    const session = await getValidatedServerSession();
+    const sessionUserId = session?.user?.id;
     if (!sessionUserId) {
         redirect("/login");
     }
@@ -30,11 +30,5 @@ export default async function SettingsPage() {
         ))
         .orderBy(desc(companyTokens.createdAt));
 
-    return <SettingsClient initialTokens={tokens.map((token) => ({
-        id: token.id,
-        name: token.name,
-        scope: token.scope,
-        createdAt: token.createdAt.toISOString(),
-        lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
-    }))} />;
+    return <SettingsClient initialTokens={tokens.map(serializeCompanyToken)} />;
 }

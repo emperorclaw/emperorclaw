@@ -1,8 +1,7 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { companyMembers } from "@/db/schema";
 import { db } from "@/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export interface SessionCompany {
     companyId: string;
@@ -10,9 +9,8 @@ export interface SessionCompany {
 }
 
 export async function requireCompanyFromSession(): Promise<SessionCompany> {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string } | undefined;
-    const userId = user?.id;
+    const session = await getValidatedServerSession();
+    const userId = session?.user?.id;
     if (!userId) {
         throw new Error("Unauthorized");
     }
