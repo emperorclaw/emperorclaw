@@ -1,4 +1,4 @@
-CREATE TABLE "approval_task_links" (
+CREATE TABLE IF NOT EXISTS "approval_task_links" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"approval_id" uuid NOT NULL,
 	"task_id" uuid NOT NULL,
@@ -6,7 +6,7 @@ CREATE TABLE "approval_task_links" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "approvals" (
+CREATE TABLE IF NOT EXISTS "approvals" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"project_id" uuid NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE "approvals" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "project_agent_profiles" (
+CREATE TABLE IF NOT EXISTS "project_agent_profiles" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"project_id" uuid NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE "project_agent_profiles" (
 	"deleted_at" timestamp
 );
 --> statement-breakpoint
-CREATE TABLE "recurring_task_definitions" (
+CREATE TABLE IF NOT EXISTS "recurring_task_definitions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"project_id" uuid NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE "recurring_task_definitions" (
 	"deleted_at" timestamp
 );
 --> statement-breakpoint
-CREATE TABLE "resource_access_logs" (
+CREATE TABLE IF NOT EXISTS "resource_access_logs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"resource_id" uuid NOT NULL,
@@ -74,7 +74,7 @@ CREATE TABLE "resource_access_logs" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "scoped_resources" (
+CREATE TABLE IF NOT EXISTS "scoped_resources" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"scope_type" text NOT NULL,
@@ -97,54 +97,202 @@ CREATE TABLE "scoped_resources" (
 );
 --> statement-breakpoint
 ALTER TABLE "tasks" ALTER COLUMN "state" SET DEFAULT 'inbox';--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "last_heartbeat_at" timestamp;--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "checkin_deadline_at" timestamp;--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "last_wake_at" timestamp;--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "wake_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "max_wake_attempts" integer DEFAULT 3 NOT NULL;--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "lifecycle_generation" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
-ALTER TABLE "agent_sessions" ADD COLUMN "last_provision_error" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "title" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "artifact_class" text DEFAULT 'working_file' NOT NULL;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "importance" text DEFAULT 'operational' NOT NULL;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "storage_provider" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "storage_key" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "original_filename" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "source_kind" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "source_ref" text;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "is_canonical" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "promoted_at" timestamp;--> statement-breakpoint
-ALTER TABLE "artifacts" ADD COLUMN "metadata_json" jsonb DEFAULT '{}' NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "lead_agent_id" uuid;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "require_approval_for_done" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "require_review_before_done" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "comment_required_for_review" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "block_status_changes_with_pending_approval" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "only_lead_can_change_status" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "max_active_agents" integer DEFAULT 3 NOT NULL;--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "updated_at" timestamp DEFAULT now() NOT NULL;--> statement-breakpoint
-ALTER TABLE "tasks" ADD COLUMN "recurring_task_definition_id" uuid;--> statement-breakpoint
-ALTER TABLE "tasks" ADD COLUMN "task_kind" text DEFAULT 'standard' NOT NULL;--> statement-breakpoint
-ALTER TABLE "thread_participants" ADD COLUMN "last_read_at" timestamp;--> statement-breakpoint
-ALTER TABLE "thread_participants" ADD COLUMN "typing_until" timestamp;--> statement-breakpoint
-ALTER TABLE "approval_task_links" ADD CONSTRAINT "approval_task_links_approval_id_approvals_id_fk" FOREIGN KEY ("approval_id") REFERENCES "public"."approvals"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "approval_task_links" ADD CONSTRAINT "approval_task_links_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "approval_task_links" ADD CONSTRAINT "approval_task_links_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "approvals" ADD CONSTRAINT "approvals_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "approvals" ADD CONSTRAINT "approvals_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "approvals" ADD CONSTRAINT "approvals_requester_agent_id_agents_id_fk" FOREIGN KEY ("requester_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "approvals" ADD CONSTRAINT "approvals_resolver_user_id_users_id_fk" FOREIGN KEY ("resolver_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_agent_profiles" ADD CONSTRAINT "project_agent_profiles_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_agent_profiles" ADD CONSTRAINT "project_agent_profiles_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_agent_profiles" ADD CONSTRAINT "project_agent_profiles_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "recurring_task_definitions" ADD CONSTRAINT "recurring_task_definitions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "recurring_task_definitions" ADD CONSTRAINT "recurring_task_definitions_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "recurring_task_definitions" ADD CONSTRAINT "recurring_task_definitions_created_by_agent_id_agents_id_fk" FOREIGN KEY ("created_by_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_resource_id_scoped_resources_id_fk" FOREIGN KEY ("resource_id") REFERENCES "public"."scoped_resources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_session_id_agent_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."agent_sessions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "scoped_resources" ADD CONSTRAINT "scoped_resources_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "projects" ADD CONSTRAINT "projects_lead_agent_id_agents_id_fk" FOREIGN KEY ("lead_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "tasks" ADD CONSTRAINT "tasks_recurring_task_definition_id_recurring_task_definitions_id_fk" FOREIGN KEY ("recurring_task_definition_id") REFERENCES "public"."recurring_task_definitions"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "last_heartbeat_at" timestamp;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "checkin_deadline_at" timestamp;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "last_wake_at" timestamp;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "wake_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "max_wake_attempts" integer DEFAULT 3 NOT NULL;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "lifecycle_generation" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN IF NOT EXISTS "last_provision_error" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "title" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "artifact_class" text DEFAULT 'working_file' NOT NULL;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "importance" text DEFAULT 'operational' NOT NULL;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "storage_provider" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "storage_key" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "original_filename" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "source_kind" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "source_ref" text;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "is_canonical" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "promoted_at" timestamp;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD COLUMN IF NOT EXISTS "metadata_json" jsonb DEFAULT '{}' NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "lead_agent_id" uuid;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "require_approval_for_done" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "require_review_before_done" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "comment_required_for_review" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "block_status_changes_with_pending_approval" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "only_lead_can_change_status" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "max_active_agents" integer DEFAULT 3 NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "recurring_task_definition_id" uuid;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "task_kind" text DEFAULT 'standard' NOT NULL;--> statement-breakpoint
+ALTER TABLE "thread_participants" ADD COLUMN IF NOT EXISTS "last_read_at" timestamp;--> statement-breakpoint
+ALTER TABLE "thread_participants" ADD COLUMN IF NOT EXISTS "typing_until" timestamp;--> statement-breakpoint
+ALTER TABLE "scoped_resources" ADD COLUMN IF NOT EXISTS "is_shared" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approval_task_links_approval_id_approvals_id_fk'
+	) THEN
+		ALTER TABLE "approval_task_links" ADD CONSTRAINT "approval_task_links_approval_id_approvals_id_fk" FOREIGN KEY ("approval_id") REFERENCES "public"."approvals"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approval_task_links_task_id_tasks_id_fk'
+	) THEN
+		ALTER TABLE "approval_task_links" ADD CONSTRAINT "approval_task_links_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approval_task_links_company_id_companies_id_fk'
+	) THEN
+		ALTER TABLE "approval_task_links" ADD CONSTRAINT "approval_task_links_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approvals_company_id_companies_id_fk'
+	) THEN
+		ALTER TABLE "approvals" ADD CONSTRAINT "approvals_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approvals_project_id_projects_id_fk'
+	) THEN
+		ALTER TABLE "approvals" ADD CONSTRAINT "approvals_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approvals_requester_agent_id_agents_id_fk'
+	) THEN
+		ALTER TABLE "approvals" ADD CONSTRAINT "approvals_requester_agent_id_agents_id_fk" FOREIGN KEY ("requester_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'approvals_resolver_user_id_users_id_fk'
+	) THEN
+		ALTER TABLE "approvals" ADD CONSTRAINT "approvals_resolver_user_id_users_id_fk" FOREIGN KEY ("resolver_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'project_agent_profiles_company_id_companies_id_fk'
+	) THEN
+		ALTER TABLE "project_agent_profiles" ADD CONSTRAINT "project_agent_profiles_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'project_agent_profiles_project_id_projects_id_fk'
+	) THEN
+		ALTER TABLE "project_agent_profiles" ADD CONSTRAINT "project_agent_profiles_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'project_agent_profiles_agent_id_agents_id_fk'
+	) THEN
+		ALTER TABLE "project_agent_profiles" ADD CONSTRAINT "project_agent_profiles_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'recurring_task_definitions_company_id_companies_id_fk'
+	) THEN
+		ALTER TABLE "recurring_task_definitions" ADD CONSTRAINT "recurring_task_definitions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'recurring_task_definitions_project_id_projects_id_fk'
+	) THEN
+		ALTER TABLE "recurring_task_definitions" ADD CONSTRAINT "recurring_task_definitions_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'recurring_task_definitions_created_by_agent_id_agents_id_fk'
+	) THEN
+		ALTER TABLE "recurring_task_definitions" ADD CONSTRAINT "recurring_task_definitions_created_by_agent_id_agents_id_fk" FOREIGN KEY ("created_by_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'resource_access_logs_company_id_companies_id_fk'
+	) THEN
+		ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'resource_access_logs_resource_id_scoped_resources_id_fk'
+	) THEN
+		ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_resource_id_scoped_resources_id_fk" FOREIGN KEY ("resource_id") REFERENCES "public"."scoped_resources"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'resource_access_logs_agent_id_agents_id_fk'
+	) THEN
+		ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'resource_access_logs_session_id_agent_sessions_id_fk'
+	) THEN
+		ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_session_id_agent_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."agent_sessions"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'resource_access_logs_task_id_tasks_id_fk'
+	) THEN
+		ALTER TABLE "resource_access_logs" ADD CONSTRAINT "resource_access_logs_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'scoped_resources_company_id_companies_id_fk'
+	) THEN
+		ALTER TABLE "scoped_resources" ADD CONSTRAINT "scoped_resources_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'projects_lead_agent_id_agents_id_fk'
+	) THEN
+		ALTER TABLE "projects" ADD CONSTRAINT "projects_lead_agent_id_agents_id_fk" FOREIGN KEY ("lead_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;--> statement-breakpoint
+DO $$
+BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint WHERE conname = 'tasks_recurring_task_definition_id_recurring_task_definitions_id_fk'
+	) THEN
+		ALTER TABLE "tasks" ADD CONSTRAINT "tasks_recurring_task_definition_id_recurring_task_definitions_id_fk" FOREIGN KEY ("recurring_task_definition_id") REFERENCES "public"."recurring_task_definitions"("id") ON DELETE set null ON UPDATE no action;
+	END IF;
+END $$;
