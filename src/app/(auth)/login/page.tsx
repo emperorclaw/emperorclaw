@@ -19,16 +19,22 @@ export default function LoginPage() {
         e.preventDefault();
         setError("");
         setLoading(true);
+        const normalizedEmail = email.trim().toLowerCase();
 
         const res = await signIn("credentials", {
             redirect: false,
-            email,
+            email: normalizedEmail,
             password,
         });
 
         setLoading(false);
 
         if (res?.error) {
+            if (res.error === "EMAIL_NOT_VERIFIED") {
+                setError("Verify your email before logging in. We sent an activation link during signup.");
+                return;
+            }
+
             setError("Invalid email or password");
         } else {
             router.push("/");
@@ -96,6 +102,13 @@ export default function LoginPage() {
                         >
                             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In"}
                         </button>
+
+                        <p className="text-center text-xs text-zinc-500">
+                            New workspaces must verify their email before the first login.{" "}
+                            <Link href={`/signup/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`} className="text-indigo-400 hover:text-indigo-300 transition-colors">
+                                Resend activation
+                            </Link>
+                        </p>
                     </form>
 
                     <div className="mt-6 text-center text-sm text-zinc-500">
