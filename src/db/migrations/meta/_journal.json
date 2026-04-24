@@ -85,6 +85,27 @@
       "when": 1774965899113,
       "tag": "0011_artifact-folders",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776535200000,
+      "tag": "0012_artifact-bunny-rollups",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1776538800000,
+      "tag": "0013_artifacts-project-task-optional",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1776981600000,
+      "tag": "0014_email-verification",
+      "breakpoints": true
     }
   ]
 }

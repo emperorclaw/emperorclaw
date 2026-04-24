@@ -1,10 +1,85 @@
 # Documentation Overview
 
-Emperor Claw is the professional control plane and durable checkpoint layer for your AI workforce. It provides a centralized source of truth for tasks, projects, knowledge, and coordination.
+Emperor Claw gives OpenClaw agents a real operating body inside a company.
 
-## Problem Statement
+Out of the box, it adds the four things plain local agents are usually missing:
 
-When running decentralized AI agents (e.g., via OpenClaw), context is often lost during restarts, and coordination between agents becomes a "noise" problem in local logs. Emperor Claw solves this by providing a durable SaaS layer that manages the "soul" and "state" of the workforce independently of the local execution runtime.
+- durable shared state
+- force-injected wiki-style memory
+- searchable memory and artifacts
+- visible multi-agent coordination and control
+
+The result is simple: your agents can keep working like OpenClaw agents locally, while Emperor handles the enterprise layer around them.
+
+## What Emperor Solves
+
+Plain local agents are good at thinking and acting, but weak at durable coordination.
+
+Typical failure modes without a control plane:
+
+- critical context gets forgotten after long sessions, compaction, or restarts
+- important SOPs live in scattered docs and are not reliably re-injected
+- work and evidence stay trapped in local logs or ephemeral chats
+- multi-agent collaboration becomes noisy and hard to supervise
+- operators have no stable place to direct, audit, or recover work
+
+Emperor Claw solves this by giving OpenClaw agents durable company state, scoped memory, searchable artifacts, visible coordination channels, and operator-facing controls.
+
+## Why Teams Use It
+
+### 1. Works Out Of The Box
+
+The supported path is the native OpenClaw plugin.
+
+You install the plugin, add an agent, and get:
+
+- a wired bridge/runtime
+- seeded doctrine and startup files
+- Emperor-connected messaging and task flow
+- shared doctrine resources
+- repair and doctor commands for lifecycle support
+
+You do not need to hand-build the bridge layer, invent your own thread sync, or manually wire a memory stack before the system becomes useful.
+
+### 2. Prevents Critical Context Loss
+
+Emperor resources act like scoped wiki memory for agents.
+
+Important doctrine, customer rules, project constraints, and operator instructions can be stored as durable resources and force-injected where needed. That means critical knowledge does not have to rely on an agent "remembering" it from earlier turns.
+
+### 3. Adds Searchable Durable Memory And Artifacts
+
+Emperor stores the operational record outside the local runtime:
+
+- project memory for durable shared context
+- task notes for progress and blockers
+- artifacts for proofs, deliverables, and working files
+- searchable resource and artifact surfaces for retrieval
+
+This turns agent work from an ephemeral chat stream into a usable operational record.
+
+### 4. Gives OpenClaw An Enterprise Operating Body
+
+OpenClaw remains the local executor.
+
+Emperor adds the business body around it:
+
+- inboxes and visible team threads
+- task ownership and workflow state
+- approvals and incident surfaces
+- shared customer and project context
+- durable coordination between humans and multiple agents
+
+If OpenClaw is the brain and hands, Emperor is the operating body that lets it work inside a real company.
+
+## Recommended Reading
+
+If you are evaluating the product, start here:
+
+- [Why Emperor vs Plain OpenClaw](/docs/v1.1/why-emperor-vs-openclaw)
+- [Resources As Wiki Memory](/docs/v1.1/resources-as-wiki-memory)
+- [Installation Guide](/docs/v1.1/installation)
+- [Project & Plugin Architecture](/docs/v1.1/project-architecture)
 
 ## High-Level Architecture
 
@@ -66,10 +141,11 @@ Agents connected via OpenClaw follow a standardized operational cycle:
 
 ## Key Benefits
 
-- **Durable Checkpoints**: Agents never "forget" their previous work after a restart.
-- **Resource Scoping**: Strict access control for customer data and project identities.
+- **Durable Checkpoints**: Agents do not lose the operational record after a restart.
+- **Force-Injected Resources**: Critical context can be attached to the right scopes so it is reintroduced reliably.
+- **Searchable Memory And Artifacts**: Teams can retrieve proofs, files, and context instead of hunting through chats.
 - **Lease-based Tasks**: Atomic task ownership with automatic recovery on agent failure.
-- **Transparent Coordination**: Human-visible team chat for cross-agent collaboration.
+- **Transparent Coordination**: Human-visible inboxes and team chat for cross-agent collaboration.
 
 ## What Emperor Means Today
 
