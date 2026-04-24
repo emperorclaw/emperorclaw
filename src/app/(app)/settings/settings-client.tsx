@@ -10,11 +10,13 @@ type SettingsToken = {
     scope: string;
     createdAt: string;
     lastUsedAt: string | null;
+    expiresAt: string;
 };
 
 export default function SettingsClient({ initialTokens }: { initialTokens: SettingsToken[] }) {
     const [tokens, setTokens] = useState(initialTokens);
     const [newTokenName, setNewTokenName] = useState("");
+    const [newTokenScope, setNewTokenScope] = useState<"mcp_full" | "mcp_danger">("mcp_danger");
     const [generating, setGenerating] = useState(false);
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
     const [copied, setCopied] = useState(false);
@@ -29,7 +31,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
             const res = await fetch("/api/settings/tokens", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newTokenName.trim() }),
+                body: JSON.stringify({ name: newTokenName.trim(), scope: newTokenScope }),
             });
 
             if (res.ok) {
@@ -37,6 +39,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                 setTokens([data.token, ...tokens]);
                 setActiveSecret({ id: data.token.id, name: data.token.name, secret: data.secret });
                 setNewTokenName("");
+                setNewTokenScope("mcp_danger");
             } else {
                 console.error("Failed to generate token");
             }
@@ -102,6 +105,17 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                             className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-2.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
                     </div>
+                    <div className="w-48 space-y-2">
+                        <label className="text-sm font-medium text-zinc-400">Scope</label>
+                        <select
+                            value={newTokenScope}
+                            onChange={(e) => setNewTokenScope(e.target.value as "mcp_full" | "mcp_danger")}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-2.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            <option value="mcp_danger">mcp_danger</option>
+                            <option value="mcp_full">mcp_full</option>
+                        </select>
+                    </div>
                     <button
                         onClick={handleGenerate}
                         disabled={!newTokenName.trim() || generating}
@@ -111,6 +125,9 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                         {generating ? "Generating..." : "Create Token"}
                     </button>
                 </div>
+                <p className="mt-3 text-xs text-zinc-500">
+                    `mcp_danger` is required for managed secret leasing and should only be used on a trusted runtime. `mcp_full` keeps normal MCP access but cannot lease stored secrets.
+                </p>
 
                 {activeSecret && (
                     <div className="mt-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
@@ -142,7 +159,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                     Control Plane Bootstrap
                 </h2>
                 <p className="text-sm text-zinc-400 mb-4">
-                    Install the plugin, export your company token, then add an agent and verify the local companion with the Emperor commands. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
+                    Install the plugin, export a trusted `mcp_danger` company token, then add an agent and verify the local companion with the Emperor commands. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
                 </p>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
@@ -184,7 +201,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                                         </span>
                                     </div>
                                     <p className="text-xs text-zinc-500 font-mono">
-                                        ID: {token.id} • Created: {new Date(token.createdAt).toLocaleDateString()}
+                                        ID: {token.id} • Created: {new Date(token.createdAt).toLocaleDateString()} • Expires: {new Date(token.expiresAt).toLocaleDateString()}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-4">

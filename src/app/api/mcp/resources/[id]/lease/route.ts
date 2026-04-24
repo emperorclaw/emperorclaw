@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, resolveMcpActorContext } from "@/lib/mcp";
 import { getScopedResource, leaseScopedResource, resolveResourceScope } from "@/lib/resources";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await verifyMcpToken(req);
+  const auth = await verifyMcpToken(req, { requiredScope: "mcp_danger" });
   if (auth.error) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -15,15 +15,20 @@ export async function POST(
     const companyId = auth.companyToken!.companyId;
     const { id } = await params;
     const body = await req.json();
-    const internalAgentId = body.agentId ? await resolveAgentId(companyId, body.agentId) : null;
+    const actor = await resolveMcpActorContext(companyId, {
+      agentId: typeof body.agentId === "string" ? body.agentId : null,
+      sessionId: typeof body.sessionId === "string" ? body.sessionId : null,
+      taskId: typeof body.taskId === "string" ? body.taskId : null,
+    });
 
     const leasedResource = await leaseScopedResource({
       companyId,
       resourceId: id,
-      agentId: internalAgentId,
+      agentId: actor.callerAgentId,
       sessionId: body.sessionId || null,
       taskId: body.taskId || null,
       reason: body.reason || null,
+      task: actor.task,
     });
 
     const resource = await getScopedResource(companyId, id);
@@ -42,7 +47,14 @@ export async function POST(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal Server Error";
     const statusCode =
-      message.startsWith("Agent not found") || message.startsWith("Resource not found") ? 404 : 500;
+      message.startsWith("Agent not found") ||
+      message.startsWith("Resource not found") ||
+      message.startsWith("Session not found") ||
+      message.startsWith("Task not found")
+        ? 404
+        : message.startsWith("Access denied")
+          ? 403
+          : 500;
     return NextResponse.json({ error: message }, { status: statusCode });
   }
 }

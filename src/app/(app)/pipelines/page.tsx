@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { playbooks, schedules, companyMembers, projects, customers } from "@/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
@@ -9,13 +8,14 @@ import PipelinesClient from "./pipelines-client";
 export const dynamic = "force-dynamic";
 
 export default async function PipelinesPage() {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user || !(session.user as any).id) {
+    const session = await getValidatedServerSession();
+    const sessionUserId = session?.user?.id;
+    if (!sessionUserId) {
         redirect("/login");
     }
 
     const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, (session.user as any).id))
+        .where(eq(companyMembers.userId, sessionUserId))
         .limit(1);
 
     if (!membership) {
