@@ -1,12 +1,12 @@
 import nodemailer from "nodemailer";
 
-// Use environment variables for SMTP configuration.
-// Fallback to empty strings to avoid crashing if unset (will fail on send instead).
-const SMTP_HOST = process.env.SMTP_HOST || "";
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
-const SMTP_FROM = process.env.SMTP_FROM || "Emperor Claw <noreply@emperorclaw.com>";
+// Temporary hardcoded SMTP defaults for deployment bootstrap.
+// Environment variables still override these values when present.
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.migadu.com";
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "465", 10);
+const SMTP_USER = process.env.SMTP_USER || "no-reply@malecu.eu";
+const SMTP_PASS = process.env.SMTP_PASS || "SMTP_PASSWORD_REDACTED";
+const SMTP_FROM = process.env.SMTP_FROM || "Emperor Claw Beta <no-reply@malecu.eu>";
 
 function sanitizeHeaderValue(value: string, field: string): string {
     const normalized = String(value ?? "").trim();
