@@ -17,7 +17,7 @@ export EMPEROR_CLAW_API_TOKEN="<company-token>"
 ## 3. Add The Agent
 
 ```bash
-openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$EMPEROR_CLAW_API_TOKEN"
 ```
 
 ## 4. Validate Local Health

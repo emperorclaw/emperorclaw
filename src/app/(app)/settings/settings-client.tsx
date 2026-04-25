@@ -16,7 +16,7 @@ type SettingsToken = {
 export default function SettingsClient({ initialTokens }: { initialTokens: SettingsToken[] }) {
     const [tokens, setTokens] = useState(initialTokens);
     const [newTokenName, setNewTokenName] = useState("");
-    const [newTokenScope, setNewTokenScope] = useState<"mcp_full" | "mcp_danger">("mcp_danger");
+    const [newTokenScope, setNewTokenScope] = useState<"mcp_full" | "mcp_danger">("mcp_full");
     const [generating, setGenerating] = useState(false);
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
     const [copied, setCopied] = useState(false);
@@ -39,7 +39,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                 setTokens([data.token, ...tokens]);
                 setActiveSecret({ id: data.token.id, name: data.token.name, secret: data.secret });
                 setNewTokenName("");
-                setNewTokenScope("mcp_danger");
+                setNewTokenScope("mcp_full");
             } else {
                 console.error("Failed to generate token");
             }
@@ -159,14 +159,14 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                     Control Plane Bootstrap
                 </h2>
                 <p className="text-sm text-zinc-400 mb-4">
-                    Install the plugin, export a trusted `mcp_danger` company token, then add an agent and verify the local companion with the Emperor commands. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
+                    Install the plugin, create a company token, then add an agent and verify the local companion with the Emperor commands. This is the supported path for validating runtime registration, websocket reachability, threads, heartbeats, and checkpoints.
                 </p>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
                         openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
                     </code>
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
-                        EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor add-agent --name "Operator One" --profile operator
+                        openclaw emperor add-agent --agent-name &quot;Operator One&quot; --local-brain-agent-id operator-one --token &quot;your_token_here&quot; --profile operator
                     </code>
                     <code className="block text-sm font-mono text-zinc-300 whitespace-pre-wrap">
                         EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor doctor

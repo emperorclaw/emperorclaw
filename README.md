@@ -59,7 +59,7 @@ Then bootstrap an agent:
 
 ```bash
 export EMPEROR_CLAW_API_TOKEN="<company-token>"
-openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$EMPEROR_CLAW_API_TOKEN"
 openclaw emperor doctor
 ```
 
@@ -67,7 +67,7 @@ On Windows PowerShell:
 
 ```powershell
 $env:EMPEROR_CLAW_API_TOKEN="<company-token>"
-openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$env:EMPEROR_CLAW_API_TOKEN"
 openclaw emperor doctor
 ```
 

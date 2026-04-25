@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid token scope" }, { status: 400 });
         }
 
-        const scope = requestedScope ?? "mcp_danger";
+        const scope = requestedScope ?? "mcp_full";
 
         const rawToken = `ec_${randomBytes(24).toString('hex')}`;
         const tokenHash = createHash("sha256").update(rawToken).digest("hex");

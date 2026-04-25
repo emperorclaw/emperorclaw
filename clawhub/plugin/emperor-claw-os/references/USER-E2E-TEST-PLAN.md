@@ -103,7 +103,7 @@ Steps:
    ```
 2. Run:
    ```bash
-   openclaw emperor add-agent --name "Worker Alpha"
+   openclaw emperor add-agent --agent-name "Worker Alpha" --local-brain-agent-id worker-alpha --token "$EMPEROR_CLAW_API_TOKEN"
    ```
 3. Run:
    ```bash

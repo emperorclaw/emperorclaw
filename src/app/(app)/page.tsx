@@ -1,12 +1,12 @@
 import { db } from "@/db";
-import { agents, tasks, incidents } from "@/db/schema";
+import { agents, tasks, incidents, companyTokens } from "@/db/schema";
 import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
-import Link from "next/link";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 import { PublicHomePage } from "@/components/public-home-page";
+import { OnboardingTour } from "@/components/onboarding-tour";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,7 @@ export default async function DashboardPage() {
   const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.inbox), isNull(tasks.deletedAt)));
   const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.review), isNull(tasks.deletedAt)));
   const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
+  const [{ count: activeTokens }] = await db.select({ count: sql<number>`count(*)` }).from(companyTokens).where(and(eq(companyTokens.companyId, companyId), isNull(companyTokens.revokedAt)));
 
   // 2. Incident List
   const recentIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(3);
@@ -63,7 +64,13 @@ export default async function DashboardPage() {
         <p className="text-zinc-500 font-medium">System overview and active workforce telemetry.</p>
       </div>
 
-      {totalAgents === 0 && <GettingStartedHero />}
+      {totalAgents === 0 && (
+        <OnboardingTour
+          companyId={companyId}
+          initialAgentCount={totalAgents}
+          initialTokenCount={activeTokens}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
@@ -140,43 +147,6 @@ function KpiCard({ title, value, trend, trendLabel, alert, good }: { title: stri
         <div className="text-xs mt-2 flex items-center space-x-1">
           <span className={alert ? "text-red-400" : good ? "text-indigo-400" : "text-zinc-300"}>{trend}</span>
           <span className="text-zinc-600">{trendLabel}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GettingStartedHero() {
-  return (
-    <div className="bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent border border-indigo-500/20 rounded-2xl p-8 mb-8 relative overflow-hidden group">
-      <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px] pointer-events-none group-hover:bg-indigo-500/30 transition-all duration-700" />
-      <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-purple-500/20 rounded-full blur-[80px] pointer-events-none group-hover:bg-purple-500/30 transition-all duration-700" />
-
-      <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start md:items-center justify-between">
-        <div className="space-y-4 max-w-2xl">
-          <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
-            <span className="flex h-2 w-2 rounded-full bg-indigo-500 mr-2 animate-pulse"></span>
-            Welcome to Emperor Claw
-          </div>
-          <h2 className="text-2xl font-semibold text-white tracking-tight">Your workforce is currently empty.</h2>
-          <p className="text-zinc-400 leading-relaxed">
-            To begin orchestrating AI agents, you need to connect your local OpenClaw environments to this control plane.
-            Once connected, agents will automatically register here and await commands.
-          </p>
-        </div>
-        <div className="flex-shrink-0 flex flex-col sm:flex-row gap-3">
-          <Link
-            href="/docs"
-            className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all hover:scale-105 active:scale-95"
-          >
-            View Setup Guide
-          </Link>
-          <Link
-            href="/settings"
-            className="inline-flex items-center justify-center rounded-xl bg-zinc-800 px-6 py-3 text-sm font-medium text-zinc-300 border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
-          >
-            Agent Context Rules
-          </Link>
         </div>
       </div>
     </div>
