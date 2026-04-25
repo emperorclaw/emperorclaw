@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -105,6 +105,18 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
     setDismissed(window.localStorage.getItem(storageKey) === "true");
   }, [storageKey]);
 
+  const persistOnboardingStatus = useCallback(async (status: "completed" | "dismissed") => {
+    try {
+      await fetch("/api/onboarding", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // The local browser fallback keeps the UI from reappearing if persistence fails.
+    }
+  }, []);
+
   useEffect(() => {
     if (hasAgent) return;
 
@@ -135,8 +147,15 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
 
   const dismiss = () => {
     window.localStorage.setItem(storageKey, "true");
+    void persistOnboardingStatus("dismissed");
     setDismissed(true);
   };
+
+  useEffect(() => {
+    if (!hasAgent) return;
+    window.localStorage.setItem(storageKey, "true");
+    void persistOnboardingStatus("completed");
+  }, [hasAgent, persistOnboardingStatus, storageKey]);
 
   const copy = async (label: string, value: string) => {
     await navigator.clipboard.writeText(value);
