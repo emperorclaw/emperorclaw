@@ -5,6 +5,7 @@ import next from 'next';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Pool, PoolClient } from 'pg';
 import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
+import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
@@ -21,6 +22,14 @@ app.prepare().then(() => {
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error('Error occurred handling', req.url, err);
+      void recordOpsError({
+        category: 'http',
+        source: 'server.request',
+        fallbackMessage: 'Unhandled request error',
+        error: err,
+        route: req.url || null,
+        method: req.method || null,
+      });
       res.statusCode = 500;
       res.end('internal server error');
     }
@@ -35,6 +44,17 @@ app.prepare().then(() => {
         try {
             const auth = await verifyMcpAuthorizationHeader(request.headers['authorization']);
             if (auth.error || !auth.companyToken) {
+                void recordOpsEvent({
+                    level: 'warn',
+                    category: 'auth',
+                    source: 'server.ws-upgrade',
+                    message: auth.error || 'Unauthorized websocket upgrade',
+                    route: pathname,
+                    method: 'WS',
+                    metadata: {
+                        status: auth.status,
+                    },
+                });
                 socket.write(`HTTP/1.1 ${auth.status} ${auth.status === 403 ? 'Forbidden' : 'Unauthorized'}\r\n\r\n`);
                 socket.destroy();
                 return;
@@ -47,6 +67,14 @@ app.prepare().then(() => {
             });
         } catch(e) {
             console.error("Token verification error during WS upgrade:", e);
+            void recordOpsError({
+                category: 'auth',
+                source: 'server.ws-upgrade',
+                fallbackMessage: 'Websocket upgrade token verification failed',
+                error: e,
+                route: pathname,
+                method: 'WS',
+            });
             socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
             socket.destroy();
         }
@@ -84,8 +112,26 @@ app.prepare().then(() => {
       const handleDisconnect = (error?: unknown) => {
         if (error) {
           console.error('PostgreSQL Pub/Sub listener dropped:', error);
+          void recordOpsError({
+            category: 'runtime',
+            source: 'server.pubsub-listener',
+            fallbackMessage: 'PostgreSQL Pub/Sub listener dropped',
+            error,
+            metadata: {
+              phase: 'listener-drop',
+            },
+          });
         } else {
           console.warn('PostgreSQL Pub/Sub listener ended. Reconnecting...');
+          void recordOpsEvent({
+            level: 'warn',
+            category: 'runtime',
+            source: 'server.pubsub-listener',
+            message: 'PostgreSQL Pub/Sub listener ended and will reconnect.',
+            metadata: {
+              phase: 'listener-end',
+            },
+          });
         }
 
         if (listenerClient === client) {
@@ -114,6 +160,15 @@ app.prepare().then(() => {
           });
         } catch (e) {
           console.error("Error parsing NOTIFY payload", e);
+          void recordOpsError({
+            category: 'runtime',
+            source: 'server.pubsub-listener',
+            fallbackMessage: 'Failed to parse Postgres NOTIFY payload',
+            error: e,
+            metadata: {
+              channel: 'mcp_events',
+            },
+          });
         }
       });
 
@@ -121,6 +176,15 @@ app.prepare().then(() => {
       client.once('end', () => handleDisconnect());
     } catch (error) {
       console.error('Failed to attach PostgreSQL Pub/Sub listener:', error);
+      void recordOpsError({
+        category: 'runtime',
+        source: 'server.pubsub-listener',
+        fallbackMessage: 'Failed to attach PostgreSQL Pub/Sub listener',
+        error,
+        metadata: {
+          phase: 'attach',
+        },
+      });
       scheduleListenerReconnect();
     }
   };
@@ -140,6 +204,12 @@ app.prepare().then(() => {
 
   server.once('error', (err) => {
     console.error(err);
+    void recordOpsError({
+      category: 'runtime',
+      source: 'server.bootstrap',
+      fallbackMessage: 'HTTP server failed',
+      error: err,
+    });
     process.exit(1);
   });
 

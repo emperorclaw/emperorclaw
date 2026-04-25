@@ -7,6 +7,7 @@ import { hash } from "argon2";
 import { sendEmail, getPasswordResetEmailHtml } from "@/lib/email";
 import { getAppUrl } from "@/lib/env";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
+import { recordOpsError } from "@/lib/ops-events";
 
 function normalizeEmail(value: unknown): string {
     return String(value ?? "").trim().toLowerCase();
@@ -74,6 +75,14 @@ export async function POST(req: NextRequest) {
 
     } catch (err) {
         console.error("Forgot password error:", err);
+        void recordOpsError({
+            category: "auth",
+            source: "auth.forgot-password",
+            fallbackMessage: "Forgot password flow failed",
+            error: err,
+            route: "/api/auth/forgot-password",
+            method: "POST",
+        });
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
