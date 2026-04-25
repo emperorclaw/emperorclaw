@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { verifyEmailVerificationToken } from "@/lib/email-verification";
+import { recordOpsError } from "@/lib/ops-events";
 
 function normalizeEmail(value: unknown): string {
     return String(value ?? "").trim().toLowerCase();
@@ -56,6 +57,14 @@ export async function POST(req: NextRequest) {
         }, { status: 200 });
     } catch (err) {
         console.error("Verify email error:", err);
+        void recordOpsError({
+            category: "auth",
+            source: "auth.verify-email",
+            fallbackMessage: "Email verification failed",
+            error: err,
+            route: "/api/auth/verify-email",
+            method: "POST",
+        });
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

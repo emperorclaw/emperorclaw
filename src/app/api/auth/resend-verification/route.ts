@@ -6,6 +6,7 @@ import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
 import { sendEmail, getEmailVerificationEmailHtml } from "@/lib/email";
 import { getAppUrl } from "@/lib/env";
+import { recordOpsError } from "@/lib/ops-events";
 
 function normalizeEmail(value: unknown): string {
     return String(value ?? "").trim().toLowerCase();
@@ -60,6 +61,14 @@ export async function POST(req: NextRequest) {
         }, { status: 200 });
     } catch (err) {
         console.error("Resend verification error:", err);
+        void recordOpsError({
+            category: "auth",
+            source: "auth.resend-verification",
+            fallbackMessage: "Resend verification failed",
+            error: err,
+            route: "/api/auth/resend-verification",
+            method: "POST",
+        });
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

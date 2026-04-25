@@ -489,6 +489,21 @@ export const auditLog = pgTable("audit_log", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const opsEvents = pgTable("ops_events", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    level: text("level").notNull(),
+    category: text("category").notNull(),
+    source: text("source").notNull(),
+    message: text("message").notNull(),
+    route: text("route"),
+    method: text("method"),
+    companyId: uuid("company_id"),
+    userId: uuid("user_id"),
+    metadataJson: jsonb("metadata_json").default('{}').notNull(),
+    stack: text("stack"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const idempotencyKeys = pgTable("idempotency_keys", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),

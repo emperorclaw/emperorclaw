@@ -4,6 +4,7 @@ import { users, passwordResets, sessions } from "@/db/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { hash } from "argon2";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
+import { recordOpsError } from "@/lib/ops-events";
 
 function normalizeEmail(value: unknown): string {
     return String(value ?? "").trim().toLowerCase();
@@ -97,6 +98,14 @@ export async function POST(req: NextRequest) {
 
     } catch (err) {
         console.error("Reset password error:", err);
+        void recordOpsError({
+            category: "auth",
+            source: "auth.reset-password",
+            fallbackMessage: "Reset password flow failed",
+            error: err,
+            route: "/api/auth/reset-password",
+            method: "POST",
+        });
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
