@@ -38,7 +38,7 @@ Then:
 
 ```bash
 export EMPEROR_CLAW_API_TOKEN="<company-token>"
-openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$EMPEROR_CLAW_API_TOKEN"
 openclaw emperor doctor
 ```
 
@@ -71,7 +71,7 @@ After `add-agent`, the expected baseline is:
 ## Commands
 
 Bootstrap and install:
-- `openclaw emperor add-agent --name "<Agent Name>"`
+- `openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "<company-token>"`
 - `openclaw emperor status`
 - `openclaw emperor doctor`
 

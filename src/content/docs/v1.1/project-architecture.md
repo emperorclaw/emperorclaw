@@ -79,7 +79,7 @@ Several terms are overloaded in the repo. Keep them separate.
 The supported public path is the plugin. The critical provisioning command is:
 
 ```bash
-openclaw emperor add-agent --name "<Agent Name>"
+openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$EMPEROR_CLAW_API_TOKEN"
 ```
 
 That command does more than register a name.
