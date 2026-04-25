@@ -18,7 +18,7 @@ function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
-export function AppSidebar() {
+export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
     const pathname = usePathname();
     const isDocsPage = pathname?.startsWith('/docs') ?? false;
 
@@ -35,6 +35,10 @@ export function AppSidebar() {
         { name: "Settings", href: "/settings", icon: KeyRound },
         { name: "Documentation", href: "/docs", icon: BookOpen },
     ];
+
+    if (isPlatformAdmin) {
+        links.splice(links.length - 1, 0, { name: "Ops", href: "/ops", icon: Terminal });
+    }
 
     return (
         <div className="w-64 border-r border-zinc-800 bg-zinc-950/50 backdrop-blur-xl h-full flex flex-col">
