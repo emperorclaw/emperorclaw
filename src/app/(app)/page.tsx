@@ -1,8 +1,8 @@
 import { db } from "@/db";
-import { agents, tasks, incidents, companyTokens } from "@/db/schema";
+import { agents, tasks, incidents, companyTokens, users } from "@/db/schema";
 import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
-import { getCompanyId } from "@/lib/auth";
+import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 import { PublicHomePage } from "@/components/public-home-page";
@@ -16,10 +16,18 @@ type WorkloadTask = {
 };
 
 export default async function DashboardPage() {
+  const session = await getValidatedServerSession();
   const companyId = await getCompanyId();
   if (!companyId) {
     return <PublicHomePage />;
   }
+
+  const [currentUser] = session?.user?.id
+    ? await db.select({
+      onboardingCompletedAt: users.onboardingCompletedAt,
+      onboardingDismissedAt: users.onboardingDismissedAt,
+    }).from(users).where(eq(users.id, session.user.id)).limit(1)
+    : [];
 
   // 1. Top Level KPIs
   const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
@@ -64,7 +72,7 @@ export default async function DashboardPage() {
         <p className="text-zinc-500 font-medium">System overview and active workforce telemetry.</p>
       </div>
 
-      {totalAgents === 0 && (
+      {totalAgents === 0 && !currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
         <OnboardingTour
           companyId={companyId}
           initialAgentCount={totalAgents}
