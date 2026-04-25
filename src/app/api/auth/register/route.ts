@@ -7,6 +7,7 @@ import { sendEmail, getEmailVerificationEmailHtml } from "@/lib/email";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
 import { getAppUrl } from "@/lib/env";
+import { recordOpsError } from "@/lib/ops-events";
 
 interface RegisterRequestBody {
     email: string;
@@ -126,6 +127,14 @@ export async function POST(req: NextRequest) {
 
     } catch (err: unknown) {
         console.error("Registration error:", err);
+        void recordOpsError({
+            category: "auth",
+            source: "auth.register",
+            fallbackMessage: "Registration failed",
+            error: err,
+            route: "/api/auth/register",
+            method: "POST",
+        });
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

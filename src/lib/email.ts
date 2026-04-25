@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { recordOpsError } from "@/lib/ops-events";
 
 // Temporary hardcoded SMTP defaults for deployment bootstrap.
 // Environment variables still override these values when present.
@@ -126,6 +127,16 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
         return true;
     } catch (error) {
         console.error("Error sending email:", error);
+        void recordOpsError({
+            category: "email",
+            source: "mailer.send",
+            fallbackMessage: "Failed to send email",
+            error,
+            metadata: {
+                to,
+                subject,
+            },
+        });
         return false;
     }
 }
