@@ -1286,7 +1286,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         </div>
                     </CardHeader>
                     <CardContent className="min-h-0 px-0">
-                        <div className="grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_52px] border-b border-zinc-800/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                        <div className="grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_80px] border-b border-zinc-800/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
                             <span>Name</span>
                             <span>Context</span>
                             <span>Size</span>
@@ -1589,7 +1589,7 @@ function TreeFolderRow(props: {
             onClick={props.onOpen}
             onContextMenu={props.onContextMenu}
             className={cn(
-                "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition",
+                "flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition overflow-hidden",
                 props.isSelected ? "bg-zinc-900 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-100"
             )}
             style={{ paddingLeft: `${props.depth * 14 + 8}px` }}
@@ -1612,7 +1612,7 @@ function TreeFolderRow(props: {
                 {props.isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
             </span>
             <Folder className="size-4 shrink-0 text-amber-300" />
-            <span className="truncate">{props.folder.name}</span>
+            <span className="truncate flex-1 min-w-0">{props.folder.name}</span>
         </button>
     );
 
