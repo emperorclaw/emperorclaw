@@ -150,23 +150,52 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/fo
         }
 
         const now = new Date();
+        const matchPattern = `${folder.path}/%`;
+
+        const artifactsToDelete = await db.select().from(artifacts).where(and(
+            eq(artifacts.companyId, companyId),
+            like(artifacts.path, matchPattern),
+            isNull(artifacts.deletedAt),
+        ));
+
         await db.transaction(async (tx) => {
             await tx.update(artifactFolders).set({ deletedAt: now }).where(and(
                 eq(artifactFolders.id, folder.id),
                 eq(artifactFolders.companyId, companyId),
             ));
 
-            const matchPattern = `${folder.path}/%`;
             await tx.update(artifactFolders).set({ deletedAt: now }).where(and(
                 eq(artifactFolders.companyId, companyId),
                 like(artifactFolders.path, matchPattern),
             ));
 
-            await tx.update(artifacts).set({ deletedAt: now }).where(and(
+            await tx.update(artifacts).set({ 
+                deletedAt: now,
+                storageUrl: null,
+                storageKey: null,
+            }).where(and(
                 eq(artifacts.companyId, companyId),
                 like(artifacts.path, matchPattern),
             ));
         });
+
+        // Delete from storage outside the transaction
+        const purge = req.nextUrl.searchParams.get("purgeStorage") !== "false";
+        if (purge) {
+            const { storageAdapter } = await import("@/lib/storage");
+            const { deriveArtifactLogicalPath } = await import("@/lib/path-utils");
+            
+            for (const artifact of artifactsToDelete) {
+                if (artifact.storageKey) {
+                    const logicalPath = deriveArtifactLogicalPath(artifact, companyId);
+                    try {
+                        await storageAdapter.delete({ companyId, logicalPath });
+                    } catch (err) {
+                        console.warn("Unable to delete blob for artifact during folder deletion:", err);
+                    }
+                }
+            }
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {
