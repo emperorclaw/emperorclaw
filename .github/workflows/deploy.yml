@@ -15,7 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Sync source to VPS
+      - name: Sync source to VPS temporary folder
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -24,9 +24,9 @@ jobs:
           echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $VPS_HOST >> ~/.ssh/known_hosts
-          rsync -avz --delete --exclude='.env' --exclude='.git' --exclude='node_modules' --exclude='.next' ./ root@$VPS_HOST:/var/www/emperorclaw
+          rsync -avz --delete --exclude='.env' --exclude='.git' --exclude='node_modules' --exclude='.next' ./ root@$VPS_HOST:/var/www/emperorclaw_temp
 
-      - name: Build and restart on VPS
+      - name: Build, swap, and reload on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -34,9 +34,20 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 10m
           script: |
-            cd /var/www/emperorclaw
+            # 1. Build the app in the temporary directory
+            cd /var/www/emperorclaw_temp
+            # Copy the .env file from the live site so the build has correct environment variables (if needed)
+            cp /var/www/emperorclaw/.env ./.env || true
             npm install --production=false
             npm run db:migrate
             npm run build
-            pm2 restart emperorclaw
-            echo "✅ Deployed and restarted!"
+            
+            # 2. Swap the temporary directory with the live directory instantly
+            rm -rf /var/www/emperorclaw_old
+            mv /var/www/emperorclaw /var/www/emperorclaw_old
+            mv /var/www/emperorclaw_temp /var/www/emperorclaw
+            
+            # 3. Reload PM2 gracefully using ecosystem.config.js
+            cd /var/www/emperorclaw
+            pm2 start ecosystem.config.js --update-env || pm2 reload ecosystem.config.js --update-env
+            echo "✅ Deployed and reloaded with zero downtime!"
