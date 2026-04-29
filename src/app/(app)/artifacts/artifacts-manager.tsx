@@ -262,6 +262,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [csvSourceText, setCsvSourceText] = useState("");
     const [csvRawError, setCsvRawError] = useState<string | null>(null);
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+    const [isInspectorOpen, setIsInspectorOpen] = useState(false);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [uploadTitle, setUploadTitle] = useState("");
@@ -1215,7 +1216,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 </div>
             </div>
 
-            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[280px_minmax(0,1.5fr)_420px]">
+            <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_1fr]">
                 <Card className="min-h-0 border-zinc-800/80 bg-zinc-950/70 py-0">
                     <CardHeader className="border-b border-zinc-800/80 py-4">
                         <CardTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Folders</CardTitle>
@@ -1306,6 +1307,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         selected={selectedEntry?.type === "folder" && selectedEntry.id === folder.id}
                                         onClick={() => setSelectedEntry({ type: "folder", id: folder.id })}
                                         onDoubleClick={() => openFolder(folder.id)}
+                                        onInspect={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}
                                         onContextMenu={() => setSelectedEntry({ type: "folder", id: folder.id })}
                                         contextMenuContent={renderFolderMenu(folder)}
                                         actions={(
@@ -1321,7 +1323,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                         setSelectedEntry({ type: "folder", id: folder.id });
                                                         beginCreateFolderAt(folder);
                                                     }}>New Folder Here</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); }}>Edit Properties</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
                                                     <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteFolder(folder.id)}>Delete Folder</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -1339,7 +1341,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         dateLabel={formatRelativeDate(artifact.updatedAt || artifact.createdAt)}
                                         selected={selectedEntry?.type === "artifact" && selectedEntry.id === artifact.id}
                                         onClick={() => setSelectedEntry({ type: "artifact", id: artifact.id })}
-                                        onDoubleClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); }}
+                                        onDoubleClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}
+                                        onInspect={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}
                                         onContextMenu={() => setSelectedEntry({ type: "artifact", id: artifact.id })}
                                         contextMenuContent={renderArtifactMenu(artifact)}
                                         actions={(
@@ -1350,9 +1353,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); }}>Preview</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}>Preview</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("properties"); }}>Edit Properties</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
                                                     <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteArtifact(artifact.id)}>Delete File</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -1386,69 +1389,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         </ScrollArea>
                     </CardContent>
                 </Card>
-
-                <Card className="min-h-0 border-zinc-800/80 bg-zinc-950/70 py-0">
-                    <CardHeader className="border-b border-zinc-800/80 py-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <CardTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Inspector</CardTitle>
-                            {selectedEntry?.type === "artifact" && (
-                                <Button variant="ghost" size="icon-sm" onClick={() => setInspectorTab(inspectorTab === "preview" ? "properties" : "preview")} className="text-zinc-400">
-                                    <Settings2 className="size-4" />
-                                </Button>
-                            )}
-                        </div>
-                    </CardHeader>
-                    <CardContent className="min-h-0 px-0">
-                        <ScrollArea className="h-[calc(100vh-18rem)]">
-                            <div className="px-4 py-4">
-                                {!selectedEntry && <EmptyInspector />}
-                                {selectedEntry?.type === "folder" && selectedFolder && (
-                                    <FolderInspector
-                                        folder={selectedFolder}
-                                        draft={folderDraft}
-                                        knownFolders={knownFolders}
-                                        projects={projects}
-                                        customers={customers}
-                                        isSaving={isSavingFolder}
-                                        hasChanges={hasFolderChanges}
-                                        onDraftChange={setFolderDraft}
-                                        onSave={() => void handleSaveFolder()}
-                                        onDelete={() => void handleDeleteFolder(selectedFolder.id)}
-                                    />
-                                )}
-                                {selectedEntry?.type === "artifact" && artifactDetail && (
-                                    <ArtifactInspector
-                                        artifact={artifactDetail}
-                                        draft={artifactDraft}
-                                        locationDraft={artifactLocationDraft}
-                                        knownFolders={knownFolders}
-                                        projects={projects}
-                                        tasks={tasks}
-                                        customers={customers}
-                                        preview={preview}
-                                        inspectorTab={inspectorTab}
-                                        isSavingArtifact={isSavingArtifact}
-                                        isSavingLocation={isSavingLocation}
-                                        hasPropertyChanges={hasArtifactPropertyChanges}
-                                        hasLocationChanges={hasArtifactLocationChanges}
-                                        onInspectorTabChange={setInspectorTab}
-                                        onDraftChange={setArtifactDraft}
-                                        onLocationDraftChange={setArtifactLocationDraft}
-                                        onSaveProperties={() => void handleSaveArtifactProperties()}
-                                        onSaveLocation={() => void handleSaveArtifactLocation()}
-                                        onReplace={() => replaceInputRef.current?.click()}
-                                        onDownload={() => handleDownloadArtifact(artifactDetail.id)}
-                                        onDelete={() => void handleDeleteArtifact(artifactDetail.id)}
-                                        onOpenLargePreview={() => {
-                                            setPreviewDialogTab("preview");
-                                            setIsPreviewDialogOpen(true);
-                                        }}
-                                    />
-                                )}
-                            </div>
-                        </ScrollArea>
-                    </CardContent>
-                </Card>
+                {/* Inspector is now a dialog */}
             </div>
 
             <FolderDialog
@@ -1518,6 +1459,69 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onResetCsvDraft={handleResetCsvDraft}
                 onSaveCsvDraft={() => void handleSaveCsvDraft()}
             />
+
+            <Dialog open={isInspectorOpen} onOpenChange={setIsInspectorOpen}>
+                <DialogContent className="max-h-[85vh] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 sm:max-w-2xl">
+                    <div className="flex h-[calc(100vh-12rem)] min-h-[500px] flex-col">
+                        <DialogHeader className="flex flex-row items-center justify-between border-b border-zinc-800 px-6 py-4">
+                            <DialogTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Inspector</DialogTitle>
+                            {selectedEntry?.type === "artifact" && (
+                                <Button variant="ghost" size="icon-sm" onClick={() => setInspectorTab(inspectorTab === "preview" ? "properties" : "preview")} className="text-zinc-400 hover:text-zinc-100 mt-0!">
+                                    <Settings2 className="size-4" />
+                                </Button>
+                            )}
+                        </DialogHeader>
+                        <div className="min-h-0 flex-1 overflow-auto bg-zinc-950/50">
+                            <div className="p-6">
+                                {!selectedEntry && <EmptyInspector />}
+                                {selectedEntry?.type === "folder" && selectedFolder && (
+                                    <FolderInspector
+                                        folder={selectedFolder}
+                                        draft={folderDraft}
+                                        knownFolders={knownFolders}
+                                        projects={projects}
+                                        customers={customers}
+                                        isSaving={isSavingFolder}
+                                        hasChanges={hasFolderChanges}
+                                        onDraftChange={setFolderDraft}
+                                        onSave={() => void handleSaveFolder()}
+                                        onDelete={() => void handleDeleteFolder(selectedFolder.id)}
+                                    />
+                                )}
+                                {selectedEntry?.type === "artifact" && artifactDetail && (
+                                    <ArtifactInspector
+                                        artifact={artifactDetail}
+                                        draft={artifactDraft}
+                                        locationDraft={artifactLocationDraft}
+                                        knownFolders={knownFolders}
+                                        projects={projects}
+                                        tasks={tasks}
+                                        customers={customers}
+                                        preview={preview}
+                                        inspectorTab={inspectorTab}
+                                        isSavingArtifact={isSavingArtifact}
+                                        isSavingLocation={isSavingLocation}
+                                        hasPropertyChanges={hasArtifactPropertyChanges}
+                                        hasLocationChanges={hasArtifactLocationChanges}
+                                        onInspectorTabChange={setInspectorTab}
+                                        onDraftChange={setArtifactDraft}
+                                        onLocationDraftChange={setArtifactLocationDraft}
+                                        onSaveProperties={() => void handleSaveArtifactProperties()}
+                                        onSaveLocation={() => void handleSaveArtifactLocation()}
+                                        onReplace={() => replaceInputRef.current?.click()}
+                                        onDownload={() => handleDownloadArtifact(artifactDetail.id)}
+                                        onDelete={() => void handleDeleteArtifact(artifactDetail.id)}
+                                        onOpenLargePreview={() => {
+                                            setPreviewDialogTab("preview");
+                                            setIsPreviewDialogOpen(true);
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             <input ref={replaceInputRef} type="file" className="hidden" onChange={handleReplaceInput} />
         </div>
@@ -1636,6 +1640,7 @@ function BrowserRow(props: {
     selected: boolean;
     onClick: () => void;
     onDoubleClick: () => void;
+    onInspect?: () => void;
     onContextMenu?: () => void;
     contextMenuContent?: ReactNode;
     actions: ReactNode;
@@ -1646,7 +1651,7 @@ function BrowserRow(props: {
             onDoubleClick={props.onDoubleClick}
             onContextMenu={props.onContextMenu}
             className={cn(
-                "grid cursor-default grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_52px] items-center rounded-xl px-2 py-1.5 transition",
+                "grid cursor-default grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_80px] items-center rounded-xl px-2 py-1.5 transition",
                 props.selected ? "bg-zinc-900" : "hover:bg-zinc-900/70"
             )}
         >
@@ -1660,7 +1665,14 @@ function BrowserRow(props: {
             <div className="truncate px-2 text-sm text-zinc-400">{props.context}</div>
             <div className="px-2 text-sm text-zinc-400">{props.sizeLabel}</div>
             <div className="px-2 text-sm text-zinc-400">{props.dateLabel}</div>
-            <div className="flex items-center justify-end">{props.actions}</div>
+            <div className="flex items-center justify-end">
+                {props.onInspect && (
+                    <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); props.onInspect?.(); }} className="text-zinc-400 hover:text-zinc-100">
+                        <Maximize2 className="size-4" />
+                    </Button>
+                )}
+                {props.actions}
+            </div>
         </div>
     );
 
