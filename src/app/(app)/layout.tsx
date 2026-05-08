@@ -14,7 +14,7 @@ export default async function AppLayout({
     const platformAdmin = await getPlatformAdminSession();
 
     if (!companyId) {
-        redirect("/login");
+        return <>{children}</>;
     }
 
     return (
