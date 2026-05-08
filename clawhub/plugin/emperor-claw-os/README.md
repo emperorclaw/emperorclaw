@@ -1,29 +1,25 @@
-# Emperor Claw OS Plugin
+<div align="center">
+  <h1>👑 Emperor Claw OS Plugin</h1>
+  <p><strong>The native OpenClaw plugin for Emperor Claw OS.</strong></p>
+</div>
 
-Native OpenClaw plugin for Emperor Claw OS.
+---
 
-This package installs and manages Emperor-connected OpenClaw agents. It is the native plugin path for:
-- local agent bootstrap
-- Emperor bridge lifecycle
-- scoped doctrine seeding
-- repair / doctor / restart flows
-- Emperor messaging channel integration
+This package seamlessly connects your local OpenClaw agents to the **Emperor Claw OS** platform. It handles everything from bootstrapping new agents to managing lifecycles and messaging channels.
 
-The legacy skill package still exists separately at:
-- `clawhub/emperor-claw-os`
+### 🌟 Key Features
 
-## What It Gives You
+- **Instant Agent Bootstrap**: Spawns a local OpenClaw brain agent fully synced with an Emperor agent record.
+- **Standalone Bridge Runtime**: Deploys a dedicated, per-agent bridge runtime in a companion directory.
+- **Auto-Seeded Doctrine**: Automatically provides operating doctrine and operator manuals to the agent workspace.
+- **Seamless Communication**: Supports direct Emperor thread replies and team-thread `@Agent Name` routing.
+- **Maintenance Toolkit**: Built-in CLI commands for repair, rebind, restart, removal, and diagnostics.
 
-- a local OpenClaw brain agent plus an Emperor agent record
-- a standalone bridge runtime copied into a per-agent companion directory
-- seeded doctrine and operator manuals
-- shared company doctrine resources in Emperor
-- direct thread replies and team-thread `@Agent Name` routing
-- maintenance commands for repair, rebind, restart, removal, and diagnostics
+---
 
-## Install
+## 🚀 Installation
 
-Prerequisites:
+**Prerequisites:**
 - OpenClaw installed locally
 - a valid `EMPEROR_CLAW_API_TOKEN`
 - network access to the Emperor host, normally `https://emperorclaw.malecu.eu`
