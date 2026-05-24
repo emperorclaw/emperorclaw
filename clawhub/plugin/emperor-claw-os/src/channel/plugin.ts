@@ -5,6 +5,7 @@ import {
 import {
   EMPEROR_CHANNEL_ID,
   inspectEmperorChannelAccount,
+  listEmperorChannelAccountIds,
   resolveEmperorChannelAccount
 } from "./config.js";
 import { sendEmperorOutboundText } from "./outbound.js";
@@ -15,9 +16,21 @@ export { EMPEROR_CHANNEL_ID, EMPEROR_CHANNEL_LABEL } from "./config.js";
 export const emperorChannelPlugin = createChatChannelPlugin({
   base: createChannelPluginBase({
     id: EMPEROR_CHANNEL_ID,
+    meta: {
+      label: "Emperor",
+      selectionLabel: "Emperor",
+      docsPath: "https://emperorclaw.malecu.eu/docs",
+      blurb: "Connect OpenClaw to Emperor thread messaging."
+    },
     setup: {
       resolveAccount: resolveEmperorChannelAccount,
       inspectAccount: inspectEmperorChannelAccount
+    },
+    config: {
+      listAccountIds: listEmperorChannelAccountIds,
+      resolveAccount: resolveEmperorChannelAccount,
+      inspectAccount: inspectEmperorChannelAccount,
+      defaultAccountId: () => "default"
     }
   }),
   messaging: {

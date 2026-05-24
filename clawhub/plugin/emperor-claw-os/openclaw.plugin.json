@@ -6,6 +6,54 @@
     "emperor-claw-os"
   ],
   "skills": [],
+  "channelConfigs": {
+    "emperor-claw-os": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiUrl": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "senderAgentId": {
+            "type": "string"
+          },
+          "defaultChatId": {
+            "type": "string"
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dmSecurity": {
+            "type": "string"
+          }
+        }
+      },
+      "uiHints": {
+        "apiUrl": {
+          "label": "Emperor API URL",
+          "placeholder": "https://emperorclaw.malecu.eu"
+        },
+        "token": {
+          "label": "Emperor API token",
+          "sensitive": true
+        },
+        "senderAgentId": {
+          "label": "Sender agent id"
+        },
+        "defaultChatId": {
+          "label": "Default chat id",
+          "placeholder": "team"
+        }
+      }
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
