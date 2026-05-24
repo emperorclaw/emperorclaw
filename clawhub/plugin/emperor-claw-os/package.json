@@ -18,6 +18,7 @@
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
+    "dist",
     "index.ts",
     "openclaw.plugin.json",
     "README.md",
@@ -27,9 +28,11 @@
     "runtime",
     "scripts",
     "src",
+    "types",
     "references"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.json",
     "validate:local": "bash scripts/validate-local.sh"
   },
   "openclaw": {
@@ -43,6 +46,9 @@
     },
     "extensions": [
       "./index.ts"
+    ],
+    "runtimeExtensions": [
+      "./dist/index.js"
     ],
     "channel": {
       "id": "emperor-claw-os",

@@ -44,6 +44,10 @@ export function resolveEmperorChannelAccount(
   };
 }
 
+export function listEmperorChannelAccountIds(_cfg: OpenClawConfig): string[] {
+  return ["default"];
+}
+
 export function inspectEmperorChannelAccount(
   cfg: OpenClawConfig,
   accountId?: string | null
