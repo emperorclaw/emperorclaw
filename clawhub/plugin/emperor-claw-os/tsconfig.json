@@ -7,12 +7,15 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "outDir": "dist",
+    "noEmitOnError": false
   },
   "include": [
     "index.ts",
     "session-key-api.ts",
     "setup-entry.ts",
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "types/**/*.d.ts"
   ]
 }
