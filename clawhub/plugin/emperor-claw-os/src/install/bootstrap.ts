@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { execFile, execSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { EmperorPluginPaths } from "../state/paths.js";
 import { writeManifest, type EmperorAgentManifest } from "../state/manifests.js";
@@ -109,7 +109,7 @@ async function ensureRuntimeDeps(runtimeDir: string): Promise<void> {
       dependencies: { ws: "^8.18.0" }
     }, null, 2) + "\n", "utf8");
   }
-  execSync(`npm --prefix ${JSON.stringify(runtimeDir)} install --silent`, { stdio: "inherit" });
+  await execFileAsync("npm", ["--prefix", runtimeDir, "install", "--silent"]);
 }
 
 async function runControlPlaneBootstrap(runtimeDir: string, companionDir: string, stateDir: string, bridgeStatePath: string, input: BootstrapAgentInput, runtimeId: string): Promise<void> {
@@ -399,17 +399,29 @@ WantedBy=default.target
 `, "utf8");
 }
 
-function copyRuntimeAssets(pluginRoot: string, runtimeDir: string, companionDir: string): void {
+async function downloadControlPlane(runtimeDir: string, apiUrl: string): Promise<void> {
+  const url = `${apiUrl.replace(/\/+$/, "")}/downloads/control-plane.js`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download control-plane.js from ${url}: HTTP ${response.status}`);
+  }
+  const content = await response.text();
+  fs.writeFileSync(path.join(runtimeDir, "control-plane.js"), content, "utf8");
+}
+
+async function copyRuntimeAssets(pluginRoot: string, runtimeDir: string, companionDir: string, apiUrl: string): Promise<void> {
   ensureDir(runtimeDir);
+  // bridge.cjs is bundled with the plugin — no remote download needed.
   fs.copyFileSync(path.join(pluginRoot, "runtime", "bridge.cjs"), path.join(runtimeDir, "bridge.js"));
-  const controlPlaneUrl = `${process.env.EMPEROR_CLAW_API_URL || "https://emperorclaw.malecu.eu"}/downloads/control-plane.js`;
-  execSync(`curl -fsSL ${JSON.stringify(controlPlaneUrl)} -o ${JSON.stringify(path.join(runtimeDir, "control-plane.js"))}`, { stdio: "inherit" });
-  fs.chmodSync(path.join(runtimeDir, "bridge.js"), 0o755);
-  fs.chmodSync(path.join(runtimeDir, "control-plane.js"), 0o755);
+  // control-plane.js is fetched via the standard HTTPS API, not curl.
+  await downloadControlPlane(runtimeDir, apiUrl);
+  // Shell scripts that are executed directly still need the executable bit on Unix.
   const doctorLocal = path.join(pluginRoot, "scripts", "doctor-local.sh");
   if (fs.existsSync(doctorLocal)) {
     fs.copyFileSync(doctorLocal, path.join(companionDir, "doctor.sh"));
-    fs.chmodSync(path.join(companionDir, "doctor.sh"), 0o755);
+    if (process.platform !== "win32") {
+      fs.chmodSync(path.join(companionDir, "doctor.sh"), 0o755);
+    }
   }
 }
 
@@ -440,7 +452,7 @@ export async function bootstrapAgent(paths: EmperorPluginPaths, input: Bootstrap
   ensureDir(stateDir);
   ensureDir(workspaceDir);
 
-  copyRuntimeAssets(pluginRoot, runtimeDir, companionDir);
+  await copyRuntimeAssets(pluginRoot, runtimeDir, companionDir, input.apiUrl);
   await ensureRuntimeDeps(runtimeDir);
   await runControlPlaneBootstrap(runtimeDir, companionDir, stateDir, bridgeStatePath, input, runtimeId);
   await ensureLocalBrainAgent(input.localBrainAgentId, workspaceDir, input.agentName, openclawConfigPath);
