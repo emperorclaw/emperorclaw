@@ -14,6 +14,10 @@ import { registerUpgradeManifestsCommand } from "./src/commands/upgrade-manifest
 import { registerEmperorCli } from "./src/cli/register.js";
 import { resolvePluginPaths } from "./src/state/paths.js";
 import { emperorChannelPlugin } from "./src/channel/plugin.js";
+import { createEmperorInboundService } from "./src/channel/inbound.js";
+
+// Captured by setRuntime; available before any service.start() call.
+let pluginRuntime: unknown = null;
 
 export default defineChannelPluginEntry({
   id: "emperor-claw-os",
@@ -30,6 +34,9 @@ export default defineChannelPluginEntry({
       manifestRoot: { type: "string" },
       stateRoot: { type: "string" }
     }
+  },
+  setRuntime(runtime) {
+    pluginRuntime = runtime;
   },
   registerCliMetadata(api) {
     api.registerCli(({ program }) => {
@@ -59,5 +66,7 @@ export default defineChannelPluginEntry({
     registerRebindThreadsCommand(api, paths);
     registerAddAgentCommand(api, paths);
     registerHelpCommand(api, paths);
+
+    api.registerService(createEmperorInboundService(paths, () => pluginRuntime));
   }
 });
