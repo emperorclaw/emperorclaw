@@ -1,6 +1,6 @@
 {
   "name": "@malecu/emperor-claw-os-plugin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": false,
   "type": "module",
   "description": "Native OpenClaw plugin for Emperor bridge installation and agent lifecycle management",
