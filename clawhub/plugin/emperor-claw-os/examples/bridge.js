@@ -53,7 +53,7 @@ const OPENCLAW_CLI_JS_PATH = process.env.OPENCLAW_CLI_JS_PATH || null;
 const EMPEROR_CLAW_BRAIN_MODE = String(process.env.EMPEROR_CLAW_BRAIN_MODE || "auto").trim().toLowerCase();
 const EMPEROR_CLAW_LONG_TURN_MESSAGE_MS = Number(process.env.EMPEROR_CLAW_LONG_TURN_MESSAGE_MS || 20000);
 const EMPEROR_CLAW_LONG_TURN_MESSAGE_TEXT = String(
-  process.env.EMPEROR_CLAW_LONG_TURN_MESSAGE_TEXT || "I am working on this. I will reply with the final result as soon as it is ready.",
+  process.env.EMPEROR_CLAW_LONG_TURN_MESSAGE_TEXT || "...",
 ).trim();
 const EMPEROR_CLAW_AUTO_CLAIM = String(process.env.EMPEROR_CLAW_AUTO_CLAIM || "false").toLowerCase() === "true";
 const EMPEROR_CLAW_AGENT_PROFILE = process.env.EMPEROR_CLAW_AGENT_PROFILE
