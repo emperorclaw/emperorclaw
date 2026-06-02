@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4
+
+- disabled the default long-turn acknowledgement message
+
 ## 0.2.3
 
 - shortened the default long-turn acknowledgement to `...`
