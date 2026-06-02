@@ -5,7 +5,7 @@ import { loadThreadOwners, saveThreadOwners } from "../state/thread-owners.js";
 import { loadManifests } from "../state/manifests.js";
 const execFileAsync = promisify(execFile);
 async function fetchThreads(token, apiUrl) {
-    const { stdout } = await execFileAsync("curl", ["-sS", "-H", `Authorization: Bearer ${token}`, `${apiUrl}/api/mcp/threads?thread_type=direct`]);
+    const { stdout } = await execFileAsync("curl", ["-sS", "-H", `Authorization: Bearer ${token}`, `${apiUrl}/api/mcp/threads?type=direct`]);
     const payload = JSON.parse(stdout);
     return payload.threads || [];
 }

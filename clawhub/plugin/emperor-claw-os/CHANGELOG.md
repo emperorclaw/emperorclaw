@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- fixed native inbound direct-thread replies so human sender IDs are not sent back as agent targets
+- fixed direct-thread rebind repair to use the supported `type=direct` thread filter
+
 ## 0.2.0
 
 - added native `emperor-inbound` service — OpenClaw now handles Emperor WebSocket + sync-fallback transport in-process; no separate bridge process needed for message delivery

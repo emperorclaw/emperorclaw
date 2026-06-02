@@ -8,7 +8,7 @@ import { loadManifests } from "../state/manifests.js";
 const execFileAsync = promisify(execFile);
 
 async function fetchThreads(token: string, apiUrl: string): Promise<any[]> {
-  const { stdout } = await execFileAsync("curl", ["-sS", "-H", `Authorization: Bearer ${token}`, `${apiUrl}/api/mcp/threads?thread_type=direct`]);
+  const { stdout } = await execFileAsync("curl", ["-sS", "-H", `Authorization: Bearer ${token}`, `${apiUrl}/api/mcp/threads?type=direct`]);
   const payload = JSON.parse(stdout);
   return payload.threads || [];
 }
