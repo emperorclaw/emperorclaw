@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- shortened the default long-turn acknowledgement to `...`
+
 ## 0.2.2
 
 - fixed compiled plugin path resolution so repair/status can find root runtime and manifest assets
