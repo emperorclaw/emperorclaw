@@ -7,7 +7,8 @@ export function resolvePluginPaths(api) {
     const emperorRoot = path.join(os.homedir(), ".openclaw", "emperor");
     const manifestRoot = cfg.manifestRoot || path.join(emperorRoot, "agents");
     const stateRoot = cfg.stateRoot || path.join(emperorRoot, "state");
-    const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const pluginRoot = path.basename(moduleRoot) === "dist" ? path.dirname(moduleRoot) : moduleRoot;
     return {
         pluginRoot,
         emperorRoot,
