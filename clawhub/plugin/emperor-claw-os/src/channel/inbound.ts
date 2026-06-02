@@ -157,7 +157,7 @@ async function dispatchMessage(
         text: reply,
         threadId,
         threadType: threadType as "direct" | "team",
-        targetAgentId: senderId || null,
+        targetAgentId: null,
       });
     } catch (err) {
       ctx.logger.error(`Emperor inbound: reply send failed: ${err}`);

@@ -106,7 +106,7 @@ async function dispatchMessage(message, account, paths, runtime, seenIds, ctx) {
                 text: reply,
                 threadId,
                 threadType: threadType,
-                targetAgentId: senderId || null,
+                targetAgentId: null,
             });
         }
         catch (err) {
