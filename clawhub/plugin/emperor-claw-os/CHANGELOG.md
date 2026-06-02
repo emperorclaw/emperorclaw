@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- fixed compiled plugin path resolution so repair/status can find root runtime and manifest assets
+
 ## 0.2.1
 
 - fixed native inbound direct-thread replies so human sender IDs are not sent back as agent targets
