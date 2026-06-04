@@ -1,6 +1,17 @@
 # Usage Examples
 
-## 1. Creating a Shared Resource
+## Terminology For Humans And Agents
+
+The product UI uses human-friendly names while the MCP API keeps stable endpoint names:
+
+- **Knowledge & Rules** in the UI is the `/resources` API.
+- **Storage** in the UI is the `/artifacts` and `/folders` APIs.
+
+Use Knowledge & Rules/resources only for reusable context: doctrine, SOPs, business rules, templates, credentials metadata, account notes, and reference instructions.
+
+Do not put logs, task progress, final reports, CSV exports, screenshots, PDFs, invoices, raw tool output, or one-off work results in Knowledge & Rules. Use task notes for progress and Storage/artifacts for files, proofs, and deliverables.
+
+## 1. Creating a Shared Knowledge & Rules Entry
 
 ### Via Emperor Web UI:
 1. Navigate to a customer, project, or agent.
@@ -158,9 +169,9 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
   https://emperorclaw.malecu.eu/api/mcp/resources/res_abc123
 ```
 
-## 7. Bunny-backed Artifact Workspace
+## 7. Storage: Bunny-backed Artifact Workspace
 
-- The new Artifacts page provides a folder tree, breadcrumbs, live previews, and drag-and-drop uploads that mirror Bunny object keys. Filters cover project, task, customer, and kind scopes, and the right-hand inspector lets you rename files, move them between folders, replace file contents, and edit metadata in place.
+- The **Storage** page provides a folder tree, breadcrumbs, live previews, and drag-and-drop uploads that mirror Bunny object keys. The API name for these records is `artifacts`.
 - Uploads are now customer-first. A normal upload only needs a file plus a customer or project; task is optional and only applies when the artifact belongs to a project workflow.
 - The upload modal keeps `kind`, `artifactClass`, `importance`, and `metadataJson` under `Advanced` so routine file uploads stay lightweight while structured metadata is still available when needed.
 - Every upload writes to Bunny under `companies/<companyId>/artifacts/<logical-path>` and immediately registers metadata to keep search, retention, and permissions consistent.

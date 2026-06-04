@@ -74,6 +74,45 @@ Failure rule:
 - If any prerequisite is missing, say what is missing.
 - Never pretend install, auth, read access, or write access is working when it is not.`;
 
+const TERMINOLOGY_AND_PLACEMENT_GUIDE = `# Emperor Terminology And Placement Guide
+
+Human-facing product names and API names differ. Treat these as aliases:
+
+- Knowledge & Rules in the UI = resources in the MCP API.
+- Storage in the UI = artifacts and folders in the MCP API.
+- "Save this in Storage" means create or update an artifact, usually with /artifacts/upload for file bytes.
+- "Look in Storage" means search /artifacts or inspect /folders/{id}/contents.
+- "Save this as a rule", "put this in the KB", or "make agents remember this instruction" means create or update a resource.
+
+Do not confuse the two surfaces:
+
+- Knowledge & Rules/resources are reusable scoped context: doctrine, SOPs, business rules, templates, credentials metadata, account notes, style guides, durable reference instructions.
+- Storage/artifacts are durable files and evidence: deliverables, reports, PDFs, spreadsheets, screenshots, exports, source documents, working files worth preserving.
+- Task notes are execution breadcrumbs: started, blocked, progress, handoff, observations.
+- Project memory is durable project context: assumptions, decisions, summaries, next-step snapshots.
+- Threads/messages are visible conversation and coordination.
+
+Hard placement rules:
+
+- Do not write logs into Knowledge & Rules/resources.
+- Do not write task progress updates into Knowledge & Rules/resources.
+- Do not write final deliverables into Knowledge & Rules/resources unless the deliverable is itself a reusable instruction/template/reference.
+- Do not create resources named "log", "notes", "report", "output", "result", "artifact", "file", or "document" just to store work output.
+- If the content is a file or could naturally be downloaded, previewed, moved into a folder, or attached as proof, use Storage/artifacts.
+- If the content is an instruction agents should reuse later, use Knowledge & Rules/resources.
+- If the content is a one-time status update, use a task note or thread message.
+
+Examples:
+
+- "Store the invoice PDF" -> /artifacts/upload, not /resources.
+- "Save the CSV export" -> /artifacts/upload, not /resources.
+- "Keep this SOP for ACME" -> customer-scoped /resources.
+- "Remember that this project must use Spanish copy" -> project memory or project-scoped /resources if reusable as a rule.
+- "I started and found a blocker" -> /tasks/{id}/notes.
+- "Final report is complete" -> upload the report to /artifacts/upload, then complete the task with /tasks/{id}/result.
+
+When uncertain, ask: will agents reuse this as context, or will humans retrieve it as a file/proof? Reusable context goes to Knowledge & Rules/resources. File/proof/output goes to Storage/artifacts.`;
+
 const MCP_DIRECT_USAGE = `# Emperor MCP Direct Usage
 
 Primary rule:
@@ -106,7 +145,7 @@ Do say:
 
 Important operational reality:
 - The company token available in EMPEROR_CLAW_API_TOKEN is enough to operate the MCP API directly from local tools.
-- If the user asks to create a customer, project, task, note, memory entry, resource, artifact, or visible message, direct MCP is usually the first-class path.
+- If the user asks to create a customer, project, task, note, memory entry, Knowledge & Rules entry/resource, Storage file/artifact, or visible message, direct MCP is usually the first-class path.
 - Bridge fallback JSON should be treated as compatibility, not as the preferred operating mode.`;
 
 const DOMAIN_MODEL_GUIDE = `# Emperor Object Model
@@ -167,7 +206,7 @@ Use it for:
 - relevant operating knowledge that should outlive a single thread
 
 ## Resources
-Resources are reusable scoped context.
+Resources are reusable scoped context. In the human UI this area is called Knowledge & Rules.
 They are not chat messages and not task logs.
 Think of a resource as a scoped wiki page, operating manual, or reusable memory entry that should still be useful in later turns.
 Use them for:
@@ -178,6 +217,14 @@ Use them for:
 - account notes
 - scoped reference docs
 
+Do not use resources for:
+- logs
+- task progress
+- one-off notes
+- final reports
+- file outputs
+- evidence documents
+
 Examples:
 - company-wide operator doctrine
 - customer-specific mailbox or billing notes
@@ -185,7 +232,7 @@ Examples:
 - one agent's private shared operating preferences
 
 ## Artifacts
-Artifacts are durable outputs or evidence.
+Artifacts are durable outputs or evidence. In the human UI this area is called Storage.
 Think of an artifact as a durable file or evidence object, not as prose living in chat.
 Use them for:
 - deliverables
@@ -411,6 +458,7 @@ Honesty rules:
 const RESOURCE_SHARING_DOCTRINE = `# Resource Sharing Semantics
 
 Resources are scoped context, not random notes.
+In the human UI, resources are called Knowledge & Rules.
 Think of them as wiki-style reusable memory for a scope, not as chat backlog.
 
 Scope model:
@@ -458,6 +506,9 @@ Do not use resources for:
 - transient chat
 - progress breadcrumbs that belong in notes
 - final deliverables that belong in artifacts
+- logs, raw tool output, debug transcripts, or work journals
+- files that should be downloadable, previewable, or stored in folders
+- reports, PDFs, CSV exports, screenshots, invoices, statements, or evidence
 
 Leak prevention:
 - Do not expose agent-scoped shared content in public/team chat unless the content itself is meant to be shared.
@@ -471,6 +522,7 @@ Bridge expectation:
 const ARTIFACTS_AND_EVIDENCE_GUIDE = `# Artifacts And Evidence
 
 Artifacts are durable outputs or evidence.
+In the human UI, artifacts and folders are called Storage.
 Think of them as the file cabinet and proof locker for Emperor, not as chat text.
 
 Read surfaces:
@@ -504,6 +556,7 @@ Use artifacts for:
 - source documents
 - working files worth preserving
 - templates
+- logs only when the human explicitly asks to preserve a log file as evidence; otherwise summarize logs in notes
 
 Concrete examples:
 - a final PDF report
@@ -2304,6 +2357,7 @@ function getSharedOperatingDoctrineText(): string {
   return [
     OPERATING_DOCTRINE,
     USER_FLOW_DOCTRINE,
+    TERMINOLOGY_AND_PLACEMENT_GUIDE,
     DOMAIN_MODEL_GUIDE,
     OPERATION_DECISION_MATRIX,
     HOW_TO_OPERATE_EMPEROR,
@@ -2316,6 +2370,7 @@ function getSharedOperatingDoctrineText(): string {
 function getSharedOperatorManualText(): string {
   return [
     MCP_DIRECT_USAGE,
+    TERMINOLOGY_AND_PLACEMENT_GUIDE,
     OPENCLAW_AGENT_RUNTIME_GUIDE,
     CUSTOMERS_AND_PROJECTS_GUIDE,
     TASK_LIFECYCLE_GUIDE,
@@ -2360,6 +2415,7 @@ export function getWorkspaceDoctrineFiles(profile: DoctrineProfile): Array<{ fil
   const files = [
     { fileName: "EMPEROR_OPERATING_DOCTRINE.md", content: getSharedOperatingDoctrineText() },
     { fileName: "EMPEROR_USER_FLOW.md", content: USER_FLOW_DOCTRINE },
+    { fileName: "EMPEROR_TERMINOLOGY_AND_PLACEMENT.md", content: TERMINOLOGY_AND_PLACEMENT_GUIDE },
     { fileName: "EMPEROR_OPENCLAW_AGENT_RUNTIME.md", content: OPENCLAW_AGENT_RUNTIME_GUIDE },
     { fileName: "EMPEROR_MCP_DIRECT_USAGE.md", content: MCP_DIRECT_USAGE },
     { fileName: "EMPEROR_CUSTOMERS_AND_PROJECTS.md", content: CUSTOMERS_AND_PROJECTS_GUIDE },

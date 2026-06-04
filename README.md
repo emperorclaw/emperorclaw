@@ -2,7 +2,7 @@
 
 Emperor Claw is a multi-tenant control plane for OpenClaw-based agent workforces.
 
-It is responsible for durable company state: agents, projects, tasks, incidents, scoped resources, artifacts, chat threads, and audit history.
+It is responsible for durable company state: agents, projects, tasks, incidents, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), chat threads, and audit history.
 It is not the runtime that thinks or executes work. OpenClaw remains the runtime.
 
 ## Operating Model
@@ -11,8 +11,9 @@ It is not the runtime that thinks or executes work. OpenClaw remains the runtime
 - OpenClaw is the executor.
 - WebSocket events are notification and coordination signals, not proof that work happened.
 - Tasks are lease-based and must be renewed by heartbeat while work is in progress.
-- Customer and project scoped resources can be leased into runtime work without cloning permanent customer-facing agents.
-- Customer mailboxes, project identities, templates, and billing profiles should live in scoped Resources, not in per-agent SMTP forms.
+- Customer and project scoped Knowledge & Rules entries/resources can be leased into runtime work without cloning permanent customer-facing agents.
+- Customer mailboxes, project identities, templates, and billing profiles should live in scoped Knowledge & Rules, not in per-agent SMTP forms.
+- Durable files, proofs, reports, invoices, exports, and deliverables should live in Storage/artifacts, not Knowledge & Rules.
 - Human-to-agent communication should flow through real threads, not fake orchestration helpers.
 - The bridge companion keeps a local state journal so reconnects can resume with bounded backoff and dedupe instead of replaying the same writes.
 
@@ -72,7 +73,7 @@ openclaw emperor doctor
 ```
 
 Generated companion runtime files and bridge state live under your OpenClaw-managed local area.
-After install, manage customer and project credentials in the Emperor `Resources` workspace.
+After install, manage customer and project credentials in the Emperor `Knowledge & Rules` workspace.
 Use agent `Runtime Integrations` only for machine-local payloads that truly belong to one worker.
 
 ## Plugin
