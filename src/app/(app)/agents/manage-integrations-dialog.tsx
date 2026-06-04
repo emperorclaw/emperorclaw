@@ -14,7 +14,7 @@ const PROVIDER_TEMPLATES: Record<string, {
         provider: "generic",
         configJson: JSON.stringify({ baseUrl: "https://api.example.com", accountId: "acct_123" }, null, 2),
         secretJson: JSON.stringify({ token: "replace_me" }, null, 2),
-        description: "Generic runtime-local payload. Use this when the local worker needs arbitrary connector data that does not belong to a customer or project resource.",
+        description: "Generic runtime-local payload. Use this when the local worker needs arbitrary connector data that does not belong in Knowledge & Rules.",
     },
     webhook: {
         provider: "webhook",
@@ -26,7 +26,7 @@ const PROVIDER_TEMPLATES: Record<string, {
         provider: "github",
         configJson: JSON.stringify({ owner: "acme", repo: "control-plane" }, null, 2),
         secretJson: JSON.stringify({ token: "ghp_replace_me" }, null, 2),
-        description: "Use per-agent GitHub credentials only when they are truly runtime-local. Shared repository access usually belongs in scoped resources.",
+        description: "Use per-agent GitHub credentials only when they are truly runtime-local. Shared repository access usually belongs in Knowledge & Rules.",
     },
     slack: {
         provider: "slack",
@@ -38,13 +38,13 @@ const PROVIDER_TEMPLATES: Record<string, {
         provider: "email_smtp",
         configJson: JSON.stringify({ host: "smtp.example.com", port: 465, username: "ops@example.com" }, null, 2),
         secretJson: JSON.stringify({ password: "replace_me" }, null, 2),
-        description: "Use SMTP here only when the mailbox is truly tied to this machine-local worker. Customer and project mailboxes should be stored in Resources instead.",
+        description: "Use SMTP here only when the mailbox is truly tied to this machine-local worker. Customer and project mailboxes should be stored in Knowledge & Rules instead.",
     },
     imap: {
         provider: "email_imap",
         configJson: JSON.stringify({ host: "imap.example.com", port: 993, username: "ops@example.com" }, null, 2),
         secretJson: JSON.stringify({ password: "replace_me" }, null, 2),
-        description: "Use IMAP here only for agent-local mailboxes. Prefer project or customer resources for shared inboxes.",
+        description: "Use IMAP here only for agent-local mailboxes. Prefer project or customer entries in Knowledge & Rules for shared inboxes.",
     },
 };
 
@@ -182,7 +182,7 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                         <div className="flex-1 overflow-y-auto p-6 space-y-8">
                             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100/90">
                                 Use this only for machine-local or truly agent-bound connector payloads. Customer mailboxes, project identities,
-                                invoice templates, and shared external accounts belong in <span className="font-semibold text-white">Resources</span>.
+                                invoice templates, and shared external accounts belong in <span className="font-semibold text-white">Knowledge & Rules</span>.
                             </div>
 
                             <section>
