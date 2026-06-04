@@ -7,6 +7,12 @@ import { cn } from "@/lib/utils";
 
 type ApprovalItem = any;
 
+const taskInput = (task: any) => task?.inputJson && typeof task.inputJson === "object" ? task.inputJson : {};
+const getTaskTitle = (task: any) => {
+    const input = taskInput(task);
+    return typeof input.title === "string" && input.title.trim() ? input.title.trim() : task?.taskType || "Untitled task";
+};
+
 export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
     const [query, setQuery] = useState("");
     const [decisionByTaskId, setDecisionByTaskId] = useState<Record<string, "approved" | "rejected" | "pending">>({});
@@ -18,6 +24,8 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
         return items.filter((item) => {
             const haystack = [
                 item.task?.taskType,
+                getTaskTitle(item.task),
+                taskInput(item.task).description,
                 item.task?.state,
                 item.project?.goal,
                 item.customer?.name,
@@ -135,7 +143,8 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                                             {item.approval?.status && <Chip label={item.approval.status} tone={item.approval.status === "pending" ? "amber" : "emerald"} />}
                                         </div>
                                         <div>
-                                            <h3 className="text-lg font-medium text-zinc-200">{item.task.taskType}</h3>
+                                            <h3 className="text-lg font-medium text-zinc-200">{getTaskTitle(item.task)}</h3>
+                                            <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{item.task.taskType}</div>
                                             <p className="mt-1 text-sm text-zinc-500">
                                                 {item.approval?.rationale || "No rationale captured yet."}
                                             </p>

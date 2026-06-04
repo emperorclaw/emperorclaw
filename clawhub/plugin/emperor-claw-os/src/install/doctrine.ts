@@ -123,6 +123,9 @@ Typical customer uses:
 ## Projects
 Use projects for goals, initiatives, workstreams, or deliverable tracks.
 A project is the main planning and execution container under a customer or at company scope.
+The project field named goal is the user-visible project objective in the current API.
+Keep goal concise and scannable. Do not paste a full brief, chat transcript, or task list into it.
+Put long background, scope, assumptions, and strategy in project memory or scoped resources instead.
 
 Typical project uses:
 - launch a feature
@@ -144,6 +147,15 @@ A task can hold:
 - assignment state
 - notes
 - final result
+
+Task field semantics:
+- taskType is a short machine category such as implementation, analysis, research, review, ops, content, or execution.
+- title is the human-visible task name. It should be a concise imperative or outcome, normally under 80 characters.
+- description is the work brief. It should add instructions beyond the title.
+- goal is optional task-local intent; do not use it as a duplicate of description unless there is no better distinction.
+- deliverables are the concrete outputs a worker should produce.
+- acceptanceCriteria or definitionOfDone defines how another agent knows the task is complete.
+- Never create a task with taskType "any", a missing title, or no deliverables unless the human explicitly asked for a draft placeholder.
 
 ## Project Memory
 Project memory is durable shared context for the project.
@@ -268,7 +280,7 @@ Payload:
 \`\`\`json
 {
   "customerId": "<customer-id-or-null>",
-  "goal": "Launch the first internal dashboard MVP",
+  "goal": "Launch internal dashboard MVP",
   "status": "active",
   "leadAgentId": null,
   "maxActiveAgents": 3
@@ -277,6 +289,8 @@ Payload:
 
 Important behavior:
 - goal is required
+- goal is the visible project objective/name, not a long description
+- keep goal concise; put background, scope, assumptions, and strategy in project memory
 - customerId is optional
 - if the work belongs to a customer, include customerId
 - use Idempotency-Key on every POST
@@ -297,7 +311,8 @@ Common fields:
 Only archive a project when explicitly instructed.
 
 Practical project rule:
-- A project should express a real goal, not just a label.
+- A project goal should be a concise objective, not just a label and not a long description.
+- If the user provides a long brief, create the project with a short goal, then write the brief to project memory.
 - If the user asks you to "set this up", create the project and then create a small starter task breakdown instead of stopping at the project object alone.`;
 
 const TASK_LIFECYCLE_GUIDE = `# Tasks And Task Lifecycle
@@ -329,6 +344,14 @@ Recommended execution-ready fields:
 - ownerRole
 - priority
 - blockedByTaskIds when relevant
+
+Naming contract:
+- taskType is a machine category, not the task name. Good: implementation, analysis, research, review, ops, content, execution.
+- title is the task name shown to humans. Good: "Audit public invoice routes for data leaks".
+- description is the work brief. It should add instructions beyond the title.
+- deliverables must name concrete outputs. Good: ["Security findings note", "Patch commit"].
+- acceptanceCriteria or definitionOfDone must state the completion gate.
+- Do not create tasks with taskType "any", title equal to the project goal, title equal to description, or missing deliverables.
 
 Practical payload:
 \`\`\`json
@@ -1828,22 +1851,26 @@ const TASK_CREATION_GUIDE = `# Task Creation Guide
 Task creation endpoint:
 - POST /tasks
 
-Minimum accepted fields:
+Minimum transport fields:
 - projectId
 - taskType
 
-Recommended execution-ready fields:
+Required for normal agent-created tasks:
 - title
 - description
-- acceptanceCriteria
-- definitionOfDone
+- acceptanceCriteria or definitionOfDone
 - deliverables
+
+Recommended execution-ready fields:
 - ownerRole
 - priority
 
 Practical rule:
-- The API may accept a sparse task, but a sparse task is usually bad operations.
+- The API rejects sparse normal tasks. Only use allowUnderspecified=true when intentionally creating a draft placeholder.
 - Prefer tasks that a worker can execute immediately.
+- Do not use taskType as the task title. taskType is a short machine category.
+- Do not use "any" as taskType.
+- Do not duplicate project goal into task title. Break the project goal into concrete execution steps.
 
 Good payload shape:
 \`\`\`json
