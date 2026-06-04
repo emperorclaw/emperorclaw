@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Database, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code, Copy, Check } from "lucide-react";
+import { ScrollText, FolderKanban, Mail, ShieldCheck, Trash2, UserRound, type LucideIcon, Edit, ChevronRight, ChevronDown, Folder, FileText, Plus, Search, Eye, Code, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -65,7 +65,7 @@ const RESOURCE_TEMPLATES: Record<string, { provider: string; configText: string;
     knowledge_base: {
         provider: "knowledge",
         configText: "location: s3://bucket/folder\nformat: pdf",
-        helper: "Use knowledge-base resources for durable file sets or reference corpora.",
+        helper: "Use knowledge-base entries for durable reference corpora. Put uploaded deliverable files in Storage.",
     },
 };
 
@@ -197,7 +197,7 @@ export default function ResourcesClient({
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         setCopied(true);
-        toast.success("Resource ID copied to clipboard");
+        toast.success("Entry ID copied to clipboard");
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -272,16 +272,16 @@ export default function ResourcesClient({
 
             const body = await res.json().catch(() => ({}));
             if (!res.ok) {
-                throw new Error(typeof body.error === "string" ? body.error : "Failed to create resource.");
+                throw new Error(typeof body.error === "string" ? body.error : "Failed to create knowledge entry.");
             }
 
             setResources((current) => editingResource 
                 ? current.map(r => r.id === editingResource.id ? (body.resource as ResourceRecord) : r)
                 : [body.resource as ResourceRecord, ...current]);
             setIsCreateOpen(false);
-            toast.success(editingResource ? "Resource updated successfully" : "Resource created successfully");
+            toast.success(editingResource ? "Knowledge entry updated successfully" : "Knowledge entry created successfully");
         } catch (createError) {
-            const msg = createError instanceof Error ? createError.message : "Failed to save resource.";
+            const msg = createError instanceof Error ? createError.message : "Failed to save knowledge entry.";
             setError(msg);
             toast.error(msg);
         } finally {
@@ -290,20 +290,20 @@ export default function ResourcesClient({
     };
 
     const handleDelete = async (resourceId: string) => {
-        if (!confirm("Archive this resource?")) return;
+        if (!confirm("Archive this knowledge entry?")) return;
 
         try {
             const res = await fetch(`/api/resources/${resourceId}`, {
                 method: "DELETE",
             });
             if (!res.ok) {
-                throw new Error("Failed to archive resource.");
+                throw new Error("Failed to archive knowledge entry.");
             }
             setResources((current) => current.filter((resource) => resource.id !== resourceId));
-            toast.success("Resource archived successfully");
+            toast.success("Knowledge entry archived successfully");
         } catch (deleteError) {
             console.error(deleteError);
-            toast.error("Failed to archive resource");
+            toast.error("Failed to archive knowledge entry");
         }
     };
 
@@ -317,23 +317,23 @@ export default function ResourcesClient({
         <div className="flex flex-col h-[calc(100vh-140px)] animate-in fade-in duration-500">
             <div className="flex items-center justify-between mb-4">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Resources Explorer</h1>
-                    <p className="text-sm text-zinc-500">Manage scoped assets and configurations</p>
+                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Knowledge & Rules</h1>
+                    <p className="text-sm text-zinc-500">Scoped instructions, business rules, templates, identities, inboxes, and durable context for agents.</p>
                 </div>
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogTrigger asChild>
                         <button onClick={openModalForCreate} className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500">
                             <Plus className="h-4 w-4" />
-                            Add Resource
+                            Add Entry
                         </button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[720px] border-zinc-800 bg-zinc-950 text-zinc-200">
                         <DialogHeader>
-                            <DialogTitle className="text-xl font-medium tracking-tight">Create Resource</DialogTitle>
+                            <DialogTitle className="text-xl font-medium tracking-tight">Create Knowledge Entry</DialogTitle>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-sm leading-6 text-zinc-400">
-                                Start with the scope, a human-friendly display name, the resource type, and the content you want agents to use.
+                                Start with the scope, a human-friendly display name, the entry type, and the content you want agents to use.
                                 The internal key is auto-generated unless you override it.
                             </div>
                              <div className="grid gap-4 md:grid-cols-2">
@@ -370,7 +370,7 @@ export default function ResourcesClient({
                             </div>
                             <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Resource Type</span>
+                                    <span className="text-zinc-500">Entry Type</span>
                                     <input
                                         list="resource-types-list-modal"
                                         value={resourceType}
@@ -392,7 +392,7 @@ export default function ResourcesClient({
                                         ))}
                                     </datalist>
                                     <span className="text-xs text-zinc-600">
-                                        Flexible field. Use any stable type that helps humans and agents understand what this resource is.
+                                        Flexible field. Use any stable type that helps humans and agents understand what this knowledge entry is.
                                     </span>
                                 </label>
                                 <label className="space-y-1.5 text-sm">
@@ -505,7 +505,7 @@ export default function ResourcesClient({
                                                 placeholder="generic, email, github, stripe..."
                                             />
                                             <span className="text-xs text-zinc-600">
-                                                Mainly for integration shape and internal classification. Most resources can keep the default provider.
+                                                Mainly for integration shape and internal classification. Most entries can keep the default provider.
                                             </span>
                                         </label>
                                     </div>
@@ -513,10 +513,10 @@ export default function ResourcesClient({
                             </div>
                             <div className="flex items-center justify-between py-2 px-1">
                                 <div className="flex items-center gap-2 group relative">
-                                    <span className="text-sm font-medium text-zinc-300">Force Inject</span>
+                                    <span className="text-sm font-medium text-zinc-300">Always Share With Agents</span>
                                     <div className="h-4 w-4 rounded-full border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-500 cursor-help">?</div>
                                     <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
-                                        When enabled, this resource is explicitly injected by the bridge for agents in scope. Leave it off for resources that should stay discoverable but not always injected.
+                                        When enabled, this entry is explicitly injected by the bridge for agents in scope. Leave it off for entries that should stay discoverable but not always injected.
                                     </div>
                                 </div>
                                 <button 
@@ -539,7 +539,7 @@ export default function ResourcesClient({
                                 disabled={!(displayName.trim() || name.trim()) || isSaving}
                                 className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-indigo-500"
                             >
-                                {isSaving ? "Saving..." : editingResource ? "Save Resource" : "Create Resource"}
+                                {isSaving ? "Saving..." : editingResource ? "Save Entry" : "Create Entry"}
                             </button>
                         </div>
                     </DialogContent>
@@ -554,7 +554,7 @@ export default function ResourcesClient({
                             <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500 group-focus-within:text-indigo-400 transition-colors" />
                             <input
                                 type="text"
-                                placeholder="Filter resources..."
+                                placeholder="Filter knowledge entries..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full rounded-md border border-zinc-800 bg-zinc-950/50 pl-9 pr-3 py-2 text-xs text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-indigo-500/50 transition-all"
@@ -659,7 +659,7 @@ export default function ResourcesClient({
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <label className="block space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource Name (Key)</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Internal Key</span>
                                                 <input
                                                     value={name}
                                                     onChange={(e) => setName(e.target.value)}
@@ -677,7 +677,7 @@ export default function ResourcesClient({
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <label className="block space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource Type</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Entry Type</span>
                                                 <input
                                                     list="resource-types-list-editor"
                                                     value={resourceType}
@@ -701,7 +701,7 @@ export default function ResourcesClient({
                                         </div>
                                         <div className="grid grid-cols-4 gap-4">
                                             <div className="space-y-1.5 col-span-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource ID</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Entry ID</span>
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 rounded-md border border-zinc-800 bg-zinc-900/10 px-3 py-2 text-[11px] text-zinc-500 font-mono truncate">
                                                         {selectedResource.id}
@@ -730,17 +730,17 @@ export default function ResourcesClient({
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Resource Info</div>
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Suggested Use</div>
                                         <div className="rounded-xl border border-indigo-500/10 bg-indigo-500/5 p-4 text-xs leading-relaxed text-indigo-300/80">
                                             {(RESOURCE_TEMPLATES[selectedResource.resourceType] || RESOURCE_TEMPLATES.external_account).helper}
                                         </div>
                                         
                                         <div className="flex items-center justify-between pt-2">
                                             <div className="flex items-center gap-2 group relative">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Force Sharing</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Always Share With Agents</span>
                                                 <div className="h-3.5 w-3.5 rounded-full border border-zinc-800 flex items-center justify-center text-[9px] text-zinc-600 cursor-help">?</div>
                                                 <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
-                                                    When enabled, this resource will be explicitly passed to every agent in the scope per instruction, regardless of standard access policies.
+                                                    When enabled, this entry will be explicitly passed to every agent in the scope per instruction, regardless of standard access policies.
                                                 </div>
                                             </div>
                                             <button 
@@ -762,7 +762,7 @@ export default function ResourcesClient({
                                 <div className="space-y-2 flex-1 flex flex-col min-h-[400px]">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Configuration</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Content</span>
                                             <div className="flex rounded-md border border-zinc-800 bg-zinc-900/50 p-0.5">
                                                 <button
                                                     onClick={() => setConfigViewMode("preview")}
@@ -826,11 +826,11 @@ export default function ResourcesClient({
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                             <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-6 shadow-xl">
-                                <Database className="h-8 w-8 text-zinc-600" />
+                                <ScrollText className="h-8 w-8 text-zinc-600" />
                             </div>
-                            <h3 className="text-xl font-medium text-zinc-300 mb-2">Select a resource</h3>
+                            <h3 className="text-xl font-medium text-zinc-300 mb-2">Select a knowledge entry</h3>
                             <p className="max-w-xs text-sm text-zinc-500 leading-relaxed">
-                                Browse your company, customer, or project scoped configuration files in the explorer to the left.
+                                Browse scoped instructions, business rules, templates, identities, inboxes, and other durable agent context.
                             </p>
                         </div>
                     )}

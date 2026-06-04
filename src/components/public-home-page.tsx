@@ -40,7 +40,7 @@ const pillars = [
   {
     icon: Database,
     title: "Durable truth",
-    body: "Customers, projects, tasks, notes, memory, resources, artifacts, and threads live in one shared system of record.",
+    body: "Customers, projects, tasks, notes, memory, knowledge, files, and threads live in one shared system of record.",
   },
   {
     icon: MessageSquare,
@@ -57,12 +57,12 @@ const primitives = [
   },
   {
     icon: Boxes,
-    title: "Resources",
-    body: "Scoped doctrine, SOPs, context packs, and reference material for the right agents.",
+    title: "Knowledge & Rules",
+    body: "Scoped doctrine, SOPs, business rules, context packs, and reference material for the right agents.",
   },
   {
     icon: FileBox,
-    title: "Artifacts",
+    title: "Storage",
     body: "Reports, deliverables, evidence, and preserved outputs worth keeping.",
   },
 ];
@@ -70,7 +70,7 @@ const primitives = [
 const integrationPoints = [
   "Local OpenClaw runtime stays powerful and local.",
   "Plugin bootstrap links each agent to Emperor automatically.",
-  "Shared doctrine and scoped resources reach the right agents.",
+  "Shared doctrine and scoped knowledge reach the right agents.",
   "Direct inboxes and team threads become durable coordination surfaces.",
 ];
 

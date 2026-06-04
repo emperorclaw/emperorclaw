@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal, LogOut, User, Database, FileBox, MessageSquare, BadgeCheck, BookOpen } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -13,6 +13,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { WorkspaceTour } from "./workspace-tour";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -25,13 +26,13 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     const links = [
         { name: "Dashboard", href: "/", icon: LayoutDashboard },
         { name: "Projects", href: "/projects", icon: FolderKanban },
-        { name: "Resources", href: "/resources", icon: Database },
+        { name: "Knowledge & Rules", href: "/resources", icon: ScrollText },
         { name: "Messages", href: "/messages", icon: MessageSquare },
         { name: "Approvals", href: "/approvals", icon: BadgeCheck },
         { name: "Agents", href: "/agents", icon: Bot },
         { name: "Customers", href: "/customers", icon: ShieldCheck },
         { name: "Incidents", href: "/incidents", icon: AlertTriangle },
-        { name: "Artifacts", href: "/artifacts", icon: FileBox },
+        { name: "Storage", href: "/artifacts", icon: HardDrive },
         { name: "Settings", href: "/settings", icon: KeyRound },
         { name: "Documentation", href: "/docs", icon: BookOpen },
     ];
@@ -52,7 +53,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
             <nav className="flex-1 px-4 space-y-1 mt-4">
                 {links.map((link) => {
                     const Icon = link.icon;
-                    const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+                    const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
                     return (
                         <Link
                             key={link.name}
@@ -72,7 +73,8 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
             </nav>
 
             {!isDocsPage && (
-                <div className="p-4 border-t border-zinc-800/80">
+                <div className="space-y-3 p-4 border-t border-zinc-800/80">
+                    <WorkspaceTour />
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800/80 transition-colors text-left">

@@ -58,7 +58,7 @@ export default async function AgentsPage() {
             <div className="flex items-center justify-between">
                 <div className="flex flex-col space-y-1">
                     <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Agent Fleet</h1>
-                    <p className="text-sm text-zinc-500 font-medium">Manage OpenClaw workers and their machine-local runtime integrations. Customer and project credentials belong in Resources.</p>
+                    <p className="text-sm text-zinc-500 font-medium">Manage OpenClaw workers and their machine-local runtime integrations. Customer and project credentials belong in Knowledge & Rules.</p>
                 </div>
 
                 <CreateAgentDialog />
@@ -172,7 +172,7 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                         ))}
                     </div>
                     <p className="mt-2 text-[11px] text-zinc-600">
-                        Keep customer mailboxes, identities, and templates in Resources unless they truly belong to this worker only.
+                        Keep customer mailboxes, identities, and templates in Knowledge & Rules unless they truly belong to this worker only.
                     </p>
                 </div>
             )}
@@ -181,7 +181,7 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                 <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Context model</div>
                 <p className="mt-2 text-sm leading-6 text-zinc-400">
                     This card tracks runtime health and machine-local integrations only. Agent doctrine,
-                    credentials metadata, and scoped operating context should live in Resources, not as
+                    credentials metadata, and scoped operating context should live in Knowledge & Rules, not as
                     ad hoc per-agent config.
                 </p>
                 <div className="mt-4">
