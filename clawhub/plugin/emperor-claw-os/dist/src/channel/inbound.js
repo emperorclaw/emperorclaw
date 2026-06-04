@@ -9,7 +9,7 @@ import { loadThreadOwners, setThreadOwner } from "../state/thread-owners.js";
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_MAX_MS = 60_000;
 const SYNC_POLL_MS = 15_000;
-const BRAIN_TIMEOUT_MS = 120_000;
+const BRAIN_TIMEOUT_MS = Number(process.env.EMPEROR_CLAW_BRAIN_TIMEOUT_MS || 300_000);
 const MAX_DEDUPE = 1_000;
 function jitter(ms) {
     return ms + Math.floor(ms * 0.2 * (Math.random() - 0.5));
@@ -60,7 +60,7 @@ async function invokeBrain(runtime, manifest, sessionId, prompt, ctx) {
         return null;
     }
 }
-async function dispatchMessage(message, account, paths, runtime, seenIds, ctx) {
+async function dispatchMessage(message, account, paths, runtime, seenIds, brainQueue, ctx) {
     const text = String(message?.text || "").trim();
     if (!text)
         return;
@@ -96,7 +96,21 @@ async function dispatchMessage(message, account, paths, runtime, seenIds, ctx) {
             setThreadOwner(paths, threadId, decision.nextThreadOwnerId);
         }
         const sessionId = `emperor:${manifest.localBrainAgentId}:${threadId}`;
-        const reply = await invokeBrain(runtime, manifest, sessionId, text, ctx);
+        const previous = brainQueue.current;
+        let release = () => { };
+        brainQueue.current = previous
+            .catch(() => undefined)
+            .then(() => new Promise((resolve) => {
+            release = resolve;
+        }));
+        await previous.catch(() => undefined);
+        let reply = null;
+        try {
+            reply = await invokeBrain(runtime, manifest, sessionId, text, ctx);
+        }
+        finally {
+            release();
+        }
         if (!reply)
             continue;
         try {
@@ -131,7 +145,7 @@ async function runSyncPoll(account, paths, runtime, state, ctx) {
             const ts = String(msg?.createdAt || "");
             if (ts)
                 state.lastSeenAt = ts;
-            await dispatchMessage(msg, account, paths, runtime, state.seenIds, ctx);
+            await dispatchMessage(msg, account, paths, runtime, state.seenIds, state.brainQueue, ctx);
         }
     }
     catch (err) {
@@ -188,7 +202,7 @@ function openWebSocket(account, paths, runtime, state, ctx) {
             const envelope = JSON.parse(event.data);
             const payload = envelope?.payload;
             if (payload?.type === "thread_message" && payload.message) {
-                void dispatchMessage(payload.message, account, paths, runtime, state.seenIds, ctx);
+                void dispatchMessage(payload.message, account, paths, runtime, state.seenIds, state.brainQueue, ctx);
             }
         }
         catch {
@@ -220,6 +234,7 @@ export function createEmperorInboundService(paths, getRuntime) {
         reconnectAttempt: 0,
         lastSeenAt: null,
         seenIds: new Set(),
+        brainQueue: { current: Promise.resolve() },
     };
     return {
         id: "emperor-inbound",
