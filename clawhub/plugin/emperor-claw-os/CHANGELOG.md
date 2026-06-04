@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7
+
+- increased the default local brain timeout from 120s to 300s and made it configurable
+- serialized local brain turns so simultaneous Emperor messages cannot collide in the same OpenClaw brain session
+- suppressed the generic "local brain handoff issue" chat reply while keeping structured bridge error logs
+- fixed manager review to use the current queued local brain invocation path
+
 ## 0.2.6
 
 - clarified Knowledge & Rules vs Storage terminology for agents

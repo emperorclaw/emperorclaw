@@ -58,6 +58,7 @@ const OPENCLAW_GATEWAY_PORT = Number(process.env.OPENCLAW_GATEWAY_PORT || 18789)
 const OPENCLAW_GATEWAY_TOKEN = String(process.env.OPENCLAW_GATEWAY_TOKEN || "").trim();
 const LOCAL_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
 const LOCAL_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
+const LOCAL_BRAIN_TIMEOUT_SECONDS = Number(process.env.EMPEROR_CLAW_BRAIN_TIMEOUT_SECONDS || 300);
 const LOCAL_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || `hook:${LOCAL_BRAIN_AGENT_ID}:emperor-brain`;
 const OPENCLAW_BRAIN_WORKSPACE =
   process.env.EMPEROR_CLAW_BRAIN_WORKSPACE
@@ -478,7 +479,7 @@ async function invokeOpenClawAgentCli(message, options = {}, executionMode = "lo
     "--thinking",
     options.thinking || LOCAL_BRAIN_THINKING,
     "--timeout",
-    String(options.timeoutSeconds || 120),
+    String(options.timeoutSeconds || LOCAL_BRAIN_TIMEOUT_SECONDS),
     "--json",
   ];
 
@@ -499,7 +500,7 @@ async function invokeOpenClawAgentCli(message, options = {}, executionMode = "lo
   try {
     ({ stdout, stderr } = await execFileAsync(invocation.command, args, {
       cwd: OPENCLAW_BRAIN_WORKSPACE,
-      timeout: (options.timeoutSeconds || 120) * 1000 + 5000,
+      timeout: (options.timeoutSeconds || LOCAL_BRAIN_TIMEOUT_SECONDS) * 1000 + 15000,
       env: {
         ...process.env,
         OPENCLAW_GATEWAY_PORT: String(OPENCLAW_GATEWAY_PORT),
@@ -553,6 +554,15 @@ async function callGatewayOpenClawAgentCli(message, options = {}) {
 
 async function callLocalOpenClawAgentCli(message, options = {}) {
   return invokeOpenClawAgentCli(message, options, "local");
+}
+
+function isBrainTimeoutError(error) {
+  const text = String(error?.message || error || "").toLowerCase();
+  return Boolean(error?.killed)
+    || error?.code === "ETIMEDOUT"
+    || error?.signal === "SIGTERM"
+    || text.includes("timed out")
+    || text.includes("timeout");
 }
 
 function startLongTurnNotice(bridge, input) {
@@ -755,6 +765,7 @@ class EmperorBridge {
     };
     this.typingKeepaliveTimers = new Map();
     this.threadTurnQueues = new Map();
+    this.localBrainTurnQueue = Promise.resolve();
     this.onMessage = null;
     this.onTask = null;
   }
@@ -1279,6 +1290,38 @@ class EmperorBridge {
     }
   }
 
+  async runQueuedLocalBrainTurn(prompt, options = {}, meta = {}) {
+    const startedAt = Date.now();
+    const previous = this.localBrainTurnQueue || Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.localBrainTurnQueue = previous.catch(() => null).then(() => current);
+
+    await previous.catch(() => null);
+    const waitedMs = Date.now() - startedAt;
+    if (waitedMs > 1000) {
+      writeBridgeLog("info", "brain_queue_waited", "Local brain turn waited for previous turn.", {
+        waitedMs,
+        threadId: meta.threadId || null,
+        turnId: meta.turnId || null,
+      });
+    }
+
+    try {
+      return await runLocalBrainTurn(prompt, {
+        ...options,
+        timeoutSeconds: options.timeoutSeconds || LOCAL_BRAIN_TIMEOUT_SECONDS,
+      });
+    } finally {
+      release();
+      if (this.localBrainTurnQueue === current) {
+        this.localBrainTurnQueue = Promise.resolve();
+      }
+    }
+  }
+
   async defaultMessageHandler(message, thread) {
     const text = String(message?.text || "").trim();
     const agentName = String(this.agent?.name || AGENT_NAME || "Viktor").trim();
@@ -1608,6 +1651,7 @@ class EmperorBridge {
     ].filter(Boolean).join("\n\n");
 
       let replyText = null;
+      let brainInvocationFailed = false;
       try {
       const knownSessionId = this.bridgeState.localBrainSessionId || null;
       const useFreshSession = false;
@@ -1624,11 +1668,11 @@ class EmperorBridge {
           prompt,
         });
       }
-      const agentResult = await runLocalBrainTurn(prompt, {
+      const agentResult = await this.runQueuedLocalBrainTurn(prompt, {
         sessionId: useFreshSession ? null : knownSessionId,
         thinking: LOCAL_BRAIN_THINKING,
-        timeoutSeconds: 120,
-      });
+        timeoutSeconds: LOCAL_BRAIN_TIMEOUT_SECONDS,
+      }, { threadId: thread.id, turnId });
       writeBridgeLog("debug", "brain_invocation_completed", "Local brain completed.", {
         turnId,
         threadId: thread.id,
@@ -1690,16 +1734,27 @@ class EmperorBridge {
         }
       }
       } catch (error) {
-      console.error("[bridge] viktor brain handoff failed:", error.message);
+      const timedOut = isBrainTimeoutError(error);
+      console.error("[bridge] local brain handoff failed:", error.message);
       writeBridgeLog("error", "brain_invocation_failed", "Local brain handoff failed.", {
         turnId,
         threadId: thread.id,
         error: error.message,
+        timedOut,
+        timeoutSeconds: LOCAL_BRAIN_TIMEOUT_SECONDS,
       });
-      replyText = IS_MANAGER_PROFILE ? null : "I hit a local brain handoff issue just now. Please try again in a moment.";
+      brainInvocationFailed = true;
+      replyText = null;
     }
 
       if (!replyText || !String(replyText).trim()) {
+        if (brainInvocationFailed) {
+          writeBridgeLog("warn", "reply_suppressed_after_brain_failure", "Suppressed chat reply after local brain failure.", {
+            turnId,
+            threadId: thread.id,
+          });
+          return;
+        }
         if (IS_MANAGER_PROFILE || explicitDelegationRequest || explicitProjectCreationRequest) {
           writeBridgeLog("warn", "reply_suppressed", "Suppressed unusable reply.", {
             turnId,
@@ -2602,11 +2657,11 @@ class EmperorBridge {
     ].filter(Boolean).join("\n\n");
 
     const knownSessionId = this.bridgeState.localBrainSessionId || null;
-    const agentResult = await callLocalOpenClawAgent(prompt, {
+    const agentResult = await this.runQueuedLocalBrainTurn(prompt, {
       sessionId: knownSessionId,
       thinking: LOCAL_BRAIN_THINKING,
-      timeoutSeconds: 120,
-    });
+      timeoutSeconds: LOCAL_BRAIN_TIMEOUT_SECONDS,
+    }, { threadId: "manager-review", turnId: `manager-review:${reason}` });
     const nextSessionId = agentResult?.sessionId || null;
     if (nextSessionId) {
       this.bridgeState.localBrainSessionId = nextSessionId;
