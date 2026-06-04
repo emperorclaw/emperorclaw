@@ -258,7 +258,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                                     <h2 className="text-lg font-medium text-zinc-200">Runtime Integrations</h2>
                                 </div>
                                 <p className="text-xs text-zinc-500 mt-1">
-                                    Keep only machine-local or truly agent-bound payloads here. Customer and project mailboxes, identities, and templates should live in Resources.
+                                    Keep only machine-local or truly agent-bound payloads here. Customer and project mailboxes, identities, and templates should live in Knowledge & Rules.
                                 </p>
                             </div>
                             <div className="w-full max-w-[220px]">

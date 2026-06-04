@@ -395,7 +395,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             cache: "no-store",
         });
         if (!response.ok) {
-            throw new Error(await readError(response, "Unable to fetch artifact details"));
+            throw new Error(await readError(response, "Unable to fetch file details"));
         }
         const payload = await response.json() as { artifact: ArtifactDetail };
         setArtifactDetail(payload.artifact);
@@ -416,12 +416,12 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 cache: "no-store",
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to search artifacts"));
+                throw new Error(await readError(response, "Unable to search storage"));
             }
             const payload = await response.json() as { artifacts: ArtifactSummary[] };
             setGlobalArtifacts(payload.artifacts);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to search artifacts");
+            toast.error(error instanceof Error ? error.message : "Unable to search storage");
         } finally {
             setIsSearchLoading(false);
         }
@@ -462,7 +462,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             setArtifactDetail(null);
             setPreview({
                 state: "error",
-                message: error instanceof Error ? error.message : "Unable to fetch artifact details",
+                message: error instanceof Error ? error.message : "Unable to fetch file details",
             });
         });
     }, [selectedEntry?.type, selectedEntry?.id]);
@@ -723,7 +723,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 body: formData,
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to upload artifact"));
+                throw new Error(await readError(response, "Unable to upload file"));
             }
             const payload = await response.json() as { artifact: ArtifactSummary };
             setIsUploadOpen(false);
@@ -742,9 +742,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             );
             setSelectedEntry({ type: "artifact", id: payload.artifact.id });
             await reloadWorkspace(currentFolderId);
-            toast.success("Artifact uploaded");
+            toast.success("File uploaded");
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to upload artifact");
+            toast.error(error instanceof Error ? error.message : "Unable to upload file");
         } finally {
             setIsUploading(false);
         }
@@ -775,7 +775,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to save artifact properties"));
+                throw new Error(await readError(response, "Unable to save file properties"));
             }
             await fetchArtifactDetail(artifactDetail.id);
             if (isSearchMode) {
@@ -783,9 +783,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             } else {
                 await reloadWorkspace(currentFolderId);
             }
-            toast.success("Artifact properties updated");
+            toast.success("File properties updated");
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to save artifact properties");
+            toast.error(error instanceof Error ? error.message : "Unable to save file properties");
         } finally {
             setIsSavingArtifact(false);
         }
@@ -807,16 +807,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }),
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to move artifact"));
+                throw new Error(await readError(response, "Unable to move file"));
             }
             await fetchArtifactDetail(artifactDetail.id);
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) {
                 await fetchSearchResults();
             }
-            toast.success("Artifact location updated");
+            toast.success("File location updated");
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to move artifact");
+            toast.error(error instanceof Error ? error.message : "Unable to move file");
         } finally {
             setIsSavingLocation(false);
         }
@@ -843,17 +843,17 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 body: formData,
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to replace artifact"));
+                throw new Error(await readError(response, "Unable to replace file"));
             }
             await fetchArtifactDetail(artifactDetail.id);
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) {
                 await fetchSearchResults();
             }
-            toast.success("Artifact content replaced");
+            toast.success("File content replaced");
             return true;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to replace artifact");
+            toast.error(error instanceof Error ? error.message : "Unable to replace file");
             return false;
         } finally {
             setIsSavingArtifact(false);
@@ -939,7 +939,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     }
 
     async function handleDeleteArtifact(artifactId: string) {
-        if (!window.confirm("Delete this artifact?")) {
+        if (!window.confirm("Delete this file from storage?")) {
             return;
         }
 
@@ -948,16 +948,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 method: "DELETE",
             });
             if (!response.ok) {
-                throw new Error(await readError(response, "Unable to delete artifact"));
+                throw new Error(await readError(response, "Unable to delete file"));
             }
             setSelectedEntry({ type: "folder", id: currentFolderId });
             await reloadWorkspace(currentFolderId);
             if (isSearchMode) {
                 await fetchSearchResults();
             }
-            toast.success("Artifact deleted");
+            toast.success("File deleted");
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Unable to delete artifact");
+            toast.error(error instanceof Error ? error.message : "Unable to delete file");
         }
     }
 
@@ -1110,10 +1110,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             <div className="space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">Artifacts Workspace</p>
-                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Bunny-backed file manager</h1>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">Storage</p>
+                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Files and deliverables</h1>
                         <p className="max-w-3xl text-sm text-zinc-400">
-                            Browse durable outputs as folders and files, preview supported formats, and edit the metadata that Emperor indexes.
+                            Browse durable outputs, proofs, working files, and uploads. Emperor indexes the metadata so agents can find the right file later.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1371,7 +1371,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 {isSearchLoading && isSearchMode && (
                                     <div className="flex items-center gap-2 px-4 py-6 text-sm text-zinc-400">
                                         <Loader2 className="size-4 animate-spin" />
-                                        Searching artifacts...
+                                        Searching storage...
                                     </div>
                                 )}
                                 {!loadingFolderId && !isSearchLoading && visibleFolders.length === 0 && visibleArtifacts.length === 0 && (
@@ -1715,7 +1715,7 @@ function FolderInspector(props: {
                     </div>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 text-sm text-zinc-400">
-                    Root is the top-level container for all artifact folders.
+                    Root is the top-level container for all storage folders.
                 </div>
             </div>
         );
@@ -1949,7 +1949,7 @@ function ArtifactInspector(props: {
                                 These fields are mostly filing hints for the system. Most users only need title, scope, location, and canonical state.
                             </p>
                             <div className="grid gap-4 sm:grid-cols-2">
-                                <Field label="Artifact class">
+                                <Field label="File role">
                                     <select
                                         value={props.draft.artifactClass}
                                         onChange={(event) => props.onDraftChange((current) => ({ ...current, artifactClass: event.target.value }))}
@@ -2147,7 +2147,7 @@ function UploadDialog(props: {
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
             <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
                 <DialogHeader>
-                    <DialogTitle>Upload artifact</DialogTitle>
+                    <DialogTitle>Upload file</DialogTitle>
                     <DialogDescription className="text-zinc-400">
                         Upload a file into the current folder. Customer is required; project is optional.
                     </DialogDescription>
@@ -2194,7 +2194,7 @@ function UploadDialog(props: {
                                 <Field label="Kind">
                                     <Input value={props.uploadKind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
                                 </Field>
-                                <Field label="Artifact class">
+                                <Field label="File role">
                                     <select value={props.uploadArtifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
                                         {ARTIFACT_CLASS_OPTIONS.map((option) => (
                                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -2252,7 +2252,7 @@ function PreviewDialog(props: {
     onSaveCsvDraft: () => void;
 }) {
     const isCsvPreview = props.preview.state === "csv";
-    const title = props.artifact ? deriveDisplayName(props.artifact) : "Artifact preview";
+    const title = props.artifact ? deriveDisplayName(props.artifact) : "File preview";
 
     return (
         <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -2262,7 +2262,7 @@ function PreviewDialog(props: {
                         <DialogTitle>{title}</DialogTitle>
                         <DialogDescription className="text-zinc-400">
                             {isCsvPreview
-                                ? "Review the file in a larger workspace and edit CSV content without leaving the artifact panel."
+                                ? "Review the file in a larger workspace and edit CSV content without leaving the storage panel."
                                 : "Expanded preview for comfortable reading and verification."}
                         </DialogDescription>
                     </DialogHeader>
@@ -2327,8 +2327,8 @@ function PreviewDialog(props: {
                     <DialogFooter className="border-t border-zinc-800 px-6 py-4 sm:justify-between">
                         <div className="text-xs text-zinc-500">
                             {isCsvPreview
-                                ? "Saving replaces the current CSV file while keeping the artifact record."
-                                : "Downloads and replacements still happen through the artifact actions."}
+                                ? "Saving replaces the current CSV file while keeping the storage record."
+                                : "Downloads and replacements still happen through the file actions."}
                         </div>
                         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
                             {isCsvPreview && (
@@ -2495,7 +2495,7 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
         );
     }
     if (preview.state === "image") {
-        return <img src={preview.url} alt="Artifact preview" className="max-h-[32rem] w-full rounded-xl object-contain" />;
+        return <img src={preview.url} alt="File preview" className="max-h-[32rem] w-full rounded-xl object-contain" />;
     }
     if (preview.state === "pdf") {
         return <iframe src={preview.url} title="PDF preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />;

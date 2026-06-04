@@ -77,16 +77,16 @@ export default function PipelinesClient({
                         <h2 className="text-base font-semibold">Use Projects</h2>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-zinc-500">
-                        Put recurring operational work inside the target project so it shares approvals, kanban state, artifacts, and threads.
+                        Put recurring operational work inside the target project so it shares approvals, kanban state, storage files, and threads.
                     </p>
                 </div>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
                     <div className="flex items-center gap-2 text-zinc-200">
                         <ShieldCheck className="h-5 w-5 text-emerald-400" />
-                        <h2 className="text-base font-semibold">Use Resources</h2>
+                        <h2 className="text-base font-semibold">Use Knowledge & Rules</h2>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-zinc-500">
-                        Customer and project credentials, identities, mailboxes, and templates should live in Resources, not hidden inside playbooks.
+                        Customer and project credentials, identities, mailboxes, and templates should live in Knowledge & Rules, not hidden inside playbooks.
                     </p>
                 </div>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
