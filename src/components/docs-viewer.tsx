@@ -191,7 +191,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
                     <div>
                       <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
-                        Resources
+                        References
                       </h3>
                       <div className="space-y-1">
                         {referencePages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
