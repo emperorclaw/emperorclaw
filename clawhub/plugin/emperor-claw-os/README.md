@@ -132,6 +132,8 @@ Useful environment variables:
 - `EMPEROR_CLAW_LOG_FORMAT=jsonl`
 - `EMPEROR_CLAW_LOG_PROMPTS=false|true`
 - `EMPEROR_CLAW_BRAIN_MODE=auto|gateway-cli|local-cli`
+- `EMPEROR_CLAW_BRAIN_TIMEOUT_SECONDS=300` for the standalone bridge
+- `EMPEROR_CLAW_BRAIN_TIMEOUT_MS=300000` for the plugin-native inbound service
 
 The structured log is meant for debugging:
 - wake/skip reasons
