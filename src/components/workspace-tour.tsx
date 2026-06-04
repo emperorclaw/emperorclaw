@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { BookOpen, Bot, FolderKanban, HardDrive, MessageSquare, PlayCircle, ShieldCheck, X } from "lucide-react";
 
@@ -68,9 +69,9 @@ export function WorkspaceTour() {
                 <span>Start Tour</span>
             </button>
 
-            {open && (
+            {open && createPortal(
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-                    <div className="w-full max-w-3xl overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl">
+                    <div className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl">
                         <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-6 py-5">
                             <div className="flex gap-3">
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
@@ -92,7 +93,7 @@ export function WorkspaceTour() {
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <div className="grid gap-3 p-6 sm:grid-cols-2">
+                        <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:p-6 md:grid-cols-2">
                             {tourSteps.map((step) => {
                                 const Icon = step.icon;
                                 return (
@@ -102,11 +103,11 @@ export function WorkspaceTour() {
                                         onClick={closeTour}
                                         className="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                                     >
-                                        <div className="flex items-start gap-3">
+                                        <div className="flex flex-col gap-3 min-[380px]:flex-row min-[380px]:items-start">
                                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-400 transition-colors group-hover:text-indigo-300">
                                                 <Icon className="h-4 w-4" />
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                                 <h3 className="text-sm font-semibold text-zinc-100">{step.title}</h3>
                                                 <p className="mt-1 text-sm leading-5 text-zinc-500">{step.body}</p>
                                             </div>
@@ -125,7 +126,8 @@ export function WorkspaceTour() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </>
     );
