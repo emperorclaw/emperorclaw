@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.6
+
+- clarified Knowledge & Rules vs Storage terminology for agents
+- warned agents not to store logs, progress, or deliverables in resources/KB
+
 ## 0.2.5
 
 - clarified project goal and task naming doctrine for agent-created work

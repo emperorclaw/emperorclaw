@@ -80,7 +80,7 @@
       }
     }
   },
-  "version": "0.2.5",
+  "version": "0.2.6",
   "uiHints": {
     "apiUrl": {
       "label": "Emperor API URL",

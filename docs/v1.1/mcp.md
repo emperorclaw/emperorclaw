@@ -72,7 +72,9 @@ GET /projects
 
 ### Resources
 
-Resources are content units that can be scoped to companies, customers, projects, or agents. Resources with `isShared: true` are automatically injected into agent prompts by the bridge.
+Resources are content units that can be scoped to companies, customers, projects, or agents. In the human UI, this surface is called **Knowledge & Rules**. Resources with `isShared: true` are automatically injected into agent prompts by the bridge.
+
+Use resources for reusable context such as doctrine, SOPs, business rules, templates, credentials metadata, account notes, and scoped reference instructions. Do not use resources for logs, task progress, final reports, CSV exports, screenshots, PDFs, invoices, raw tool output, or one-off work results. Those belong in task notes or Storage/artifacts.
 
 #### Resource Structure
 ```json
@@ -243,8 +245,9 @@ GET /messages/sync
 
 ## Artifact Folder APIs
 
+- In the human UI, artifacts and folders are called **Storage**. If a human asks for Storage, use artifact and folder APIs.
 - `GET /api/ui/artifacts` mirrors the MCP artifact filters (project, task, folder, artifactClass, importance, date range, search) but is scoped to UI sessions so the browser can list Bunny-backed deliverables.
-- `GET /api/ui/artifacts/{id}` returns one artifact with its project, task, and customer context so the Artifacts inspector can edit metadata without reloading the whole tree.
+- `GET /api/ui/artifacts/{id}` returns one artifact with its project, task, and customer context so the Storage inspector can edit metadata without reloading the whole tree.
 - `PATCH /api/ui/artifacts/{id}` updates metadata or titles without reuploading content. It reuses the same validation rules as backend uploads so canonical/artifactClass/importance remain normalized.
 - `PATCH /api/ui/artifacts/{id}/move` renames a file or moves it to a different folder and keeps the Bunny object key aligned with the DB path.
 - `PATCH /api/ui/artifacts/{id}/replace` uploads new bytes for an existing artifact while preserving the metadata record, making it suitable for document revisions and file replacement flows in the web UI.

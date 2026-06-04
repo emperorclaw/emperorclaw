@@ -9,7 +9,7 @@ description: "Operate Emperor Claw as the OpenClaw control plane and durable che
 ## 0) Purpose
 Emperor Claw SaaS is the source of truth for company state.
 OpenClaw is the runtime that executes work.
-Emperor stores durable checkpoints, tasks, incidents, scoped resources, artifacts, runtime integrations, and chat history.
+Emperor stores durable checkpoints, tasks, incidents, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), runtime integrations, and chat history.
 
 Integration API URL: `https://emperorclaw.malecu.eu`
 
@@ -27,7 +27,7 @@ Bridge implementations are reference adapters that wire a local OpenClaw runtime
 The bridge contract is intentionally narrow:
 - persist local cursors, reconnect backoff, and pending operation state in the companion directory
 - resume from saved state after reconnect instead of replaying blindly
-- treat artifacts as business files, not logs
+- treat Storage/artifacts as business files, not logs
 - preserve resource scope identifiers when work is tied to a customer, project, or agent identity
 - treat agent runtime integrations as optional machine-local payloads, not the primary home for customer mailboxes or project identities
 
@@ -45,7 +45,7 @@ Activation protocol:
 4. Start a session with `POST /api/mcp/agents/{id}/sessions/start`.
 5. Connect to `wss://emperorclaw.malecu.eu/api/mcp/ws`.
 6. Use `POST /api/mcp/chat/status/` when you are actively reading or thinking in a visible thread.
-7. Load project memory, scoped resources, and queued tasks.
+7. Load project memory, scoped Knowledge & Rules entries/resources, and queued tasks.
 8. Claim tasks when the queue is ready, keep leases alive with heartbeat, and checkpoint memory back to Emperor.
 9. Execute work in the local OpenClaw runtime and persist results back to Emperor when a real executor produces a result.
 10. Use bounded reconnect/backoff and dedupe state so reconnects do not duplicate messages, notes, or results.
@@ -61,12 +61,12 @@ Activation protocol:
 5. Coordinated decisions, handoffs, blockers, and incidents belong in Agent Team Chat when they affect shared state.
 6. Project memory must be read before work begins on any task.
 7. Human thread messages are authoritative interrupts.
-8. Completion should include evidence via `/api/mcp/artifacts` when applicable, but only important files belong there.
-9. Artifacts should be classified as source documents, working files, proofs, deliverables, templates, or export bundles. Logs and chat transcripts do not belong there.
+8. Completion should include evidence via Storage (`/api/mcp/artifacts`) when applicable, but only important files belong there.
+9. Storage/artifacts should be classified as source documents, working files, proofs, deliverables, templates, or export bundles. Logs and chat transcripts do not belong there.
 10. When storing remote artifact references, provide a real `sha256` and `sizeBytes`. Never hash a URL string and call it file integrity.
 11. Resource scope is explicit. Preserve company/customer/project/agent identifiers when writing notes, memory, artifacts, or task results.
 12. Project agent profiles can override display name, signature, and memory seed for a given project without changing the worker's durable runtime identity.
-13. Customer mailboxes, project identities, templates, and billing data belong in scoped resources. Agent runtime integrations are only for machine-local or truly agent-bound payloads.
+13. Customer mailboxes, project identities, templates, and billing data belong in scoped Knowledge & Rules entries/resources. Agent runtime integrations are only for machine-local or truly agent-bound payloads.
     - Use "Force Sharing" (`isShared`) to explicitly pass a resource to every agent in the scope per instruction, overriding standard access policies.
     - Bridge implementations should automatically inject relevant `isShared=true` resource `configText` into agent context, while leaving non-shared resources as manual/on-demand context.
 14. If the runtime cannot actually execute the task, it must say so in task notes or thread messages rather than pretending completion.
@@ -166,6 +166,34 @@ The bridge examples show how to connect OpenClaw to Emperor Claw for registratio
 They do not implement goal planning, model execution, or scheduling inside Emperor itself.
 They do claim work, checkpoint memory, post task notes, persist local cursors, and report results when a real executor returns them.
 Important files and canonical deliverables should be uploaded as artifacts; raw logs, transient debug output, and reconnect noise should stay out of artifact storage.
+
+## Terminology And Placement
+
+Humans see clearer product names than the API names:
+- `Knowledge & Rules` in the UI means MCP `resources`.
+- `Storage` in the UI means MCP `artifacts` and folders.
+
+Use Knowledge & Rules/resources for reusable scoped context:
+- doctrine
+- SOPs
+- business rules
+- templates
+- credential metadata
+- account notes
+- durable reference instructions
+
+Do not use Knowledge & Rules/resources for logs, task progress, final reports, CSV exports, screenshots, PDFs, invoices, raw tool output, or one-off work results.
+
+Use Storage/artifacts for durable files and evidence:
+- deliverables
+- reports
+- invoices and statements
+- screenshots and proof files
+- CSV/spreadsheet exports
+- source documents
+- working files worth preserving
+
+Use task notes for progress, blockers, handoffs, and execution observations. Use project memory for assumptions, decisions, summaries, and next-step snapshots. If a human says "Storage", use artifact endpoints. If a human says "KB", "rule", "resource", or "make agents remember this instruction", use resource endpoints.
 
 ## Artifact Doctrine
 
