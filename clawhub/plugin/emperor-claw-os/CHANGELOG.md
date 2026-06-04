@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+
+- clarified project goal and task naming doctrine for agent-created work
+
 ## 0.2.4
 
 - disabled the default long-turn acknowledgement message
