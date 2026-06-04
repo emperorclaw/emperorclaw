@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { createTaskForProject } from "@/lib/openclaw/tasks";
+import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -29,10 +30,25 @@ export async function POST(req: NextRequest) {
         blockedByTaskIds = [],
         taskKind = "standard",
         recurringTaskDefinitionId = null,
+        allowUnderspecified = false,
     } = body;
 
     if (!projectId || !taskType) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
+    }
+
+    if (!allowUnderspecified) {
+        const validationErrors = getTaskSpecValidationErrors({
+            taskType,
+            inputJson: inputJson && typeof inputJson === "object" ? inputJson : {},
+        });
+        if (validationErrors.length > 0) {
+            return NextResponse.json({
+                error: "TASK_SPEC_UNDERSPECIFIED",
+                details: "Generated tasks must include a specific machine-key taskType plus title, description, acceptanceCriteria or definitionOfDone, and deliverables. Set allowUnderspecified=true only for an intentional draft placeholder.",
+                missingFields: validationErrors,
+            }, { status: 400 });
+        }
     }
 
     try {

@@ -12,6 +12,8 @@ export type NormalizedTaskSpec = {
   inputJson: Record<string, unknown>;
 };
 
+const GENERIC_TASK_TYPES = new Set(["any", "task", "todo", "work", "misc", "general"]);
+
 function toTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -85,4 +87,28 @@ export function normalizeTaskSpec(input: {
       taskType: toTrimmedString(input.taskType) || toTrimmedString(existing.taskType) || null,
     },
   };
+}
+
+export function getTaskSpecValidationErrors(input: {
+  taskType?: unknown;
+  title?: unknown;
+  description?: unknown;
+  acceptanceCriteria?: unknown;
+  definitionOfDone?: unknown;
+  deliverables?: unknown;
+  inputJson?: Record<string, unknown> | null;
+}): string[] {
+  const normalized = normalizeTaskSpec(input);
+  const taskType = toTrimmedString(input.taskType || normalized.inputJson.taskType);
+  const errors = [...normalized.missingFields];
+
+  if (!taskType) {
+    errors.push("taskType");
+  } else if (GENERIC_TASK_TYPES.has(taskType.toLowerCase())) {
+    errors.push("taskType_specific");
+  } else if (!/^[a-z][a-z0-9_:-]{2,40}$/i.test(taskType)) {
+    errors.push("taskType_machine_key");
+  }
+
+  return Array.from(new Set(errors));
 }
