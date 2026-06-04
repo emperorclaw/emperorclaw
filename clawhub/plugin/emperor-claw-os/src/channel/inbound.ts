@@ -29,7 +29,7 @@ import { loadThreadOwners, setThreadOwner } from "../state/thread-owners.js";
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_MAX_MS = 60_000;
 const SYNC_POLL_MS = 15_000;
-const BRAIN_TIMEOUT_MS = 120_000;
+const BRAIN_TIMEOUT_MS = Number(process.env.EMPEROR_CLAW_BRAIN_TIMEOUT_MS || 300_000);
 const MAX_DEDUPE = 1_000;
 
 function jitter(ms: number): number {
@@ -102,6 +102,7 @@ async function dispatchMessage(
   paths: EmperorPluginPaths,
   runtime: any,
   seenIds: Set<string>,
+  brainQueue: { current: Promise<void> },
   ctx: PluginServiceContext,
 ): Promise<void> {
   const text = String(message?.text || "").trim();
@@ -147,7 +148,21 @@ async function dispatchMessage(
     }
 
     const sessionId = `emperor:${manifest.localBrainAgentId}:${threadId}`;
-    const reply = await invokeBrain(runtime, manifest, sessionId, text, ctx);
+    const previous = brainQueue.current;
+    let release: () => void = () => {};
+    brainQueue.current = previous
+      .catch(() => undefined)
+      .then(() => new Promise<void>((resolve) => {
+        release = resolve;
+      }));
+
+    await previous.catch(() => undefined);
+    let reply: string | null = null;
+    try {
+      reply = await invokeBrain(runtime, manifest, sessionId, text, ctx);
+    } finally {
+      release();
+    }
     if (!reply) continue;
 
     try {
@@ -171,7 +186,7 @@ async function runSyncPoll(
   account: ReturnType<typeof resolveEmperorChannelAccount>,
   paths: EmperorPluginPaths,
   runtime: any,
-  state: { lastSeenAt: string | null; seenIds: Set<string> },
+  state: Pick<InboundState, "lastSeenAt" | "seenIds" | "brainQueue">,
   ctx: PluginServiceContext,
 ): Promise<void> {
   try {
@@ -190,7 +205,7 @@ async function runSyncPoll(
     for (const msg of messages) {
       const ts = String(msg?.createdAt || "");
       if (ts) state.lastSeenAt = ts;
-      await dispatchMessage(msg, account, paths, runtime, state.seenIds, ctx);
+      await dispatchMessage(msg, account, paths, runtime, state.seenIds, state.brainQueue, ctx);
     }
   } catch (err) {
     ctx.logger.warn?.(`Emperor inbound: sync poll error: ${err}`);
@@ -205,6 +220,7 @@ type InboundState = {
   reconnectAttempt: number;
   lastSeenAt: string | null;
   seenIds: Set<string>;
+  brainQueue: { current: Promise<void> };
 };
 
 function startSyncFallback(
@@ -288,7 +304,7 @@ function openWebSocket(
       if (payload?.type === "thread_message" && payload.message) {
         void dispatchMessage(
           payload.message as Record<string, unknown>,
-          account, paths, runtime, state.seenIds, ctx,
+          account, paths, runtime, state.seenIds, state.brainQueue, ctx,
         );
       }
     } catch {
@@ -324,6 +340,7 @@ export function createEmperorInboundService(
     reconnectAttempt: 0,
     lastSeenAt: null,
     seenIds: new Set(),
+    brainQueue: { current: Promise.resolve() },
   };
 
   return {
