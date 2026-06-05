@@ -139,11 +139,11 @@ export default async function DashboardPage() {
     })),
     ...recentIncidents.map((incident): RecentActivity => ({
       id: `incident-${incident.id}`,
-      kind: "Incident",
+      kind: "Attention",
       actorLabel: "Source",
       actor: "Watchdog",
       title: incident.summary,
-      detail: `${incident.severity} · ${incident.status}`,
+      detail: `${incident.severity} - ${incident.status}`,
       time: incident.createdAt,
       tone: incident.status === "resolved" ? "default" : incident.severity === "high" ? "critical" : "warning",
     })),
@@ -192,7 +192,7 @@ export default async function DashboardPage() {
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
         <KpiCard title="Tasks In Inbox" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
         <KpiCard title="Needs Review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
-        <KpiCard title="Open Incidents" value={openIncidents.toString()} trend="Live" trendLabel="watchdog or operator alerts" alert={openIncidents > 0} good={openIncidents === 0} />
+        <KpiCard title="Needs Attention" value={openIncidents.toString()} trend="Live" trendLabel="items needing review" alert={openIncidents > 0} good={openIncidents === 0} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">

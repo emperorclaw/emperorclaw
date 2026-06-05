@@ -31,7 +31,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
         { name: "Approvals", href: "/approvals", icon: BadgeCheck },
         { name: "Agents", href: "/agents", icon: Bot },
         { name: "Customers", href: "/customers", icon: ShieldCheck },
-        { name: "Incidents", href: "/incidents", icon: AlertTriangle },
+        { name: "Attention", href: "/attention", icon: AlertTriangle },
         { name: "Storage", href: "/artifacts", icon: HardDrive },
         { name: "Settings", href: "/settings", icon: KeyRound },
         { name: "Documentation", href: "/docs", icon: BookOpen },

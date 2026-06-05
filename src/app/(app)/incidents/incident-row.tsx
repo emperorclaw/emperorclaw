@@ -32,12 +32,12 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
             });
 
             if (!res.ok) {
-                throw new Error(`Failed to update incident to ${nextStatus}`);
+                throw new Error(`Failed to update attention item to ${nextStatus}`);
             }
 
             setCurrentStatus(nextStatus);
         } catch (error: unknown) {
-            console.error("Failed to update incident", error);
+            console.error("Failed to update attention item", error);
         } finally {
             setIsPending(false);
         }
@@ -76,7 +76,7 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
                         >
                             <span className="inline-flex items-center gap-1.5">
                                 <Eye className="w-3.5 h-3.5" />
-                                {isAcknowledged ? "Acknowledged" : "Acknowledge"}
+                                {isAcknowledged ? "Seen" : "Mark Seen"}
                             </span>
                         </button>
                         <button
@@ -84,13 +84,13 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
                             disabled={isPending}
                             className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded border border-emerald-500/20 disabled:opacity-50"
                         >
-                            {isPending ? "Resolving" : "Resolve"}
+                            {isPending ? "Marking fixed" : "Mark Fixed"}
                         </button>
                     </div>
                 ) : (
                     <div className="flex justify-end items-center text-xs text-zinc-500 space-x-1">
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Resolved</span>
+                        <span>Fixed</span>
                     </div>
                 )}
             </div>
