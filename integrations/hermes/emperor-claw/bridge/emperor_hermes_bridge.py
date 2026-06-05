@@ -158,8 +158,6 @@ def run_hermes(message: Dict[str, Any]) -> str:
         f"emperor:{AGENT_NAME}:{thread_id}",
         "--toolsets",
         "emperor-claw",
-        "--skills",
-        "emperor-claw:emperor-claw",
         "-q",
         prompt,
     ]
