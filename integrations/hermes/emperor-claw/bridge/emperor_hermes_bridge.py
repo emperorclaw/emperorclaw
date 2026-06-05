@@ -139,7 +139,23 @@ def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     return messages if isinstance(messages, list) else []
 
 
-def run_hermes(message: Dict[str, Any]) -> str:
+def clean_hermes_output(output: str) -> str:
+    lines = output.strip().splitlines()
+    while lines and lines[-1].startswith("session_id:"):
+        lines.pop()
+        while lines and not lines[-1].strip():
+            lines.pop()
+    return "\n".join(lines).strip()
+
+
+def extract_session_id(output: str) -> str:
+    for line in reversed(output.splitlines()):
+        if line.startswith("session_id:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
     prompt = (
@@ -148,23 +164,33 @@ def run_hermes(message: Dict[str, Any]) -> str:
         f"Thread: {thread_id}\n"
         f"Latest message: {text}"
     )
+    session_key = f"{AGENT_NAME}:{thread_id}"
+    sessions = state.setdefault("sessions", {})
+    resume_id = str(sessions.get(session_key) or "")
     cmd = [
         HERMES_BIN,
         "chat",
         "-Q",
         "--source",
         "emperor",
-        "--resume",
-        f"emperor:{AGENT_NAME}:{thread_id}",
         "--toolsets",
         "emperor-claw",
         "-q",
         prompt,
     ]
+    if resume_id:
+        cmd[3:3] = ["--resume", resume_id]
     result = subprocess.run(cmd, text=True, capture_output=True, timeout=HERMES_TIMEOUT_SECONDS)
+    if result.returncode != 0 and resume_id and "Session not found" in (result.stderr or result.stdout):
+        sessions.pop(session_key, None)
+        cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
+        result = subprocess.run(cmd, text=True, capture_output=True, timeout=HERMES_TIMEOUT_SECONDS)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "Hermes failed").strip())
-    return result.stdout.strip()
+    new_session_id = extract_session_id(result.stdout)
+    if new_session_id:
+        sessions[session_key] = new_session_id
+    return clean_hermes_output(result.stdout)
 
 
 def send_reply(message: Dict[str, Any], text: str) -> None:
@@ -173,8 +199,9 @@ def send_reply(message: Dict[str, Any], text: str) -> None:
     api("POST", "/messages/send", body={
         "thread_id": message.get("threadId") or message.get("thread_id"),
         "thread_type": message.get("threadType") or message.get("thread_type") or "direct",
+        "agentId": AGENT_ID,
         "text": text,
-        "target_agent_id": None,
+        "targetAgentId": None,
     })
 
 
@@ -187,16 +214,20 @@ def main() -> int:
         try:
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")
-                if not message_id or not remember_seen(state, message_id):
+                if not message_id or message_id in (state.get("seen") or []):
                     continue
                 ts = message.get("createdAt")
-                if ts:
-                    state["lastSeenAt"] = ts
                 if not is_for_agent(message, agent_id):
+                    remember_seen(state, message_id)
+                    if ts:
+                        state["lastSeenAt"] = ts
                     continue
                 log(f"dispatching message {message_id}")
-                reply = run_hermes(message)
+                reply = run_hermes(message, state)
                 send_reply(message, reply)
+                remember_seen(state, message_id)
+                if ts:
+                    state["lastSeenAt"] = ts
             save_state(state)
         except Exception as exc:
             log(f"error: {exc}")
