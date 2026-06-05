@@ -144,7 +144,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                         <Tag label={`${customer.reviewCount || 0} in review`} />
                                         <Tag label={`${customer.blockedCount || 0} blocked`} tone="rose" />
                                         <Tag label={`${customer.pendingApprovalCount || 0} approvals`} tone="amber" />
-                                        <Tag label={`${customer.incidentCount || 0} incidents`} tone="slate" />
+                                        <Tag label={`${customer.incidentCount || 0} attention items`} tone="slate" />
                                         <Tag label={`${customer.scheduleCount || 0} schedules`} tone="indigo" />
                                     </div>
                                 </div>

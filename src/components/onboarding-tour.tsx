@@ -356,7 +356,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
               </div>
             </div>
             <p className="text-xs leading-5 text-zinc-500">
-              When the agent appears, Emperor has received the registration from your local bridge. The dashboard will then show live workload, messages, and incidents for that runtime.
+              When the agent appears, Emperor has received the registration from your local bridge. The dashboard will then show live workload, messages, and attention items for that runtime.
             </p>
             {copiedLabel && (
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">

@@ -6,7 +6,6 @@ import {
   Boxes,
   Database,
   FileBox,
-  LifeBuoy,
   MessageSquare,
   ShieldAlert,
   Sparkles,
@@ -90,7 +89,7 @@ const operationsFeed = [
 ];
 
 const workload = [
-  { name: "Sentinel", load: 82, state: "tracking active incidents" },
+  { name: "Sentinel", load: 82, state: "tracking attention items" },
   { name: "Architect", load: 61, state: "reviewing shared context" },
   { name: "Deployer", load: 34, state: "idle / available" },
 ];
@@ -249,7 +248,7 @@ export function PublicHomePage() {
                           <MetricPanel title="Agents" value="12" hint="registered" accent="indigo" />
                           <MetricPanel title="Inbox" value="28" hint="awaiting assignment" />
                           <MetricPanel title="Review" value="4" hint="human action" accent="amber" />
-                          <MetricPanel title="Incidents" value="0" hint="open breaches" accent="emerald" />
+                          <MetricPanel title="Attention" value="0" hint="needs review" accent="emerald" />
                         </div>
 
                         <div className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
