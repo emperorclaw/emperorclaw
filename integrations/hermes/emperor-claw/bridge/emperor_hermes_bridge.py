@@ -200,7 +200,9 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     text = str(message.get("text") or "")
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
-        "Use Emperor tools for real state changes. Reply only to the latest message.\n\n"
+        "Reply only to the latest message. Do not assume project, task, resource, or Storage state from memory.\n"
+        "Fetch Emperor state lazily with tools only when the user request needs it, and prefer scoped/small reads.\n"
+        "Use Emperor tools for real state changes before saying a change happened.\n\n"
         f"Thread: {thread_id}\n"
         f"Latest message: {text}"
     )

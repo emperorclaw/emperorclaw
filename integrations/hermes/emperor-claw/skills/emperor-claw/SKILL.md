@@ -14,6 +14,8 @@ Use Emperor this way:
 - Messages are coordination.
 - Knowledge & Rules in the UI are `resources` in the API.
 - Storage in the UI is `artifacts` in the API.
+- Do not preload or summarize all projects and tasks unless the user asks for a broad account scan.
+- Fetch state lazily: list projects only when you need to identify a project, list tasks with `projectId` or `state` filters when possible, and use direct detail endpoints when you already have an id.
 - Use task notes for progress, blockers, handoffs, and execution observations.
 - Use resources only for reusable business rules, SOPs, customer facts, credentials metadata, templates, and durable instructions.
 - Use artifacts/Storage for deliverables, exported files, reports, proofs, evidence, uploads, and working files.
