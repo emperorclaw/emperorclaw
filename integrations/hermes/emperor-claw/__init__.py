@@ -91,7 +91,7 @@ def emperor_request(args: Dict[str, Any], **_: Any) -> str:
 
 
 def emperor_list_projects(args: Dict[str, Any], **_: Any) -> str:
-    return _json(_request("GET", "/projects", query={"limit": args.get("limit") or 50}))
+    return _json(_request("GET", "/projects", query={"limit": args.get("limit") or 20}))
 
 
 def emperor_create_project(args: Dict[str, Any], **_: Any) -> str:
@@ -112,7 +112,7 @@ def emperor_list_tasks(args: Dict[str, Any], **_: Any) -> str:
     query = {
         "projectId": args.get("projectId"),
         "state": args.get("state"),
-        "limit": args.get("limit") or 50,
+        "limit": args.get("limit") or 20,
     }
     return _json(_request("GET", "/tasks", query=query))
 
@@ -150,6 +150,10 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
         "context": (
             "Emperor Claw is the durable control plane for projects, tasks, messages, Knowledge & Rules, and Storage. "
             "In Emperor API terms, Knowledge & Rules are resources; Storage files are artifacts. "
+            "Do not preload or summarize all projects/tasks by default. Fetch state lazily only when the user request needs it. "
+            "For project state use emperor_list_projects or emperor_request GET /projects/{id}; for work items use emperor_list_tasks "
+            "with projectId/state filters or emperor_request GET /tasks/{id}; for durable instructions use GET /resources; "
+            "for deliverables/files use GET /artifacts. Prefer small scoped reads over broad account scans. "
             "Use resources only for reusable business rules, SOPs, customer facts, templates, and durable instructions. "
             "Use artifacts/Storage for deliverables, exported files, evidence, working documents, uploads, and reports. "
             "Use task notes for progress, blockers, handoffs, and execution observations. "
