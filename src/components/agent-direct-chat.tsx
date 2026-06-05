@@ -21,6 +21,12 @@ type DirectMessage = {
     createdAt: string;
 };
 
+type DirectParticipant = {
+    participantType: "human" | "agent" | "system" | string;
+    typingUntil?: string | null;
+    lastReadAt?: string | null;
+};
+
 export function AgentDirectChat({
     agentId,
     agentName,
@@ -32,7 +38,7 @@ export function AgentDirectChat({
 }) {
     const [thread, setThread] = useState<DirectThread | null>(null);
     const [messages, setMessages] = useState<DirectMessage[]>([]);
-    const [participants, setParticipants] = useState<any[]>([]);
+    const [participants, setParticipants] = useState<DirectParticipant[]>([]);
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
@@ -53,7 +59,7 @@ export function AgentDirectChat({
         const data = await res.json() as { 
             thread?: DirectThread; 
             messages?: DirectMessage[];
-            participants?: any[];
+            participants?: DirectParticipant[];
         };
 
         if (data.thread) {
@@ -212,7 +218,7 @@ export function AgentDirectChat({
                             <div>
                                 <h2 className="text-lg font-medium text-zinc-100">Direct Chat</h2>
                                 <p className="text-xs text-zinc-500">
-                                    Dedicated human-to-agent thread for {agentName}. Team, task, and incident threads stay under `Threads`.
+                                    Dedicated human-to-agent thread for {agentName}. Team, task, and attention threads stay under `Threads`.
                                 </p>
                             </div>
                         </div>
