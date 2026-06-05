@@ -139,6 +139,29 @@ def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     return messages if isinstance(messages, list) else []
 
 
+def update_chat_status(
+    message: Dict[str, Any],
+    *,
+    typing: bool | None = None,
+    mark_read: bool = False,
+    execution_state: str | None = None,
+) -> None:
+    thread_id = message.get("threadId") or message.get("thread_id")
+    if not thread_id:
+        return
+    body: Dict[str, Any] = {
+        "threadId": thread_id,
+        "agentId": AGENT_ID,
+    }
+    if typing is not None:
+        body["typing"] = typing
+    if mark_read:
+        body["markRead"] = True
+    if execution_state:
+        body["executionState"] = execution_state
+    api("POST", "/chat/status", body=body)
+
+
 def clean_hermes_output(output: str) -> str:
     lines = output.strip().splitlines()
     while lines and lines[-1].startswith("session_id:"):
@@ -153,6 +176,23 @@ def extract_session_id(output: str) -> str:
         if line.startswith("session_id:"):
             return line.split(":", 1)[1].strip()
     return ""
+
+
+def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.CompletedProcess[str]:
+    proc = subprocess.Popen(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    started = time.time()
+    last_status = 0.0
+    while proc.poll() is None:
+        if time.time() - started > HERMES_TIMEOUT_SECONDS:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
+        if time.time() - last_status >= 3:
+            update_chat_status(message, typing=True, execution_state="acting")
+            last_status = time.time()
+        time.sleep(0.5)
+    stdout, stderr = proc.communicate()
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
 def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
@@ -180,11 +220,11 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     ]
     if resume_id:
         cmd[3:3] = ["--resume", resume_id]
-    result = subprocess.run(cmd, text=True, capture_output=True, timeout=HERMES_TIMEOUT_SECONDS)
+    result = invoke_hermes(cmd, message)
     if result.returncode != 0 and resume_id and "Session not found" in (result.stderr or result.stdout):
         sessions.pop(session_key, None)
         cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
-        result = subprocess.run(cmd, text=True, capture_output=True, timeout=HERMES_TIMEOUT_SECONDS)
+        result = invoke_hermes(cmd, message)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "Hermes failed").strip())
     new_session_id = extract_session_id(result.stdout)
@@ -223,8 +263,15 @@ def main() -> int:
                         state["lastSeenAt"] = ts
                     continue
                 log(f"dispatching message {message_id}")
-                reply = run_hermes(message, state)
-                send_reply(message, reply)
+                update_chat_status(message, mark_read=True, execution_state="seen")
+                update_chat_status(message, typing=True, execution_state="acting")
+                try:
+                    reply = run_hermes(message, state)
+                    send_reply(message, reply)
+                    update_chat_status(message, typing=False, execution_state="resolved")
+                except Exception:
+                    update_chat_status(message, typing=False, execution_state="seen")
+                    raise
                 remember_seen(state, message_id)
                 if ts:
                     state["lastSeenAt"] = ts
