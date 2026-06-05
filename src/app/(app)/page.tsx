@@ -18,6 +18,8 @@ type WorkloadTask = {
 type RecentActivity = {
   id: string;
   kind: string;
+  actorLabel: string;
+  actor: string;
   title: string;
   detail: string;
   time: Date;
@@ -77,7 +79,9 @@ export default async function DashboardPage() {
       return {
         id: `message-${message.id}`,
         kind: "Message",
-        title: `${senderName} sent a message`,
+        actorLabel: "From",
+        actor: senderName,
+        title: "Message sent",
         detail: truncate(message.text, 120),
         time: message.createdAt,
         tone: message.senderType === "human" ? "info" : "default",
@@ -86,6 +90,8 @@ export default async function DashboardPage() {
     ...recentTasks.map((task): RecentActivity => ({
       id: `task-${task.id}`,
       kind: "Task",
+      actorLabel: "Owner",
+      actor: task.assignedAgentId ? agentNameById.get(task.assignedAgentId) || "Assigned agent" : "Unassigned",
       title: `Task ${task.state}`,
       detail: `${task.taskType} · TASK-${task.id.substring(0, 8)}`,
       time: task.updatedAt,
@@ -94,6 +100,8 @@ export default async function DashboardPage() {
     ...recentProjects.map((project): RecentActivity => ({
       id: `project-${project.id}`,
       kind: "Project",
+      actorLabel: "Lead",
+      actor: project.leadAgentId ? agentNameById.get(project.leadAgentId) || "Lead agent" : "No lead",
       title: `Project ${project.status}`,
       detail: truncate(project.goal, 120),
       time: project.updatedAt,
@@ -102,6 +110,8 @@ export default async function DashboardPage() {
     ...recentAgents.map((agent): RecentActivity => ({
       id: `agent-${agent.id}`,
       kind: "Agent",
+      actorLabel: "Agent",
+      actor: agent.name,
       title: `${agent.name} registered`,
       detail: agent.role || "operator",
       time: agent.createdAt,
@@ -110,6 +120,8 @@ export default async function DashboardPage() {
     ...recentArtifacts.map((artifact): RecentActivity => ({
       id: `artifact-${artifact.id}`,
       kind: "Storage",
+      actorLabel: "Added by",
+      actor: artifact.agentId ? agentNameById.get(artifact.agentId) || "Agent" : artifact.createdByType || "System",
       title: artifact.title || artifact.originalFilename || "Storage item added",
       detail: artifact.path || `${artifact.kind} · ${artifact.contentType}`,
       time: artifact.createdAt,
@@ -118,6 +130,8 @@ export default async function DashboardPage() {
     ...recentResources.map((resource): RecentActivity => ({
       id: `resource-${resource.id}`,
       kind: "Rules",
+      actorLabel: "Scope",
+      actor: resource.scopeType === "agent" && resource.scopeId ? agentNameById.get(resource.scopeId) || "Agent" : "System",
       title: resource.displayName || resource.name,
       detail: `${resource.scopeType} · ${resource.resourceType}`,
       time: resource.createdAt,
@@ -126,6 +140,8 @@ export default async function DashboardPage() {
     ...recentIncidents.map((incident): RecentActivity => ({
       id: `incident-${incident.id}`,
       kind: "Incident",
+      actorLabel: "Source",
+      actor: "Watchdog",
       title: incident.summary,
       detail: `${incident.severity} · ${incident.status}`,
       time: incident.createdAt,
@@ -191,6 +207,8 @@ export default async function DashboardPage() {
                   <ActivityRow
                     key={activity.id}
                     kind={activity.kind}
+                    actorLabel={activity.actorLabel}
+                    actor={activity.actor}
                     title={activity.title}
                     detail={activity.detail}
                     time={activity.time}
@@ -260,7 +278,7 @@ function truncate(value: string | null | undefined, maxLength: number) {
   return `${text.slice(0, maxLength - 1).trim()}...`;
 }
 
-function ActivityRow({ kind, title, detail, time, tone }: { kind: string, title: string, detail: string, time: Date, tone: RecentActivity["tone"] }) {
+function ActivityRow({ kind, actorLabel, actor, title, detail, time, tone }: { kind: string, actorLabel: string, actor: string, title: string, detail: string, time: Date, tone: RecentActivity["tone"] }) {
   const colors = {
     default: "bg-zinc-500/15 text-zinc-300 border-zinc-500/20",
     good: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
@@ -277,6 +295,7 @@ function ActivityRow({ kind, title, detail, time, tone }: { kind: string, title:
         </div>
         <div className="min-w-0">
           <div className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100 transition-colors truncate">{title}</div>
+          <div className="text-xs text-zinc-500 mt-1 truncate">{actorLabel}: {actor}</div>
           {detail && <div className="text-xs text-zinc-500 mt-1 line-clamp-2">{detail}</div>}
         </div>
       </div>
