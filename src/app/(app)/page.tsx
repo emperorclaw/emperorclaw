@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { agents, tasks, incidents, companyTokens, users } from "@/db/schema";
+import { agents, tasks, incidents, companyTokens, users, threadMessages, projects, artifacts, scopedResources } from "@/db/schema";
 import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
@@ -13,6 +13,15 @@ export const dynamic = "force-dynamic";
 type WorkloadTask = {
   id: string;
   taskType: string;
+};
+
+type RecentActivity = {
+  id: string;
+  kind: string;
+  title: string;
+  detail: string;
+  time: Date;
+  tone: "default" | "good" | "warning" | "critical" | "info";
 };
 
 export default async function DashboardPage() {
@@ -36,12 +45,95 @@ export default async function DashboardPage() {
   const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
   const [{ count: activeTokens }] = await db.select({ count: sql<number>`count(*)` }).from(companyTokens).where(and(eq(companyTokens.companyId, companyId), isNull(companyTokens.revokedAt)));
 
-  // 2. Incident List
-  const recentIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(3);
-
-  // 3. Workforce Health / Agent Load
+  // 2. Workforce Health / Agent Load
   const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
   const activeTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, ACTIVE_TASK_STATES), isNull(tasks.deletedAt)));
+  const agentNameById = new Map(allAgents.map(agent => [agent.id, agent.name]));
+
+  // 3. Recent Activity
+  const [
+    recentMessages,
+    recentTasks,
+    recentProjects,
+    recentAgents,
+    recentArtifacts,
+    recentResources,
+    recentIncidents,
+  ] = await Promise.all([
+    db.select().from(threadMessages).where(eq(threadMessages.companyId, companyId)).orderBy(desc(threadMessages.createdAt)).limit(8),
+    db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt))).orderBy(desc(tasks.updatedAt)).limit(6),
+    db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt))).orderBy(desc(projects.updatedAt)).limit(4),
+    db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))).orderBy(desc(agents.createdAt)).limit(4),
+    db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt))).orderBy(desc(artifacts.createdAt)).limit(4),
+    db.select().from(scopedResources).where(and(eq(scopedResources.companyId, companyId), isNull(scopedResources.deletedAt))).orderBy(desc(scopedResources.createdAt)).limit(4),
+    db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(4),
+  ]);
+
+  const recentActivities: RecentActivity[] = [
+    ...recentMessages.map((message): RecentActivity => {
+      const senderName = message.senderType === "agent" && message.senderId
+        ? agentNameById.get(message.senderId) || "Agent"
+        : message.senderType === "human" ? "Human" : "System";
+      return {
+        id: `message-${message.id}`,
+        kind: "Message",
+        title: `${senderName} sent a message`,
+        detail: truncate(message.text, 120),
+        time: message.createdAt,
+        tone: message.senderType === "human" ? "info" : "default",
+      };
+    }),
+    ...recentTasks.map((task): RecentActivity => ({
+      id: `task-${task.id}`,
+      kind: "Task",
+      title: `Task ${task.state}`,
+      detail: `${task.taskType} · TASK-${task.id.substring(0, 8)}`,
+      time: task.updatedAt,
+      tone: task.state === TASK_STATES.review ? "warning" : task.state === TASK_STATES.done ? "good" : "default",
+    })),
+    ...recentProjects.map((project): RecentActivity => ({
+      id: `project-${project.id}`,
+      kind: "Project",
+      title: `Project ${project.status}`,
+      detail: truncate(project.goal, 120),
+      time: project.updatedAt,
+      tone: project.status === "active" ? "info" : project.status === "completed" ? "good" : "default",
+    })),
+    ...recentAgents.map((agent): RecentActivity => ({
+      id: `agent-${agent.id}`,
+      kind: "Agent",
+      title: `${agent.name} registered`,
+      detail: agent.role || "operator",
+      time: agent.createdAt,
+      tone: agent.status === "online" ? "good" : "default",
+    })),
+    ...recentArtifacts.map((artifact): RecentActivity => ({
+      id: `artifact-${artifact.id}`,
+      kind: "Storage",
+      title: artifact.title || artifact.originalFilename || "Storage item added",
+      detail: artifact.path || `${artifact.kind} · ${artifact.contentType}`,
+      time: artifact.createdAt,
+      tone: "info",
+    })),
+    ...recentResources.map((resource): RecentActivity => ({
+      id: `resource-${resource.id}`,
+      kind: "Rules",
+      title: resource.displayName || resource.name,
+      detail: `${resource.scopeType} · ${resource.resourceType}`,
+      time: resource.createdAt,
+      tone: "default",
+    })),
+    ...recentIncidents.map((incident): RecentActivity => ({
+      id: `incident-${incident.id}`,
+      kind: "Incident",
+      title: incident.summary,
+      detail: `${incident.severity} · ${incident.status}`,
+      time: incident.createdAt,
+      tone: incident.status === "resolved" ? "default" : incident.severity === "high" ? "critical" : "warning",
+    })),
+  ]
+    .sort((a, b) => b.time.getTime() - a.time.getTime())
+    .slice(0, 8);
 
   const agentWorkload = allAgents.map(agent => {
     const assignedTasks = activeTasks.filter(t => t.assignedAgentId === agent.id && t.state === TASK_STATES.inProgress);
@@ -89,19 +181,20 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
         <div className="col-span-2 space-y-4">
-          <h2 className="text-lg font-medium text-zinc-200">Recent Incidents</h2>
+          <h2 className="text-lg font-medium text-zinc-200">Recent Activity</h2>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm">
             <div className="divide-y divide-zinc-800/50">
-              {recentIncidents.length === 0 ? (
-                <div className="p-4 text-sm text-zinc-500 text-center">No recent incidents. System operating normally.</div>
+              {recentActivities.length === 0 ? (
+                <div className="p-4 text-sm text-zinc-500 text-center">No recent activity yet.</div>
               ) : (
-                recentIncidents.map(inc => (
-                  <IncidentRow
-                    key={inc.id}
-                    severity={inc.severity}
-                    title={inc.summary}
-                    time={new Date(inc.createdAt).toLocaleTimeString()}
-                    status={inc.status}
+                recentActivities.map(activity => (
+                  <ActivityRow
+                    key={activity.id}
+                    kind={activity.kind}
+                    title={activity.title}
+                    detail={activity.detail}
+                    time={activity.time}
+                    tone={activity.tone}
                   />
                 ))
               )}
@@ -161,25 +254,33 @@ function KpiCard({ title, value, trend, trendLabel, alert, good }: { title: stri
   );
 }
 
-function IncidentRow({ severity, title, time, status }: { severity: string, title: string, time: string, status: string }) {
+function truncate(value: string | null | undefined, maxLength: number) {
+  const text = (value || "").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}...`;
+}
+
+function ActivityRow({ kind, title, detail, time, tone }: { kind: string, title: string, detail: string, time: Date, tone: RecentActivity["tone"] }) {
   const colors = {
-    high: "bg-red-500/20 text-red-400 border-red-500/30",
-    medium: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-    low: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
-  }[severity] || "bg-zinc-500/20 text-zinc-300";
+    default: "bg-zinc-500/15 text-zinc-300 border-zinc-500/20",
+    good: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
+    warning: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+    critical: "bg-red-500/15 text-red-300 border-red-500/25",
+    info: "bg-indigo-500/15 text-indigo-300 border-indigo-500/25",
+  }[tone];
 
   return (
-    <div className="p-4 flex items-center justify-between hover:bg-zinc-800/30 transition-colors group cursor-pointer">
-      <div className="flex items-center space-x-4">
-        <div className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${colors}`}>
-          {severity}
+    <div className="p-4 flex items-start justify-between gap-4 hover:bg-zinc-800/30 transition-colors group">
+      <div className="min-w-0 flex items-start space-x-4">
+        <div className={`shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${colors}`}>
+          {kind}
         </div>
-        <div className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100 transition-colors">{title}</div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100 transition-colors truncate">{title}</div>
+          {detail && <div className="text-xs text-zinc-500 mt-1 line-clamp-2">{detail}</div>}
+        </div>
       </div>
-      <div className="flex items-center space-x-4">
-        <div className="text-xs text-zinc-500">{time}</div>
-        {status === "resolved" && <div className="text-xs text-zinc-600 font-medium">Resolved</div>}
-      </div>
+      <div className="shrink-0 text-xs text-zinc-500">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
     </div>
   );
 }
