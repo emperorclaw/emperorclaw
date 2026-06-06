@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -53,6 +54,8 @@ def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: 
     if body is not None:
         payload = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
+    if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+        headers["Idempotency-Key"] = str(uuid.uuid4())
 
     req = urllib.request.Request(url, data=payload, method=method.upper(), headers=headers)
     try:
