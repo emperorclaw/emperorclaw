@@ -118,6 +118,15 @@ def ensure_agent() -> str:
     return AGENT_ID
 
 
+def send_heartbeat(current_load: int = 0) -> None:
+    if not AGENT_ID:
+        return
+    api("POST", "/agents/heartbeat", body={
+        "agentId": AGENT_ID,
+        "currentLoad": current_load,
+    })
+
+
 def is_for_agent(message: Dict[str, Any], agent_id: str) -> bool:
     sender_type = str(message.get("senderType") or "").lower()
     if sender_type == "agent":
@@ -252,10 +261,15 @@ def send_reply(message: Dict[str, Any], text: str) -> None:
 def main() -> int:
     ensure_runtime()
     agent_id = ensure_agent()
+    send_heartbeat(0)
     state = load_state()
     log(f"started runtime={RUNTIME_ID} agent={AGENT_NAME} agentId={agent_id}")
+    last_heartbeat = time.time()
     while True:
         try:
+            if time.time() - last_heartbeat >= 60:
+                send_heartbeat(0)
+                last_heartbeat = time.time()
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")
                 if not message_id or message_id in (state.get("seen") or []):
@@ -269,6 +283,7 @@ def main() -> int:
                 log(f"dispatching message {message_id}")
                 update_chat_status(message, mark_read=True, execution_state="seen")
                 update_chat_status(message, typing=True, execution_state="acting")
+                send_heartbeat(1)
                 try:
                     reply = run_hermes(message, state)
                     send_reply(message, reply)
@@ -276,6 +291,8 @@ def main() -> int:
                 except Exception:
                     update_chat_status(message, typing=False, execution_state="seen")
                     raise
+                finally:
+                    send_heartbeat(0)
                 remember_seen(state, message_id)
                 if ts:
                     state["lastSeenAt"] = ts
