@@ -2,10 +2,10 @@ module.exports = {
   apps: [
     {
       name: "emperorclaw",
-      script: "node_modules/next/dist/bin/next",
+      script: "npm",
       args: "start",
-      instances: 1, // Run a single instance in cluster mode (allows zero-downtime reload)
-      exec_mode: "cluster",
+      instances: 1,
+      exec_mode: "fork",
       watch: false,
       max_memory_restart: "1G",
       env: {

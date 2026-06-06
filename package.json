@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:seed": "npx tsx src/db/seed.ts",
     "skill:publish": "node scripts/publish-skill.js",
+    "deploy:vps": "python scripts/deploy-vps.py",
     "install:openclaw": "node scripts/control-plane.js bootstrap",
     "control-plane:bootstrap": "node scripts/control-plane.js bootstrap",
     "control-plane:doctor": "node scripts/control-plane.js doctor",
