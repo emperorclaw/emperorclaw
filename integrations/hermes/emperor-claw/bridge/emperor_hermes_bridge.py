@@ -50,6 +50,8 @@ def api(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[
     if body is not None:
         payload = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
+    if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+        headers["Idempotency-Key"] = str(uuid.uuid4())
     req = urllib.request.Request(url, data=payload, headers=headers, method=method.upper())
     try:
         with urllib.request.urlopen(req, timeout=30) as res:
