@@ -18,6 +18,7 @@ API_URL = os.environ.get("EMPEROR_CLAW_API_URL", "https://emperorclaw.malecu.eu"
 API_TOKEN = os.environ.get("EMPEROR_CLAW_API_TOKEN", "").strip()
 AGENT_NAME = os.environ.get("EMPEROR_CLAW_AGENT_NAME", "Hermes")
 AGENT_ROLE = os.environ.get("EMPEROR_CLAW_AGENT_ROLE", "operator")
+AGENT_INSTRUCTIONS = os.environ.get("EMPEROR_CLAW_AGENT_INSTRUCTIONS", "").strip()
 AGENT_ID = os.environ.get("EMPEROR_CLAW_AGENT_ID", "").strip()
 RUNTIME_ID = os.environ.get("EMPEROR_CLAW_RUNTIME_ID", f"hermes-{socket.gethostname()}-{uuid.uuid4().hex[:8]}")
 HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
@@ -211,6 +212,10 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     text = str(message.get("text") or "")
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
+        f"Agent name: {AGENT_NAME}\n"
+        f"Agent role: {AGENT_ROLE}\n"
+        + (f"Role instructions:\n{AGENT_INSTRUCTIONS}\n\n" if AGENT_INSTRUCTIONS else "")
+        +
         "Reply only to the latest message. Do not assume project, task, resource, or Storage state from memory.\n"
         "Fetch Emperor state lazily with tools only when the user request needs it, and prefer scoped/small reads.\n"
         "Use Emperor tools for real state changes before saying a change happened.\n\n"
