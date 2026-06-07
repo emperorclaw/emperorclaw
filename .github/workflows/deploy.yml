@@ -15,7 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Sync source to VPS temporary folder
+      - name: Sync source to VPS release folder
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -24,30 +24,64 @@ jobs:
           echo "$VPS_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $VPS_HOST >> ~/.ssh/known_hosts
-          rsync -avz --delete --exclude='.env' --exclude='.git' --exclude='node_modules' --exclude='.next' ./ root@$VPS_HOST:/var/www/emperorclaw_temp
+          RELEASE="/var/www/emperorclaw-releases/github-${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          ssh root@$VPS_HOST "mkdir -p '$RELEASE'"
+          rsync -az --delete --exclude='.env' --exclude='.git' --exclude='node_modules' --exclude='.next' ./ root@$VPS_HOST:"$RELEASE"/
 
-      - name: Build, swap, and reload on VPS
+      - name: Build, promote, and health-check on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
-            # 1. Build the app in the temporary directory
-            cd /var/www/emperorclaw_temp
-            # Copy the .env file from the live site so the build has correct environment variables (if needed)
-            cp /var/www/emperorclaw/.env ./.env || true
-            npm install --production=false
+            set -euo pipefail
+
+            APP=/var/www/emperorclaw
+            RELEASE="${{ env.RELEASE }}"
+            BACKUP="/var/www/emperorclaw-backup-$(date +%Y%m%d%H%M%S)"
+            ENV_SNAPSHOT="/tmp/emperorclaw-env-${{ github.run_id }}"
+
+            test -d "$APP"
+            test -f "$APP/.env"
+            test -d "$RELEASE"
+
+            cp "$APP/.env" "$RELEASE/.env"
+
+            cd "$RELEASE"
+            npm ci --no-audit --no-fund
             npm run db:migrate
             npm run build
-            
-            # 2. Swap the temporary directory with the live directory instantly
-            rm -rf /var/www/emperorclaw_old
-            mv /var/www/emperorclaw /var/www/emperorclaw_old
-            mv /var/www/emperorclaw_temp /var/www/emperorclaw
-            
-            # 3. Reload PM2 gracefully using ecosystem.config.js
+
+            test -f "$RELEASE/package.json"
+            test -f "$RELEASE/.next/BUILD_ID"
+
+            cp -a "$APP" "$BACKUP"
+            cp "$APP/.env" "$ENV_SNAPSHOT"
+
+            rollback() {
+              echo "Deploy failed after promotion. Rolling back to $BACKUP"
+              rsync -a --delete --exclude='.env' "$BACKUP"/ "$APP"/
+              cp "$ENV_SNAPSHOT" "$APP/.env"
+              chmod 600 "$APP/.env"
+              cd "$APP"
+              pm2 restart emperorclaw --update-env || pm2 start ecosystem.config.js --update-env
+            }
+            trap rollback ERR
+
+            rsync -a --delete --exclude='.env' "$RELEASE"/ "$APP"/
+            cp "$ENV_SNAPSHOT" "$APP/.env"
+            chmod 600 "$APP/.env"
+
             cd /var/www/emperorclaw
-            pm2 start ecosystem.config.js --update-env || pm2 reload ecosystem.config.js --update-env
-            echo "✅ Deployed and reloaded with zero downtime!"
+            test -f package.json
+            test -f .next/BUILD_ID
+            pm2 restart emperorclaw --update-env || pm2 start ecosystem.config.js --update-env
+            sleep 5
+            curl -fsS -I http://127.0.0.1:3000/ >/tmp/emperorclaw-health-${{ github.run_id }}.txt
+            trap - ERR
+            pm2 status emperorclaw --no-color
+            cat /tmp/emperorclaw-health-${{ github.run_id }}.txt
+            echo "Deployed and health check passed."
