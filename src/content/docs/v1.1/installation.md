@@ -2,6 +2,8 @@
 
 The supported public path is now the **OpenClaw plugin**, not the old skill installer.
 
+If you are connecting Hermes Agent instead of OpenClaw, use the dedicated [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) guide. Hermes needs one profile per Emperor agent plus the Emperor Hermes plugin and bridge service.
+
 If you want the shortest product pitch:
 
 - install the plugin
