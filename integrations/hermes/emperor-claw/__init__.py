@@ -160,7 +160,9 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Use resources only for reusable business rules, SOPs, customer facts, templates, and durable instructions. "
             "Use artifacts/Storage for deliverables, exported files, evidence, working documents, uploads, and reports. "
             "Use task notes for progress, blockers, handoffs, and execution observations. "
-            "When changing Emperor state, call the Emperor tools first and only then say the change happened."
+            "When changing Emperor state, call the Emperor tools first and only then say the change happened. "
+            "emperor_request is only for Emperor MCP endpoints; never use it as a generic HTTP client for external APIs. "
+            "For external services, use terminal/curl or a dedicated MCP/plugin when those tools are available."
         )
     }
 
