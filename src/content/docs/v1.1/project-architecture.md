@@ -9,6 +9,7 @@ The short version:
 - The supported install path is the native plugin in `clawhub/plugin/emperor-claw-os`.
 - The legacy skill in `clawhub/emperor-claw-os` is still useful as doctrine/reference material, but it is not the primary public install path.
 - The repo-level `agents/*` folders are role packs and examples, not the plugin's live per-agent runtime state.
+- Hermes Agent can also be used as a local executor through the separate [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) adapter.
 
 ## The Four Surfaces
 
@@ -18,6 +19,8 @@ The short version:
 | OpenClaw plugin | `clawhub/plugin/emperor-claw-os` | install flow, local manifests, channel wiring, bridge packaging, repair/doctor/remove lifecycle | durable business truth |
 | Bridge runtime | `clawhub/plugin/emperor-claw-os/runtime/bridge.cjs` | websocket/sync receive loop, session bootstrap, direct/team routing, local brain handoff, reconnect and dedupe state | being the "brain" itself |
 | Local OpenClaw brain | created under `~/.openclaw/workspace-<brain-id>` by `openclaw emperor add-agent` | reading workspace doctrine, using tools, performing work, replying | durable state storage outside Emperor |
+
+Hermes follows the same control-plane split, but the local executor surface is a Hermes profile instead of an OpenClaw workspace. One Emperor agent maps to one Hermes profile and one Hermes bridge service.
 
 This split is intentional. If you collapse these layers mentally, the system becomes hard to reason about.
 
