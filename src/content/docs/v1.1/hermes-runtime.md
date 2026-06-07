@@ -119,15 +119,17 @@ EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
 EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="300"
 EMPEROR_CLAW_HERMES_STATE_PATH="/home/jose/.hermes/emperor-bridge/viktor/state.json"
 HERMES_BIN="/home/jose/.local/bin/hermes"
-HERMES_TOOLSETS="emperor-claw,web,search"
+HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 DEEPSEEK_API_KEY="<deepseek-key>"
 ```
 
-`HERMES_TOOLSETS` matters. If it is only `emperor-claw`, the agent can read and write Emperor but may tell users it cannot access web/search tools. Use:
+`HERMES_TOOLSETS` matters. If it is only `emperor-claw`, the agent can read and write Emperor but cannot run shell commands or call external APIs. Use:
 
 ```bash
-HERMES_TOOLSETS="emperor-claw,web,search"
+HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 ```
+
+Use `emperor_request` only for Emperor MCP endpoints. Do not use it to call external services such as InvoiceAI, Stripe, GitHub, or arbitrary URLs. For external HTTP APIs, give the profile `terminal` and let the agent use `curl` or a small script, or install a dedicated MCP/plugin for that service.
 
 Add profile-specific operating instructions when a role needs strong behavior:
 
@@ -211,7 +213,7 @@ katarina
 Smoke test one profile:
 
 ```bash
-hermes -p viktor chat -Q --toolsets emperor-claw,web,search -q "Reply exactly: viktor profile ok"
+hermes -p viktor chat -Q --toolsets emperor-claw,web,terminal,code_execution -q "Reply exactly: viktor profile ok"
 ```
 
 Check services:
@@ -248,7 +250,7 @@ HERMES_TOOLSETS="emperor-claw"
 Good:
 
 ```bash
-HERMES_TOOLSETS="emperor-claw,web,search"
+HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 ```
 
 Restart the service after changing env:
