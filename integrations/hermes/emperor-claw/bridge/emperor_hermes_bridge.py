@@ -22,6 +22,7 @@ AGENT_INSTRUCTIONS = os.environ.get("EMPEROR_CLAW_AGENT_INSTRUCTIONS", "").strip
 AGENT_ID = os.environ.get("EMPEROR_CLAW_AGENT_ID", "").strip()
 RUNTIME_ID = os.environ.get("EMPEROR_CLAW_RUNTIME_ID", f"hermes-{socket.gethostname()}-{uuid.uuid4().hex[:8]}")
 HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
+HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "emperor-claw,web,search").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
 HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "300"))
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
@@ -232,7 +233,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "--source",
         "emperor",
         "--toolsets",
-        "emperor-claw",
+        HERMES_TOOLSETS or "emperor-claw",
         "-q",
         prompt,
     ]
