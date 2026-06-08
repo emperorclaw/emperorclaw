@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,14 @@ export function CreateAgentDialog() {
                         Create the durable Emperor profile. Runtime startup is handled by Hermes/OpenClaw separately.
                     </DialogDescription>
                 </DialogHeader>
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100/90">
+                    This does not create a Hermes profile, OpenClaw workspace, or bridge service. After creating the
+                    Emperor profile, map it to one runtime profile/service on the machine that will execute work.
+                    <div className="mt-1 flex flex-wrap gap-3 text-amber-50">
+                        <Link href="/docs/v1.1/hermes-runtime" className="underline underline-offset-4">Hermes setup</Link>
+                        <Link href="/docs/v1.1/openclaw-agents" className="underline underline-offset-4">OpenClaw setup</Link>
+                    </div>
+                </div>
                 <div className="grid gap-4 py-4">
                     <div className="flex items-center space-x-4 mb-2">
                         <div className="w-16 h-16 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
