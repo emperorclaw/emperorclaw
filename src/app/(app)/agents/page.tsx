@@ -64,6 +64,32 @@ export default async function AgentsPage() {
                 <CreateAgentDialog />
             </div>
 
+            <div className="grid gap-4 lg:grid-cols-3">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Agent profile</div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                        Emperor stores identity, role, memory, tasks, messages, and state. Adding an agent here creates that durable profile only.
+                    </p>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Runtime mapping</div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                        Hermes/OpenClaw must be configured separately. Use one Hermes profile or OpenClaw workspace plus one bridge service per Emperor agent.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs font-medium text-indigo-300">
+                        <Link href="/docs/v1.1/hermes-runtime" className="hover:text-indigo-200">Hermes guide</Link>
+                        <Link href="/docs/v1.1/openclaw-agents" className="hover:text-indigo-200">OpenClaw guide</Link>
+                    </div>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Knowledge & Rules</div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                        Shared business rules, customer context, reusable credential notes, and project process belong in Knowledge & Rules, not agent-local integrations.
+                    </p>
+                    <Link href="/resources" className="mt-3 inline-block text-xs font-medium text-indigo-300 hover:text-indigo-200">Open Knowledge & Rules</Link>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {allAgents.length === 0 ? (
                     <div className="col-span-2 text-center text-zinc-500 text-sm py-12">
