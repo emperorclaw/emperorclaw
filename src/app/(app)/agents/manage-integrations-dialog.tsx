@@ -304,7 +304,7 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                                             <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
                                                 {managerEnabled
                                                     ? "Secrets are encrypted server-side. The runtime receives only the leased payload it is authorized to use."
-                                                    : "No master key is configured. Store only metadata here or keep the actual secret local to the OpenClaw machine."}
+                                                    : "No master key is configured. Store only metadata here or keep the actual secret local to the runtime machine."}
                                             </p>
                                         </div>
                                     </div>
