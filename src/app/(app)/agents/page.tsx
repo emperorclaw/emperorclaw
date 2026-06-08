@@ -57,8 +57,8 @@ export default async function AgentsPage() {
         <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
                 <div className="flex flex-col space-y-1">
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Agent Fleet</h1>
-                    <p className="text-sm text-zinc-500 font-medium">Manage OpenClaw workers and their machine-local runtime integrations. Customer and project credentials belong in Knowledge & Rules.</p>
+                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Agents</h1>
+                    <p className="text-sm text-zinc-500 font-medium">Manage durable agent profiles, runtime status, workload, and advanced tool access.</p>
                 </div>
 
                 <CreateAgentDialog />
@@ -67,7 +67,7 @@ export default async function AgentsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {allAgents.length === 0 ? (
                     <div className="col-span-2 text-center text-zinc-500 text-sm py-12">
-                        No agents registered. Provide instructions to OpenClaw to spawn the baseline roster.
+                        No agents yet. Add an agent profile, then connect a Hermes/OpenClaw runtime when it is ready to work.
                     </div>
                 ) : (
                     allAgents.map(agent => (
@@ -111,7 +111,7 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                         />
                     </div>
                     <div>
-                        <h3 className="text-lg font-medium text-zinc-100 flex items-center space-x-2">
+                        <h3 className="text-lg font-medium text-zinc-100 flex flex-wrap items-center gap-2">
                             <Link href={`/agents/${id}`} className="hover:text-white underline-offset-4 hover:underline">
                                 {name}
                             </Link>
@@ -178,11 +178,10 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
             )}
 
             <div className="mt-6 rounded-xl border border-zinc-800/80 bg-zinc-950/50 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Context model</div>
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
-                    This card tracks runtime health and machine-local integrations only. Agent doctrine,
-                    credentials metadata, and scoped operating context should live in Knowledge & Rules, not as
-                    ad hoc per-agent config.
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">What belongs here</div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                    Keep stable identity, role, memory, and runtime health on the agent. Put project rules,
+                    customer-specific process, and shared credentials in Knowledge & Rules.
                 </p>
                 <div className="mt-4">
                     <Link

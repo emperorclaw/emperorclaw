@@ -1,45 +1,63 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 export function CreateAgentDialog() {
+    const router = useRouter();
     const [open, setOpen] = useState(false);
     const [name, setName] = useState("");
-    const [roleDescription, setRoleDescription] = useState("");
+    const [role, setRole] = useState("");
+    const [memory, setMemory] = useState("");
+    const [concurrencyLimit, setConcurrencyLimit] = useState(1);
+    const [isSaving, setIsSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
  
     const handleCreate = async () => {
-        console.log("Sending agent creation request to OpenClaw chat:", roleDescription);
+        setIsSaving(true);
+        setError(null);
         try {
-            const res = await fetch("/api/chat", {
+            const res = await fetch("/api/agents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    text: `/register-agent name="${name || 'Unnamed Agent'}" capabilities="${roleDescription}"`,
+                    name,
+                    role,
+                    memory,
+                    concurrencyLimit,
                 })
             });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Agent creation failed");
             if (res.ok) {
                 setOpen(false);
-                setRoleDescription("");
                 setName("");
+                setRole("");
+                setMemory("");
+                setConcurrencyLimit(1);
+                router.refresh();
+                router.push(`/agents/${data.agent.id}`);
             }
         } catch (e) {
-            console.error(e);
+            setError(e instanceof Error ? e.message : "Agent creation failed");
+        } finally {
+            setIsSaving(false);
         }
     };
  
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="default" className="shadow-sm">Register Agent</Button>
+                <Button variant="default" className="shadow-sm">Add Agent</Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
-                    <DialogTitle className="text-zinc-100">Register New Agent</DialogTitle>
+                    <DialogTitle className="text-zinc-100">Add Agent Profile</DialogTitle>
                     <DialogDescription className="text-zinc-500">
-                        Describe the role, persona, and capabilities of the new agent. OpenClaw will automatically spawn and position this operative.
+                        Create the durable Emperor profile. Runtime startup is handled by Hermes/OpenClaw separately.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -55,29 +73,49 @@ export function CreateAgentDialog() {
                             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proposed Agent Name</label>
                             <input
                                 className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
-                                placeholder="e.g. DataSifter"
+                                placeholder="e.g. Viktor"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                             />
                         </div>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mission Capabilities</label>
-                        <Textarea
-                            id="roleDescription"
-                            className="bg-zinc-900 border-zinc-800 focus-visible:ring-indigo-500 text-sm h-32"
-                            placeholder="Example: I need a highly-specialized Data Extraction agent capable of writing Python scripts to parse massive unformatted PDF reports."
-                            value={roleDescription}
-                            onChange={(e) => setRoleDescription(e.target.value)}
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Role</label>
+                        <input
+                            className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
+                            placeholder="e.g. Outreach Lead AI Automator"
+                            value={role}
+                            onChange={(e) => setRole(e.target.value)}
                         />
                     </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Profile Memory</label>
+                        <Textarea
+                            id="memory"
+                            className="bg-zinc-900 border-zinc-800 focus-visible:ring-indigo-500 text-sm h-32"
+                            placeholder="Operating style, scope, skills, guardrails, and when this agent should be assigned work."
+                            value={memory}
+                            onChange={(e) => setMemory(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Concurrency Limit</label>
+                        <input
+                            type="number"
+                            min={1}
+                            className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
+                            value={concurrencyLimit}
+                            onChange={(e) => setConcurrencyLimit(Math.max(1, Number(e.target.value) || 1))}
+                        />
+                    </div>
+                    {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</div>}
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
                         Cancel
                     </Button>
-                    <Button type="button" onClick={handleCreate} disabled={!roleDescription.trim()} className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                        Create & Request from OpenClaw
+                    <Button type="button" onClick={handleCreate} disabled={isSaving || !name.trim()} className="bg-indigo-600 hover:bg-indigo-500 text-white">
+                        {isSaving ? "Creating..." : "Create Agent"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
