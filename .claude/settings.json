@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw plugins install .)",
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw plugins install . --force)",
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw plugins install --help)",
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw plugins install . --dangerously-force-unsafe-install --link)",
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw plugins install . --dangerously-force-unsafe-install)",
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw plugins inspect emperor-claw-os --json)",
+      "Bash(OPENCLAW_STATE_DIR=__TRACKED_VAR__/.openclaw-emperor-plugin-test openclaw emperor doctor)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('name:', d['name']\\); print\\('version:', d['version']\\); print\\('private:', d.get\\('private', False\\)\\)\")",
+      "Bash(npm whoami *)",
+      "Bash(openclaw plugins *)",
+      "Bash(openclaw --help)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(npm login *)",
+      "Bash(sshpass -p 'PI_PASSWORD_REDACTED' ssh -o StrictHostKeyChecking=no jose@PI_IP_REDACTED \"echo connected && whoami && pwd && pm2 list 2>/dev/null || echo 'no pm2'\")",
+      "Bash(ssh -V)",
+      "Bash(pip install *)",
+      "Bash(apt-get install *)",
+      "Bash(where plink *)",
+      "PowerShell(choco install putty -y 2>&1)",
+      "Bash(python3 -c \"import paramiko; print\\('paramiko ok'\\)\")",
+      "Bash(python -c \"import paramiko; print\\('paramiko ok'\\)\")",
+      "Bash(python3 -)"
+    ]
+  }
+}

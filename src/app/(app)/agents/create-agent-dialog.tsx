@@ -5,15 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 
 export function CreateAgentDialog() {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [name, setName] = useState("");
     const [role, setRole] = useState("");
-    const [memory, setMemory] = useState("");
-    const [concurrencyLimit, setConcurrencyLimit] = useState(1);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
  
@@ -27,8 +24,6 @@ export function CreateAgentDialog() {
                 body: JSON.stringify({
                     name,
                     role,
-                    memory,
-                    concurrencyLimit,
                 })
             });
             const data = await res.json();
@@ -37,8 +32,6 @@ export function CreateAgentDialog() {
                 setOpen(false);
                 setName("");
                 setRole("");
-                setMemory("");
-                setConcurrencyLimit(1);
                 router.refresh();
                 router.push(`/agents/${data.agent.id}`);
             }
@@ -58,12 +51,12 @@ export function CreateAgentDialog() {
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">Add Agent Profile</DialogTitle>
                     <DialogDescription className="text-zinc-500">
-                        Create the durable Emperor profile. Runtime startup is handled by Hermes/OpenClaw separately.
+                        Create the Emperor record that messages, tasks, approvals, and runtime heartbeats attach to.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100/90">
-                    This does not create a Hermes profile, OpenClaw workspace, or bridge service. After creating the
-                    Emperor profile, map it to one runtime profile/service on the machine that will execute work.
+                    This does not create the worker. After this, create one Hermes profile or OpenClaw workspace
+                    and run one bridge service with this Emperor agent ID.
                     <div className="mt-1 flex flex-wrap gap-3 text-amber-50">
                         <Link href="/docs/v1.1/hermes-runtime" className="underline underline-offset-4">Hermes setup</Link>
                         <Link href="/docs/v1.1/openclaw-agents" className="underline underline-offset-4">OpenClaw setup</Link>
@@ -92,30 +85,14 @@ export function CreateAgentDialog() {
                         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Role</label>
                         <input
                             className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
-                            placeholder="e.g. Outreach Lead AI Automator"
+                            placeholder="e.g. SEO and AI Visibility Specialist"
                             value={role}
                             onChange={(e) => setRole(e.target.value)}
                         />
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Profile Memory</label>
-                        <Textarea
-                            id="memory"
-                            className="bg-zinc-900 border-zinc-800 focus-visible:ring-indigo-500 text-sm h-32"
-                            placeholder="Operating style, scope, skills, guardrails, and when this agent should be assigned work."
-                            value={memory}
-                            onChange={(e) => setMemory(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Concurrency Limit</label>
-                        <input
-                            type="number"
-                            min={1}
-                            className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
-                            value={concurrencyLimit}
-                            onChange={(e) => setConcurrencyLimit(Math.max(1, Number(e.target.value) || 1))}
-                        />
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs leading-5 text-zinc-400">
+                        Put durable instructions, customer context, and business rules in Knowledge & Rules. Put
+                        Hermes/OpenClaw runtime memory, tools, API keys, and profile files on the machine running the worker.
                     </div>
                     {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</div>}
                 </div>
