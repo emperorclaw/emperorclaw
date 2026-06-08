@@ -119,7 +119,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                                 </span>
                             </div>
                             <p className="text-sm text-zinc-500 font-medium">
-                                Durable session, memory, message, and machine-local runtime state for this OpenClaw agent.
+                                Durable session, memory, message, and machine-local runtime state for this Hermes/OpenClaw agent.
                             </p>
                         </div>
                     </div>

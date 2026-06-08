@@ -69,6 +69,28 @@ const emptyTaskForm = {
 };
 const taskStates = ["inbox", "in_progress", "review", "done", "failed", "dead_letter"];
 const projectStatuses = ["active", "paused", "completed", "killed"];
+const workTypeOptions = [
+    { value: "manual_task", label: "Standard task" },
+    { value: "research", label: "Research" },
+    { value: "implementation", label: "Implementation" },
+    { value: "review", label: "Review" },
+    { value: "outreach", label: "Outreach" },
+    { value: "reporting", label: "Reporting" },
+];
+
+function humanizeKey(value: unknown) {
+    if (typeof value !== "string" || !value.trim()) return "";
+    return value
+        .replace(/[_:-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getWorkTypeLabel(value: unknown) {
+    const option = workTypeOptions.find((item) => item.value === value);
+    return option?.label || humanizeKey(value) || "Standard task";
+}
 
 export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [] }: Props) {
     const router = useRouter();
@@ -494,12 +516,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">
                         <div>
                             <h2 className="text-xl font-medium text-zinc-100">{getTaskTitle(selectedTask)}</h2>
-                            <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-zinc-600">{selectedTask.taskType}</p>
+                            <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(selectedTask.taskType)}</p>
                             <p className="mt-2 text-sm text-zinc-500">Project: {getProjectName(selectedTask.projectId)}</p>
                             <p className="text-sm text-zinc-500">Customer: {getCustomerName(selectedTask.projectId)}</p>
                         </div>
                         <div className="flex flex-wrap gap-2 text-sm">
-                            <span className="rounded bg-zinc-800 px-2.5 py-1 font-medium capitalize text-zinc-300">{String(selectedTask.state).replace("_", " ")}</span>
+                            <span className="rounded bg-zinc-800 px-2.5 py-1 font-medium text-zinc-300">{humanizeKey(selectedTask.state)}</span>
                             <span className="rounded bg-zinc-800 px-2.5 py-1 text-zinc-400">Assigned: {getAgentName(selectedTask.assignedAgentId)}</span>
                             {isBlocked(selectedTask, filteredTasks) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
                             {isRecurring(selectedTask) && <span className="rounded bg-indigo-500/20 px-2.5 py-1 text-indigo-300">Recurrent</span>}
@@ -508,7 +530,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>State</span>
                                 <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { state: event.target.value })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500">
-                                    {taskStates.map((state) => <option key={state} value={state}>{state.replace("_", " ")}</option>)}
+                                    {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-xs text-zinc-500">
@@ -634,8 +656,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Task type</span>
-                                <input value={taskForm.taskType} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, taskType: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500 disabled:opacity-60" />
+                                <span>Work type</span>
+                                <select value={taskForm.taskType} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, taskType: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500 disabled:opacity-60">
+                                    {workTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
                             </label>
                         </div>
                         <label className="space-y-1 text-sm text-zinc-400">
@@ -650,7 +674,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>State</span>
                                 <select value={taskForm.state} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, state: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
-                                    {taskStates.map((state) => <option key={state} value={state}>{state.replace("_", " ")}</option>)}
+                                    {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
@@ -712,11 +736,11 @@ function BoardColumn({ title, count, tone, icon: Icon, children }: { title: stri
 function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurrent, active, review, done, onClick }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurrent?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; }) {
     const priority = task.priority >= 80 ? { label: "HIGH", cls: "bg-rose-500/10 text-rose-400 border-rose-500/20" } : task.priority >= 50 ? { label: "MED", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" } : { label: "LOW", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
     const border = blocked ? "border-rose-500/50" : recurrent ? "border-indigo-500/40" : active ? "border-indigo-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
-    return <button onClick={onClick} className={cn("w-full rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80", border)}><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{task.taskType}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{String(task.state).replace("_", " ")}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{reviewBucket.replace("_", " ")}</span>}{recurrent && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">Recurring</span>}</div>{(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}</button>;
+    return <button onClick={onClick} className={cn("w-full rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80", border)}><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurrent && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">Recurring</span>}</div>{(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}</button>;
 }
 
 function RecurringCard({ definition, project, customer, agent }: { definition: any; project: string; customer: string; agent: string }) {
-    return <div className="w-full rounded-lg border border-indigo-500/30 bg-zinc-950 p-4 text-left"><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">RECUR-{definition.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{definition.name}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", definition.active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-500")}>{definition.active ? "ACTIVE" : "PAUSED"}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">{definition.taskType}</span>{definition.cronExpression && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{definition.cronExpression}</span>}{definition.nextRunAt && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">Next {new Date(definition.nextRunAt).toLocaleString()}</span>}</div></div>;
+    return <div className="w-full rounded-lg border border-indigo-500/30 bg-zinc-950 p-4 text-left"><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">RECUR-{definition.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{definition.name}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", definition.active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-500")}>{definition.active ? "ACTIVE" : "PAUSED"}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">{getWorkTypeLabel(definition.taskType)}</span>{definition.cronExpression && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{definition.cronExpression}</span>}{definition.nextRunAt && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">Next {new Date(definition.nextRunAt).toLocaleString()}</span>}</div></div>;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
