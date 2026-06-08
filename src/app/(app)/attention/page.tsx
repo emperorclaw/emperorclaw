@@ -1,5 +1,7 @@
-import IncidentsPage from "../incidents/page";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default IncidentsPage;
+export default function AttentionPage() {
+    redirect("/projects");
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Bot, AlertTriangle, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -31,7 +31,6 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
         { name: "Approvals", href: "/approvals", icon: BadgeCheck },
         { name: "Agents", href: "/agents", icon: Bot },
         { name: "Customers", href: "/customers", icon: ShieldCheck },
-        { name: "Attention", href: "/attention", icon: AlertTriangle },
         { name: "Storage", href: "/artifacts", icon: HardDrive },
         { name: "Settings", href: "/settings", icon: KeyRound },
         { name: "Documentation", href: "/docs", icon: BookOpen },

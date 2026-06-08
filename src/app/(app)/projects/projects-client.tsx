@@ -3,8 +3,11 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Filter, History, Inbox, Plus, Repeat, Search, Send } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, Search, Send, Trash2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { getArtifactClassLabel, getArtifactImportanceLabel } from "@/lib/artifact-taxonomy";
 import { cn } from "@/lib/utils";
 
@@ -37,8 +40,40 @@ const getTaskDescription = (task: any) => {
             ? input.prompt.trim()
             : null;
 };
+const emptyProjectForm = {
+    goal: "",
+    customerId: "",
+    leadAgentId: "",
+    status: "active",
+    requireApprovalForDone: false,
+    requireReviewBeforeDone: false,
+    commentRequiredForReview: false,
+    blockStatusChangesWithPendingApproval: false,
+    onlyLeadCanChangeStatus: false,
+    maxActiveAgents: 3,
+};
+const emptyTaskForm = {
+    projectId: "",
+    title: "",
+    taskType: "manual_task",
+    description: "",
+    goal: "",
+    priority: 0,
+    assignedAgentId: "",
+    state: "inbox",
+    acceptanceCriteria: "",
+    definitionOfDone: "",
+    deliverables: "",
+    proofRequired: false,
+    humanApprovalRequired: false,
+};
+const taskStates = ["inbox", "in_progress", "review", "done", "failed", "dead_letter"];
+const projectStatuses = ["active", "paused", "completed", "killed"];
 
 export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [] }: Props) {
+    const router = useRouter();
+    const [tasks, setTasks] = useState<any[]>(initialTasks);
+    const [projectItems, setProjectItems] = useState<any[]>(projects);
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     const [projectFilter, setProjectFilter] = useState("All Projects");
     const [agentFilter, setAgentFilter] = useState("All Agents");
@@ -50,6 +85,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [isContextOpen, setIsContextOpen] = useState(false);
     const [newContext, setNewContext] = useState("");
     const [isSubmittingContext, setIsSubmittingContext] = useState(false);
+    const [projectDialogMode, setProjectDialogMode] = useState<"create" | "edit" | null>(null);
+    const [editingProject, setEditingProject] = useState<any | null>(null);
+    const [projectForm, setProjectForm] = useState<any>(emptyProjectForm);
+    const [taskDialogMode, setTaskDialogMode] = useState<"create" | "edit" | null>(null);
+    const [taskForm, setTaskForm] = useState<any>(emptyTaskForm);
+    const [isMutating, setIsMutating] = useState(false);
+    const [mutationError, setMutationError] = useState<string | null>(null);
 
     // Initial load from localStorage
     useEffect(() => {
@@ -73,33 +115,35 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     }, [projectFilter, agentFilter, customerFilter, searchQuery]);
 
     useEffect(() => setEvents(taskEvents), [taskEvents]);
+    useEffect(() => setTasks(initialTasks), [initialTasks]);
+    useEffect(() => setProjectItems(projects), [projects]);
 
     const filteredTasks = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
-        return initialTasks.filter((task) => {
+        return tasks.filter((task) => {
             if (projectFilter !== "All Projects" && task.projectId !== projectFilter) return false;
             if (agentFilter !== "All Agents" && task.assignedAgentId !== agentFilter) return false;
             
             if (customerFilter !== "All Customers") {
-                const project = projects.find((p) => p.id === task.projectId);
+                const project = projectItems.find((p) => p.id === task.projectId);
                 if (!project || project.customerId !== customerFilter) return false;
             }
 
             if (!query) return true;
 
-            const project = projects.find((item) => item.id === task.projectId);
+            const project = projectItems.find((item) => item.id === task.projectId);
             const customer = project ? customers.find((item) => item.id === project.customerId) : null;
             const agent = task.assignedAgentId ? agents.find((item) => item.id === task.assignedAgentId) : null;
             const input = taskInput(task);
             return [getTaskTitle(task), input.description, input.goal, task.taskType, task.state, project?.goal, customer?.name, agent?.name, task.templateVersion, task.contractVersion].filter(Boolean).join(" ").toLowerCase().includes(query);
         });
-    }, [agentFilter, customers, initialTasks, projectFilter, projects, searchQuery, agents, customerFilter]);
+    }, [agentFilter, customers, tasks, projectFilter, projectItems, searchQuery, agents, customerFilter]);
 
     const recurrentTasks = filteredTasks.filter(isRecurring);
     const recurrentDefinitions = recurringDefinitions.filter((definition) => {
         if (projectFilter !== "All Projects" && definition.projectId !== projectFilter) return false;
         if (customerFilter !== "All Customers") {
-            const project = projects.find((p) => p.id === definition.projectId);
+            const project = projectItems.find((p) => p.id === definition.projectId);
             if (!project || project.customerId !== customerFilter) return false;
         }
         return true;
@@ -119,9 +163,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         ready_to_close: byState.review.filter((task) => reviewBucket(task, isBlocked(task, filteredTasks)) === "ready_to_close").length,
     };
 
-    const getProjectName = (projectId: string) => projects.find((project) => project.id === projectId)?.goal || "Unknown Project";
+    const getProjectName = (projectId: string) => projectItems.find((project) => project.id === projectId)?.goal || "Unknown Project";
     const getCustomerName = (projectId: string) => {
-        const project = projects.find((item) => item.id === projectId);
+        const project = projectItems.find((item) => item.id === projectId);
         return project ? customers.find((item) => item.id === project.customerId)?.name || "Unknown Customer" : "Unknown Customer";
     };
     const getAgentName = (agentId?: string | null) => agents.find((agent) => agent.id === agentId)?.name || "Unassigned";
@@ -173,6 +217,180 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
+    const selectedProject = projectFilter === "All Projects" ? null : projectItems.find((project) => project.id === projectFilter) || null;
+
+    const openCreateProject = () => {
+        setMutationError(null);
+        setEditingProject(null);
+        setProjectForm({ ...emptyProjectForm, customerId: customerFilter === "All Customers" ? "" : customerFilter });
+        setProjectDialogMode("create");
+    };
+
+    const openEditProject = (project: any) => {
+        setMutationError(null);
+        setEditingProject(project);
+        setProjectForm({
+            goal: project.goal || "",
+            customerId: project.customerId || "",
+            leadAgentId: project.leadAgentId || "",
+            status: project.status || "active",
+            requireApprovalForDone: Boolean(project.requireApprovalForDone),
+            requireReviewBeforeDone: Boolean(project.requireReviewBeforeDone),
+            commentRequiredForReview: Boolean(project.commentRequiredForReview),
+            blockStatusChangesWithPendingApproval: Boolean(project.blockStatusChangesWithPendingApproval),
+            onlyLeadCanChangeStatus: Boolean(project.onlyLeadCanChangeStatus),
+            maxActiveAgents: project.maxActiveAgents || 3,
+        });
+        setProjectDialogMode("edit");
+    };
+
+    const submitProject = async () => {
+        if (!projectForm.goal.trim()) return;
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const endpoint = projectDialogMode === "edit" && editingProject ? `/api/projects/${editingProject.id}` : "/api/projects";
+            const res = await fetch(endpoint, {
+                method: projectDialogMode === "edit" ? "PATCH" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(projectForm),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Project save failed");
+            setProjectItems((prev) => projectDialogMode === "edit"
+                ? prev.map((project) => project.id === data.project.id ? data.project : project)
+                : [data.project, ...prev]);
+            if (projectDialogMode !== "edit") setProjectFilter(data.project.id);
+            setProjectDialogMode(null);
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Project save failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    const archiveProject = async (project: any) => {
+        if (!window.confirm(`Archive project "${project.goal}"? Its tasks will no longer appear on this board.`)) return;
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Project archive failed");
+            setProjectItems((prev) => prev.filter((item) => item.id !== project.id));
+            setTasks((prev) => prev.filter((task) => task.projectId !== project.id));
+            if (projectFilter === project.id) setProjectFilter("All Projects");
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Project archive failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    const openCreateTask = () => {
+        setMutationError(null);
+        setTaskForm({ ...emptyTaskForm, projectId: selectedProject?.id || "" });
+        setTaskDialogMode("create");
+    };
+
+    const openEditTask = (task: any) => {
+        const input = taskInput(task);
+        setMutationError(null);
+        setTaskForm({
+            projectId: task.projectId,
+            title: getTaskTitle(task),
+            taskType: task.taskType || "manual_task",
+            description: getTaskDescription(task) || "",
+            goal: typeof input.goal === "string" ? input.goal : "",
+            priority: task.priority || 0,
+            assignedAgentId: task.assignedAgentId || "",
+            state: task.state || "inbox",
+            acceptanceCriteria: Array.isArray(input.acceptanceCriteria) ? input.acceptanceCriteria.join("\n") : "",
+            definitionOfDone: typeof input.definitionOfDone === "string" ? input.definitionOfDone : "",
+            deliverables: Array.isArray(input.deliverables) ? input.deliverables.join("\n") : "",
+            proofRequired: Boolean(task.proofRequired),
+            humanApprovalRequired: Boolean(task.humanApprovalRequired),
+        });
+        setTaskDialogMode("edit");
+    };
+
+    const submitTask = async () => {
+        if (!taskForm.projectId || !taskForm.title.trim()) return;
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const inputJson = {
+                title: taskForm.title,
+                description: taskForm.description,
+                goal: taskForm.goal || taskForm.title,
+                acceptanceCriteria: String(taskForm.acceptanceCriteria || "").split("\n").map((line) => line.trim()).filter(Boolean),
+                definitionOfDone: taskForm.definitionOfDone,
+                deliverables: String(taskForm.deliverables || "").split("\n").map((line) => line.trim()).filter(Boolean),
+            };
+            const isEdit = taskDialogMode === "edit" && selectedTask;
+            const res = await fetch(isEdit ? `/api/tasks/${selectedTask.id}` : "/api/tasks", {
+                method: isEdit ? "PATCH" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    ...taskForm,
+                    priority: Number(taskForm.priority) || 0,
+                    inputJson,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Task save failed");
+            setTasks((prev) => isEdit ? prev.map((task) => task.id === data.task.id ? data.task : task) : [data.task, ...prev]);
+            if (isEdit) setSelectedTask(data.task);
+            setTaskDialogMode(null);
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Task save failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    const updateTaskPatch = async (task: any, patch: Record<string, unknown>) => {
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const res = await fetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(patch),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Task update failed");
+            setTasks((prev) => prev.map((item) => item.id === data.task.id ? data.task : item));
+            setSelectedTask(data.task);
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Task update failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    const archiveTask = async (task: any) => {
+        if (!window.confirm(`Archive task "${getTaskTitle(task)}"?`)) return;
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Task archive failed");
+            setTasks((prev) => prev.filter((item) => item.id !== task.id));
+            setSelectedTask(null);
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Task archive failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
     const blockedCount = filteredTasks.filter((task) => isBlocked(task, filteredTasks)).length;
     const currentProjectMemory = projectMemoryItems.filter((item) => projectFilter === "All Projects" ? true : item.projectId === projectFilter).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -194,7 +412,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </select>
                     <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
                         <option value="All Projects">All Projects</option>
-                        {projects
+                        {projectItems
                             .filter(p => customerFilter === "All Customers" ? true : p.customerId === customerFilter)
                             .map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)
                         }
@@ -204,9 +422,23 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                     </select>
                     <button className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><Filter className="h-4 w-4" /></button>
+                    <button onClick={openCreateProject} className="flex h-10 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>
+                    <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-10 items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600"><Plus className="h-4 w-4" />Task</button>
+                    {selectedProject && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><MoreHorizontal className="h-4 w-4" /></button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                                <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />Archive project</DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
                     {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 items-center gap-2 rounded-lg border border-indigo-500/50 bg-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"><Brain className="h-4 w-4" />Project Brain</button>}
                 </div>
             </div>
+            {mutationError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <MetricCard label="Inbox" value={byState.inbox.length} hint="Queued work" />
@@ -272,6 +504,29 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             {isBlocked(selectedTask, filteredTasks) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
                             {isRecurring(selectedTask) && <span className="rounded bg-indigo-500/20 px-2.5 py-1 text-indigo-300">Recurrent</span>}
                         </div>
+                        <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-2">
+                            <label className="space-y-1 text-xs text-zinc-500">
+                                <span>State</span>
+                                <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { state: event.target.value })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500">
+                                    {taskStates.map((state) => <option key={state} value={state}>{state.replace("_", " ")}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-xs text-zinc-500">
+                                <span>Assignee</span>
+                                <select value={selectedTask.assignedAgentId || ""} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { assignedAgentId: event.target.value || null })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500">
+                                    <option value="">Unassigned</option>
+                                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-xs text-zinc-500">
+                                <span>Priority</span>
+                                <input type="number" value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500" />
+                            </label>
+                            <div className="flex items-end gap-2">
+                                <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><Edit3 className="h-4 w-4" />Edit</button>
+                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><Trash2 className="h-4 w-4" />Archive</button>
+                            </div>
+                        </div>
                         {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}
                         <Section title="Storage & Reports">{artifactsForTask(selectedTask.id).length === 0 ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-400">No files submitted yet.</div> : artifactsForTask(selectedTask.id).map((artifact) => <div key={artifact.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-4"><div className="mb-2 flex items-center justify-between gap-3 text-xs text-zinc-500"><div className="flex min-w-0 items-center gap-2"><span className="font-mono">{artifact.title || artifact.originalFilename || artifact.kind}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 uppercase tracking-wider text-[10px]">{getArtifactClassLabel(artifact.artifactClass || artifact.kind)}</span>{artifact.isCanonical && <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 uppercase tracking-wider text-[10px] text-emerald-300">canonical</span>}</div><span>{artifact.contentType}</span></div><div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-600"><span>{getArtifactImportanceLabel(artifact.importance || "operational")}</span>{artifact.originalFilename && <span className="truncate">{artifact.originalFilename}</span>}</div>{artifact.contentText ? <MarkdownRenderer content={artifact.contentText} className="text-xs" /> : <div className="text-xs text-zinc-500">Stored securely. Use Storage to preview or download.</div>}</div>)}</Section>
                         <Section title="Timeline">{getTaskEvents(selectedTask.id).length === 0 ? <><TimelineEvent time={new Date(selectedTask.createdAt).toLocaleTimeString()} desc="Task created and entered inbox." /><>{selectedTask.state !== "queued" && selectedTask.state !== "inbox" && <TimelineEvent time={new Date(selectedTask.updatedAt).toLocaleTimeString()} desc={`Status changed to ${selectedTask.state}`} />}</></> : getTaskEvents(selectedTask.id).map((event) => <TimelineEvent key={event.id} time={new Date(event.createdAt).toLocaleTimeString()} desc={event.eventType === "task_note" && event.payloadJson?.note ? `Note: ${event.payloadJson.note}` : event.eventType === "task_handoff" && event.payloadJson?.handoff ? `Handoff from ${event.payloadJson.handoff.fromRole} to ${event.payloadJson.handoff.toRole}` : event.eventType.startsWith("task_") ? `Status changed to ${event.eventType.replace("task_", "")}` : `Event: ${event.eventType}`} isNote={event.eventType === "task_note" || event.eventType === "task_handoff"} />)}</Section>
@@ -312,6 +567,129 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </div>
                 </div>
             )}
+
+            <Dialog open={Boolean(projectDialogMode)} onOpenChange={(open) => !open && setProjectDialogMode(null)}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>{projectDialogMode === "edit" ? "Edit Project" : "New Project"}</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                        <label className="space-y-1 text-sm text-zinc-400">
+                            <span>Goal</span>
+                            <textarea value={projectForm.goal} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, goal: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Customer</span>
+                                <select value={projectForm.customerId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, customerId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                    <option value="">No customer</option>
+                                    {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Lead agent</span>
+                                <select value={projectForm.leadAgentId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, leadAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                    <option value="">No lead</option>
+                                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Status</span>
+                                <select value={projectForm.status} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, status: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                    {projectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Max active agents</span>
+                                <input type="number" min={1} value={projectForm.maxActiveAgents} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, maxActiveAgents: Number(event.target.value) || 1 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            </label>
+                        </div>
+                        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-300 sm:grid-cols-2">
+                            <CheckboxRow label="Require approval for done" checked={projectForm.requireApprovalForDone} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, requireApprovalForDone: checked }))} />
+                            <CheckboxRow label="Require review before done" checked={projectForm.requireReviewBeforeDone} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, requireReviewBeforeDone: checked }))} />
+                            <CheckboxRow label="Require review comments" checked={projectForm.commentRequiredForReview} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, commentRequiredForReview: checked }))} />
+                            <CheckboxRow label="Block while approval pending" checked={projectForm.blockStatusChangesWithPendingApproval} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, blockStatusChangesWithPendingApproval: checked }))} />
+                            <CheckboxRow label="Only lead can change status" checked={projectForm.onlyLeadCanChangeStatus} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, onlyLeadCanChangeStatus: checked }))} />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setProjectDialogMode(null)} className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
+                            <button onClick={() => void submitProject()} disabled={isMutating || !projectForm.goal.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save project"}</button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={Boolean(taskDialogMode)} onOpenChange={(open) => !open && setTaskDialogMode(null)}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>{taskDialogMode === "edit" ? "Edit Task" : "New Task"}</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Project</span>
+                                <select value={taskForm.projectId} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, projectId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500 disabled:opacity-60">
+                                    <option value="">Select project</option>
+                                    {projectItems.map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Task type</span>
+                                <input value={taskForm.taskType} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, taskType: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500 disabled:opacity-60" />
+                            </label>
+                        </div>
+                        <label className="space-y-1 text-sm text-zinc-400">
+                            <span>Title</span>
+                            <input value={taskForm.title} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, title: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                        </label>
+                        <label className="space-y-1 text-sm text-zinc-400">
+                            <span>Description</span>
+                            <textarea value={taskForm.description} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, description: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>State</span>
+                                <select value={taskForm.state} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, state: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                    {taskStates.map((state) => <option key={state} value={state}>{state.replace("_", " ")}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Assignee</span>
+                                <select value={taskForm.assignedAgentId} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, assignedAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                    <option value="">Unassigned</option>
+                                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Priority</span>
+                                <input type="number" value={taskForm.priority} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            </label>
+                        </div>
+                        <label className="space-y-1 text-sm text-zinc-400">
+                            <span>Acceptance criteria</span>
+                            <textarea value={taskForm.acceptanceCriteria} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, acceptanceCriteria: event.target.value }))} placeholder="One criterion per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Definition of done</span>
+                                <textarea value={taskForm.definitionOfDone} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, definitionOfDone: event.target.value }))} className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            </label>
+                            <label className="space-y-1 text-sm text-zinc-400">
+                                <span>Deliverables</span>
+                                <textarea value={taskForm.deliverables} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, deliverables: event.target.value }))} placeholder="One deliverable per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            </label>
+                        </div>
+                        <div className="flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-300">
+                            <CheckboxRow label="Proof required" checked={taskForm.proofRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, proofRequired: checked }))} />
+                            <CheckboxRow label="Human approval required" checked={taskForm.humanApprovalRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, humanApprovalRequired: checked }))} />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setTaskDialogMode(null)} className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
+                            <button onClick={() => void submitTask()} disabled={isMutating || !taskForm.projectId || !taskForm.title.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save task"}</button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -347,6 +725,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function TimelineEvent({ time, desc, isNote }: { time: string; desc: string; isNote?: boolean }) {
     return <div className="flex items-start space-x-3"><div className={cn("mt-1 h-2 w-2 rounded-full", isNote ? "bg-indigo-500" : "bg-zinc-600")} /><div className="flex-1"><div className="text-[10px] text-zinc-500">{time}</div><div className="text-sm text-zinc-300">{desc}</div></div></div>;
+}
+
+function CheckboxRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+    return (
+        <label className="flex items-center gap-2">
+            <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-indigo-500" />
+            <span>{label}</span>
+        </label>
+    );
 }
 
 function CirclePulseIcon({ className }: { className?: string }) {
