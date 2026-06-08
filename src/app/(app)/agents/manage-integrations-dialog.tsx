@@ -160,7 +160,7 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
                 className="mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors border border-zinc-700/50"
             >
                 <Settings2 className="w-3.5 h-3.5 mr-2" />
-                Manage Runtime Integrations
+                Advanced Runtime Integrations
             </button>
 
             {isOpen && (
@@ -181,8 +181,9 @@ export function ManageIntegrationsDialog({ agentId }: { agentId: string }) {
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-8">
                             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100/90">
-                                Use this only for machine-local or truly agent-bound connector payloads. Customer mailboxes, project identities,
-                                invoice templates, and shared external accounts belong in <span className="font-semibold text-white">Knowledge & Rules</span>.
+                                Runtime integrations are advanced, agent-bound payloads. They are not automatically injected into Hermes/OpenClaw prompts.
+                                A trusted runtime must explicitly list them and lease one through the MCP integration endpoints when it needs that tool credential.
+                                Customer mailboxes, project identities, invoice templates, and shared external accounts belong in <span className="font-semibold text-white">Knowledge & Rules</span>.
                             </div>
 
                             <section>
