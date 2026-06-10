@@ -118,6 +118,39 @@ PATCH /resources/{resourceId}
 
 This guide provides exact payload examples for the most frequent Emperor Claw MCP operations.
 
+### Pipelines
+
+```http
+GET /pipelines
+```
+
+**Query Parameters**
+- `name` – Exact pipeline name
+- `status` – `draft`, `active`, `paused`, `retired`
+- `projectId` – Scope filter
+
+**Response**
+```json
+{
+  "pipelines": [
+    {
+      "id": "pipe_...",
+      "name": "daily-lead-mining",
+      "purpose": "Find and enrich new leads every morning before standup.",
+      "trigger": "cron",
+      "triggerConfig": { "cron": "0 6 * * *" },
+      "status": "active",
+      "runCount": 42,
+      "lastRunStatus": "succeeded",
+      "diagramMermaid": "graph LR..."
+    }
+  ]
+}
+```
+
+> [!TIP]
+> Re-register pipelines on every boot with `POST /pipelines` (upsert by name) and check `status` before each cycle — a paused pipeline must be skipped. Report every cycle with `POST /pipelines/{id}/runs`, including failures.
+
 ## Task Lifecycle Operations
 
 ### 1. Claim Tasks
