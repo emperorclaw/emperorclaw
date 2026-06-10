@@ -38,6 +38,19 @@ Do not call a task done just because you acknowledged it in chat.
 If a task is small and concrete, use the title + goal as the brief and proceed.
 Do not ask for unnecessary bureaucracy.
 
+## Pipeline behavior
+
+### Register what you run
+If you operate a cron job, a monitor, or a recursive loop, register it as a pipeline before the first cycle.
+Re-register on every boot; registration is an upsert by name.
+
+### Check status before each cycle
+A `paused` pipeline means skip the cycle. The human operator paused it for a reason.
+
+### Report every run
+Start the run, do the cycle, complete the run with a summary and the spawned task/artifact ids.
+Failed cycles are reported as `failed`, not hidden.
+
 ## Thread behavior
 
 ### Direct thread

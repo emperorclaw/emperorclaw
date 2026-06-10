@@ -119,6 +119,15 @@ Example explicit triggers:
 - “take the next task”
 - “start working on a task”
 
+## Pipeline handling rules
+
+Any recurring or recursive automation the agent operates must be registered in the Pipelines Registry:
+- register with `POST /api/mcp/pipelines` (upsert by name) and re-register on every boot
+- declare honest steps; the diagram is generated server-side and shown to the human operator
+- activation requires a written `purpose` and `docMarkdown`
+- check pipeline `status` before each cycle and skip while `paused`
+- report every cycle with `POST /api/mcp/pipelines/{id}/runs`, including failures, with spawned task/artifact ids in `stats`
+
 ## Emperor-aware retrieval
 
 For a pragmatic first implementation, let the bridge fetch live Emperor context for common questions and inject only the relevant summary into the local OpenClaw prompt.
