@@ -167,6 +167,49 @@ POST /api/mcp/incidents
 }
 ```
 
+## Register Pipeline (Upsert By Name — Safe On Every Boot)
+```json
+POST /api/mcp/pipelines
+{
+  "name": "daily-lead-mining",
+  "purpose": "Find and enrich new leads every morning before standup.",
+  "docMarkdown": "## How it works\n1. Scrapes sources.\n2. Enriches and dedupes.\n3. Drafts outreach after approval.",
+  "trigger": "cron",
+  "triggerConfig": { "cron": "0 6 * * *" },
+  "steps": [
+    { "name": "scrape sources", "agentRef": "lead-miner" },
+    { "name": "enrich + dedupe", "agentRef": "lead-enricher" },
+    { "name": "draft outreach", "agentRef": "copy-personalizer", "gate": true }
+  ],
+  "runtimeRef": "lobster://workflows/daily-lead-mining",
+  "agentId": "lead-miner",
+  "status": "active"
+}
+```
+
+## Start Pipeline Run
+```json
+POST /api/mcp/pipelines/{pipeline_id}/runs
+{ "status": "running", "agentId": "lead-miner" }
+```
+
+## Complete Pipeline Run
+```json
+POST /api/mcp/pipelines/{pipeline_id}/runs
+{
+  "runId": "uuid",
+  "status": "succeeded",
+  "summary": "14 new leads, 3 duplicates skipped",
+  "stats": { "taskIds": ["uuid"], "artifactIds": ["uuid"], "counts": { "leads": 14 } }
+}
+```
+
+## Report Failed Cycle In One Shot
+```json
+POST /api/mcp/pipelines/{pipeline_id}/runs
+{ "status": "failed", "summary": "Source site changed markup; scrape step aborted" }
+```
+
 ## Promote Tactic
 ```json
 POST /api/mcp/skills/promote

@@ -9,7 +9,7 @@ description: "Operate Emperor Claw as the OpenClaw control plane and durable che
 ## 0) Purpose
 Emperor Claw SaaS is the source of truth for company state.
 OpenClaw is the runtime that executes work.
-Emperor stores durable checkpoints, tasks, incidents, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), runtime integrations, and chat history.
+Emperor stores durable checkpoints, tasks, incidents, pipelines, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), runtime integrations, and chat history.
 
 Integration API URL: `https://emperorclaw.malecu.eu`
 
@@ -78,6 +78,7 @@ Activation protocol:
 ## Doctrine References
 
 For detailed implementation details, refer to:
+- [Maximize Emperor](./references/MAXIMIZE_EMPEROR.md): The full operating loop — how to use every surface at full power.
 - [API Reference](./references/api.md): Endpoints, payloads, and realtime events.
 - [Roles & Memory Protocol](./references/roles.md): Manager/worker ownership and checkpoint rules.
 - [Operational Lifecycle](./references/lifecycle.md): Task flow, lease renewal, and completion.
@@ -101,8 +102,9 @@ Required environment variables:
 Bootstrap steps:
 1. Verify auth with `GET /api/mcp/projects?limit=1`.
 2. Sync agent, customer, project, resource, and task state.
-3. Start the session lifecycle.
-4. Keep the WebSocket connected and use `/messages/sync` only as fallback.
+3. Re-register any pipelines this agent operates (`POST /api/mcp/pipelines`, upsert by name).
+4. Start the session lifecycle.
+5. Keep the WebSocket connected and use `/messages/sync` only as fallback.
 
 Public install front door:
 - `https://emperorclaw.malecu.eu/setup`
@@ -116,7 +118,7 @@ Installer expectations for the production bridge:
 - support at least `operator` and `manager` bootstrap profiles during install
 - expose simple wrapper commands for common profiles like manager
 - overwrite the new agent's generic bootstrap with an Emperor-aware agent bootstrap pack
-- seed doctrine docs such as `EMPEROR_OPERATING_DOCTRINE.md` plus worker/manager add-ons
+- seed doctrine docs such as `EMPEROR_OPERATING_DOCTRINE.md` and `MAXIMIZE_EMPEROR.md` plus worker/manager add-ons
 - install a persistent per-agent user service with an env file rather than embedding secrets in the unit
 - route direct threads as auto-reply and team threads as mention-only by default
 - extract only assistant text from local OpenClaw JSON output before posting back into Emperor chat

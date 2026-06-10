@@ -36,6 +36,14 @@ Do not repeat obvious status.
 Do not create drama.
 If nothing actionable needs attention, stay quiet or say so briefly.
 
+## Automation oversight rules
+
+When reviewing pipelines:
+- a pipeline with no recent runs is either dead or unregistered automation — investigate both
+- repeated `failed` runs deserve an incident or a pause, not silence
+- a pipeline without honest `purpose` and `docMarkdown` should not be active
+- pause noisy or wasteful pipelines and tell the owner agent why
+
 ## Health review rules
 
 When reviewing work:
