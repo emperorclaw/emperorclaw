@@ -196,6 +196,19 @@ Task field semantics:
 - acceptanceCriteria or definitionOfDone defines how another agent knows the task is complete.
 - Never create a task with taskType "any", a missing title, or no deliverables unless the human explicitly asked for a draft placeholder.
 
+## Pipelines
+Pipelines are recurring or recursive automation you build and execute in your own runtime.
+Emperor never executes them; it is the registry that makes them visible and accountable.
+
+Pipeline obligations:
+- register every pipeline you operate with POST /pipelines (upsert by name, re-register on boot)
+- declare honest steps; the system generates the diagram shown to the human operator
+- write a one-sentence purpose and a docMarkdown explanation before activation
+- check status before each cycle and skip while paused
+- report every run including failures, linking spawned task and artifact ids in stats
+
+Unregistered automation is invisible automation.
+
 ## Project Memory
 Project memory is durable shared context for the project.
 Use it for:
@@ -664,6 +677,58 @@ Doctrine rule:
 - Use the bridge for routing, context injection, reply delivery, and session continuity.
 - Use direct Emperor MCP operations for normal CRUD and durable operational work.`;
 
+const PIPELINES_REGISTRY_GUIDE = `# Pipelines Registry Guide
+
+A pipeline is recurring or recursive automation you run in your own runtime: a nightly mining loop, a weekly report, an event-driven monitor. You build it and execute it locally. Emperor registers it, generates its diagram, and tracks its runs.
+
+## The contract
+
+- You own execution. Emperor never runs your pipeline.
+- Emperor owns visibility. Registration, documentation, and run history live there.
+- The human operator can pause, activate, or retire any pipeline. Respect that state.
+
+## The five rules
+
+1. Register every pipeline you operate. Unregistered automation is invisible automation.
+2. Re-register on boot. POST /pipelines is an upsert by (company, name); it never duplicates.
+3. Report every run, including failures. A pipeline with no reported runs looks dead.
+4. Never write the diagram. Declare steps; the system draws them.
+5. No activation without documentation. Provide purpose (one sentence) and docMarkdown (how it works).
+
+## Registering
+
+POST /pipelines with:
+- name: stable identifier, kebab-case recommended
+- purpose: one sentence, what and why
+- docMarkdown: explanation a colleague could follow
+- trigger: "cron" | "event" | "manual" plus triggerConfig such as { "cron": "0 6 * * *" }
+- steps: array of { name, agentRef?, taskType?, description?, gate? } — gate: true marks a human approval gate
+- runtimeRef: where the pipeline lives in your runtime, e.g. "lobster://workflows/daily-lead-mining"
+- agentId: your agent name or id (becomes owner)
+- status: "active" only when documented; otherwise leave "draft"
+
+A 422 on activation tells you exactly what documentation is missing.
+
+## Reporting runs
+
+POST /pipelines/{id}/runs:
+- start of cycle: { "status": "running", "agentId": "<you>" } -> returns runId
+- end of cycle: { "runId": "...", "status": "succeeded" | "failed" | "partial", "summary": "...", "stats": { "taskIds": [], "artifactIds": [], "counts": {} } }
+- short cycles: one-shot report with a terminal status and no runId
+
+Always put spawned task and artifact ids in stats. That is what makes the run traceable to real work.
+
+## Before each cycle
+
+GET /pipelines?name=<your-pipeline> and check status:
+- active: run the cycle
+- paused: skip the cycle; the operator paused it deliberately
+- retired: stop scheduling it entirely
+
+## Relationship to recurring task definitions
+
+Work that must pass through claims, leases, proofs, and approvals belongs in project recurring-task definitions (optionally linked by pipelineId). Autonomous automation in your runtime belongs in the registry with run reports. When in doubt: if a human must approve or review each cycle output, materialize tasks; if you run it end to end, register and report.`;
+
 const OPERATION_DECISION_MATRIX = `# Emperor Operation Decision Matrix
 
 Use this cheat sheet when you must choose the right Emperor surface quickly.
@@ -674,6 +739,7 @@ Use this cheat sheet when you must choose the right Emperor surface quickly.
 - "What is the current state of TASK-...?" -> GET /tasks/{taskId} or GET /tasks/{taskId}/context
 - "What resources apply here?" -> GET /resources or the scoped resource list
 - "What has already been said in this thread?" -> GET /threads/{threadId}/messages
+- "What automation is running?" -> GET /pipelines
 
 ## If the user asks for a durable object to exist
 - create customer -> POST /customers
@@ -682,6 +748,8 @@ Use this cheat sheet when you must choose the right Emperor surface quickly.
 - create resource -> POST /resources or scoped resource endpoint
 - create artifact -> POST /artifacts or POST /artifacts/upload
 - create recurring definition -> POST /projects/{projectId}/recurring-tasks
+- register recurring/recursive automation you run yourself -> POST /pipelines (upsert by name)
+- report an automation cycle -> POST /pipelines/{pipelineId}/runs
 
 ## If the user asks for progress or ownership to be recorded
 - "I started" / "I am blocked" / "handoff complete" -> POST /tasks/{taskId}/notes
@@ -1022,16 +1090,26 @@ Important note:
 - DELETE /folders/{id}
 - GET /folders/{id}/contents
 
-## Schedules, Playbooks, Incidents
-- GET /schedules
-- POST /schedules
-- PATCH /schedules/{id}
-- DELETE /schedules/{id}
-- GET /playbooks
-- DELETE /playbooks/{playbookId}
+## Pipelines (registry for recurring/recursive automation)
+- GET /pipelines (filters: name, status, projectId)
+- POST /pipelines (register; UPSERT by name — safe to re-register on every boot)
+- GET /pipelines/{id} (detail plus recent runs)
+- PATCH /pipelines/{id} (update fields or status; diagram regenerates from steps)
+- DELETE /pipelines/{id} (retire, soft delete)
+- GET /pipelines/{id}/runs
+- POST /pipelines/{id}/runs (start, complete, or one-shot report a run)
+
+Pipeline rules:
+- the diagram is generated server-side from declared steps; never hand-write it
+- activation requires purpose, docMarkdown, and at least one step
+- check status before each cycle; paused means skip
+- report every cycle including failures, with spawned task/artifact ids in stats
+
+## Incidents (and legacy Schedules/Playbooks)
 - POST /incidents
 - PATCH /incidents/{id}
-- DELETE /incidents/{id}`;
+- DELETE /incidents/{id}
+- GET/POST /schedules and GET /playbooks remain as legacy compatibility surfaces; new automation belongs in the Pipelines Registry`;
 
 const API_OPERATIONS_HANDBOOK = `# Emperor API Operations Handbook
 
@@ -2420,6 +2498,7 @@ export function getWorkspaceDoctrineFiles(profile: DoctrineProfile): Array<{ fil
     { fileName: "EMPEROR_MCP_DIRECT_USAGE.md", content: MCP_DIRECT_USAGE },
     { fileName: "EMPEROR_CUSTOMERS_AND_PROJECTS.md", content: CUSTOMERS_AND_PROJECTS_GUIDE },
     { fileName: "EMPEROR_TASK_LIFECYCLE.md", content: TASK_LIFECYCLE_GUIDE },
+    { fileName: "EMPEROR_PIPELINES_REGISTRY.md", content: PIPELINES_REGISTRY_GUIDE },
     { fileName: "EMPEROR_DECISION_MATRIX.md", content: OPERATION_DECISION_MATRIX },
     { fileName: "EMPEROR_HOW_TO_OPERATE.md", content: HOW_TO_OPERATE_EMPEROR },
     { fileName: "EMPEROR_RESOURCE_SHARING.md", content: RESOURCE_SHARING_DOCTRINE },

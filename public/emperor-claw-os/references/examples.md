@@ -48,19 +48,94 @@ POST /api/mcp/tasks/{task_id}/result
 }
 ```
 
-## Upload Artifact
+## Create Artifact Metadata Or External Reference
 ```json
 POST /api/mcp/artifacts
 {
-  "projectId": "uuid",
-  "taskId": "uuid",
+  "customerId": "uuid",
   "kind": "deliverable",
-  "contentType": "text/markdown",
-  "contentText": "# Deliverable\nAll good.",
+  "contentType": "application/pdf",
+  "title": "Northstar Summary Deck",
+  "storageProvider": "external",
+  "storageUrl": "https://files.example.com/northstar-summary-deck.pdf",
+  "sha256": "<real-file-sha256>",
+  "sizeBytes": 482193,
   "agentId": "uuid"
 }
 ```
-Use artifact kinds to distinguish source documents, proofs, deliverables, templates, and export bundles. Do not upload raw logs or reconnect noise as artifacts.
+Use this route for metadata-first records or external-storage references. Do not send fresh file bytes here. New file-backed content belongs on `POST /api/mcp/artifacts/upload`.
+
+## Create Folder
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "name": "malecu",
+  "kind": "finance-root"
+}
+```
+Create child folders intentionally and inspect `/api/mcp/folders/{id}/contents` before creating duplicates.
+
+## Create Child Folder
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "parentFolderId": "<2026-04-folder-id>",
+  "name": "invoices"
+}
+```
+The server derives the resulting folder path from the parent folder plus the new folder name.
+
+## Build A Nested Folder Tree
+If you want a visible structure like `/malecu/invoices/2026`, create it one level at a time:
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "name": "malecu"
+}
+```
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "parentFolderId": "<malecu-folder-id>",
+  "name": "invoices"
+}
+```
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "uuid",
+  "parentFolderId": "<invoices-folder-id>",
+  "name": "2026"
+}
+```
+
+Then upload into the last folder using `folderId=<2026-folder-id>`.
+
+## Upload File-Backed Artifact To Folder
+```text
+POST /api/mcp/artifacts/upload
+multipart/form-data:
+- file: <binary>
+- kind: invoice
+- artifactClass: source_document
+- importance: record
+- customerId: uuid
+- folderId: <invoices-folder-id>
+- title: Invoice 2026-0001 Northstar Forge
+```
+This stores bytes in Bunny and metadata in Emperor. Prefer folder-scoped uploads for durable files.
+
+## Move Or Replace Existing Artifact
+- `PATCH /api/mcp/artifacts/{id}/move` when the file belongs in a different folder/path.
+- `PATCH /api/mcp/artifacts/{id}/replace` when you are updating document bytes but preserving the artifact identity.
+- Search first with `GET /api/mcp/artifacts?search=...&folderId=...&projectId=...&customerId=...` before creating duplicates.
 
 ## Send Group Chat
 ```json
@@ -90,6 +165,49 @@ POST /api/mcp/incidents
   "reasonCode": "BLOCKED",
   "summary": "Upstream API down"
 }
+```
+
+## Register Pipeline (Upsert By Name — Safe On Every Boot)
+```json
+POST /api/mcp/pipelines
+{
+  "name": "daily-lead-mining",
+  "purpose": "Find and enrich new leads every morning before standup.",
+  "docMarkdown": "## How it works\n1. Scrapes sources.\n2. Enriches and dedupes.\n3. Drafts outreach after approval.",
+  "trigger": "cron",
+  "triggerConfig": { "cron": "0 6 * * *" },
+  "steps": [
+    { "name": "scrape sources", "agentRef": "lead-miner" },
+    { "name": "enrich + dedupe", "agentRef": "lead-enricher" },
+    { "name": "draft outreach", "agentRef": "copy-personalizer", "gate": true }
+  ],
+  "runtimeRef": "lobster://workflows/daily-lead-mining",
+  "agentId": "lead-miner",
+  "status": "active"
+}
+```
+
+## Start Pipeline Run
+```json
+POST /api/mcp/pipelines/{pipeline_id}/runs
+{ "status": "running", "agentId": "lead-miner" }
+```
+
+## Complete Pipeline Run
+```json
+POST /api/mcp/pipelines/{pipeline_id}/runs
+{
+  "runId": "uuid",
+  "status": "succeeded",
+  "summary": "14 new leads, 3 duplicates skipped",
+  "stats": { "taskIds": ["uuid"], "artifactIds": ["uuid"], "counts": { "leads": 14 } }
+}
+```
+
+## Report Failed Cycle In One Shot
+```json
+POST /api/mcp/pipelines/{pipeline_id}/runs
+{ "status": "failed", "summary": "Source site changed markup; scrape step aborted" }
 ```
 
 ## Promote Tactic

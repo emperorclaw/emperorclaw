@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.8
+
+- added the Pipelines Registry contract to all seeded agent manuals: register on boot (upsert by name), server-generated diagrams, required documentation before activation, run reporting including failures
+- new seeded manual EMPEROR_PIPELINES_REGISTRY.md with the full agent-first pipeline contract
+- object model, decision matrix, and API reference manuals updated with pipelines endpoints and obligations
+- legacy schedules/playbooks demoted to compatibility surfaces in the API reference
+
 ## 0.2.7
 
 - increased the default local brain timeout from 120s to 300s and made it configurable

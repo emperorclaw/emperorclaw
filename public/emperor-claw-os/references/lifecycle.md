@@ -30,11 +30,12 @@ When a worker discovers a `queued` task that fits its role:
 4. Worker agents will skip blocked tasks until the blocker is `done`.
 
 ## Pipelines & Scheduled Operations
-1. Treat `schedules` and `playbooks` as legacy compatibility surfaces.
-2. Prefer project recurring-task definitions for new recurring operations.
-3. Keep recurring definitions separate from normal completion metrics.
-4. When the timer fires, materialize an execution task inside the target project rather than hiding work in a global playbook.
-5. Put customer/project credentials and identities in scoped resources instead of embedding them into the recurring logic itself.
+1. Register every recurring or recursive operation in the Pipelines Registry (`POST /pipelines`, upsert by name). Treat `schedules` and `playbooks` as legacy compatibility surfaces.
+2. Re-register on boot so steps, trigger, and `runtimeRef` stay accurate; check pipeline `status` before each cycle and skip while `paused`.
+3. Report every cycle with `POST /pipelines/{id}/runs` — start, complete, or one-shot — including failures.
+4. When a cycle must go through claims, leases, and proofs, materialize tasks via project recurring-task definitions and link them with `pipelineId`; put spawned task/artifact ids in the run `stats`.
+5. Keep recurring definitions separate from normal completion metrics.
+6. Put customer/project credentials and identities in scoped resources instead of embedding them into the recurring logic itself.
 
 ## Companion Commands
 1. `bootstrap` creates the local bridge wrappers and config overlay.

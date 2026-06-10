@@ -86,7 +86,8 @@ Validation:
 New operator workspaces are seeded with human-readable manuals that teach the agent how to operate Emperor:
 - object model and operating doctrine
 - direct MCP usage
-- customers, projects, tasks, memory, resources, artifacts, folders, approvals, incidents, schedules
+- customers, projects, tasks, memory, resources, artifacts, folders, approvals, incidents, pipelines
+- the pipelines registry contract: register on boot, generated diagrams, required documentation, run reporting
 - endpoint choice guidance
 - direct-thread vs team-thread behavior
 - visible `@agentname` delegation
