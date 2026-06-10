@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions, schedules } from "@/db/schema";
+import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -19,7 +19,6 @@ export default async function ProjectsPage() {
     const allEvents = await db.select().from(taskEvents).where(eq(taskEvents.companyId, companyId));
     const allProjectMemory = await db.select().from(projectMemory).where(eq(projectMemory.companyId, companyId));
     const allRecurringTaskDefinitions = await db.select().from(recurringTaskDefinitions).where(and(eq(recurringTaskDefinitions.companyId, companyId), isNull(recurringTaskDefinitions.deletedAt)));
-    const allSchedules = await db.select().from(schedules).where(and(eq(schedules.companyId, companyId), isNull(schedules.deletedAt)));
 
     return (
         <ProjectsClient
@@ -31,7 +30,6 @@ export default async function ProjectsPage() {
             taskEvents={allEvents}
             initialProjectMemory={allProjectMemory}
             recurringDefinitions={allRecurringTaskDefinitions}
-            initialSchedules={allSchedules}
         />
     );
 }

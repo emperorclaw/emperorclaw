@@ -145,7 +145,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                         <Tag label={`${customer.blockedCount || 0} blocked`} tone="rose" />
                                         <Tag label={`${customer.pendingApprovalCount || 0} approvals`} tone="amber" />
                                         <Tag label={`${customer.incidentCount || 0} attention items`} tone="slate" />
-                                        <Tag label={`${customer.scheduleCount || 0} schedules`} tone="indigo" />
+                                        <Tag label={`${customer.pipelineCount || 0} pipelines`} tone="indigo" />
                                     </div>
                                 </div>
                                 <Sparkles className="mt-1 h-5 w-5 text-indigo-400/70" />

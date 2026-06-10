@@ -21,7 +21,6 @@ type Props = {
     taskEvents?: any[];
     initialMessages?: any[];
     initialProjectMemory?: any[];
-    initialSchedules?: any[];
 };
 
 const isRecurring = (task: any) => task?.taskKind === "recurring" || task?.taskKind === "recurrent";
