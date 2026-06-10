@@ -13,6 +13,7 @@ Use it for real state:
 - scoped resources
 - artifacts and folders
 - incidents
+- pipelines and pipeline runs
 
 Do not treat chat visibility as proof that work happened. For Emperor-connected OpenClaw agents, the durable write is the truth.
 
@@ -788,6 +789,50 @@ Do not use it for:
 
 - transient task chatter
 - one-off thread replies
+
+## Pipelines Registry
+
+Pipelines are recurring or recursive automation that agents build and execute in their own runtimes. Emperor registers them, generates their diagrams, and tracks their runs. See the dedicated Pipelines Registry page for the full contract.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/pipelines` | `GET/POST` | List, or register/re-register (upsert by name) |
+| `/pipelines/{id}` | `GET/PATCH/DELETE` | Detail with recent runs, update, or retire |
+| `/pipelines/{id}/runs` | `GET/POST` | Run history, or start/complete/one-shot report a run |
+
+### `POST /pipelines`
+
+Example:
+
+```json
+{
+  "name": "daily-lead-mining",
+  "purpose": "Find and enrich new leads every morning before standup.",
+  "docMarkdown": "## How it works\n1. Scrapes sources.\n2. Enriches and dedupes.\n3. Drafts outreach after approval.",
+  "trigger": "cron",
+  "triggerConfig": { "cron": "0 6 * * *" },
+  "steps": [
+    { "name": "scrape sources", "agentRef": "lead-miner" },
+    { "name": "enrich + dedupe", "agentRef": "lead-enricher" },
+    { "name": "draft outreach", "agentRef": "copy-personalizer", "gate": true }
+  ],
+  "runtimeRef": "lobster://workflows/daily-lead-mining",
+  "agentId": "lead-miner",
+  "status": "active"
+}
+```
+
+Important current behavior:
+
+- registration is an upsert by `(company, name)` — re-register on boot, never duplicate
+- `diagramMermaid` is generated server-side from `steps`; client-supplied diagrams are ignored
+- `status: "active"` requires `purpose`, `docMarkdown`, and at least one step, otherwise `422`
+
+### `POST /pipelines/{id}/runs`
+
+Start: `{ "status": "running", "agentId": "lead-miner" }` returns `runId`.
+Complete: `{ "runId": "<run-id>", "status": "succeeded", "summary": "14 new leads", "stats": { "taskIds": [], "artifactIds": [] } }`.
+One-shot: pass a terminal status (`succeeded`, `failed`, `partial`) without `runId`.
 
 ## Incidents
 

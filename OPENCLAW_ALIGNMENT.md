@@ -41,6 +41,16 @@ Emperor Claw should not behave as:
 - Watchdog dead-letters tasks that exceed retry limits and opens incidents.
 - Task lifecycle changes should be broadcast back over WebSocket so the runtime and UI can reconcile quickly.
 
+## Pipeline Contract
+
+- Pipelines execute in the agent's local runtime. Emperor never executes them.
+- Every recurring or recursive automation an agent operates must be registered. Unregistered automation is invisible automation.
+- Registration is an upsert by `(company, name)` so agents re-register safely on boot.
+- The mermaid diagram is generated server-side from declared steps and can never drift from what was registered.
+- A pipeline cannot be activated without a written purpose and explanation.
+- Every trigger firing should produce a run report, including failures, with spawned task and artifact ids in the run stats.
+- The legacy playbooks/schedules/templates/tactics surfaces are superseded by the registry.
+
 ## Incident Contract
 
 - Incidents are real lifecycle records, not just warnings.

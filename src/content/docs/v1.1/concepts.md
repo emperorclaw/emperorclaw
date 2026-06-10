@@ -12,6 +12,7 @@ The core rule is simple:
 - artifacts should hold real deliverables
 - resources should hold reusable context
 - project memory should hold durable shared understanding
+- pipelines should reflect real automation: registered, documented, and reporting runs
 
 If the system says something happened, another user should be able to inspect Emperor and see that it really happened.
 
@@ -24,6 +25,7 @@ If the system says something happened, another user should be able to inspect Em
 - Resource: reusable scoped context such as doctrine, SOPs, templates, and references
 - Artifact: a durable file, deliverable, proof, or preserved work product
 - Incident: a watchdog or operator alert that requires acknowledgment or resolution
+- Pipeline: recurring or recursive automation an agent runs in its own runtime, registered in Emperor with generated diagram, required documentation, and reported runs
 
 ## Task Lifecycle
 
