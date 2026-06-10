@@ -257,10 +257,54 @@ export const projectMemory = pgTable("project_memory", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// --- Pipelines Registry ---
+// Agent-first: pipelines are built and executed in the agent's local runtime
+// (OpenClaw / Lobster / cron). Emperor is the registry: agents register what
+// they run, the system auto-generates the diagram, and runs are reported back.
+export const pipelines = pgTable("pipelines", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: 'set null' }),
+    ownerAgentId: uuid("owner_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    name: text("name").notNull(),
+    purpose: text("purpose"), // one-sentence "what this does and why" — required before activation
+    docMarkdown: text("doc_markdown"), // agent-written explanation — required before activation
+    trigger: text("trigger").default('manual').notNull(), // 'cron' | 'event' | 'manual'
+    triggerConfig: jsonb("trigger_config").default('{}').notNull(), // { cron: "0 6 * * *" } | { event: "..." }
+    stepsJson: jsonb("steps_json").default('[]').notNull(), // [{ name, agentRef?, taskType?, description?, gate? }]
+    diagramMermaid: text("diagram_mermaid"), // always regenerated server-side from stepsJson — never hand-written
+    runtimeRef: text("runtime_ref"), // local workflow id/path in the agent's own runtime
+    status: text("status").default('draft').notNull(), // 'draft' | 'active' | 'paused' | 'retired'
+    runCount: integer("run_count").default(0).notNull(),
+    lastRunAt: timestamp("last_run_at"),
+    lastRunStatus: text("last_run_status"),
+    nextRunAt: timestamp("next_run_at"),
+    createdByType: text("created_by_type").default('agent').notNull(), // 'agent' | 'human'
+    createdById: uuid("created_by_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
+export const pipelineRuns = pgTable("pipeline_runs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    pipelineId: uuid("pipeline_id").notNull().references(() => pipelines.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    status: text("status").default('running').notNull(), // 'running' | 'succeeded' | 'failed' | 'partial'
+    summary: text("summary"),
+    statsJson: jsonb("stats_json").default('{}').notNull(), // { taskIds: [], artifactIds: [], counts: {} }
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const recurringTaskDefinitions = pgTable("recurring_task_definitions", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    pipelineId: uuid("pipeline_id").references(() => pipelines.id, { onDelete: 'set null' }),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: 'set null' }),
     name: text("name").notNull(),
     taskType: text("task_type").notNull(),

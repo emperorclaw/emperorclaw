@@ -113,6 +113,20 @@
       "when": 1777075200000,
       "tag": "0015_ops-events",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1777161600000,
+      "tag": "0016_user-onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1781136000000,
+      "tag": "0017_pipelines",
+      "breakpoints": true
     }
   ]
 }

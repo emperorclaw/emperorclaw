@@ -1,7 +1,8 @@
+// Pipelines registry — agent-first: agents register pipelines via MCP.
 import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
-import { playbooks, schedules, companyMembers, projects, customers } from "@/db/schema";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { companyMembers, pipelines, pipelineRuns, agents, projects, customers } from "@/db/schema";
+import { eq, desc, and, isNull, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import PipelinesClient from "./pipelines-client";
 
@@ -24,36 +25,32 @@ export default async function PipelinesPage() {
 
     const companyId = membership.companyId;
 
-    // Fetch Playbooks
-    const playbookList = await db.select().from(playbooks)
-        .where(eq(playbooks.companyId, companyId))
-        .orderBy(desc(playbooks.createdAt));
+    const pipelineList = await db.select().from(pipelines)
+        .where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt)))
+        .orderBy(desc(pipelines.updatedAt));
 
-    // Fetch Schedules
-    const scheduleList = await db.select().from(schedules)
-        .where(eq(schedules.companyId, companyId))
-        .orderBy(desc(schedules.createdAt));
+    const pipelineIds = pipelineList.map(p => p.id);
+    const recentRuns = pipelineIds.length > 0
+        ? await db.select().from(pipelineRuns)
+            .where(and(eq(pipelineRuns.companyId, companyId), inArray(pipelineRuns.pipelineId, pipelineIds)))
+            .orderBy(desc(pipelineRuns.startedAt))
+            .limit(200)
+        : [];
 
-    // Fetch Projects map for the human-readable table
-    const projectList = await db.select({ id: projects.id, goal: projects.goal }).from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
+    const agentList = await db.select({ id: agents.id, name: agents.name }).from(agents)
+        .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+    const projectList = await db.select({ id: projects.id, goal: projects.goal }).from(projects)
+        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
+    const customerList = await db.select({ id: customers.id, name: customers.name }).from(customers)
+        .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
 
-    const projectsMap: Record<string, string> = {};
-    projectList.forEach(p => {
-        projectsMap[p.id] = p.goal;
-    });
-
-    // Fetch Customers map
-    const customerList = await db.select({ id: customers.id, name: customers.name }).from(customers).where(eq(customers.companyId, companyId));
-
-    const customersMap: Record<string, string> = {};
-    customerList.forEach(c => {
-        customersMap[c.id] = c.name;
-    });
-
-    return <PipelinesClient
-        initialPlaybooks={playbookList}
-        initialSchedules={scheduleList}
-        projectsMap={projectsMap}
-        customersMap={customersMap}
-    />;
+    return (
+        <PipelinesClient
+            initialPipelines={JSON.parse(JSON.stringify(pipelineList))}
+            initialRuns={JSON.parse(JSON.stringify(recentRuns))}
+            agentsMap={Object.fromEntries(agentList.map(a => [a.id, a.name]))}
+            projectsMap={Object.fromEntries(projectList.map(p => [p.id, p.goal]))}
+            customersMap={Object.fromEntries(customerList.map(c => [c.id, c.name]))}
+        />
+    );
 }
