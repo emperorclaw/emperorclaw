@@ -5,7 +5,7 @@ export const versions: DocVersion[] = [
   {
     id: 'v1.1',
     label: 'v1.1 (Stable)',
-    description: 'Includes isShared injection, agent-to-agent replies, and durable checkpoints.',
+    description: 'Includes the agent-first pipelines registry, isShared injection, agent-to-agent replies, and durable checkpoints.',
     pages: [
       { slug: 'overview', title: 'Overview', file: 'overview.md' },
       { slug: 'why-emperor-vs-openclaw', title: 'Why Emperor vs Plain OpenClaw', file: 'why-emperor-vs-openclaw.md' },
@@ -17,6 +17,7 @@ export const versions: DocVersion[] = [
       { slug: 'hermes-runtime', title: 'Hermes Agent Runtime', file: 'hermes-runtime.md' },
       { slug: 'concepts', title: 'Core Concepts', file: 'concepts.md' },
       { slug: 'lifecycle', title: 'Work Lifecycle', file: 'lifecycle.md' },
+      { slug: 'pipelines', title: 'Pipelines Registry', file: 'pipelines.md' },
       { slug: 'messaging', title: 'Messaging & Inbox Rules', file: 'messaging.md' },
       { slug: 'incidents', title: 'Incidents & Watchdogs', file: 'incidents.md' },
       { slug: 'retention', title: 'Archiving & Retention', file: 'retention.md' },
