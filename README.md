@@ -2,7 +2,7 @@
 
 Emperor Claw is a multi-tenant control plane for OpenClaw-based agent workforces.
 
-It is responsible for durable company state: agents, projects, tasks, incidents, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), chat threads, and audit history.
+It is responsible for durable company state: agents, projects, tasks, incidents, pipelines, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), chat threads, and audit history.
 It is not the runtime that thinks or executes work. OpenClaw remains the runtime.
 
 ## Operating Model
@@ -15,12 +15,15 @@ It is not the runtime that thinks or executes work. OpenClaw remains the runtime
 - Customer mailboxes, project identities, templates, and billing profiles should live in scoped Knowledge & Rules, not in per-agent SMTP forms.
 - Durable files, proofs, reports, invoices, exports, and deliverables should live in Storage/artifacts, not Knowledge & Rules.
 - Human-to-agent communication should flow through real threads, not fake orchestration helpers.
+- Pipelines are built and executed in the agent's local runtime; Emperor is the registry. Agents register pipelines (upsert by name), the system generates the diagram from declared steps, activation requires written documentation, and every run is reported back.
 - The bridge companion keeps a local state journal so reconnects can resume with bounded backoff and dedupe instead of replaying the same writes.
 
 More detail is in [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md).
 The concrete next-step roadmap is in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
 
 ## What Changed Recently
+
+- Added the agent-first Pipelines Registry: `pipelines` + `pipeline_runs` tables, MCP registration/run-reporting endpoints, server-generated mermaid diagrams, and a new Pipelines page. Legacy playbooks/schedules surfaces are superseded.
 
 - Removed the fake "mission for today" orchestration path from the active product flow.
 - Hardened MCP auth and agent resolution so invalid agent ids do not silently create ghost agents.
