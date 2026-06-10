@@ -85,33 +85,132 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
   - `company_token_created`
   - `runtime_degraded` or similar lifecycle alerts if present in a given deployment
 
-### Pipelines & Schedules
-- **`GET /api/mcp/schedules`**: Read registered schedules.
-- **`POST /api/mcp/schedules`**: Upsert cron definitions.
-- **`PATCH /api/mcp/schedules/{id}`**: Update schedule.
-- **`DELETE /api/mcp/schedules/{id}`**: Soft-delete schedule.
-- **`GET /api/mcp/playbooks`**: Read instruction templates.
-- **`DELETE /api/mcp/playbooks/{playbook_id}`**: Soft-delete playbook.
-These endpoints are legacy compatibility surfaces. Prefer project recurring-task definitions, scoped resources, and project agent profiles for new automation.
+### Pipelines Registry (preferred)
+Agent-first contract: you build and execute pipelines in your own local runtime (cron jobs, Lobster workflows, recursive loops). Emperor is the registry — register what you run, keep it documented, and report every run back.
 
-### Artifacts
-- **`POST /api/mcp/artifacts`**: Upload structured business files or artifacts.
-- **`GET /api/mcp/artifacts`**: Fetch artifacts.
-- **`DELETE /api/mcp/artifacts/{id}`**: Soft-delete artifact.
-Artifacts should represent source documents, working files, proofs, deliverables, templates, or export bundles. Do not use artifact storage for raw logs, task chatter, or reconnect traces.
-When storing an artifact by reference URL instead of inline text, send a real `sha256` and `sizeBytes`. Do not hash the URL string.
+- **`GET /api/mcp/pipelines`**: List registered pipelines. Filters: `name`, `status`, `projectId`.
+- **`POST /api/mcp/pipelines`**: Register a pipeline. UPSERT by `(company, name)` — safe to re-register on every boot. Body: `{ name, purpose, docMarkdown, trigger: 'cron'|'event'|'manual', triggerConfig, steps: [{ name, agentRef?, taskType?, description?, gate? }], runtimeRef, projectId?, customerId?, agentId?, status? }`. The mermaid diagram is generated server-side from `steps` — never write it yourself. Activation (`status: 'active'`) requires `purpose`, `docMarkdown`, and at least one step.
+- **`GET /api/mcp/pipelines/{id}`**: Pipeline detail plus recent runs.
+- **`PATCH /api/mcp/pipelines/{id}`**: Update fields or status. Diagram regenerates when steps/trigger change.
+- **`DELETE /api/mcp/pipelines/{id}`**: Retire (soft delete).
+- **`GET /api/mcp/pipelines/{id}/runs`**: Run history.
+- **`POST /api/mcp/pipelines/{id}/runs`**: Report runs. Start: `{ status: 'running', agentId? }` returns `runId`. Complete: `{ runId, status: 'succeeded'|'failed'|'partial', summary?, stats? }`. One-shot: pass a terminal `status` without `runId`. Put spawned `taskIds`/`artifactIds` in `stats` for traceability.
+
+Rules:
+- Register every recurring or recursive pipeline you operate. Unregistered automation is invisible to the human operator.
+- Re-register on boot so `runtimeRef` and steps stay accurate.
+- Report a run for every trigger firing, including failures.
+
+### Schedules & Playbooks (legacy)
+- **`GET|POST /api/mcp/schedules`**, **`PATCH|DELETE /api/mcp/schedules/{id}`**
+- **`GET /api/mcp/playbooks`**, **`DELETE /api/mcp/playbooks/{playbook_id}`**
+These are legacy compatibility surfaces. New automation should use the Pipelines Registry above plus project recurring-task definitions.
+
+### Artifacts & Folders
+#### Folder endpoints
+- **`POST /api/mcp/folders`**: Create a folder.
+- **`GET /api/mcp/folders/{id}`**: Read folder metadata.
+- **`PATCH /api/mcp/folders/{id}`**: Rename/update folder metadata or move it under a new parent.
+- **`DELETE /api/mcp/folders/{id}`**: Soft-delete a folder.
+- **`GET /api/mcp/folders/{id}/contents`**: List child folders and artifacts in a folder.
+
+#### Artifact endpoints
+- **`POST /api/mcp/artifacts`**: Create artifact metadata or an external-storage reference directly.
+- **`POST /api/mcp/artifacts/upload`**: Upload a file-backed artifact via multipart form-data.
+- **`GET /api/mcp/artifacts`**: Search/list artifacts. Supported filters include `projectId`, `taskId`, `folderId`, `customerId`, `agentId`, `kind`, `artifactClass`, `importance`, `contentType`, `isCanonical`, `search`, `startDate`, `endDate`.
+- **`GET /api/mcp/artifacts/{id}`**: Read artifact metadata.
+- **`PATCH /api/mcp/artifacts/{id}`**: Update artifact metadata.
+- **`PATCH /api/mcp/artifacts/{id}/move`**: Move an artifact into another folder/path.
+- **`PATCH /api/mcp/artifacts/{id}/replace`**: Replace an artifact's file/blob while preserving metadata identity.
+- **`GET /api/mcp/artifacts/{id}/download`**: Download the artifact content.
+- **`DELETE /api/mcp/artifacts/{id}/delete`**: Soft-delete artifact.
+
+Artifacts should represent source documents, working files, proofs, deliverables, templates, statements, invoices, expense documents, or export bundles. Do not use artifact storage for raw logs, task chatter, or reconnect traces.
+
+Artifacts are no longer required to belong to both a project and task. They may be scoped at the company, customer, project, task, agent, or folder level depending on the work. Use the narrowest durable scope that makes sense.
+
+Folders are first-class and should be used intentionally. Prefer creating folders and placing artifacts into them instead of relying on flat uploads.
+
+New file-backed artifacts should default to Bunny-backed storage via the upload endpoints. Emperor DB remains the metadata/search/permissions layer; Bunny stores the blob contents.
+
+Inline `contentText` storage is disabled on `POST /api/mcp/artifacts`. For new bytes, use `POST /api/mcp/artifacts/upload`. Keep `POST /api/mcp/artifacts` for metadata-first creation or externally stored content references.
+
+Folder CRUD expectations:
+
+- `POST /api/mcp/folders` requires `name`
+- `parentFolderId` is optional and creates a child folder under an existing folder
+- the server derives the folder `path`; agents should not invent `path` on create
+- `GET /api/mcp/folders/{id}/contents` returns direct child folders plus direct artifacts in that folder
+- `PATCH /api/mcp/folders/{id}` renames the folder or moves it under a new parent folder
+- `DELETE /api/mcp/folders/{id}` archives the folder subtree and hides it from normal browsing
+
+Artifact CRUD expectations:
+
+- search first with `GET /api/mcp/artifacts` and/or inspect folder contents before creating duplicates
+- use `POST /api/mcp/artifacts/upload` for fresh file bytes
+- use `POST /api/mcp/artifacts` only for metadata or external-storage references
+- use `PATCH /api/mcp/artifacts/{id}` for metadata-only changes
+- use `PATCH /api/mcp/artifacts/{id}/move` when the file should keep the same identity but move folder/path
+- use `PATCH /api/mcp/artifacts/{id}/replace` when the file should keep the same identity but get new bytes
+- use `DELETE /api/mcp/artifacts/{id}/delete` to archive an artifact from normal views
+
+Recommended operator flow:
+
+1. Read the current folder contents or search existing artifacts.
+2. Create missing folders first.
+3. Upload the new file into the chosen folder.
+4. Patch metadata only if needed after upload.
+5. Prefer move/replace over creating duplicate near-identical files.
+
+`POST /api/mcp/artifacts/upload` expects multipart form-data with:
+
+- required: `file`, `kind`, and one of `projectId` or `customerId`
+- optional: `taskId`, `folderId`, `title`, `artifactClass`, `importance`, `contentType`, `metadataJson`, `agentId`, `visibility`, `retentionPolicy`, `checksum`
+- rule: `taskId` requires `projectId`
+
+Canonical tenant-safe Bunny keys follow this shape:
+
+```text
+companies/<companyId>/artifacts/<logical-path>
+```
+
+Visible logical paths should remain human-readable, for example:
+
+```text
+artifacts/malecu/2026/2026-03/invoices/2026-03-10-invoice-2026-0001-northstar-forge.pdf
+```
+
+Folder creation examples:
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "<customer-id>",
+  "name": "2026-04"
+}
+```
+
+```json
+POST /api/mcp/folders
+{
+  "customerId": "<customer-id>",
+  "parentFolderId": "<2026-04-folder-id>",
+  "name": "invoices"
+}
+```
 
 ### Scoped Resources
-- **`GET /api/mcp/customers/{id}/resources`**: List customer-scoped resources.
-- **`POST /api/mcp/customers/{id}/resources`**: Create a customer-scoped resource such as a mailbox, identity, or template.
+- **`GET /api/mcp/resources`**: List all reachable resources. Supported query params: `customerId`, `projectId`, `agentId`, `scopeType`, `scopeId`, `resourceType`, `provider`, `name`, `displayName`, `search` (or `q`), `status`, `isShared`.
+- **`GET /api/mcp/customers/{id}/resources`**: List customer-scoped resources. Supports same search/filter params as global list.
+- **`POST /api/mcp/customers/{id}/resources`**: Create a customer-scoped resource. Accepts `configText` (markdown) and `secretText`.
 - **`PATCH /api/mcp/customers/{id}/resources/{resource_id}`**: Update a customer-scoped resource.
 - **`DELETE /api/mcp/customers/{id}/resources/{resource_id}`**: Archive a customer-scoped resource.
-- **`GET /api/mcp/projects/{project_id}/resources`**: List project-scoped resources.
+- **`GET /api/mcp/projects/{project_id}/resources`**: List project-scoped resources. Supports search/filter params.
 - **`POST /api/mcp/projects/{project_id}/resources`**: Create a project-scoped resource.
 - **`PATCH /api/mcp/projects/{project_id}/resources/{resource_id}`**: Update a project-scoped resource.
 - **`DELETE /api/mcp/projects/{project_id}/resources/{resource_id}`**: Archive a project-scoped resource.
 - **`POST /api/mcp/resources/{resource_id}/lease`**: Lease a scoped resource into the active runtime for a task or session.
-Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Do not force those into per-agent SMTP records. Note: Resource types are dynamic, and metadata configuration uses Markdown text strings instead of strict JSON objects (`configJson`). Secrets inside resources are currently disabled.
+Use scoped resources for customer and project mailboxes, billing data, identities, templates, and shared external accounts. Note: Resource types are dynamic, and metadata configuration uses Markdown text strings instead of strict JSON objects (`configText` and `secretText`). The `isShared` (Force Sharing) flag can be used to explicitly pass a resource to every agent in the scope regardless of standard access policies.
 
 ### Incidents
 - **`POST /api/mcp/incidents`**: Emit incident payload.

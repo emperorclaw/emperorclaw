@@ -85,14 +85,26 @@ WebSocket events notify connected runtimes about state changes. Persist actual c
   - `company_token_created`
   - `runtime_degraded` or similar lifecycle alerts if present in a given deployment
 
-### Pipelines & Schedules
-- **`GET /api/mcp/schedules`**: Read registered schedules.
-- **`POST /api/mcp/schedules`**: Upsert cron definitions.
-- **`PATCH /api/mcp/schedules/{id}`**: Update schedule.
-- **`DELETE /api/mcp/schedules/{id}`**: Soft-delete schedule.
-- **`GET /api/mcp/playbooks`**: Read instruction templates.
-- **`DELETE /api/mcp/playbooks/{playbook_id}`**: Soft-delete playbook.
-These endpoints are legacy compatibility surfaces. Prefer project recurring-task definitions, scoped resources, and project agent profiles for new automation.
+### Pipelines Registry (preferred)
+Agent-first contract: you build and execute pipelines in your own local runtime (cron jobs, Lobster workflows, recursive loops). Emperor is the registry — register what you run, keep it documented, and report every run back.
+
+- **`GET /api/mcp/pipelines`**: List registered pipelines. Filters: `name`, `status`, `projectId`.
+- **`POST /api/mcp/pipelines`**: Register a pipeline. UPSERT by `(company, name)` — safe to re-register on every boot. Body: `{ name, purpose, docMarkdown, trigger: 'cron'|'event'|'manual', triggerConfig, steps: [{ name, agentRef?, taskType?, description?, gate? }], runtimeRef, projectId?, customerId?, agentId?, status? }`. The mermaid diagram is generated server-side from `steps` — never write it yourself. Activation (`status: 'active'`) requires `purpose`, `docMarkdown`, and at least one step.
+- **`GET /api/mcp/pipelines/{id}`**: Pipeline detail plus recent runs.
+- **`PATCH /api/mcp/pipelines/{id}`**: Update fields or status. Diagram regenerates when steps/trigger change.
+- **`DELETE /api/mcp/pipelines/{id}`**: Retire (soft delete).
+- **`GET /api/mcp/pipelines/{id}/runs`**: Run history.
+- **`POST /api/mcp/pipelines/{id}/runs`**: Report runs. Start: `{ status: 'running', agentId? }` returns `runId`. Complete: `{ runId, status: 'succeeded'|'failed'|'partial', summary?, stats? }`. One-shot: pass a terminal `status` without `runId`. Put spawned `taskIds`/`artifactIds` in `stats` for traceability.
+
+Rules:
+- Register every recurring or recursive pipeline you operate. Unregistered automation is invisible to the human operator.
+- Re-register on boot so `runtimeRef` and steps stay accurate.
+- Report a run for every trigger firing, including failures.
+
+### Schedules & Playbooks (legacy)
+- **`GET|POST /api/mcp/schedules`**, **`PATCH|DELETE /api/mcp/schedules/{id}`**
+- **`GET /api/mcp/playbooks`**, **`DELETE /api/mcp/playbooks/{playbook_id}`**
+These are legacy compatibility surfaces. New automation should use the Pipelines Registry above plus project recurring-task definitions.
 
 ### Artifacts & Folders
 #### Folder endpoints
