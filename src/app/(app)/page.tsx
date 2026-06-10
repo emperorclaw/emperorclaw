@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { db } from "@/db";
-import { agents, tasks, incidents, companyTokens, users, threadMessages, projects, artifacts, scopedResources } from "@/db/schema";
+import { agents, tasks, incidents, companyTokens, users, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
 import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
@@ -61,6 +62,8 @@ export default async function DashboardPage() {
     recentArtifacts,
     recentResources,
     recentIncidents,
+    activePipelines,
+    recentPipelineRuns,
   ] = await Promise.all([
     db.select().from(threadMessages).where(eq(threadMessages.companyId, companyId)).orderBy(desc(threadMessages.createdAt)).limit(8),
     db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt))).orderBy(desc(tasks.updatedAt)).limit(6),
@@ -69,7 +72,11 @@ export default async function DashboardPage() {
     db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt))).orderBy(desc(artifacts.createdAt)).limit(4),
     db.select().from(scopedResources).where(and(eq(scopedResources.companyId, companyId), isNull(scopedResources.deletedAt))).orderBy(desc(scopedResources.createdAt)).limit(4),
     db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(4),
+    db.select().from(pipelines).where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt))).orderBy(desc(pipelines.updatedAt)).limit(20),
+    db.select().from(pipelineRuns).where(eq(pipelineRuns.companyId, companyId)).orderBy(desc(pipelineRuns.startedAt)).limit(6),
   ]);
+
+  const pipelineNameById = new Map(activePipelines.map(pipeline => [pipeline.id, pipeline.name]));
 
   const recentActivities: RecentActivity[] = [
     ...recentMessages.map((message): RecentActivity => {
@@ -136,6 +143,16 @@ export default async function DashboardPage() {
       detail: `${resource.scopeType} · ${resource.resourceType}`,
       time: resource.createdAt,
       tone: "default",
+    })),
+    ...recentPipelineRuns.map((run): RecentActivity => ({
+      id: `pipeline-run-${run.id}`,
+      kind: "Pipeline",
+      actorLabel: "Run by",
+      actor: run.agentId ? agentNameById.get(run.agentId) || "Agent" : "Runtime",
+      title: `${pipelineNameById.get(run.pipelineId) || "Pipeline"} ${run.status}`,
+      detail: truncate(run.summary, 120) || `run ${run.id.substring(0, 8)}`,
+      time: run.startedAt,
+      tone: run.status === "succeeded" ? "good" : run.status === "failed" ? "critical" : run.status === "partial" ? "warning" : "info",
     })),
     ...recentIncidents.map((incident): RecentActivity => ({
       id: `incident-${incident.id}`,
@@ -239,6 +256,31 @@ export default async function DashboardPage() {
                 />
               ))
             )}
+          </div>
+
+          <h2 className="text-lg font-medium text-zinc-200">Automation</h2>
+          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-5 space-y-3 shadow-sm">
+            {activePipelines.length === 0 ? (
+              <div className="text-sm text-zinc-500">
+                No pipelines registered. Agents register recurring automation from their own runtimes.
+              </div>
+            ) : (
+              activePipelines.slice(0, 5).map(pipeline => (
+                <div key={pipeline.id} className="flex items-center gap-2 text-sm">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pipeline.status === "active" ? "bg-emerald-400" : pipeline.status === "paused" ? "bg-amber-400" : "bg-zinc-600"}`} />
+                  <span className="text-zinc-200 truncate flex-1">{pipeline.name}</span>
+                  {pipeline.lastRunStatus && (
+                    <span className={`text-xs ${pipeline.lastRunStatus === "succeeded" ? "text-emerald-400" : pipeline.lastRunStatus === "failed" ? "text-red-400" : "text-zinc-500"}`}>
+                      {pipeline.lastRunStatus}
+                    </span>
+                  )}
+                  <span className="text-xs text-zinc-600">{pipeline.runCount} runs</span>
+                </div>
+              ))
+            )}
+            <Link href="/pipelines" className="block text-xs font-medium text-indigo-400 hover:text-indigo-300 pt-1">
+              View all pipelines →
+            </Link>
           </div>
         </div>
       </div>

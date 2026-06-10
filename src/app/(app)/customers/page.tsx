@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { customers, projects, tasks, incidents, approvals, schedules } from "@/db/schema";
+import { customers, projects, tasks, incidents, approvals, pipelines } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -16,7 +16,7 @@ export default async function CustomersPage() {
     const allTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
     const allIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt)));
     const allApprovals = await db.select().from(approvals).where(eq(approvals.companyId, companyId));
-    const allSchedules = await db.select().from(schedules).where(and(eq(schedules.companyId, companyId), isNull(schedules.deletedAt)));
+    const allPipelines = await db.select().from(pipelines).where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt)));
 
     const customerSummaries = allCustomers.map((customer) => {
         const customerProjects = allProjects.filter((project) => project.customerId === customer.id);
@@ -29,7 +29,7 @@ export default async function CustomersPage() {
             return blockedBy.some((blockedId: string) => allTasks.some((otherTask) => otherTask.id === blockedId && otherTask.state !== "done"));
         });
         const reviewTasks = customerTasks.filter((task) => task.state === "review");
-        const activeSchedules = allSchedules.filter((schedule) => schedule.targetCustomerId === customer.id);
+        const customerPipelines = allPipelines.filter((pipeline) => pipeline.customerId === customer.id || (pipeline.projectId && projectIds.has(pipeline.projectId)));
 
         return {
             ...customer,
@@ -39,7 +39,7 @@ export default async function CustomersPage() {
             blockedCount: blockedTasks.length,
             incidentCount: customerIncidents.length,
             pendingApprovalCount: pendingApprovals.length,
-            scheduleCount: activeSchedules.length,
+            pipelineCount: customerPipelines.length,
         };
     });
 
