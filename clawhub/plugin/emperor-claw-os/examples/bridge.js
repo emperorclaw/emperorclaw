@@ -589,8 +589,57 @@ function extractTaskRef(text) {
 
 function extractExplicitAgentMention(text) {
   const value = String(text || "");
-  const match = value.match(/@([a-z0-9_-]+)/i);
+  const match = value.match(/@([^\s,.;:!?]+(?:\s+[^\s,.;:!?]+)?)/i);
   return match ? match[1] : null;
+}
+
+function normalizeAgentMention(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function agentNameAliases(name) {
+  const raw = String(name || "").trim();
+  const clean = raw
+    .replace(/\([^)]*\)/g, "")
+    .split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0]
+    .trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const aliases = new Set([raw, clean]);
+  if (parts.length > 0) {
+    aliases.add(parts[0]);
+    aliases.add(parts.join("-"));
+    aliases.add(parts.join("_"));
+  }
+  return Array.from(aliases).map((value) => value.replace(/^@+/, "").trim()).filter(Boolean);
+}
+
+function extractMentionRefs(text) {
+  const refs = [];
+  const pattern = /@([^\s,.;:!?]+(?:\s+[^\s,.;:!?]+)?)/g;
+  for (const match of String(text || "").matchAll(pattern)) {
+    const raw = String(match[1] || "").trim();
+    if (!raw) continue;
+    refs.push(raw);
+    refs.push(raw.split(/\s+/)[0]);
+  }
+  return refs;
+}
+
+function mentionsAgentName(text, agentName) {
+  const mentionKeys = new Set(extractMentionRefs(text).map(normalizeAgentMention));
+  return agentNameAliases(agentName).some((alias) => mentionKeys.has(normalizeAgentMention(alias)));
+}
+
+function extractOtherAgentMention(text, currentAgentName) {
+  const ownAliases = new Set(agentNameAliases(currentAgentName).map(normalizeAgentMention));
+  for (const ref of extractMentionRefs(text)) {
+    if (!ownAliases.has(normalizeAgentMention(ref))) return ref;
+  }
+  return null;
 }
 
 function isProjectCreationIntent(text) {
@@ -1160,16 +1209,14 @@ class EmperorBridge {
     const text = String(message?.text || "").trim();
     const agentName = String(this.agent?.name || AGENT_NAME || "Viktor").trim();
     const lowered = text.toLowerCase();
-    const mentionsAgent = agentName
-      ? lowered.includes(`@${agentName.toLowerCase()}`) || lowered.includes(agentName.toLowerCase())
-      : false;
+    const mentionsAgent = agentName ? mentionsAgentName(text, agentName) : false;
     const isDirectThread = String(thread?.type || "").toLowerCase() === "direct";
     const senderType = String(message?.senderType || "unknown").toLowerCase();
     const isHuman = senderType === "human" || senderType === "user";
     const isAgentSender = senderType === "agent";
     const lowSignal = !text || text.length < 4;
     const taskRef = extractTaskRef(text);
-    const explicitAtMention = agentName ? lowered.includes(`@${agentName.toLowerCase()}`) : false;
+    const explicitAtMention = agentName ? mentionsAgentName(text, agentName) : false;
 
     const metadata = message?.metadataJson || {};
     const targetAgentHint = message?.targetAgentId || metadata.targetAgentId || metadata.target_agent_id || metadata.target_agent || null;
@@ -1249,7 +1296,7 @@ class EmperorBridge {
     const explicitClaimRequest = /\b(claim|take|start working on|work on|pick up|handle)\b.*\b(task|ticket|job)\b|\b(next task)\b/.test(lowered);
     const explicitDelegationRequest = /\b(delegate|assign)\b/.test(lowered) && Boolean(taskRef);
     const explicitProjectCreationRequest = IS_MANAGER_PROFILE && isProjectCreationIntent(text);
-    const mentionedAgentRef = extractExplicitAgentMention(text.replace(new RegExp(`@${agentName}`, 'ig'), '').trim()) || null;
+    const mentionedAgentRef = extractOtherAgentMention(text, agentName) || null;
     if (explicitDelegationRequest) {
       console.log(`[bridge] delegation-request detected thread=${thread.id} senderType=${senderType} taskRef=${taskRef} text=${JSON.stringify(text)}`);
       appendDebugLog(COMPANION_DIR, { kind: "delegation-request", bridgeAgent: agentName, threadId: thread.id, senderType, taskRef, text });
@@ -2161,7 +2208,8 @@ class EmperorBridge {
       const name = agent?.name || agent?.displayName || agent?.id || "unknown";
       const role = agent?.role || agent?.profile || "unknown";
       const status = agent?.status || "unknown";
-      return `- ${name} [role=${role}, status=${status}]`;
+      const alias = agentNameAliases(name).sort((a, b) => a.length - b.length)[0] || name;
+      return `- ${name} [role=${role}, status=${status}, mention=@${alias}]`;
     });
 
     return `Team roster in Emperor:\n${lines.join("\n")}`;
@@ -2170,8 +2218,11 @@ class EmperorBridge {
   async resolveAgentRef(agentRef) {
     if (!agentRef) return null;
     const agents = await this.fetchAgents();
-    const ref = String(agentRef).trim().toLowerCase();
-    return agents.find((agent) => String(agent.id || "").toLowerCase() === ref || String(agent.name || "").toLowerCase() === ref) || null;
+    const ref = normalizeAgentMention(agentRef);
+    return agents.find((agent) => {
+      if (normalizeAgentMention(agent.id || "") === ref) return true;
+      return agentNameAliases(agent.name || agent.displayName || "").some((alias) => normalizeAgentMention(alias) === ref);
+    }) || null;
   }
 
   async fetchAgentProfiles(scopeId = null) {
