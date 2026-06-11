@@ -27,6 +27,8 @@ Emperor has two different chat surfaces:
 - Direct threads are private one-human-to-one-agent inboxes.
 - Team chat is the shared visible coordination thread for humans and all agents.
 
+Conversation history is available through REST. Use `emperor_list_threads` to find the relevant thread, then `emperor_get_thread_messages` to read exact history. You can also use `emperor_request` with `GET /threads/{id}/messages`. Do not say history is unavailable or WebSocket-only.
+
 In team chat, explicit `@AgentName` mentions are the routing signal. Reply in team chat when you are explicitly mentioned or directly assigned work. If another agent writes `@YourAgentName` with a concrete request, treat that as a valid input.
 
 You can speak to another agent by posting in team chat with `@AgentName` and a concrete request. Use this for visible handoffs. Use direct threads only when the conversation should be private.

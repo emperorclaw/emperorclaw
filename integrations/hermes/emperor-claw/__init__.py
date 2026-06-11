@@ -127,6 +127,27 @@ def emperor_list_tasks(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", "/tasks", query=query))
 
 
+def emperor_list_threads(args: Dict[str, Any], **_: Any) -> str:
+    query = {
+        "type": args.get("type"),
+        "agentId": args.get("agentId") or args.get("agent_id"),
+        "projectId": args.get("projectId") or args.get("project_id"),
+        "taskId": args.get("taskId") or args.get("task_id"),
+    }
+    return _json(_request("GET", "/threads", query=query))
+
+
+def emperor_get_thread_messages(args: Dict[str, Any], **_: Any) -> str:
+    thread_id = str(args.get("threadId") or args.get("thread_id") or "").strip()
+    if not thread_id:
+        return _json({"error": "threadId is required"})
+    query = {
+        "limit": args.get("limit") or 100,
+        "since": args.get("since"),
+    }
+    return _json(_request("GET", f"/threads/{urllib.parse.quote(thread_id)}/messages", query=query))
+
+
 def emperor_add_task_note(args: Dict[str, Any], **_: Any) -> str:
     task_id = str(args.get("taskId") or "").strip()
     note = str(args.get("note") or "").strip()
@@ -168,6 +189,9 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Use resources only for reusable business rules, SOPs, customer facts, templates, and durable instructions. "
             "Use artifacts/Storage for deliverables, exported files, evidence, working documents, uploads, and reports. "
             "Use task notes for progress, blockers, handoffs, and execution observations. "
+            "Conversation history is available through Emperor REST tools: use emperor_list_threads to find threads and "
+            "emperor_get_thread_messages or emperor_request GET /threads/{id}/messages to read exact history. "
+            "Do not claim that message history is unavailable or WebSocket-only. "
             "Messaging has two surfaces: direct threads are private human-to-agent inboxes, and team chat is the shared visible coordination thread. "
             "In team chat, explicit @AgentName mentions are the routing signal. Agents may talk to each other by posting @AgentName with a concrete request. "
             "Use emperor_request GET /agents when you need to know which other agents exist. "
@@ -272,6 +296,40 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="List Emperor tasks",
+    )
+    ctx.register_tool(
+        "emperor_list_threads",
+        TOOLSET,
+        _schema(
+            "List Emperor message threads. Use this to find team, direct, project, or task threads before reading chat history.",
+            {
+                "type": {"type": "string", "enum": ["direct", "team", "project", "task", "incident"]},
+                "agentId": {"type": "string"},
+                "projectId": {"type": "string"},
+                "taskId": {"type": "string"},
+            },
+        ),
+        emperor_list_threads,
+        check_fn=_available,
+        requires_env=requires,
+        description="List Emperor message threads",
+    )
+    ctx.register_tool(
+        "emperor_get_thread_messages",
+        TOOLSET,
+        _schema(
+            "Read exact message history for an Emperor thread.",
+            {
+                "threadId": {"type": "string"},
+                "limit": {"type": "integer", "default": 100},
+                "since": {"type": "string", "description": "Optional ISO timestamp. Only newer messages are returned."},
+            },
+            ["threadId"],
+        ),
+        emperor_get_thread_messages,
+        check_fn=_available,
+        requires_env=requires,
+        description="Read Emperor thread messages",
     )
     ctx.register_tool(
         "emperor_add_task_note",
