@@ -34,11 +34,10 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
         { name: "Customers", href: "/customers", icon: ShieldCheck },
         { name: "Storage", href: "/artifacts", icon: HardDrive },
         { name: "Settings", href: "/settings", icon: KeyRound },
-        { name: "Documentation", href: "/docs", icon: BookOpen },
     ];
 
     if (isPlatformAdmin) {
-        links.splice(links.length - 1, 0, { name: "Ops", href: "/ops", icon: Terminal });
+        links.push({ name: "Ops", href: "/ops", icon: Terminal });
     }
 
     return (
@@ -75,6 +74,18 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
             {!isDocsPage && (
                 <div className="space-y-3 p-4 border-t border-zinc-800/80">
                     <WorkspaceTour />
+                    <Link
+                        href="/docs"
+                        className={cn(
+                            "flex items-center space-x-3 px-3 py-2 rounded-md transition-all duration-200 group text-sm font-medium",
+                            pathname?.startsWith("/docs")
+                                ? "bg-zinc-800/80 text-white shadow-sm ring-1 ring-zinc-700/50"
+                                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100"
+                        )}
+                    >
+                        <BookOpen className={cn("w-4 h-4", pathname?.startsWith("/docs") ? "text-indigo-400" : "text-zinc-500 group-hover:text-zinc-300")} />
+                        <span>Documentation</span>
+                    </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800/80 transition-colors text-left">
