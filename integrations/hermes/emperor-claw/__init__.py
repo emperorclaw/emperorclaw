@@ -22,6 +22,13 @@ def _token() -> str:
     return os.environ.get("EMPEROR_CLAW_API_TOKEN", "").strip()
 
 
+def _agent_ref() -> str:
+    return (
+        os.environ.get("EMPEROR_CLAW_AGENT_ID", "").strip()
+        or os.environ.get("EMPEROR_CLAW_AGENT_NAME", "").strip()
+    )
+
+
 def _available() -> bool:
     return bool(_token())
 
@@ -139,6 +146,7 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
         return _json({"error": "text is required"})
     body = {
         "text": text,
+        "agentId": args.get("agentId") or args.get("agent_id") or _agent_ref(),
         "thread_id": args.get("threadId") or args.get("thread_id"),
         "thread_type": args.get("threadType") or args.get("thread_type") or "team",
         "chat_id": args.get("chatId") or args.get("chat_id"),
@@ -290,6 +298,7 @@ def register(ctx: Any) -> None:
             "Send a message into an Emperor direct or team thread.",
             {
                 "text": {"type": "string"},
+                "agentId": {"type": "string", "description": "Optional sender Emperor agent id/name. Defaults to this Hermes profile's configured agent."},
                 "threadId": {"type": "string"},
                 "threadType": {"type": "string", "enum": ["direct", "team"]},
                 "chatId": {"type": "string"},
