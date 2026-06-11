@@ -12,10 +12,10 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, thread_type } = body;
+        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = body;
 
-        if (!text || (!chat_id && !thread_id)) {
-            return NextResponse.json({ error: "text and either chat_id or thread_id are required" }, { status: 400 });
+        if (!text) {
+            return NextResponse.json({ error: "text is required" }, { status: 400 });
         }
 
         const result = await sendThreadMessageFromMcp({
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
             threadId: thread_id || null,
             fromUserId: from_user_id || null,
             agentId: agentId || null,
-            targetAgentId: targetAgentId || null,
+            targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
         });
 

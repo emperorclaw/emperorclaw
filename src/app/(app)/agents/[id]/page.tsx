@@ -17,6 +17,7 @@ import { getCompanyId } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
+import { DeleteAgentDialog } from "../delete-agent-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -121,10 +122,15 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 min-w-[280px]">
-                    <MetricCard icon={Clock3} label="Last Session" value={sessions[0] ? sessions[0].status : "none"} />
-                    <MetricCard icon={Cable} label="Threads" value={threads.length.toString()} />
-                    <MetricCard icon={MemoryStick} label="Memory Entries" value={memoryEntries.length.toString()} />
+                <div className="space-y-3 min-w-[280px]">
+                    <div className="grid grid-cols-2 gap-3">
+                        <MetricCard icon={Clock3} label="Last Session" value={sessions[0] ? sessions[0].status : "none"} />
+                        <MetricCard icon={Cable} label="Threads" value={threads.length.toString()} />
+                        <MetricCard icon={MemoryStick} label="Memory Entries" value={memoryEntries.length.toString()} />
+                    </div>
+                    <div className="flex justify-end">
+                        <DeleteAgentDialog agentId={id} agentName={agent.name} redirectToAgents />
+                    </div>
                 </div>
             </div>
 
