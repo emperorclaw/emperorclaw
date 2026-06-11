@@ -5,21 +5,87 @@ import { MessageSquare, X, Send } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { cn } from "@/lib/utils";
 
+type AgentSummary = {
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+};
+
+type TeamMessage = {
+    id: string;
+    senderType: string;
+    senderId?: string | null;
+    fromUserId?: string | null;
+    text: string;
+    createdAt: string;
+};
+
+type ThreadParticipant = {
+    participantType: string;
+    userId?: string | null;
+    agentId?: string | null;
+    typingUntil?: string | null;
+};
+
 export function OpenClawChat() {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
-    const [history, setHistory] = useState<any[]>([]);
+    const [history, setHistory] = useState<TeamMessage[]>([]);
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-    const [agents, setAgents] = useState<any[]>([]);
+    const [agents, setAgents] = useState<AgentSummary[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
     const [initialized, setInitialized] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const baseTitleRef = useRef<string | null>(null);
-    const [participants, setParticipants] = useState<any[]>([]);
+    const [participants, setParticipants] = useState<ThreadParticipant[]>([]);
     const [threadId, setThreadId] = useState<string | null>(null);
     const [isTyping, setIsTyping] = useState(false);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const mentionAlias = (name: string) => {
+        const clean = name.replace(/\([^)]*\)/g, "").split(/\s+-\s+|\s+\u2014\s+|\s+\|\s+/)[0].trim();
+        return clean.split(/\s+/)[0] || name;
+    };
+
+    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const removeLeadingMentions = (text: string) => {
+        let next = text.trimStart();
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const agent of agents) {
+                const aliases = [agent.name, mentionAlias(agent.name || "")].filter(Boolean);
+                for (const alias of aliases) {
+                    const pattern = new RegExp(`^@${escapeRegex(alias)}(?:\\s+|$)`, "i");
+                    const replaced = next.replace(pattern, "");
+                    if (replaced !== next) {
+                        next = replaced.trimStart();
+                        changed = true;
+                    }
+                }
+            }
+            const fallback = next.replace(/^@\S+\s*/, "");
+            if (fallback !== next) {
+                next = fallback.trimStart();
+                changed = true;
+            }
+        }
+        return next;
+    };
+
+    const setSelectedAgentMention = (agent: AgentSummary | null) => {
+        setSelectedAgentId(agent?.id || null);
+        if (!agent?.name) {
+            setMessage((prev) => removeLeadingMentions(prev));
+            return;
+        }
+        setMessage((prev) => {
+            const rest = removeLeadingMentions(prev);
+            return `@${mentionAlias(agent.name)}${rest ? ` ${rest}` : " "}`;
+        });
+    };
 
     const buildChatUrl = (since?: string | null) => {
         const params = new URLSearchParams();
@@ -81,10 +147,10 @@ export function OpenClawChat() {
                 if (data.messages && data.messages.length > 0) {
                     setHistory((prev) => {
                         const existingIds = new Set(prev.map(m => m.id));
-                        const newMessages = data.messages.filter((m: any) => !existingIds.has(m.id));
+                        const newMessages = (data.messages as TeamMessage[]).filter((m) => !existingIds.has(m.id));
 
                         if (newMessages.length > 0 && !isOpen) {
-                            const newAgentMessages = newMessages.filter((m: any) => m.senderType === 'agent').length;
+                            const newAgentMessages = newMessages.filter((m) => m.senderType === 'agent').length;
                             if (newAgentMessages > 0) {
                                 setUnreadCount((c) => c + newAgentMessages);
                             }
@@ -167,12 +233,8 @@ export function OpenClawChat() {
         e.preventDefault();
         const textToSend = message;
         
-        const agent = selectedAgentId ? agents.find(a => a.id === selectedAgentId) : null;
-        if (agent && agent.name) {
-            setMessage(`@${agent.name} `);
-        } else {
-            setMessage("");
-        }
+        setMessage("");
+        setSelectedAgentId(null);
 
         try {
             const res = await fetch('/api/chat', {
@@ -196,7 +258,7 @@ export function OpenClawChat() {
         }
     };
 
-    const getAgentName = (id: string | null) => {
+    const getAgentName = (id?: string | null) => {
         if (!id) return "OpenClaw System";
         const agent = agents.find(a => a.id === id);
         return agent ? agent.name : "Unknown Agent";
@@ -252,7 +314,7 @@ export function OpenClawChat() {
                     {/* Agent Selector */}
                     <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/20 flex items-center space-x-2 overflow-x-auto no-scrollbar whitespace-nowrap">
                         <button 
-                            onClick={() => setSelectedAgentId(null)}
+                            onClick={() => setSelectedAgentMention(null)}
                             className={cn(
                                 "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border",
                                 !selectedAgentId 
@@ -267,10 +329,7 @@ export function OpenClawChat() {
                                 key={agent.id}
                                 onClick={() => {
                                     const isSelect = selectedAgentId !== agent.id;
-                                    setSelectedAgentId(isSelect ? agent.id : null);
-                                    if (isSelect && agent.name) {
-                                        setMessage(prev => prev.includes(`@${agent.name}`) ? prev : `@${agent.name} ${prev}`);
-                                    }
+                                    setSelectedAgentMention(isSelect ? agent : null);
                                 }}
                                 className={cn(
                                     "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center space-x-1",
