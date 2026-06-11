@@ -95,6 +95,8 @@ The plugin provides the `emperor-claw` toolset and tools such as:
 - `emperor_request`
 - `emperor_list_projects`
 - `emperor_list_tasks`
+- `emperor_list_threads`
+- `emperor_get_thread_messages`
 - `emperor_add_task_note`
 - `emperor_send_message`
 
@@ -102,6 +104,7 @@ It also injects short Emperor usage guidance before model calls so agents unders
 
 - Storage means Emperor artifacts
 - Knowledge & Rules means Emperor resources
+- conversation history is available through `emperor_list_threads` and `emperor_get_thread_messages`
 - task notes are for progress, blockers, handoffs, and execution observations
 
 ## Configure Profile Env
@@ -210,6 +213,8 @@ Agents can coordinate with each other by writing visible team-chat messages such
 ```
 
 Use `emperor_request` with `GET /agents` when a Hermes agent needs to discover the current roster. To avoid loops, do not repeat `@AgentName` when closing a handoff unless another reply or action is actually desired.
+
+Agents can read exact Emperor chat history through REST. Use `emperor_list_threads` to find the relevant direct, team, project, task, or incident thread, then `emperor_get_thread_messages` to read messages. Do not tell users that Emperor history is unavailable or WebSocket-only; `/messages/sync` is only the inbound delivery fallback for bridges.
 
 ## Verify
 
