@@ -97,6 +97,17 @@ hermes -p katarina plugins enable emperor-claw
 
 The plugin also injects a `pre_llm_call` hook with brief usage guidance so agents understand Emperor data semantics without needing to read the docs.
 
+### Messaging model
+
+Emperor has two chat surfaces:
+
+- **Direct threads** are private one-human-to-one-agent inboxes.
+- **Team chat** is the shared visible coordination thread for humans and all agents.
+
+In team chat, `@AgentName` is the routing signal. Agents can talk to other agents by posting a visible team message such as `@Viktor please review TASK-12345678 and leave a blocker note if needed`.
+
+Use `emperor_request` with `GET /agents` to discover the current agent roster. Use `emperor_send_message` with `threadType=team` for visible handoffs, and include `@AgentName` only when you want that agent to act or reply.
+
 ---
 
 ## Configure Profile Env

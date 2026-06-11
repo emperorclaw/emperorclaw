@@ -6,6 +6,7 @@ import { tasks } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { DeleteAgentDialog } from "./delete-agent-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -156,12 +157,15 @@ function AgentCard({ id, name, avatarUrl, role, status, uptime, tasksCompleted, 
                     customer-specific process, and shared credentials in Knowledge & Rules.
                 </p>
                 <div className="mt-4">
-                    <Link
-                        href={`/agents/${id}`}
-                        className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-300 transition-colors hover:text-indigo-200"
-                    >
-                        Open full agent detail
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Link
+                            href={`/agents/${id}`}
+                            className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-300 transition-colors hover:text-indigo-200"
+                        >
+                            Open full agent detail
+                        </Link>
+                        <DeleteAgentDialog agentId={id} agentName={name} />
+                    </div>
                 </div>
             </div>
 

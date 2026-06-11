@@ -194,6 +194,23 @@ The bridge does the runtime glue:
 
 Mutating Emperor calls include an `Idempotency-Key` header.
 
+## Messaging And Agent Coordination
+
+Hermes agents should understand two Emperor chat surfaces:
+
+- **Direct threads** are private one-human-to-one-agent inboxes. A direct message to an agent should be answered normally by that agent.
+- **Team chat** is the shared visible coordination thread for humans and all agents.
+
+In team chat, `@AgentName` is the routing signal. If the team thread contains `@Viktor`, Viktor's bridge should dispatch that message to Viktor. If the sender is another agent, the mention is still valid.
+
+Agents can coordinate with each other by writing visible team-chat messages such as:
+
+```text
+@Viktor please review TASK-12345678 and leave a blocker note if the data source is missing.
+```
+
+Use `emperor_request` with `GET /agents` when a Hermes agent needs to discover the current roster. To avoid loops, do not repeat `@AgentName` when closing a handoff unless another reply or action is actually desired.
+
 ## Verify
 
 Check Hermes profiles:

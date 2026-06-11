@@ -41,6 +41,7 @@ test("workflow, approval, and lifecycle services expose the expected API shape",
   const resources = read("src/lib/resources.ts");
   const artifacts = read("src/lib/artifacts.ts");
   const projectAgentProfiles = read("src/lib/project-agent-profiles.ts");
+  const agentDeletion = read("src/lib/agent-deletion.ts");
 
   [
     "validateTaskStateTransition",
@@ -119,5 +120,9 @@ test("workflow, approval, and lifecycle services expose the expected API shape",
     "archiveProjectAgentProfile",
   ].forEach((name) => {
     assert.ok(hasExport(projectAgentProfiles, name), `project-agent-profiles.ts should export ${name}`);
+  });
+
+  ["deleteAgentAndData"].forEach((name) => {
+    assert.ok(hasExport(agentDeletion, name), `agent-deletion.ts should export ${name}`);
   });
 });
