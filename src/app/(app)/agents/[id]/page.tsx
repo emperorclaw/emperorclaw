@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { ArrowLeft, Bot, Cable, Clock3, KeyRound, MemoryStick, ScrollText, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bot, Cable, Clock3, MemoryStick, ScrollText, type LucideIcon } from "lucide-react";
 import { db } from "@/db";
 import {
     actionRuns,
@@ -15,9 +15,7 @@ import {
 } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { listAgentIntegrationsForAgent } from "@/lib/agent-integrations";
 import { isMissingSchemaError } from "@/lib/schema-compat";
-import { ManageIntegrationsDialog } from "../manage-integrations-dialog";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
 
 export const dynamic = "force-dynamic";
@@ -88,8 +86,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         if (!isMissingSchemaError(error)) throw error;
     }
 
-    const integrations = await listAgentIntegrationsForAgent(companyId, id);
-
     const latestMessageByThread = lastMessages.reduce((acc, message) => {
         if (!acc[message.threadId]) acc[message.threadId] = message;
         return acc;
@@ -129,7 +125,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                     <MetricCard icon={Clock3} label="Last Session" value={sessions[0] ? sessions[0].status : "none"} />
                     <MetricCard icon={Cable} label="Threads" value={threads.length.toString()} />
                     <MetricCard icon={MemoryStick} label="Memory Entries" value={memoryEntries.length.toString()} />
-                    <MetricCard icon={KeyRound} label="Integrations" value={integrations.length.toString()} />
                 </div>
             </div>
 
@@ -139,7 +134,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                     <TabsTrigger value="chat">Direct Chat</TabsTrigger>
                     <TabsTrigger value="threads">Threads</TabsTrigger>
                     <TabsTrigger value="runs">Runs</TabsTrigger>
-                    <TabsTrigger value="integrations">Runtime Integrations</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="memory">
@@ -245,50 +239,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                                     ))}
                                 </>
                             )}
-                        </div>
-                    </div>
-                </TabsContent>
-
-                <TabsContent value="integrations">
-                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-                        <div className="flex items-start justify-between gap-4 mb-4">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <KeyRound className="w-5 h-5 text-indigo-400" />
-                                    <h2 className="text-lg font-medium text-zinc-200">Runtime Integrations</h2>
-                                </div>
-                                <p className="text-xs text-zinc-500 mt-1">
-                                    Keep only machine-local or truly agent-bound payloads here. Customer and project mailboxes, identities, and templates should live in Knowledge & Rules.
-                                </p>
-                            </div>
-                            <div className="w-full max-w-[220px]">
-                                <ManageIntegrationsDialog agentId={id} />
-                            </div>
-                        </div>
-                        <div className="space-y-3">
-                            {integrations.length === 0 ? (
-                                <EmptyState text="No runtime integrations configured for this agent." />
-                            ) : integrations.map(integration => (
-                                <div key={integration.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
-                                    <div className="flex items-center justify-between gap-3 mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm text-zinc-200">{integration.name}</span>
-                                            <span className="text-[10px] uppercase tracking-wider font-bold text-indigo-400">{integration.provider}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-zinc-700 text-zinc-400">
-                                                {integration.ownership}
-                                            </span>
-                                            <span className="text-[11px] text-zinc-600">
-                                                {integration.lastUsedAt ? `Used ${new Date(integration.lastUsedAt).toLocaleString()}` : "Never used"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="text-xs text-zinc-400">
-                                        {integration.lastFailureReason ? `Last failure: ${integration.lastFailureReason}` : "No recent failures recorded."}
-                                    </div>
-                                </div>
-                            ))}
                         </div>
                     </div>
                 </TabsContent>
