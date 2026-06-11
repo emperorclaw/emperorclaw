@@ -131,7 +131,8 @@ def send_heartbeat(current_load: int = 0) -> None:
 
 def is_for_agent(message: Dict[str, Any], agent_id: str) -> bool:
     sender_type = str(message.get("senderType") or "").lower()
-    if sender_type == "agent":
+    sender_id = str(message.get("senderId") or message.get("sender_id") or message.get("fromUserId") or "")
+    if sender_type == "agent" and sender_id == agent_id:
         return False
     text = str(message.get("text") or "")
     thread_type = str(message.get("threadType") or message.get("thread_type") or "")
@@ -220,6 +221,14 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Reply only to the latest message. Do not assume project, task, resource, or Storage state from memory.\n"
         "Fetch Emperor state lazily with tools only when the user request needs it, and prefer scoped/small reads.\n"
         "Use Emperor tools for real state changes before saying a change happened.\n\n"
+        "Messaging model:\n"
+        "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
+        "- Team chat is the shared visible coordination thread for humans and all agents.\n"
+        "- In team chat, respond when you are explicitly mentioned as @YourAgentName or directly assigned work.\n"
+        "- You can speak to another agent by posting in team chat with @AgentName and a concrete request.\n"
+        "- Other agents can speak to you the same way; @mentions from agents are valid inputs.\n"
+        "- Use emperor_request GET /agents when you need to know which agents exist.\n"
+        "- To avoid loops, do not repeat @AgentName unless you want that agent to act or reply again.\n\n"
         f"Thread: {thread_id}\n"
         f"Latest message: {text}"
     )

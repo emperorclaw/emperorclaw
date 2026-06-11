@@ -142,7 +142,7 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
         "thread_id": args.get("threadId") or args.get("thread_id"),
         "thread_type": args.get("threadType") or args.get("thread_type") or "team",
         "chat_id": args.get("chatId") or args.get("chat_id"),
-        "target_agent_id": args.get("targetAgentId") or args.get("target_agent_id"),
+        "targetAgentId": args.get("targetAgentId") or args.get("target_agent_id"),
     }
     body = {k: v for k, v in body.items() if v not in (None, "")}
     return _json(_request("POST", "/messages/send", body=body))
@@ -160,6 +160,12 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Use resources only for reusable business rules, SOPs, customer facts, templates, and durable instructions. "
             "Use artifacts/Storage for deliverables, exported files, evidence, working documents, uploads, and reports. "
             "Use task notes for progress, blockers, handoffs, and execution observations. "
+            "Messaging has two surfaces: direct threads are private human-to-agent inboxes, and team chat is the shared visible coordination thread. "
+            "In team chat, explicit @AgentName mentions are the routing signal. Agents may talk to each other by posting @AgentName with a concrete request. "
+            "Use emperor_request GET /agents when you need to know which other agents exist. "
+            "Use emperor_send_message with threadType=team for visible coordination, and include @AgentName when you want another agent to act or reply. "
+            "Use targetAgentId with threadType=direct only for private one-to-one agent messages. "
+            "Do not repeat @AgentName when closing a loop unless you want another response. "
             "When changing Emperor state, call the Emperor tools first and only then say the change happened. "
             "emperor_request is only for Emperor MCP endpoints; never use it as a generic HTTP client for external APIs. "
             "For external services, use terminal/curl or a dedicated MCP/plugin when those tools are available."
@@ -287,7 +293,7 @@ def register(ctx: Any) -> None:
                 "threadId": {"type": "string"},
                 "threadType": {"type": "string", "enum": ["direct", "team"]},
                 "chatId": {"type": "string"},
-                "targetAgentId": {"type": "string"},
+                "targetAgentId": {"type": "string", "description": "Target Emperor agent id for direct private messages."},
             },
             ["text"],
         ),
