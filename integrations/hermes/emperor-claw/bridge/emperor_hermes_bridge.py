@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -149,8 +151,42 @@ def format_agent_roster(agent_id: str) -> str:
         role = str(agent.get("role") or "operator")
         status = str(agent.get("status") or "unknown")
         marker = " (you)" if str(agent.get("id") or "") == agent_id else ""
-        lines.append(f"- {name}{marker} [role={role}, status={status}]")
+        alias = sorted(agent_name_aliases(name), key=len)[0] if agent_name_aliases(name) else name
+        lines.append(f"- {name}{marker} [role={role}, status={status}, mention=@{alias}]")
     return "Team roster in Emperor:\n" + "\n".join(lines)
+
+
+def normalize_mention(value: str) -> str:
+    ascii_value = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", ascii_value.lower())
+
+
+def agent_name_aliases(name: str) -> set[str]:
+    clean = re.sub(r"\([^)]*\)", "", str(name or "")).strip()
+    clean = re.split(r"\s+-\s+|\s+—\s+|\s+\|\s+", clean, maxsplit=1)[0].strip()
+    parts = [part for part in re.split(r"\s+", clean) if part]
+    candidates = {name, clean}
+    if parts:
+        candidates.add(parts[0])
+        candidates.add("-".join(parts))
+        candidates.add("_".join(parts))
+    return {candidate.strip("@ ") for candidate in candidates if candidate and candidate.strip("@ ")}
+
+
+def mentioned_agent_refs(text: str) -> set[str]:
+    refs = set()
+    for match in re.finditer(r"@([^\s,.;:!?]+(?:\s+[^\s,.;:!?]+)?)", str(text or "")):
+        raw = match.group(1).strip()
+        if raw:
+            refs.add(raw)
+            refs.add(raw.split()[0])
+    return refs
+
+
+def mentions_agent(text: str, agent_name: str) -> bool:
+    mention_keys = {normalize_mention(ref) for ref in mentioned_agent_refs(text)}
+    alias_keys = {normalize_mention(alias) for alias in agent_name_aliases(agent_name)}
+    return bool(mention_keys & alias_keys)
 
 
 def is_for_agent(message: Dict[str, Any], agent_id: str) -> bool:
@@ -165,7 +201,7 @@ def is_for_agent(message: Dict[str, Any], agent_id: str) -> bool:
         return True
     if thread_type == "direct":
         return True
-    return f"@{AGENT_NAME.lower()}" in text.lower()
+    return mentions_agent(text, AGENT_NAME)
 
 
 def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -249,8 +285,8 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Messaging model:\n"
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
-        "- In team chat, respond when you are explicitly mentioned as @YourAgentName or directly assigned work.\n"
-        "- You can speak to another agent by posting in team chat with @AgentName and a concrete request.\n"
+        "- In team chat, respond when you are explicitly mentioned as @YourAgentName, @FirstName, or directly assigned work.\n"
+        "- You can speak to another agent by posting in team chat with @AgentName or @FirstName and a concrete request.\n"
         "- Other agents can speak to you the same way; @mentions from agents are valid inputs.\n"
         "- Use emperor_request GET /agents when you need to know which agents exist.\n"
         "- To avoid loops, do not repeat @AgentName unless you want that agent to act or reply again.\n\n"
