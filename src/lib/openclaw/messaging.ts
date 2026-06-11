@@ -19,14 +19,20 @@ export async function sendThreadMessageFromMcp(input: {
   targetAgentId?: string | null;
   threadType?: string | null;
 }) {
-  const senderId = input.fromUserId || input.agentId || "openclaw";
-  const resolvedSenderId = await resolveAgentId(input.companyId, senderId);
+  const senderId = input.fromUserId || input.agentId || null;
+  const resolvedSenderId = senderId
+    ? await resolveAgentId(input.companyId, senderId)
+    : null;
   const resolvedTargetAgentId = input.targetAgentId
     ? await resolveAgentId(input.companyId, input.targetAgentId)
     : null;
 
+  if (input.threadType === "direct" && !resolvedTargetAgentId && !resolvedSenderId) {
+    throw new Error("Direct messages require targetAgentId or agentId");
+  }
+
   const defaultThread = resolvedTargetAgentId || input.threadType === "direct"
-    ? await ensureDirectThread(input.companyId, resolvedTargetAgentId || resolvedSenderId)
+    ? await ensureDirectThread(input.companyId, resolvedTargetAgentId || resolvedSenderId!)
     : await ensureTeamThread(input.companyId);
 
   let targetThreadId = defaultThread.id;
