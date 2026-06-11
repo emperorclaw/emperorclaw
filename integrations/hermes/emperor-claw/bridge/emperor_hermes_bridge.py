@@ -129,6 +129,30 @@ def send_heartbeat(current_load: int = 0) -> None:
     })
 
 
+def fetch_agent_roster() -> List[Dict[str, Any]]:
+    try:
+        payload = api("GET", "/agents", query={"limit": 50})
+        agents = payload.get("agents") if isinstance(payload, dict) else []
+        return agents if isinstance(agents, list) else []
+    except Exception as exc:
+        log(f"agent roster fetch failed: {exc}")
+        return []
+
+
+def format_agent_roster(agent_id: str) -> str:
+    agents = fetch_agent_roster()
+    if not agents:
+        return "Team roster in Emperor: unavailable. Use emperor_request GET /agents if you need it."
+    lines: List[str] = []
+    for agent in agents[:24]:
+        name = str(agent.get("name") or agent.get("id") or "unknown")
+        role = str(agent.get("role") or "operator")
+        status = str(agent.get("status") or "unknown")
+        marker = " (you)" if str(agent.get("id") or "") == agent_id else ""
+        lines.append(f"- {name}{marker} [role={role}, status={status}]")
+    return "Team roster in Emperor:\n" + "\n".join(lines)
+
+
 def is_for_agent(message: Dict[str, Any], agent_id: str) -> bool:
     sender_type = str(message.get("senderType") or "").lower()
     sender_id = str(message.get("senderId") or message.get("sender_id") or message.get("fromUserId") or "")
@@ -212,6 +236,7 @@ def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.Complet
 def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
+    roster_context = format_agent_roster(AGENT_ID)
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
@@ -229,6 +254,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Other agents can speak to you the same way; @mentions from agents are valid inputs.\n"
         "- Use emperor_request GET /agents when you need to know which agents exist.\n"
         "- To avoid loops, do not repeat @AgentName unless you want that agent to act or reply again.\n\n"
+        f"{roster_context}\n\n"
         f"Thread: {thread_id}\n"
         f"Latest message: {text}"
     )
