@@ -180,14 +180,16 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
 def emperor_context_hook(**_: Any) -> Dict[str, str]:
     return {
         "context": (
-            "Use Emperor only when the user request needs durable state or message history; otherwise answer normally. "
+            "Use Emperor only when the request needs durable state, exact message history, or a real state change; otherwise answer normally. "
             "Do not preload, summarize, or mention projects/tasks/resources/artifacts by default. "
-            "Fetch scoped state lazily: projects via emperor_list_projects or GET /projects/{id}; tasks via emperor_list_tasks "
-            "or GET /tasks/{id}; Knowledge & Rules via /resources; Storage via /artifacts. "
-            "Thread history is REST-readable: use emperor_list_threads then emperor_get_thread_messages; do not call it WebSocket-only. "
-            "Team chat uses @AgentName/@FirstName as the routing signal. Use emperor_request GET /agents only if you need the roster. "
-            "Send visible handoffs with emperor_send_message threadType=team and an @mention; use direct targetAgentId only for private messages. "
-            "Call Emperor tools before claiming a state change. emperor_request is not a generic external HTTP client."
+            "Lookup map: past chat/history -> emperor_list_threads then emperor_get_thread_messages; team roster -> GET /agents; "
+            "projects -> emperor_list_projects or GET /projects/{id}; tasks -> emperor_list_tasks or GET /tasks/{id}; "
+            "task progress/history -> GET /tasks/{id}/notes; project memory -> GET /projects/{id}/memory; "
+            "Knowledge & Rules -> GET /resources; Storage/files/deliverables -> GET /artifacts. "
+            "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
+            "Team chat routes with @AgentName/@FirstName. Send visible handoffs with emperor_send_message threadType=team and an @mention; "
+            "use direct targetAgentId only for private messages. Call Emperor tools before claiming a state change. "
+            "emperor_request is not a generic external HTTP client; use terminal/curl or a dedicated plugin for external APIs."
         )
     }
 
