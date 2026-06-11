@@ -43,9 +43,45 @@ function normalizePolicy(policy?: Partial<EmperorThreadPolicy> | null): EmperorT
   };
 }
 
-function extractExplicitAgentMention(text: string): string | null {
-  const match = text.match(/@([a-z0-9_-]+)/i);
-  return match ? match[1] : null;
+function normalizeAgentMention(value: string): string {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function agentNameAliases(name: string): string[] {
+  const raw = String(name || "").trim();
+  const clean = raw
+    .replace(/\([^)]*\)/g, "")
+    .split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0]
+    .trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const aliases = new Set([raw, clean]);
+  if (parts.length > 0) {
+    aliases.add(parts[0]);
+    aliases.add(parts.join("-"));
+    aliases.add(parts.join("_"));
+  }
+  return Array.from(aliases).map((value) => value.replace(/^@+/, "").trim()).filter(Boolean);
+}
+
+function extractMentionRefs(text: string): string[] {
+  const refs: string[] = [];
+  const pattern = /@([^\s,.;:!?]+(?:\s+[^\s,.;:!?]+)?)/g;
+  for (const match of String(text || "").matchAll(pattern)) {
+    const raw = String(match[1] || "").trim();
+    if (!raw) continue;
+    refs.push(raw);
+    refs.push(raw.split(/\s+/)[0]);
+  }
+  return refs;
+}
+
+function mentionsAgentName(text: string, agentName: string): boolean {
+  const mentionKeys = new Set(extractMentionRefs(text).map(normalizeAgentMention));
+  return agentNameAliases(agentName).some((alias) => mentionKeys.has(normalizeAgentMention(alias)));
 }
 
 export function resolveTargetAgentHint(message: EmperorChannelMessage): string | null {
@@ -75,8 +111,7 @@ export function decideThreadRouting(
 
   const policy = normalizePolicy(ctx.policy);
   const targetAgentHint = resolveTargetAgentHint(message);
-  const explicitMention = extractExplicitAgentMention(text);
-  const mentionsCurrentAgent = explicitMention?.toLowerCase() === ctx.currentAgentName.toLowerCase();
+  const mentionsCurrentAgent = mentionsAgentName(text, ctx.currentAgentName);
 
   if (String(thread.type).toLowerCase() === "direct") {
     if (targetAgentHint && targetAgentHint !== ctx.currentAgentId) {
