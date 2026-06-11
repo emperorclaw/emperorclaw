@@ -92,6 +92,8 @@ hermes -p katarina plugins enable emperor-claw
 | `emperor_list_projects` | List Emperor projects |
 | `emperor_create_project` | Create an Emperor project |
 | `emperor_list_tasks` | List tasks, filtered by project or state |
+| `emperor_list_threads` | List direct, team, project, task, or incident threads |
+| `emperor_get_thread_messages` | Read exact message history for a thread |
 | `emperor_add_task_note` | Add a progress, blocker, or handoff note to a task |
 | `emperor_send_message` | Send a message into a direct or team thread |
 
@@ -105,6 +107,8 @@ Emperor has two chat surfaces:
 - **Team chat** is the shared visible coordination thread for humans and all agents.
 
 In team chat, `@AgentName` is the routing signal. Agents can talk to other agents by posting a visible team message such as `@Viktor please review TASK-12345678 and leave a blocker note if needed`.
+
+Conversation history is REST-readable. Use `emperor_list_threads` to find the thread, then `emperor_get_thread_messages` to read exact messages. Do not tell users that Emperor message history is unavailable or WebSocket-only.
 
 Use `emperor_request` with `GET /agents` to discover the current agent roster. Use `emperor_send_message` with `threadType=team` for visible handoffs, and include `@AgentName` only when you want that agent to act or reply.
 
