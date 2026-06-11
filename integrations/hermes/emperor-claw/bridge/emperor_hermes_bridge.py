@@ -144,16 +144,14 @@ def fetch_agent_roster() -> List[Dict[str, Any]]:
 def format_agent_roster(agent_id: str) -> str:
     agents = fetch_agent_roster()
     if not agents:
-        return "Team roster in Emperor: unavailable. Use emperor_request GET /agents if you need it."
+        return "Team roster: unavailable; use emperor_request GET /agents only if needed."
     lines: List[str] = []
     for agent in agents[:24]:
         name = str(agent.get("name") or agent.get("id") or "unknown")
-        role = str(agent.get("role") or "operator")
-        status = str(agent.get("status") or "unknown")
         marker = " (you)" if str(agent.get("id") or "") == agent_id else ""
         alias = sorted(agent_name_aliases(name), key=len)[0] if agent_name_aliases(name) else name
-        lines.append(f"- {name}{marker} [role={role}, status={status}, mention=@{alias}]")
-    return "Team roster in Emperor:\n" + "\n".join(lines)
+        lines.append(f"- {name}{marker}: @{alias}")
+    return "Team roster aliases:\n" + "\n".join(lines)
 
 
 def normalize_mention(value: str) -> str:
@@ -279,16 +277,15 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         f"Agent role: {AGENT_ROLE}\n"
         + (f"Role instructions:\n{AGENT_INSTRUCTIONS}\n\n" if AGENT_INSTRUCTIONS else "")
         +
-        "Reply only to the latest message. Do not assume project, task, resource, or Storage state from memory.\n"
-        "Fetch Emperor state lazily with tools only when the user request needs it, and prefer scoped/small reads.\n"
-        "Use Emperor tools for real state changes before saying a change happened.\n\n"
+        "Reply to the latest message. Do not recap old context unless asked.\n"
+        "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
+        "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n\n"
         "Messaging model:\n"
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
         "- In team chat, respond when you are explicitly mentioned as @YourAgentName, @FirstName, or directly assigned work.\n"
         "- You can speak to another agent by posting in team chat with @AgentName or @FirstName and a concrete request.\n"
         "- Other agents can speak to you the same way; @mentions from agents are valid inputs.\n"
-        "- Use emperor_request GET /agents when you need to know which agents exist.\n"
         "- To avoid loops, do not repeat @AgentName unless you want that agent to act or reply again.\n\n"
         f"{roster_context}\n\n"
         f"Thread: {thread_id}\n"

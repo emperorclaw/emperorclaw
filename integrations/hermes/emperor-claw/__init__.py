@@ -180,27 +180,14 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
 def emperor_context_hook(**_: Any) -> Dict[str, str]:
     return {
         "context": (
-            "Emperor Claw is the durable control plane for projects, tasks, messages, Knowledge & Rules, and Storage. "
-            "In Emperor API terms, Knowledge & Rules are resources; Storage files are artifacts. "
-            "Do not preload or summarize all projects/tasks by default. Fetch state lazily only when the user request needs it. "
-            "For project state use emperor_list_projects or emperor_request GET /projects/{id}; for work items use emperor_list_tasks "
-            "with projectId/state filters or emperor_request GET /tasks/{id}; for durable instructions use GET /resources; "
-            "for deliverables/files use GET /artifacts. Prefer small scoped reads over broad account scans. "
-            "Use resources only for reusable business rules, SOPs, customer facts, templates, and durable instructions. "
-            "Use artifacts/Storage for deliverables, exported files, evidence, working documents, uploads, and reports. "
-            "Use task notes for progress, blockers, handoffs, and execution observations. "
-            "Conversation history is available through Emperor REST tools: use emperor_list_threads to find threads and "
-            "emperor_get_thread_messages or emperor_request GET /threads/{id}/messages to read exact history. "
-            "Do not claim that message history is unavailable or WebSocket-only. "
-            "Messaging has two surfaces: direct threads are private human-to-agent inboxes, and team chat is the shared visible coordination thread. "
-            "In team chat, explicit @AgentName mentions are the routing signal. Agents may talk to each other by posting @AgentName with a concrete request. "
-            "Use emperor_request GET /agents when you need to know which other agents exist. "
-            "Use emperor_send_message with threadType=team for visible coordination, and include @AgentName when you want another agent to act or reply. "
-            "Use targetAgentId with threadType=direct only for private one-to-one agent messages. "
-            "Do not repeat @AgentName when closing a loop unless you want another response. "
-            "When changing Emperor state, call the Emperor tools first and only then say the change happened. "
-            "emperor_request is only for Emperor MCP endpoints; never use it as a generic HTTP client for external APIs. "
-            "For external services, use terminal/curl or a dedicated MCP/plugin when those tools are available."
+            "Use Emperor only when the user request needs durable state or message history; otherwise answer normally. "
+            "Do not preload, summarize, or mention projects/tasks/resources/artifacts by default. "
+            "Fetch scoped state lazily: projects via emperor_list_projects or GET /projects/{id}; tasks via emperor_list_tasks "
+            "or GET /tasks/{id}; Knowledge & Rules via /resources; Storage via /artifacts. "
+            "Thread history is REST-readable: use emperor_list_threads then emperor_get_thread_messages; do not call it WebSocket-only. "
+            "Team chat uses @AgentName/@FirstName as the routing signal. Use emperor_request GET /agents only if you need the roster. "
+            "Send visible handoffs with emperor_send_message threadType=team and an @mention; use direct targetAgentId only for private messages. "
+            "Call Emperor tools before claiming a state change. emperor_request is not a generic external HTTP client."
         )
     }
 
