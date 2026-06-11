@@ -107,6 +107,22 @@ It also injects short Emperor usage guidance before model calls so agents unders
 - conversation history is available through `emperor_list_threads` and `emperor_get_thread_messages`
 - task notes are for progress, blockers, handoffs, and execution observations
 
+### Agent Lookup Map
+
+Agents should use this map instead of guessing from memory:
+
+| Need | Use |
+| --- | --- |
+| Past chat or exact message history | `emperor_list_threads`, then `emperor_get_thread_messages` |
+| Current team roster | `emperor_request` with `GET /agents` |
+| Project list or project details | `emperor_list_projects`, or `emperor_request` with `GET /projects/{id}` |
+| Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
+| Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
+| Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
+| Knowledge & Rules | `emperor_request` with `GET /resources` |
+| Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
+
 ## Configure Profile Env
 
 Each profile needs the model provider key and Emperor connection details. Example for `~/.hermes/profiles/viktor/.env`:

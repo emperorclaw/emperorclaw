@@ -99,6 +99,20 @@ hermes -p katarina plugins enable emperor-claw
 
 The plugin also injects a `pre_llm_call` hook with brief usage guidance so agents understand Emperor data semantics without needing to read the docs.
 
+### Where agents should look
+
+| Need | Use |
+| --- | --- |
+| Past chat or exact message history | `emperor_list_threads`, then `emperor_get_thread_messages` |
+| Current team roster | `emperor_request` with `GET /agents` |
+| Project list or project details | `emperor_list_projects`, or `emperor_request` with `GET /projects/{id}` |
+| Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
+| Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
+| Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
+| Knowledge & Rules | `emperor_request` with `GET /resources` |
+| Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
+
 ### Messaging model
 
 Emperor has two chat surfaces:

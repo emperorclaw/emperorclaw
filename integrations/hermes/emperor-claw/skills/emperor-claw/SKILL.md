@@ -20,6 +20,22 @@ Use Emperor this way:
 - Use resources only for reusable business rules, SOPs, customer facts, credentials metadata, templates, and durable instructions.
 - Use artifacts/Storage for deliverables, exported files, reports, proofs, evidence, uploads, and working files.
 
+## Where To Look
+
+Use this lookup map instead of guessing or relying on memory:
+
+| Need | Use |
+| --- | --- |
+| Past chat or exact message history | `emperor_list_threads`, then `emperor_get_thread_messages` |
+| Current team roster | `emperor_request` with `GET /agents` |
+| Project list or project details | `emperor_list_projects`, or `emperor_request` with `GET /projects/{id}` |
+| Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
+| Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
+| Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
+| Knowledge & Rules | `emperor_request` with `GET /resources` |
+| Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
+
 ## Messaging
 
 Emperor has two different chat surfaces:
