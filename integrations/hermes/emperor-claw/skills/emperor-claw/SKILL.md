@@ -34,7 +34,75 @@ Use this lookup map instead of guessing or relying on memory:
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
 | Knowledge & Rules | `emperor_request` with `GET /resources` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| Browse a folder's subfolders and files | `emperor_list_folder_contents` with `folderId` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
+
+## Storage Folders
+
+Storage (artifacts) can be organized into folders and nested subfolders. Always use folders when uploading more than one related file so they appear grouped in the Emperor UI.
+
+### Create a top-level folder
+
+```
+emperor_create_folder(name="BrandVirality Report", projectId="<project-id>")
+→ returns { folder: { id: "<folder-id>", path: "BrandVirality Report", ... } }
+```
+
+### Create a subfolder inside an existing folder
+
+Pass the parent's `id` as `parentFolderId`:
+
+```
+emperor_create_folder(name="Charts", projectId="<project-id>", parentFolderId="<folder-id>")
+→ returns { folder: { id: "<subfolder-id>", path: "BrandVirality Report/Charts", ... } }
+```
+
+### Upload a file into a folder
+
+Pass `folderId` when calling `emperor_upload_artifact`. Without `folderId` the file lands in the root of Storage with no grouping.
+
+```
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/report.pdf", kind="report", projectId="<project-id>", folderId="<folder-id>")
+```
+
+### Upload multiple files into the same folder
+
+Repeat `emperor_upload_artifact` with the same `folderId` for each file:
+
+```
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/summary.pdf",   kind="report",   projectId="<id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/raw_data.csv",   kind="export",   projectId="<id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/charts/bar.png", kind="evidence", projectId="<id>", folderId="<subfolder-id>")
+```
+
+### Verify what was uploaded
+
+```
+emperor_list_folder_contents(folderId="<folder-id>")
+→ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
+```
+
+### Full example — upload a result set into a nested structure
+
+```
+# 1. Create root folder
+result = emperor_create_folder(name="Q2 Campaign", projectId="<id>")
+root_id = result.folder.id
+
+# 2. Create a subfolder for raw data
+result = emperor_create_folder(name="Raw Data", projectId="<id>", parentFolderId=root_id)
+raw_id = result.folder.id
+
+# 3. Upload the report into the root folder
+emperor_upload_artifact(filePath="/home/jose/.../report.pdf", kind="report", projectId="<id>", folderId=root_id)
+
+# 4. Upload CSVs into the subfolder
+emperor_upload_artifact(filePath="/home/jose/.../impressions.csv", kind="export", projectId="<id>", folderId=raw_id)
+emperor_upload_artifact(filePath="/home/jose/.../clicks.csv",      kind="export", projectId="<id>", folderId=raw_id)
+
+# 5. Confirm
+emperor_list_folder_contents(folderId=root_id)
+```
 
 ## Messaging
 

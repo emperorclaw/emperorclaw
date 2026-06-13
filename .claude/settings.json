@@ -23,7 +23,17 @@
       "PowerShell(choco install putty -y 2>&1)",
       "Bash(python3 -c \"import paramiko; print\\('paramiko ok'\\)\")",
       "Bash(python -c \"import paramiko; print\\('paramiko ok'\\)\")",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(git remote *)",
+      "Bash(python -c \"import paramiko; print\\('paramiko ok', paramiko.__version__\\)\")",
+      "PowerShell(python -m pip install paramiko --quiet; python -c \"import paramiko; Write-Host 'paramiko ok' $\\($paramiko = \\(python -c 'import paramiko; print\\(paramiko.__version__\\)' 2>&1\\)\\); python -c 'import paramiko; print\\(paramiko.__version__\\)'\")",
+      "PowerShell($pythonPath = \\(Get-Command python3 -ErrorAction SilentlyContinue\\).Source; if \\(-not $pythonPath\\) { $pythonPath = \\(Get-Command python -ErrorAction SilentlyContinue\\).Source }; Write-Host \"Python: $pythonPath\"; & $pythonPath --version)",
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe -m pip install paramiko --quiet)",
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe -c \"import paramiko; print\\('paramiko', paramiko.__version__\\)\")",
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\deploy-hermes-plugin.py\")",
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe -c $client)",
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\_bunny_purge_prod.py\")",
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\deploy-vps.py\")"
     ]
   }
 }
