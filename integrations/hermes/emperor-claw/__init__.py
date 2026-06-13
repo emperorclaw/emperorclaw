@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import uuid
 import urllib.error
@@ -84,6 +85,56 @@ def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: 
         return {"ok": False, "error": str(exc)}
 
 
+def _multipart_upload(url: str, token: str, file_path: str, fields: Dict[str, str]) -> Dict[str, Any]:
+    boundary = uuid.uuid4().hex
+    filename = os.path.basename(file_path)
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    try:
+        with open(file_path, "rb") as fh:
+            file_bytes = fh.read()
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    parts: list[bytes] = []
+    for key, val in fields.items():
+        parts.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{val}\r\n".encode()
+        )
+    parts.append(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {mime}\r\n\r\n".encode()
+        + file_bytes
+        + b"\r\n"
+    )
+    parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Accept": "application/json",
+        "User-Agent": "hermes-emperor-claw-plugin/0.1.0",
+        "Idempotency-Key": str(uuid.uuid4()),
+    }
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as res:
+            text = res.read().decode("utf-8", errors="replace")
+            try:
+                data = json.loads(text) if text else {}
+            except json.JSONDecodeError:
+                data = {"text": text}
+            return {"ok": True, "status": res.status, "data": data}
+    except urllib.error.HTTPError as exc:
+        text = exc.read().decode("utf-8", errors="replace")
+        try:
+            data = json.loads(text) if text else {}
+        except json.JSONDecodeError:
+            data = {"text": text}
+        return {"ok": False, "status": exc.code, "error": data}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def emperor_health(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", "/runtime/health"))
 
@@ -148,6 +199,50 @@ def emperor_get_thread_messages(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", f"/threads/{urllib.parse.quote(thread_id)}/messages", query=query))
 
 
+def emperor_create_folder(args: Dict[str, Any], **_: Any) -> str:
+    name = str(args.get("name") or "").strip()
+    if not name:
+        return _json({"error": "name is required"})
+    body: Dict[str, Any] = {"name": name}
+    for key in ("projectId", "customerId", "parentFolderId", "agentId", "kind"):
+        if args.get(key) not in (None, ""):
+            body[key] = args[key]
+    return _json(_request("POST", "/folders", body=body))
+
+
+def emperor_list_folder_contents(args: Dict[str, Any], **_: Any) -> str:
+    folder_id = str(args.get("folderId") or "").strip()
+    if not folder_id:
+        return _json({"error": "folderId is required"})
+    query: Dict[str, Any] = {}
+    if args.get("search"):
+        query["search"] = args["search"]
+    if args.get("limit"):
+        query["limit"] = args["limit"]
+    return _json(_request("GET", f"/folders/{urllib.parse.quote(folder_id)}/contents", query=query or None))
+
+
+def emperor_upload_artifact(args: Dict[str, Any], **_: Any) -> str:
+    file_path = str(args.get("filePath") or "").strip()
+    kind = str(args.get("kind") or "").strip()
+    if not file_path or not kind:
+        return _json({"error": "filePath and kind are required"})
+    if not os.path.isfile(file_path):
+        return _json({"error": f"File not found: {file_path}"})
+    fields: Dict[str, str] = {"kind": kind}
+    for key in ("projectId", "taskId", "customerId", "folderId", "title", "artifactClass", "importance", "contentType", "visibility"):
+        val = args.get(key)
+        if val not in (None, ""):
+            fields[key] = str(val)
+    agent = args.get("agentId") or _agent_ref()
+    if agent:
+        fields["agentId"] = agent
+    if "visibility" not in fields:
+        fields["visibility"] = "private"
+    url = _api_url() + "/api/mcp/artifacts/upload"
+    return _json(_multipart_upload(url, _token(), file_path, fields))
+
+
 def emperor_add_task_note(args: Dict[str, Any], **_: Any) -> str:
     task_id = str(args.get("taskId") or "").strip()
     note = str(args.get("note") or "").strip()
@@ -185,7 +280,13 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Lookup map: past chat/history -> emperor_list_threads then emperor_get_thread_messages; team roster -> GET /agents; "
             "projects -> emperor_list_projects or GET /projects/{id}; tasks -> emperor_list_tasks or GET /tasks/{id}; "
             "task progress/history -> GET /tasks/{id}/notes; project memory -> GET /projects/{id}/memory; "
-            "Knowledge & Rules -> GET /resources; Storage/files/deliverables -> GET /artifacts. "
+            "Knowledge & Rules -> GET /resources; Storage/files/deliverables -> GET /artifacts; "
+            "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
+            "upload a local file to Storage -> emperor_upload_artifact (never emperor_request, never curl). "
+            "Storage folder workflow: (1) emperor_create_folder(name, projectId/customerId) -> returns folder.id; "
+            "(2) for a subfolder: emperor_create_folder(name, projectId, parentFolderId=<id>); "
+            "(3) emperor_upload_artifact(filePath, kind, projectId, folderId=<id>) for each file. "
+            "Always pass folderId when uploading into a folder. Never upload without folderId and expect files to be grouped. "
             "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
             "Team chat routes with @AgentName/@FirstName. Send visible handoffs with emperor_send_message threadType=team and an @mention; "
             "use direct targetAgentId only for private messages. Call Emperor tools before claiming a state change. "
@@ -319,6 +420,68 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Read Emperor thread messages",
+    )
+    ctx.register_tool(
+        "emperor_create_folder",
+        TOOLSET,
+        _schema(
+            "Create a Storage folder (or a nested subfolder) in Emperor. "
+            "Returns folder.id — pass it as folderId when uploading files into this folder.",
+            {
+                "name": {"type": "string", "description": "Folder name."},
+                "projectId": {"type": "string", "description": "Required unless customerId is provided."},
+                "customerId": {"type": "string", "description": "Required unless projectId is provided."},
+                "parentFolderId": {"type": "string", "description": "ID of the parent folder. Omit for a top-level folder; provide to create a subfolder inside an existing folder."},
+                "agentId": {"type": "string"},
+            },
+            ["name"],
+        ),
+        emperor_create_folder,
+        check_fn=_available,
+        requires_env=requires,
+        description="Create a Storage folder or subfolder",
+    )
+    ctx.register_tool(
+        "emperor_list_folder_contents",
+        TOOLSET,
+        _schema(
+            "List the subfolders and files inside a Storage folder. Use this to browse or verify what has been uploaded.",
+            {
+                "folderId": {"type": "string"},
+                "search": {"type": "string", "description": "Optional filename search filter."},
+                "limit": {"type": "integer", "default": 100},
+            },
+            ["folderId"],
+        ),
+        emperor_list_folder_contents,
+        check_fn=_available,
+        requires_env=requires,
+        description="List contents of a Storage folder",
+    )
+    ctx.register_tool(
+        "emperor_upload_artifact",
+        TOOLSET,
+        _schema(
+            "Upload a local file from disk to Emperor Storage (artifacts). Use this for any file upload — never use emperor_request or curl for uploads.",
+            {
+                "filePath": {"type": "string", "description": "Absolute path to the file on this machine."},
+                "kind": {"type": "string", "description": "Artifact kind, e.g. report, invoice, deliverable, evidence, export."},
+                "projectId": {"type": "string"},
+                "taskId": {"type": "string"},
+                "customerId": {"type": "string"},
+                "title": {"type": "string"},
+                "artifactClass": {"type": "string"},
+                "importance": {"type": "string"},
+                "contentType": {"type": "string", "description": "MIME type override. Auto-detected from filename if omitted."},
+                "visibility": {"type": "string", "enum": ["private", "public"], "default": "private"},
+                "agentId": {"type": "string"},
+            },
+            ["filePath", "kind"],
+        ),
+        emperor_upload_artifact,
+        check_fn=_available,
+        requires_env=requires,
+        description="Upload a local file to Emperor Storage",
     )
     ctx.register_tool(
         "emperor_add_task_note",
