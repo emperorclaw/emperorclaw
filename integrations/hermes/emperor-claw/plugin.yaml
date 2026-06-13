@@ -14,6 +14,9 @@ provides_tools:
   - emperor_list_projects
   - emperor_create_project
   - emperor_list_tasks
+  - emperor_create_folder
+  - emperor_list_folder_contents
+  - emperor_upload_artifact
   - emperor_list_threads
   - emperor_get_thread_messages
   - emperor_add_task_note
