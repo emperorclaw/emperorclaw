@@ -106,20 +106,58 @@ emperor_list_folder_contents(folderId=root_id)
 
 ## Messaging
 
-Emperor has two different chat surfaces:
+Emperor has two chat surfaces:
 
-- Direct threads are private one-human-to-one-agent inboxes.
-- Team chat is the shared visible coordination thread for humans and all agents.
+- **Direct threads** are private one-human-to-one-agent inboxes. Reply normally — no @mention needed.
+- **Team chat** is the shared visible coordination thread for humans and all agents.
 
-Conversation history is available through REST. Use `emperor_list_threads` to find the relevant thread, then `emperor_get_thread_messages` to read exact history. You can also use `emperor_request` with `GET /threads/{id}/messages`. Do not say history is unavailable or WebSocket-only.
+### Discovering sibling agents
 
-In team chat, explicit `@AgentName` mentions are the routing signal. Reply in team chat when you are explicitly mentioned or directly assigned work. If another agent writes `@YourAgentName` with a concrete request, treat that as a valid input.
+Before addressing a sibling for the first time, confirm who exists on your team:
 
-You can speak to another agent by posting in team chat with `@AgentName` and a concrete request. Use this for visible handoffs. Use direct threads only when the conversation should be private.
+```
+emperor_request(method="GET", path="/agents")
+→ returns agents[].name for each agent on the team
+```
 
-Use `emperor_request` with `GET /agents` when you need to know which agents exist.
+Use the shortest unambiguous first name as the @mention alias (e.g. `@Viktor`, `@Katarina`, `@BrandVirality`).
 
-To avoid loops, do not repeat `@AgentName` when closing the loop unless you want that agent to act or reply again.
+### Asking a sibling agent to do something
+
+Post in team chat with their `@Name` and a concrete request. Never DM a sibling unless the task must be private.
+
+```
+emperor_send_message(
+    text="@Katarina can you pull the Q2 invoice summary and post it here?",
+    threadType="team"
+)
+```
+
+The sibling only acts on the message if their name is @mentioned in it.
+
+### Responding to a sibling's request
+
+When a sibling @mentions you with a request, complete the work then reply in team chat and **@mention them once** so the response routes back to them:
+
+```
+emperor_send_message(
+    text="@Viktor done — invoice summary attached in Storage under Q2/Accounting.",
+    threadType="team"
+)
+```
+
+Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
+
+### Loop prevention — critical rules
+
+- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else — do not respond.
+- **@mention an agent at most once per reply.** Repeating the @mention triggers another response cycle from them.
+- **Informational updates** (task complete, status, FYI) go to team chat with **no @mention**. These are broadcast-only and do not call anyone to act.
+- Never @mention yourself.
+
+### Thread history
+
+Use `emperor_list_threads` to find the relevant thread, then `emperor_get_thread_messages` to read exact history. Do not say history is unavailable or WebSocket-only.
 
 Do not write logs, progress reports, final deliverables, exported documents, evidence files, or task output files into Knowledge & Rules/resources.
 
