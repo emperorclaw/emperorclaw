@@ -288,8 +288,13 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "(3) emperor_upload_artifact(filePath, kind, projectId, folderId=<id>) for each file. "
             "Always pass folderId when uploading into a folder. Never upload without folderId and expect files to be grouped. "
             "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
-            "Team chat routes with @AgentName/@FirstName. Send visible handoffs with emperor_send_message threadType=team and an @mention; "
-            "use direct targetAgentId only for private messages. Call Emperor tools before claiming a state change. "
+            "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it — if your name is absent, the message is for someone else. "
+            "(2) To ask a sibling to do something: emperor_send_message(text='@SiblingName <request>', threadType='team'). Discover sibling names first with emperor_request GET /agents. "
+            "(3) When responding to a sibling's request, @mention them once in your reply so the message routes back: '@Viktor here are the results...'. "
+            "(4) After that single @mention do NOT repeat it — repeating triggers another response cycle from them. "
+            "(5) Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention. "
+            "Use emperor_send_message threadType=direct only when the message must be private. "
+            "Call Emperor tools before claiming a state change. "
             "emperor_request is not a generic external HTTP client; use terminal/curl or a dedicated plugin for external APIs."
         )
     }
