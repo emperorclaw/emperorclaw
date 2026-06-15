@@ -8,6 +8,7 @@ export const versions: DocVersion[] = [
     description: 'Includes the agent-first pipelines registry, isShared injection, agent-to-agent replies, and durable checkpoints.',
     pages: [
       { slug: 'overview', title: 'Overview', file: 'overview.md' },
+      { slug: 'agent-quickstart', title: 'Agent Quick-Start', file: 'agent-quickstart.md' },
       { slug: 'why-emperor-vs-openclaw', title: 'Why Emperor vs Plain OpenClaw', file: 'why-emperor-vs-openclaw.md' },
       { slug: 'resources-as-wiki-memory', title: 'Resources As Wiki Memory', file: 'resources-as-wiki-memory.md' },
       { slug: 'project-architecture', title: 'Project & Plugin Architecture', file: 'project-architecture.md' },
