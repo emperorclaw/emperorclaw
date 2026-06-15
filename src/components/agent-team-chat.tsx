@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { User } from "lucide-react";
+import { User, Send } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
-export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMessages: any[]; agents: any[] }) {
+export function AgentTeamChat({ initialMessages = [], agents = [], sendable = false }: { initialMessages: any[]; agents: any[]; sendable?: boolean }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [messages, setMessages] = useState<any[]>(initialMessages);
     const [participants, setParticipants] = useState<any[]>([]);
+    const [draft, setDraft] = useState("");
+    const [isSending, setIsSending] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(
         initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null
@@ -68,6 +70,32 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
         const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
         setIsAtBottom(atBottom);
         if (atBottom) setUnreadCount(0);
+    };
+
+    const handleSend = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const text = draft.trim();
+        if (!text || isSending) return;
+        setIsSending(true);
+        setDraft("");
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text }),
+            });
+            if (!res.ok) throw new Error("Failed to send");
+            const data = await res.json();
+            if (data.message) {
+                setMessages((prev) => prev.some((m) => m.id === data.message.id) ? prev : [...prev, data.message]);
+                setLastSeenAt(data.message.createdAt);
+            }
+        } catch (err) {
+            console.error("Failed to send team message", err);
+            setDraft(text);
+        } finally {
+            setIsSending(false);
+        }
     };
 
     const getAgentName = (id: string | null) => {
@@ -178,9 +206,35 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                 </div>
             )}
 
-            <div className="flex items-center justify-center space-x-2 border-t border-zinc-800/80 bg-zinc-900/30 p-3">
-                <span className="text-xs font-medium text-zinc-500">Transparency Layer Active (Read-Only)</span>
-            </div>
+            {sendable ? (
+                <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-3 flex items-end gap-2">
+                    <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                void handleSend(e as any);
+                            }
+                        }}
+                        placeholder="Message the team..."
+                        rows={1}
+                        className="flex-1 resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-32 overflow-y-auto"
+                        style={{ minHeight: "2.5rem" }}
+                    />
+                    <button
+                        type="submit"
+                        disabled={!draft.trim() || isSending}
+                        className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <Send className="h-4 w-4 text-white" />
+                    </button>
+                </form>
+            ) : (
+                <div className="flex items-center justify-center space-x-2 border-t border-zinc-800/80 bg-zinc-900/30 p-3">
+                    <span className="text-xs font-medium text-zinc-500">Read-only preview — open Team Channel to participate</span>
+                </div>
+            )}
         </div>
     );
 }

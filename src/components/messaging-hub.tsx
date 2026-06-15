@@ -95,15 +95,15 @@ export function MessagingHub({
                             onClick={() => setSelectedAgentId(null)}
                             className={cn(
                                 "w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all group",
-                                selectedAgentId === null 
-                                    ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm" 
+                                selectedAgentId === null
+                                    ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm"
                                     : "hover:bg-zinc-900 border border-transparent"
                             )}
                         >
                             <div className={cn(
                                 "w-10 h-10 rounded-xl flex items-center justify-center border transition-colors",
-                                selectedAgentId === null 
-                                    ? "bg-indigo-500/20 border-indigo-400/30 text-indigo-400" 
+                                selectedAgentId === null
+                                    ? "bg-indigo-500/20 border-indigo-400/30 text-indigo-400"
                                     : "bg-zinc-800 border-zinc-700 text-zinc-500 group-hover:text-zinc-300"
                             )}>
                                 <Users className="w-5 h-5" />
@@ -113,9 +113,9 @@ export function MessagingHub({
                                     "text-sm font-semibold tracking-tight",
                                     selectedAgentId === null ? "text-indigo-100" : "text-zinc-300"
                                 )}>
-                                    Team Broadcast
+                                    Team Channel
                                 </span>
-                                <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Public Channel</span>
+                                <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Everyone</span>
                             </div>
                         </button>
 
@@ -193,15 +193,15 @@ export function MessagingHub({
                             <div>
                                 <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
                                     <Users className="w-5 h-5 text-indigo-400" />
-                                    Agent Team Chat
+                                    Team Channel
                                 </h1>
-                                <p className="text-xs text-zinc-500 mt-0.5 font-medium">Coordinate the entire fleet in the shared broadcast channel.</p>
+                                <p className="text-xs text-zinc-500 mt-0.5 font-medium">Shared channel — everyone on the team sees and can reply here.</p>
                             </div>
                         </div>
                         <div className="flex-1 overflow-hidden relative">
-                             <div className="h-full">
-                                 <AgentTeamChat initialMessages={initialTeamMessages} agents={agents} />
-                             </div>
+                            <div className="h-full">
+                                <AgentTeamChat initialMessages={initialTeamMessages} agents={agents} sendable={true} />
+                            </div>
                         </div>
                     </div>
                 ) : (
