@@ -7,6 +7,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMessages: any[]; agents: any[] }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [messages, setMessages] = useState<any[]>(initialMessages);
+    const [participants, setParticipants] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(
         initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null
@@ -25,6 +26,9 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
+                if (data.participants) {
+                    setParticipants(data.participants);
+                }
                 if (data.messages && data.messages.length > 0) {
                     setMessages((prev) => {
                         const existingIds = new Set(prev.map((m) => m.id));
@@ -72,6 +76,18 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
         return agent ? agent.name : "Unknown Agent";
     };
 
+    const now = Date.now();
+    const typingAgents = participants
+        .filter(p => p.participantType === "agent" && p.typingUntil && new Date(p.typingUntil).getTime() > now)
+        .map(p => ({ id: p.participantId, name: getAgentName(p.participantId) }));
+
+    const agentReadTimes: Record<string, number> = {};
+    for (const p of participants) {
+        if (p.participantType === "agent" && p.lastReadAt) {
+            agentReadTimes[p.participantId] = new Date(p.lastReadAt).getTime();
+        }
+    }
+
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-center justify-between border-b border-zinc-800/80 p-4">
@@ -93,30 +109,74 @@ export function AgentTeamChat({ initialMessages = [], agents = [] }: { initialMe
                 {messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-sm italic text-zinc-600">No communications yet.</div>
                 ) : (
-                    messages.map((msg) => (
-                        <div key={msg.id} className={`flex space-x-3 ${msg.senderType === "human" ? "flex-row-reverse space-x-reverse" : ""}`}>
-                            <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border ${msg.senderType === "human" ? "border-zinc-700 bg-zinc-800/80" : "border-indigo-500/20 bg-indigo-500/10"}`}>
-                                {msg.senderType === "human" ? (
-                                    <User className="h-4 w-4 text-zinc-400" />
-                                ) : (
-                                    <img
-                                        src={agents.find((a) => a.id === (msg.fromUserId || msg.senderId))?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || msg.senderId || "agent")}`}
-                                        className="h-full w-full object-cover"
-                                        alt=""
-                                    />
-                                )}
-                            </div>
-                            <div className={`max-w-[85%] rounded-2xl border px-4 py-2.5 text-sm ${msg.senderType === "human" ? "rounded-tr-none border-zinc-700/50 bg-zinc-800/50 text-zinc-200" : "rounded-tl-none border-zinc-800/50 bg-zinc-800/30 text-zinc-300"}`}>
-                                <div className={`mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider ${msg.senderType === "human" ? "text-zinc-500" : "text-indigo-400"}`}>
-                                    <span>{msg.senderType === "human" ? "Human Manager" : getAgentName(msg.fromUserId || msg.senderId)}</span>
-                                    <span className="px-2 text-zinc-600">{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    messages.map((msg) => {
+                        const msgTime = new Date(msg.createdAt).getTime();
+                        const readByAgents = msg.senderType === "human"
+                            ? Object.entries(agentReadTimes)
+                                .filter(([, t]) => t >= msgTime)
+                                .map(([id]) => ({ id, name: getAgentName(id) }))
+                            : [];
+
+                        return (
+                            <div key={msg.id} className={`flex space-x-3 ${msg.senderType === "human" ? "flex-row-reverse space-x-reverse" : ""}`}>
+                                <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border ${msg.senderType === "human" ? "border-zinc-700 bg-zinc-800/80" : "border-indigo-500/20 bg-indigo-500/10"}`}>
+                                    {msg.senderType === "human" ? (
+                                        <User className="h-4 w-4 text-zinc-400" />
+                                    ) : (
+                                        <img
+                                            src={agents.find((a) => a.id === (msg.fromUserId || msg.senderId))?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || msg.senderId || "agent")}`}
+                                            className="h-full w-full object-cover"
+                                            alt=""
+                                        />
+                                    )}
                                 </div>
-                                <ParsedMessage text={msg.text} />
+                                <div className="flex flex-col items-end max-w-[85%]">
+                                    <div className={`w-full rounded-2xl border px-4 py-2.5 text-sm ${msg.senderType === "human" ? "rounded-tr-none border-zinc-700/50 bg-zinc-800/50 text-zinc-200" : "rounded-tl-none border-zinc-800/50 bg-zinc-800/30 text-zinc-300"}`}>
+                                        <div className={`mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider ${msg.senderType === "human" ? "text-zinc-500" : "text-indigo-400"}`}>
+                                            <span>{msg.senderType === "human" ? "Human Manager" : getAgentName(msg.fromUserId || msg.senderId)}</span>
+                                            <span className="px-2 text-zinc-600">{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                                        </div>
+                                        <ParsedMessage text={msg.text} />
+                                    </div>
+                                    {readByAgents.length > 0 && (
+                                        <div className="mt-1 flex items-center gap-1 px-1">
+                                            <div className="flex -space-x-1">
+                                                {readByAgents.slice(0, 3).map(a => (
+                                                    <img
+                                                        key={a.id}
+                                                        src={agents.find(ag => ag.id === a.id)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(a.id)}`}
+                                                        title={a.name}
+                                                        className="h-3.5 w-3.5 rounded-full border border-zinc-900 object-cover"
+                                                        alt={a.name}
+                                                    />
+                                                ))}
+                                            </div>
+                                            <span className="text-[10px] font-medium text-indigo-500">
+                                                {readByAgents.length === 1 ? `Read by ${readByAgents[0].name}` : `Read by ${readByAgents.length} agents`}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
+
+            {typingAgents.length > 0 && (
+                <div className="flex items-center gap-2 border-t border-zinc-800/60 px-4 py-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                    <div className="flex gap-1">
+                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                        {typingAgents.length === 1
+                            ? `${typingAgents[0].name} is typing`
+                            : `${typingAgents.slice(0, -1).map(a => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name} are typing`}
+                    </span>
+                </div>
+            )}
 
             <div className="flex items-center justify-center space-x-2 border-t border-zinc-800/80 bg-zinc-900/30 p-3">
                 <span className="text-xs font-medium text-zinc-500">Transparency Layer Active (Read-Only)</span>
