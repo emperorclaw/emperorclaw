@@ -294,7 +294,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
           <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm h-[480px]">
-            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={false} />
+            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} />
           </div>
         </div>
       </div>
