@@ -3,6 +3,35 @@
 import { useEffect, useRef, useState } from "react";
 import { User, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { cn } from "@/lib/utils";
+
+// --- Grouping helpers ---
+
+function isSameDay(a: string | Date, b: string | Date) {
+    const da = new Date(a), db = new Date(b);
+    return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function isGroupContinuation(
+    curr: { senderType: string; senderId?: string | null; fromUserId?: string | null; createdAt: string | Date },
+    prev: typeof curr
+) {
+    if (curr.senderType !== prev.senderType) return false;
+    const currId = curr.senderId ?? curr.fromUserId ?? null;
+    const prevId = prev.senderId ?? prev.fromUserId ?? null;
+    if (currId !== prevId) return false;
+    return (new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000;
+}
+
+function dateSeparatorLabel(date: string | Date) {
+    const d = new Date(date);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (isSameDay(d, today)) return "Today";
+    if (isSameDay(d, yesterday)) return "Yesterday";
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
 export function AgentTeamChat({ initialMessages = [], agents = [], sendable = false }: { initialMessages: any[]; agents: any[]; sendable?: boolean }) {
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -22,6 +51,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
         document.addEventListener("mousedown", handler);
         return () => document.removeEventListener("mousedown", handler);
     }, []);
+
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(
         initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null
@@ -145,61 +175,111 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                 </div>
             </div>
 
-            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 space-y-4 overflow-y-auto p-4">
+            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3">
                 {messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-sm italic text-zinc-600">No communications yet.</div>
                 ) : (
-                    messages.map((msg) => {
-                        const msgTime = new Date(msg.createdAt).getTime();
-                        const readByAgents = msg.senderType === "human"
-                            ? Object.entries(agentReadTimes)
-                                .filter(([, t]) => t >= msgTime)
-                                .map(([id]) => ({ id, name: getAgentName(id) }))
-                            : [];
+                    <div>
+                        {messages.map((msg, i) => {
+                            const prev = messages[i - 1] ?? null;
+                            const next = messages[i + 1] ?? null;
+                            const isHuman = msg.senderType === "human";
 
-                        return (
-                            <div key={msg.id} className={`flex space-x-3 ${msg.senderType === "human" ? "flex-row-reverse space-x-reverse" : ""}`}>
-                                <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border ${msg.senderType === "human" ? "border-zinc-700 bg-zinc-800/80" : "border-indigo-500/20 bg-indigo-500/10"}`}>
-                                    {msg.senderType === "human" ? (
-                                        <User className="h-4 w-4 text-zinc-400" />
-                                    ) : (
-                                        <img
-                                            src={agents.find((a) => a.id === (msg.fromUserId || msg.senderId))?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || msg.senderId || "agent")}`}
-                                            className="h-full w-full object-cover"
-                                            alt=""
-                                        />
-                                    )}
-                                </div>
-                                <div className="flex flex-col items-end max-w-[85%]">
-                                    <div className={`w-full rounded-2xl border px-4 py-2.5 text-sm ${msg.senderType === "human" ? "rounded-tr-none border-zinc-700/50 bg-zinc-800/50 text-zinc-200" : "rounded-tl-none border-zinc-800/50 bg-zinc-800/30 text-zinc-300"}`}>
-                                        <div className={`mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider ${msg.senderType === "human" ? "text-zinc-500" : "text-indigo-400"}`}>
-                                            <span>{msg.senderType === "human" ? "Human Manager" : getAgentName(msg.fromUserId || msg.senderId)}</span>
-                                            <span className="px-2 text-zinc-600">{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            const showDaySep = !prev || !isSameDay(prev.createdAt, msg.createdAt);
+                            const isContinuation = !!prev && isGroupContinuation(msg, prev);
+                            const isLastInGroup = !next || !isGroupContinuation(next, msg);
+
+                            const msgTime = new Date(msg.createdAt).getTime();
+                            const readByAgents = isHuman
+                                ? Object.entries(agentReadTimes)
+                                    .filter(([, t]) => t >= msgTime)
+                                    .map(([id]) => ({ id, name: getAgentName(id) }))
+                                : [];
+
+                            const senderId = msg.fromUserId || msg.senderId || null;
+                            const agentObj = !isHuman ? agents.find((a: any) => a.id === senderId) : null;
+                            const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || "agent")}`;
+
+                            return (
+                                <div key={msg.id}>
+                                    {showDaySep && (
+                                        <div className="flex items-center gap-2 my-4">
+                                            <div className="flex-1 border-t border-zinc-800" />
+                                            <span className="text-[10px] uppercase tracking-widest text-zinc-600">{dateSeparatorLabel(msg.createdAt)}</span>
+                                            <div className="flex-1 border-t border-zinc-800" />
                                         </div>
-                                        <ParsedMessage text={msg.text} />
-                                    </div>
-                                    {readByAgents.length > 0 && (
-                                        <div className="mt-1 flex items-center gap-1 px-1">
-                                            <div className="flex -space-x-1">
-                                                {readByAgents.slice(0, 3).map(a => (
-                                                    <img
-                                                        key={a.id}
-                                                        src={agents.find(ag => ag.id === a.id)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(a.id)}`}
-                                                        title={a.name}
-                                                        className="h-3.5 w-3.5 rounded-full border border-zinc-900 object-cover"
-                                                        alt={a.name}
-                                                    />
-                                                ))}
+                                    )}
+
+                                    <div className={cn(
+                                        `flex`,
+                                        isHuman ? "flex-row-reverse" : "flex-row",
+                                        isContinuation ? "mt-0.5" : "mt-3"
+                                    )}>
+                                        {/* Avatar — only on group-start, always occupies 44px (w-8 + gap) for alignment */}
+                                        <div className={cn("shrink-0 flex flex-col justify-end", isHuman ? "ml-2" : "mr-2", "w-8")}>
+                                            {!isContinuation && (
+                                                isHuman ? (
+                                                    <div className="h-8 w-8 flex items-center justify-center overflow-hidden rounded-full border border-zinc-700 bg-zinc-800/80">
+                                                        <User className="h-4 w-4 text-zinc-400" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="h-8 w-8 overflow-hidden rounded-full border border-indigo-500/20 bg-indigo-500/10">
+                                                        <img src={avatarSrc} className="h-full w-full object-cover" alt="" />
+                                                    </div>
+                                                )
+                                            )}
+                                        </div>
+
+                                        {/* Bubble + read receipts */}
+                                        <div className={cn("flex flex-col max-w-[75%]", isHuman ? "items-end" : "items-start")}>
+                                            {/* Sender name — group-start only, agents only */}
+                                            {!isContinuation && !isHuman && (
+                                                <span className="text-[10px] font-medium text-indigo-400 mb-1 ml-1">{getAgentName(senderId)}</span>
+                                            )}
+
+                                            <div className={cn(
+                                                "rounded-2xl border px-4 py-2.5 text-sm",
+                                                isHuman
+                                                    ? "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
+                                                    : "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
+                                                isLastInGroup && isHuman && "rounded-tr-none",
+                                                isLastInGroup && !isHuman && "rounded-tl-none"
+                                            )}>
+                                                <ParsedMessage text={msg.text} />
+                                                {/* Timestamp bottom-right */}
+                                                <div className={cn(
+                                                    "text-[10px] mt-1.5 text-right opacity-50",
+                                                    isHuman ? "text-zinc-400" : "text-zinc-500"
+                                                )}>
+                                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                </div>
                                             </div>
-                                            <span className="text-[10px] font-medium text-indigo-500">
-                                                {readByAgents.length === 1 ? `Read by ${readByAgents[0].name}` : `Read by ${readByAgents.length} agents`}
-                                            </span>
+
+                                            {/* Read receipts — only on last message of group */}
+                                            {readByAgents.length > 0 && isLastInGroup && (
+                                                <div className="mt-1 flex items-center gap-1 px-1">
+                                                    <div className="flex -space-x-1">
+                                                        {readByAgents.slice(0, 3).map(a => (
+                                                            <img
+                                                                key={a.id}
+                                                                src={agents.find((ag: any) => ag.id === a.id)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(a.id)}`}
+                                                                title={a.name}
+                                                                className="h-3.5 w-3.5 rounded-full border border-zinc-900 object-cover"
+                                                                alt={a.name}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    <span className="text-[10px] font-medium text-indigo-500">
+                                                        {readByAgents.length === 1 ? `Read by ${readByAgents[0].name}` : `Read by ${readByAgents.length} agents`}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })
+                            );
+                        })}
+                    </div>
                 )}
             </div>
 
@@ -213,7 +293,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                         {typingAgents.length === 1
                             ? `${typingAgents[0].name} is typing`
-                            : `${typingAgents.slice(0, -1).map(a => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name} are typing`}
+                            : `${typingAgents.slice(0, -1).map((a: { name: string }) => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name} are typing`}
                     </span>
                 </div>
             )}
@@ -272,7 +352,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                             onKeyDown={(e) => {
                                 if (e.key === "Enter" && !e.shiftKey) {
                                     e.preventDefault();
-                                    void handleSend(e as any);
+                                    void handleSend(e as unknown as React.FormEvent);
                                 }
                             }}
                             placeholder="Message the team… (@ to mention)"
