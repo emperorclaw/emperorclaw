@@ -33,7 +33,13 @@
       "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\deploy-hermes-plugin.py\")",
       "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe -c $client)",
       "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\_bunny_purge_prod.py\")",
-      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\deploy-vps.py\")"
+      "PowerShell(C:\\\\Users\\\\JZ\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python3.exe \"C:\\\\Users\\\\JZ\\\\Documents\\\\w\\\\emperorclaw\\\\scripts\\\\deploy-vps.py\")",
+      "Bash(python scripts/deploy-hermes-plugin.py)",
+      "Bash(python scripts/setup-malecu-ops.py)",
+      "Bash(python -c \"import sys; sys.stdout.reconfigure\\(encoding='utf-8'\\)\")",
+      "Bash(python -c \"import re; content = open\\('scripts/setup-malecu-ops.py', encoding='utf-8'\\).read\\(\\); count = sum\\(1 for c in content if ord\\(c\\) > 127 and c not in '€'\\); print\\(f'{count} non-ASCII chars outside euro sign'\\)\")",
+      "Bash(python -)",
+      "Bash(python -c ' *)"
     ]
   }
 }
