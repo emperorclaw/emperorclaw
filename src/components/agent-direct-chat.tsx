@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Send, User } from "lucide-react";
+import { Bot, Mic, Send, Square, Trash2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
@@ -43,7 +43,14 @@ export function AgentDirectChat({
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingSecs, setRecordingSecs] = useState(0);
+    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+    const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordingChunksRef = useRef<Blob[]>([]);
+    const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastSeenAtRef = useRef<string | null>(null);
 
@@ -163,6 +170,76 @@ export function AgentDirectChat({
         }
     }, [messages]);
 
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mr = new MediaRecorder(stream);
+            recordingChunksRef.current = [];
+            mr.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
+            mr.onstop = () => {
+                const blob = new Blob(recordingChunksRef.current, { type: mr.mimeType || "audio/webm" });
+                setAudioBlob(blob);
+                setAudioPreviewUrl(URL.createObjectURL(blob));
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mr.start();
+            mediaRecorderRef.current = mr;
+            setIsRecording(true);
+            setRecordingSecs(0);
+            recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+        } catch {
+            console.error("Microphone access denied");
+        }
+    };
+
+    const stopRecording = () => {
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+
+    const discardVoice = () => {
+        if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+        setAudioBlob(null);
+        setAudioPreviewUrl(null);
+        setRecordingSecs(0);
+    };
+
+    const sendVoice = async () => {
+        if (!audioBlob || isSending) return;
+        setIsSending(true);
+        try {
+            const form = new FormData();
+            form.append("file", audioBlob, `voice-${Date.now()}.webm`);
+            const uploadRes = await fetch("/api/chat/voice", { method: "POST", body: form });
+            if (!uploadRes.ok) throw new Error("Upload failed");
+            const { url } = await uploadRes.json() as { url: string };
+
+            const secs = recordingSecs;
+            const mins = Math.floor(secs / 60);
+            const durationLabel = mins > 0 ? `${mins}:${String(secs % 60).padStart(2, "0")}` : `${secs}s`;
+            const text = `🎤 Voice message (${durationLabel})\n[audio:${url}]`;
+
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, targetAgentId: agentId }),
+            });
+            if (!res.ok) throw new Error("Send failed");
+            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
+            if (data.thread) setThread(data.thread);
+            if (data.message) {
+                setMessages(prev => prev.some(m => m.id === data.message!.id) ? prev : [...prev, data.message!]);
+                lastSeenAtRef.current = data.message.createdAt;
+            }
+            discardVoice();
+        } catch (err) {
+            console.error("Failed to send voice message", err);
+        } finally {
+            setIsSending(false);
+        }
+    };
+
     const handleSend = async (event: React.FormEvent) => {
         event.preventDefault();
         const text = draft.trim();
@@ -267,10 +344,7 @@ export function AgentDirectChat({
                                                     {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                 </span>
                                             </div>
-                                            <MarkdownRenderer
-                                                content={message.text}
-                                                className="[&_.prose]:max-w-none [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
-                                            />
+                                            <MessageContent text={message.text} isHuman={isHuman} />
                                         </div>
                                         {isHuman && (
                                             <div className="mt-1 flex items-center gap-1 px-1">
@@ -302,7 +376,55 @@ export function AgentDirectChat({
                 )}
             </div>
 
-            <form onSubmit={handleSend} className="border-t border-zinc-800 bg-zinc-950/80 p-4">
+            <div className="border-t border-zinc-800 bg-zinc-950/80 p-4">
+                {/* State: recording in progress */}
+                {isRecording && (
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                            <span className="text-sm font-medium text-zinc-300">Recording…</span>
+                            <span className="text-sm font-mono text-zinc-400">
+                                {Math.floor(recordingSecs / 60)}:{String(recordingSecs % 60).padStart(2, "0")}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={stopRecording}
+                            className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-400 transition-colors"
+                        >
+                            <Square className="w-3.5 h-3.5 fill-white" />
+                            Stop
+                        </button>
+                    </div>
+                )}
+
+                {/* State: preview before sending */}
+                {!isRecording && audioPreviewUrl && (
+                    <div className="flex items-center gap-2">
+                        <audio controls src={audioPreviewUrl} className="flex-1 h-9 min-w-0" style={{ colorScheme: "dark" }} />
+                        <button
+                            type="button"
+                            onClick={discardVoice}
+                            className="p-2 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+                            title="Discard"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={sendVoice}
+                            disabled={isSending}
+                            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <Send className="w-4 h-4" />
+                            Send
+                        </button>
+                    </div>
+                )}
+
+                {/* State: normal text input */}
+                {!isRecording && !audioPreviewUrl && (
+                <form onSubmit={handleSend}>
                 <div className="flex items-center gap-3">
                     <input
                         type="text"
@@ -311,6 +433,14 @@ export function AgentDirectChat({
                         placeholder={`Message ${agentName} directly...`}
                         className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
+                    <button
+                        type="button"
+                        onClick={startRecording}
+                        title="Record voice message"
+                        className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 hover:border-emerald-500/50 hover:text-emerald-400 text-zinc-400 transition-colors shrink-0"
+                    >
+                        <Mic className="w-4 h-4" />
+                    </button>
                     <button
                         type="submit"
                         disabled={!draft.trim() || isSending}
@@ -321,6 +451,33 @@ export function AgentDirectChat({
                     </button>
                 </div>
             </form>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
+    const audioMatch = text.match(/\[audio:(https?:\/\/[^\]]+)\]/);
+    if (!audioMatch) {
+        return (
+            <MarkdownRenderer
+                content={text}
+                className="[&_.prose]:max-w-none [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
+            />
+        );
+    }
+    const before = text.slice(0, audioMatch.index).replace(/\[audio:[^\]]+\]/, "").trim();
+    const audioSrc = audioMatch[1];
+    return (
+        <div className="space-y-2">
+            {before && <p className={`text-sm font-medium ${isHuman ? "text-emerald-950/80" : "text-zinc-400"}`}>{before}</p>}
+            <audio
+                controls
+                src={audioSrc}
+                className="w-full max-w-[220px] h-8"
+                style={{ colorScheme: "dark", accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
+            />
         </div>
     );
 }
