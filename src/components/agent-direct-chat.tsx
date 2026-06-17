@@ -163,6 +163,104 @@ export function AgentDirectChat({
         }
     }, [messages]);
 
+    const startRecording = async () => {
+        setMicError(null);
+
+        // getUserMedia requires a secure context (HTTPS or localhost)
+        if (!window.isSecureContext) {
+            setMicError("Microphone access requires a secure (HTTPS) connection.");
+            return;
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setMicError("Microphone not available on this browser.");
+            return;
+        }
+
+        try {
+            // Call getUserMedia directly inside the user-gesture handler
+            // so the browser shows its native permission prompt naturally.
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mr = new MediaRecorder(stream);
+            recordingChunksRef.current = [];
+            mr.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
+            mr.onstop = () => {
+                const blob = new Blob(recordingChunksRef.current, { type: mr.mimeType || "audio/webm" });
+                setAudioBlob(blob);
+                setAudioPreviewUrl(URL.createObjectURL(blob));
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mr.start();
+            mediaRecorderRef.current = mr;
+            setIsRecording(true);
+            setRecordingSecs(0);
+            recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+        } catch (err) {
+            if (err instanceof Error && err.name === "NotAllowedError") {
+                // NotAllowedError fires when:
+                //   - The user denied the prompt
+                //   - A Permissions-Policy header blocks microphone (e.g. microphone=())
+                //   - The user has previously denied and the browser doesn't re-prompt
+                setMicError("Microphone access denied. Check your browser settings and site permissions (look for the lock icon in the address bar), then reload and try again.");
+            } else if (err instanceof Error && err.name === "NotFoundError") {
+                setMicError("No microphone found. Plug one in and try again.");
+            } else if (err instanceof Error && err.name === "NotReadableError") {
+                setMicError("Microphone is busy. Close other apps using it and try again.");
+            } else {
+                setMicError("Could not start recording. Check your microphone and try again.");
+            }
+        }
+    };
+
+    const stopRecording = () => {
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+
+    const discardVoice = () => {
+        if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+        setAudioBlob(null);
+        setAudioPreviewUrl(null);
+        setRecordingSecs(0);
+    };
+
+    const sendVoice = async () => {
+        if (!audioBlob || isSending) return;
+        setIsSending(true);
+        try {
+            const form = new FormData();
+            form.append("file", audioBlob, `voice-${Date.now()}.webm`);
+            const uploadRes = await fetch("/api/chat/voice", { method: "POST", body: form });
+            if (!uploadRes.ok) throw new Error("Upload failed");
+            const { url } = await uploadRes.json() as { url: string };
+
+            const secs = recordingSecs;
+            const mins = Math.floor(secs / 60);
+            const durationLabel = mins > 0 ? `${mins}:${String(secs % 60).padStart(2, "0")}` : `${secs}s`;
+            const text = `🎤 Voice message (${durationLabel})\n[audio:${url}]`;
+
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, targetAgentId: agentId }),
+            });
+            if (!res.ok) throw new Error("Send failed");
+            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
+            if (data.thread) setThread(data.thread);
+            if (data.message) {
+                setMessages(prev => prev.some(m => m.id === data.message!.id) ? prev : [...prev, data.message!]);
+                lastSeenAtRef.current = data.message.createdAt;
+            }
+            discardVoice();
+        } catch (err) {
+            console.error("Failed to send voice message", err);
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+
     const handleSend = async (event: React.FormEvent) => {
         event.preventDefault();
         const text = draft.trim();
