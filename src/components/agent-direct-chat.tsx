@@ -201,11 +201,21 @@ export function AgentDirectChat({
 
     const startRecording = async () => {
         setMicError(null);
-        if (!navigator.mediaDevices?.getUserMedia) {
-            setMicError("Microphone not available. Use a secure (HTTPS) connection.");
+
+        // getUserMedia requires a secure context (HTTPS or localhost)
+        if (!window.isSecureContext) {
+            setMicError("Microphone access requires a secure (HTTPS) connection.");
             return;
         }
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setMicError("Microphone not available on this browser.");
+            return;
+        }
+
         try {
+            // Call getUserMedia directly inside the user-gesture handler
+            // so the browser shows its native permission prompt naturally.
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mr = new MediaRecorder(stream);
             recordingChunksRef.current = [];
@@ -223,7 +233,15 @@ export function AgentDirectChat({
             recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
         } catch (err) {
             if (err instanceof Error && err.name === "NotAllowedError") {
-                setMicError("Microphone access denied. Allow it in your browser settings and try again.");
+                // NotAllowedError fires when:
+                //   - The user denied the prompt
+                //   - A Permissions-Policy header blocks microphone (e.g. microphone=())
+                //   - The user has previously denied and the browser doesn't re-prompt
+                setMicError("Microphone access denied. Check your browser settings and site permissions (look for the lock icon in the address bar), then reload and try again.");
+            } else if (err instanceof Error && err.name === "NotFoundError") {
+                setMicError("No microphone found. Plug one in and try again.");
+            } else if (err instanceof Error && err.name === "NotReadableError") {
+                setMicError("Microphone is busy. Close other apps using it and try again.");
             } else {
                 setMicError("Could not start recording. Check your microphone and try again.");
             }
