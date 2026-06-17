@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyId } from "@/lib/auth";
 import { storageAdapter } from "@/lib/storage";
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ url: result.storageUrl });
     } catch (err) {
-        const message = err instanceof Error ? err.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: 500 });
+        console.error("Voice upload error:", err);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
