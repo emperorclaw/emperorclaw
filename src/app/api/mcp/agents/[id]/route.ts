@@ -24,10 +24,10 @@ export async function PATCH(
 
     try {
         const body = await req.json();
-        const { role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
 
         // Ensure we actually have something to update
-        if (role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined) {
+        if (name === undefined && role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined) {
             return NextResponse.json({ error: "At least one field to update must be provided" }, { status: 400 });
         }
 
@@ -40,14 +40,13 @@ export async function PATCH(
         }
 
         const updateData: any = {};
+        if (name !== undefined) updateData.name = name;
         if (role !== undefined) updateData.role = role;
         if (skillsJson !== undefined) updateData.skillsJson = skillsJson;
         if (memory !== undefined) updateData.memory = memory;
         if (modelPolicyJson !== undefined) updateData.modelPolicyJson = modelPolicyJson;
         if (concurrencyLimit !== undefined) updateData.concurrencyLimit = concurrencyLimit;
         if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
-
-        // We do not update name or currentLoad here; name is immutable after creation via MCP, and load is managed by the system.
 
         const [updatedAgent] = await db.update(agents).set(updateData).where(eq(agents.id, agentId)).returning();
 

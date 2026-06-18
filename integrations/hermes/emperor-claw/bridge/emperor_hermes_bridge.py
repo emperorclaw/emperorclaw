@@ -187,16 +187,24 @@ def mentions_agent(text: str, agent_name: str) -> bool:
     return bool(mention_keys & alias_keys)
 
 
-def is_for_agent(message: Dict[str, Any], agent_id: str) -> bool:
+def is_for_agent(message: Dict[str, Any], agent_id: str, state: Dict[str, Any]) -> bool:
     sender_type = str(message.get("senderType") or "").lower()
     sender_id = str(message.get("senderId") or message.get("sender_id") or message.get("fromUserId") or "")
     if sender_type == "agent" and sender_id == agent_id:
         return False
     text = str(message.get("text") or "")
     thread_type = str(message.get("threadType") or message.get("thread_type") or "")
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
     target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
     if target and target == agent_id:
         return True
+    if target and target != agent_id:
+        return False
+    # No targetAgentId on this message — check if this thread is a known DM thread.
+    # If another agent owns it, @mentions in it must not trigger us.
+    direct_threads = state.get("direct_threads", {})
+    if thread_id and thread_id in direct_threads:
+        return direct_threads[thread_id] == agent_id
     if thread_type == "direct":
         return True
     return mentions_agent(text, AGENT_NAME)
@@ -290,10 +298,11 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Messaging model:\n"
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
-        "- In team chat, respond when you are explicitly mentioned as @YourAgentName, @FirstName, or directly assigned work.\n"
-        "- You can speak to another agent by posting in team chat with @AgentName or @FirstName and a concrete request.\n"
-        "- Other agents can speak to you the same way; @mentions from agents are valid inputs.\n"
-        "- To avoid loops, do not repeat @AgentName unless you want that agent to act or reply again.\n\n"
+        "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
+        "- To ask a sibling to do something: post in team chat with @SiblingName and a concrete request (use the roster aliases below for the exact @name).\n"
+        "- When a sibling @mentions you with a request, complete the work then @mention them ONCE in your reply so the answer routes back: '@Viktor done, here are the results...'\n"
+        "- After that one @mention, do NOT repeat it — repeating triggers another response cycle.\n"
+        "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n\n"
         f"{roster_context}\n\n"
         f"Thread: {thread_id}\n"
         f"Latest message: {text}"
@@ -355,8 +364,16 @@ def main() -> int:
                 message_id = str(message.get("id") or "")
                 if not message_id or message_id in (state.get("seen") or []):
                     continue
+                # Record DM thread ownership before any routing decision.
+                # When a message carries targetAgentId we learn which agent owns that thread,
+                # so future agent replies in that thread (which have no targetAgentId) are
+                # not mistakenly claimed by @mention detection in other agents' bridges.
+                m_target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
+                m_thread = str(message.get("threadId") or message.get("thread_id") or "")
+                if m_target and m_thread:
+                    state.setdefault("direct_threads", {})[m_thread] = m_target
                 ts = message.get("createdAt")
-                if not is_for_agent(message, agent_id):
+                if not is_for_agent(message, agent_id, state):
                     remember_seen(state, message_id)
                     if ts:
                         state["lastSeenAt"] = ts

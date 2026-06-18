@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 openclaw-mission-control/
+
+# Debug artifacts
+tmp-openclaw-*
+payload.json

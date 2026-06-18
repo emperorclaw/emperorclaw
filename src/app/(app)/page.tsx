@@ -287,9 +287,14 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-6 pt-4 pb-12">
         <div className="space-y-4">
-          <h2 className="text-lg font-medium text-zinc-200">Live Agent Operations</h2>
-          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm h-[400px]">
-            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} />
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-zinc-200">Team Channel</h2>
+            <Link href="/messages" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
+              Open full channel →
+            </Link>
+          </div>
+          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm h-[480px]">
+            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} />
           </div>
         </div>
       </div>

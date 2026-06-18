@@ -74,7 +74,7 @@ export function MessagingHub({
 
     return (
         <div className="flex-1 flex overflow-hidden">
-            {/* Sidebar List */}
+            {/* Sidebar */}
             <div className="w-80 border-r border-zinc-800 flex flex-col bg-zinc-950/40">
                 <div className="p-4 border-b border-zinc-800">
                     <div className="relative">
@@ -91,19 +91,20 @@ export function MessagingHub({
 
                 <div className="flex-1 overflow-y-auto">
                     <div className="p-2 space-y-1">
+                        {/* Team Channel */}
                         <button
                             onClick={() => setSelectedAgentId(null)}
                             className={cn(
                                 "w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all group",
-                                selectedAgentId === null 
-                                    ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm" 
+                                selectedAgentId === null
+                                    ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm"
                                     : "hover:bg-zinc-900 border border-transparent"
                             )}
                         >
                             <div className={cn(
                                 "w-10 h-10 rounded-xl flex items-center justify-center border transition-colors",
-                                selectedAgentId === null 
-                                    ? "bg-indigo-500/20 border-indigo-400/30 text-indigo-400" 
+                                selectedAgentId === null
+                                    ? "bg-indigo-500/20 border-indigo-400/30 text-indigo-400"
                                     : "bg-zinc-800 border-zinc-700 text-zinc-500 group-hover:text-zinc-300"
                             )}>
                                 <Users className="w-5 h-5" />
@@ -113,14 +114,14 @@ export function MessagingHub({
                                     "text-sm font-semibold tracking-tight",
                                     selectedAgentId === null ? "text-indigo-100" : "text-zinc-300"
                                 )}>
-                                    Team Broadcast
+                                    Team Channel
                                 </span>
-                                <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Public Channel</span>
+                                <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Everyone</span>
                             </div>
                         </button>
 
                         <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
-                            Direct Threads
+                            Direct Messages
                         </div>
 
                         {filteredThreads.map((thread) => (
@@ -129,20 +130,20 @@ export function MessagingHub({
                                 onClick={() => setSelectedAgentId(thread.agentId)}
                                 className={cn(
                                     "w-full text-left p-3 rounded-xl flex items-start gap-3 transition-all group",
-                                    selectedAgentId === thread.agentId 
-                                        ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm" 
+                                    selectedAgentId === thread.agentId
+                                        ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm"
                                         : "hover:bg-zinc-900 border border-transparent"
                                 )}
                             >
-                                <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800 relative shadow-inner">
-                                    <img 
-                                        src={thread.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(thread.agentId)}`} 
-                                        className="w-full h-full object-cover" 
-                                        alt="" 
+                                <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800 relative shadow-inner shrink-0">
+                                    <img
+                                        src={thread.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(thread.agentId)}`}
+                                        className="w-full h-full object-cover"
+                                        alt=""
                                     />
                                     <div className={cn(
                                         "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-950 shadow-sm",
-                                        thread.status === 'online' ? "bg-emerald-500" : "bg-zinc-700"
+                                        thread.status === "online" ? "bg-emerald-500" : "bg-zinc-700"
                                     )} />
                                 </div>
                                 <div className="min-w-0 flex-1">
@@ -193,23 +194,20 @@ export function MessagingHub({
                             <div>
                                 <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
                                     <Users className="w-5 h-5 text-indigo-400" />
-                                    Agent Team Chat
+                                    Team Channel
                                 </h1>
-                                <p className="text-xs text-zinc-500 mt-0.5 font-medium">Coordinate the entire fleet in the shared broadcast channel.</p>
+                                <p className="text-xs text-zinc-500 mt-0.5 font-medium">Shared channel — everyone on the team sees and can reply here.</p>
                             </div>
                         </div>
                         <div className="flex-1 overflow-hidden relative">
-                             <div className="h-full">
-                                 <AgentTeamChat initialMessages={initialTeamMessages} agents={agents} />
-                             </div>
+                            <div className="h-full">
+                                <AgentTeamChat initialMessages={initialTeamMessages} agents={agents} sendable={true} />
+                            </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="h-full flex flex-col">
-                        {/* We are reusing AgentDirectChat component but wrapping it slightly for layout */}
-                        <div className="h-full flex flex-col flex-1 overflow-hidden">
-                            <AgentDirectChat agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} />
-                        </div>
+                    <div className="h-full flex flex-col flex-1 overflow-hidden">
+                        <AgentDirectChat agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} />
                     </div>
                 )}
             </div>

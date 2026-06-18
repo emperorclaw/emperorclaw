@@ -338,7 +338,7 @@ export default function ResourcesClient({
                             </div>
                              <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Scope</span>
+                                    <span className="text-zinc-500">Applies To</span>
                                     <select
                                         value={scopeType}
                                         onChange={(event) => updateScopeType(event.target.value)}
@@ -351,7 +351,7 @@ export default function ResourcesClient({
                                     </select>
                                 </label>
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Scope Record</span>
+                                    <span className="text-zinc-500">Which Record?</span>
                                     <select
                                         value={scopeType === "company" ? "company" : scopeId}
                                         onChange={(event) => setScopeId(event.target.value)}
@@ -370,7 +370,7 @@ export default function ResourcesClient({
                             </div>
                             <div className="grid gap-4 md:grid-cols-2">
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Entry Type</span>
+                                    <span className="text-zinc-500">Kind of Entry</span>
                                     <input
                                         list="resource-types-list-modal"
                                         value={resourceType}
@@ -396,7 +396,7 @@ export default function ResourcesClient({
                                     </span>
                                 </label>
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Display Name</span>
+                                    <span className="text-zinc-500">Entry Name</span>
                                     <input
                                         value={displayName}
                                         onChange={(event) => {
@@ -416,7 +416,7 @@ export default function ResourcesClient({
                             </div>
                             <div className="grid gap-4">
                                 <label className="space-y-1.5 text-sm">
-                                    <span className="text-zinc-500">Content</span>
+                                    <span className="text-zinc-500">Instructions / Content</span>
                                     <div className="overflow-hidden rounded-xl border border-zinc-800">
                                         <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/70 px-3 py-2">
                                             <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Markdown-friendly content</span>
@@ -482,7 +482,7 @@ export default function ResourcesClient({
                                 {showAdvancedCreate ? (
                                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                                         <label className="space-y-1.5 text-sm">
-                                            <span className="text-zinc-500">Internal Key</span>
+                                            <span className="text-zinc-500">Internal ID</span>
                                             <input
                                                 value={name}
                                                 onChange={(event) => {
@@ -497,7 +497,7 @@ export default function ResourcesClient({
                                             </span>
                                         </label>
                                         <label className="space-y-1.5 text-sm">
-                                            <span className="text-zinc-500">Provider</span>
+                                            <span className="text-zinc-500">System / Source</span>
                                             <input
                                                 value={provider}
                                                 onChange={(event) => setProvider(event.target.value)}
@@ -513,7 +513,7 @@ export default function ResourcesClient({
                             </div>
                             <div className="flex items-center justify-between py-2 px-1">
                                 <div className="flex items-center gap-2 group relative">
-                                    <span className="text-sm font-medium text-zinc-300">Always Share With Agents</span>
+                                    <span className="text-sm font-medium text-zinc-300">Auto-inject to Agents</span>
                                     <div className="h-4 w-4 rounded-full border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-500 cursor-help">?</div>
                                     <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
                                         When enabled, this entry is explicitly injected by the bridge for agents in scope. Leave it off for entries that should stay discoverable but not always injected.
@@ -659,7 +659,7 @@ export default function ResourcesClient({
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <label className="block space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Internal Key</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Internal ID</span>
                                                 <input
                                                     value={name}
                                                     onChange={(e) => setName(e.target.value)}
@@ -667,7 +667,7 @@ export default function ResourcesClient({
                                                 />
                                             </label>
                                             <label className="block space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Display Name</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Entry Name</span>
                                                 <input
                                                     value={displayName}
                                                     onChange={(e) => setDisplayName(e.target.value)}
@@ -677,7 +677,7 @@ export default function ResourcesClient({
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <label className="block space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Entry Type</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Kind of Entry</span>
                                                 <input
                                                     list="resource-types-list-editor"
                                                     value={resourceType}
@@ -691,7 +691,7 @@ export default function ResourcesClient({
                                                 </datalist>
                                             </label>
                                             <label className="block space-y-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Provider</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">System / Source</span>
                                                 <input
                                                     value={provider}
                                                     onChange={(e) => setProvider(e.target.value)}
@@ -737,7 +737,7 @@ export default function ResourcesClient({
                                         
                                         <div className="flex items-center justify-between pt-2">
                                             <div className="flex items-center gap-2 group relative">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Always Share With Agents</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Auto-inject to Agents</span>
                                                 <div className="h-3.5 w-3.5 rounded-full border border-zinc-800 flex items-center justify-center text-[9px] text-zinc-600 cursor-help">?</div>
                                                 <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-48 rounded-md bg-zinc-900 border border-zinc-800 p-2 text-[10px] text-zinc-400 shadow-xl z-50">
                                                     When enabled, this entry will be explicitly passed to every agent in the scope per instruction, regardless of standard access policies.
@@ -762,7 +762,7 @@ export default function ResourcesClient({
                                 <div className="space-y-2 flex-1 flex flex-col min-h-[400px]">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Content</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Instructions / Content</span>
                                             <div className="flex rounded-md border border-zinc-800 bg-zinc-900/50 p-0.5">
                                                 <button
                                                     onClick={() => setConfigViewMode("preview")}
