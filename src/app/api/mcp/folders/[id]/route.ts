@@ -6,6 +6,7 @@ import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { buildFolderPath, isDescendantPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
+import { storageAdapter } from "@/lib/storage";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/folders/[id]">) {
     const auth = await verifyMcpToken(req);
@@ -165,6 +166,28 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
         return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
 
+    // Collect all artifacts in this folder tree that have a Bunny blob before wiping DB records.
+    const matchPattern = `${folder.path}/%`;
+    const artifactsToDelete = await db
+        .select({ id: artifacts.id, path: artifacts.path, storageKey: artifacts.storageKey })
+        .from(artifacts)
+        .where(and(
+            eq(artifacts.companyId, companyId),
+            like(artifacts.path, matchPattern),
+            isNull(artifacts.deletedAt),
+        ));
+
+    // Purge blobs from Bunny. Failures are logged but never block the DB delete.
+    await Promise.allSettled(
+        artifactsToDelete
+            .filter((a) => a.storageKey && a.path)
+            .map((a) =>
+                storageAdapter.delete({ companyId, logicalPath: a.path! }).catch((err) =>
+                    console.warn(`Failed to purge blob for artifact ${a.id}:`, err)
+                )
+            )
+    );
+
     const now = new Date();
     await db.transaction(async (tx) => {
         await tx.update(artifactFolders).set({ deletedAt: now }).where(and(
@@ -172,13 +195,12 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
             eq(artifactFolders.companyId, companyId),
         ));
 
-        const matchPattern = `${folder.path}/%`;
         await tx.update(artifactFolders).set({ deletedAt: now }).where(and(
             eq(artifactFolders.companyId, companyId),
             like(artifactFolders.path, matchPattern),
         ));
 
-        await tx.update(artifacts).set({ deletedAt: now }).where(and(
+        await tx.update(artifacts).set({ deletedAt: now, storageKey: null, storageUrl: null }).where(and(
             eq(artifacts.companyId, companyId),
             like(artifacts.path, matchPattern),
         ));

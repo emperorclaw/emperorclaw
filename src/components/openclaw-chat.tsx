@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { MessageSquare, X, Send } from "lucide-react";
+import { MessageSquare, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,34 @@ type ThreadParticipant = {
     typingUntil?: string | null;
 };
 
+// --- Grouping helpers ---
+
+function isSameDay(a: string | Date, b: string | Date) {
+    const da = new Date(a), db = new Date(b);
+    return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function isGroupContinuation(
+    curr: { senderType: string; senderId?: string | null; fromUserId?: string | null; createdAt: string | Date },
+    prev: typeof curr
+) {
+    if (curr.senderType !== prev.senderType) return false;
+    const currId = curr.senderId ?? curr.fromUserId ?? null;
+    const prevId = prev.senderId ?? prev.fromUserId ?? null;
+    if (currId !== prevId) return false;
+    return (new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000;
+}
+
+function dateSeparatorLabel(date: string | Date) {
+    const d = new Date(date);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (isSameDay(d, today)) return "Today";
+    if (isSameDay(d, yesterday)) return "Yesterday";
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 export function OpenClawChat() {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
@@ -42,9 +70,23 @@ export function OpenClawChat() {
     const [threadId, setThreadId] = useState<string | null>(null);
     const [isTyping, setIsTyping] = useState(false);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [mentionOpen, setMentionOpen] = useState(false);
+    const mentionRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Click-outside for mention popover
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
+                setMentionOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
 
     const mentionAlias = (name: string) => {
-        const clean = name.replace(/\([^)]*\)/g, "").split(/\s+-\s+|\s+\u2014\s+|\s+\|\s+/)[0].trim();
+        const clean = name.replace(/\([^)]*\)/g, "").split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0].trim();
         return clean.split(/\s+/)[0] || name;
     };
 
@@ -179,8 +221,6 @@ export function OpenClawChat() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, initialized, selectedAgentId, lastSeenAt]);
 
-
-
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -232,7 +272,7 @@ export function OpenClawChat() {
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         const textToSend = message;
-        
+
         setMessage("");
         setSelectedAgentId(null);
 
@@ -264,6 +304,17 @@ export function OpenClawChat() {
         return agent ? agent.name : "Unknown Agent";
     };
 
+    // Compute typing agents
+    const typingAgents = participants.filter(
+        p => p.participantType === 'agent' && p.typingUntil && new Date(p.typingUntil).getTime() > Date.now()
+    );
+    const typingNames = typingAgents.map(p => {
+        const agent = agents.find(a => a.id === (p.userId || p.agentId));
+        return agent ? agent.name : 'Unknown';
+    });
+
+    const onlineAgentCount = agents.length;
+
     return (
         <>
             <button
@@ -282,148 +333,193 @@ export function OpenClawChat() {
             </button>
 
             {isOpen && (
-                <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-zinc-950 border border-zinc-800 shadow-2xl rounded-2xl flex flex-col z-50 animate-in slide-in-from-bottom-5 fade-in duration-200 overflow-hidden">
+                <div className="fixed bottom-6 right-6 w-[420px] h-[580px] bg-zinc-950 border border-zinc-800 shadow-2xl rounded-2xl flex flex-col z-50 animate-in slide-in-from-bottom-5 fade-in duration-200 overflow-hidden">
                     {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 overflow-hidden">
-                                <img 
-                                    src="https://api.dicebear.com/9.x/pixel-art/svg?seed=OpenClawBase" 
-                                    className="w-full h-full object-cover"
-                                    alt="System"
-                                />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-sm font-semibold text-zinc-100 leading-tight">
-                                    Team Chat
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/60 shrink-0">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-zinc-100 leading-tight">Team Channel</span>
+                            {typingNames.length > 0 ? (
+                                <span className="text-[10px] text-indigo-400 flex items-center gap-1">
+                                    <span className="flex gap-0.5">
+                                        <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.3s]" />
+                                        <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.15s]" />
+                                        <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce" />
+                                    </span>
+                                    {typingNames[0]} is typing…
                                 </span>
-                                <span className="text-[10px] text-zinc-500 flex items-center space-x-1">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    <span>Team Thread</span>
+                            ) : (
+                                <span className="text-[10px] text-zinc-500 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    {onlineAgentCount > 0 ? `${onlineAgentCount} agent${onlineAgentCount !== 1 ? "s" : ""} online` : "Team Thread"}
                                 </span>
-                            </div>
+                            )}
                         </div>
                         <button
                             onClick={() => setIsOpen(false)}
-                            className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-500 transition-colors"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors text-lg leading-none"
+                            aria-label="Close"
                         >
-                            <X className="w-4 h-4" />
+                            ×
                         </button>
-                    </div>
-
-                    {/* Agent Selector */}
-                    <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/20 flex items-center space-x-2 overflow-x-auto no-scrollbar whitespace-nowrap">
-                        <button 
-                            onClick={() => setSelectedAgentMention(null)}
-                            className={cn(
-                                "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border",
-                                !selectedAgentId 
-                                    ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" 
-                                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
-                            )}
-                        >
-                            Broadcast
-                        </button>
-                        {agents.map(agent => (
-                            <button
-                                key={agent.id}
-                                onClick={() => {
-                                    const isSelect = selectedAgentId !== agent.id;
-                                    setSelectedAgentMention(isSelect ? agent : null);
-                                }}
-                                className={cn(
-                                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border flex items-center space-x-1",
-                                    selectedAgentId === agent.id
-                                        ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-                                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
-                                )}
-                            >
-                                <div className="w-3 h-3 rounded-full overflow-hidden border border-white/20">
-                                    <img src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`} className="w-full h-full object-cover" alt="" />
-                                </div>
-                                <span>{agent.name}</span>
-                            </button>
-                        ))}
                     </div>
 
                     {/* Chat History */}
-                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {history.map(msg => (
-                            <div key={msg.id} className={cn("flex", msg.senderType === 'human' ? "justify-end" : "justify-start")}>
-                                <div className={cn(
-                                    "max-w-[80%] rounded-2xl px-4 py-2 text-sm relative group",
-                                    msg.senderType === 'human'
-                                        ? "bg-indigo-600 text-white rounded-br-sm"
-                                        : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
-                                )}>
-                                    <div className="flex items-center justify-between mb-1 min-w-[120px]">
-                                        <div className="flex items-center space-x-2">
-                                            {msg.senderType !== 'human' && (
-                                                <div className="w-4 h-4 rounded-full overflow-hidden border border-zinc-700/50">
-                                                    <img 
-                                                        src={agents.find(a => a.id === (msg.fromUserId || msg.senderId))?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(msg.fromUserId || msg.senderId || 'agent')}`} 
+                    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+                        {history.map((msg, i) => {
+                            const prev = history[i - 1] ?? null;
+                            const next = history[i + 1] ?? null;
+                            const isHuman = msg.senderType === 'human';
+
+                            const showDaySep = !prev || !isSameDay(prev.createdAt, msg.createdAt);
+                            const isContinuation = !!prev && isGroupContinuation(msg, prev);
+                            const isLastInGroup = !next || !isGroupContinuation(next, msg);
+
+                            const senderId = msg.fromUserId || msg.senderId || null;
+                            const agentObj = !isHuman ? agents.find(a => a.id === senderId) : null;
+                            const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || 'agent')}`;
+
+                            return (
+                                <div key={msg.id}>
+                                    {showDaySep && (
+                                        <div className="flex items-center gap-2 my-3">
+                                            <div className="flex-1 border-t border-zinc-800" />
+                                            <span className="text-[10px] uppercase tracking-widest text-zinc-600">{dateSeparatorLabel(msg.createdAt)}</span>
+                                            <div className="flex-1 border-t border-zinc-800" />
+                                        </div>
+                                    )}
+
+                                    {isHuman ? (
+                                        <div className={cn("flex justify-end", isContinuation ? "mt-0.5" : "mt-3")}>
+                                            <div className="flex flex-col items-end max-w-[80%]">
+                                                {!isContinuation && (
+                                                    <span className="text-[10px] font-medium text-zinc-500 mb-1 mr-1">You</span>
+                                                )}
+                                                <div className={cn(
+                                                    "px-3.5 py-2 text-sm bg-indigo-600 text-white rounded-2xl",
+                                                    isLastInGroup && "rounded-br-none"
+                                                )}>
+                                                    <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap leading-relaxed prose-sm" />
+                                                </div>
+                                                {isLastInGroup && (
+                                                    <span className="text-[10px] text-zinc-600 mt-0.5 mr-1">
+                                                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className={cn("flex justify-start", isContinuation ? "mt-0.5" : "mt-3")}>
+                                            <div className="flex gap-2 max-w-[80%]">
+                                                {/* Avatar column — always 28px wide to keep alignment */}
+                                                <div className="w-7 shrink-0 flex flex-col justify-end">
+                                                    {!isContinuation && (
+                                                        <div className="w-7 h-7 rounded-full overflow-hidden border border-zinc-700/50">
+                                                            <img src={avatarSrc} className="w-full h-full object-cover" alt="" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col items-start min-w-0">
+                                                    {!isContinuation && (
+                                                        <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{getAgentName(senderId)}</span>
+                                                    )}
+                                                    <div className={cn(
+                                                        "px-3.5 py-2 text-sm bg-zinc-800/80 text-zinc-200 rounded-2xl",
+                                                        isLastInGroup && "rounded-bl-none"
+                                                    )}>
+                                                        <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap leading-relaxed prose-sm" />
+                                                    </div>
+                                                    {isLastInGroup && (
+                                                        <span className="text-[10px] text-zinc-600 mt-0.5 ml-1">
+                                                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Typing indicator — between message list and input */}
+                    {typingNames.length > 0 && (
+                        <div className="flex items-center gap-2 px-4 py-1.5 shrink-0">
+                            <div className="flex gap-1">
+                                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
+                                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
+                                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce" />
+                            </div>
+                            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                                {typingNames.join(', ')} {typingNames.length > 1 ? 'are' : 'is'} typing…
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Input Area */}
+                    <form onSubmit={handleSend} className="flex items-end gap-2 p-3 border-t border-zinc-800 shrink-0">
+                        {/* @ mention button */}
+                        <div className="relative shrink-0" ref={mentionRef}>
+                            <button
+                                type="button"
+                                onClick={() => setMentionOpen(v => !v)}
+                                title="Mention an agent"
+                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-indigo-500/50 hover:text-indigo-400 text-zinc-500 transition-colors"
+                            >
+                                <AtSign className="w-4 h-4" />
+                            </button>
+                            {mentionOpen && agents.length > 0 && (
+                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-20">
+                                    <div className="px-3 py-2 border-b border-zinc-800">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Mention agent</span>
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto p-1">
+                                        {agents.map((agent) => (
+                                            <button
+                                                key={agent.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedAgentMention(agent);
+                                                    setMentionOpen(false);
+                                                    textareaRef.current?.focus();
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-zinc-800 text-left transition-colors"
+                                            >
+                                                <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-700/50 shrink-0">
+                                                    <img
+                                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
                                                         className="w-full h-full object-cover"
                                                         alt=""
                                                     />
                                                 </div>
-                                            )}
-                                            <div className={cn(
-                                                "text-[10px] font-bold uppercase tracking-wider",
-                                                msg.senderType === 'human' ? "text-indigo-100" : "text-zinc-400"
-                                            )}>
-                                                {msg.senderType === 'human' ? 'You' : getAgentName(msg.fromUserId || msg.senderId)}
-                                            </div>
-                                        </div>
-                                        
-                                        <div className={cn(
-                                            "text-[9px] font-medium opacity-60 ml-3",
-                                            msg.senderType === 'human' ? "text-indigo-100" : "text-zinc-500"
-                                        )}>
-                                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                                        </div>
+                                                <span className="text-sm text-zinc-300 truncate">{agent.name}</span>
+                                            </button>
+                                        ))}
                                     </div>
-                                    <MarkdownRenderer 
-                                        content={msg.text} 
-                                        className="whitespace-pre-wrap leading-relaxed prose-sm" 
-                                    />
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            )}
+                        </div>
 
-                                        {/* Typing Indicators */}
-                    {(() => {
-                        const typingAgents = participants.filter(p => p.participantType === 'agent' && p.typingUntil && new Date(p.typingUntil).getTime() > Date.now());
-                        if (typingAgents.length === 0) return null;
-                        const names = typingAgents.map(p => {
-                            const agent = agents.find(a => a.id === (p.userId || p.agentId));
-                            return agent ? agent.name : 'Unknown';
-                        });
-                        return (
-                            <div className="flex justify-start px-4 text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2">
-                                <div className="flex gap-1 items-center mr-2">
-                                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
-                                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
-                                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce" />
-                                </div>
-                                {names.join(', ')} {names.length > 1 ? 'are' : 'is'} typing...
-                            </div>
-                        );
-                    })()}
-
-                    {/* Input Area */}
-                    <form onSubmit={handleSend} className="p-4 border-t border-zinc-800 bg-zinc-900/30 flex items-center space-x-2">
-                        <input
-                            type="text"
+                        <textarea
+                            ref={textareaRef}
                             value={message}
                             onChange={(e) => handleTyping(e.target.value)}
-                            placeholder="Message OpenClaw Team..."
-                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    void handleSend(e as unknown as React.FormEvent);
+                                }
+                            }}
+                            placeholder="Message Team Channel…"
+                            rows={1}
+                            className="flex-1 resize-none bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-24 overflow-y-auto"
+                            style={{ minHeight: "2.25rem" }}
                         />
+
                         <button
                             type="submit"
                             disabled={!message.trim()}
-                            className="p-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
                         >
                             <Send className="w-4 h-4" />
                         </button>

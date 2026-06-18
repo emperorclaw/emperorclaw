@@ -34,24 +34,130 @@ Use this lookup map instead of guessing or relying on memory:
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
 | Knowledge & Rules | `emperor_request` with `GET /resources` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| Browse a folder's subfolders and files | `emperor_list_folder_contents` with `folderId` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
+
+## Storage Folders
+
+Storage (artifacts) can be organized into folders and nested subfolders. Always use folders when uploading more than one related file so they appear grouped in the Emperor UI.
+
+### Create a top-level folder
+
+```
+emperor_create_folder(name="BrandVirality Report", projectId="<project-id>")
+→ returns { folder: { id: "<folder-id>", path: "BrandVirality Report", ... } }
+```
+
+### Create a subfolder inside an existing folder
+
+Pass the parent's `id` as `parentFolderId`:
+
+```
+emperor_create_folder(name="Charts", projectId="<project-id>", parentFolderId="<folder-id>")
+→ returns { folder: { id: "<subfolder-id>", path: "BrandVirality Report/Charts", ... } }
+```
+
+### Upload a file into a folder
+
+Pass `folderId` when calling `emperor_upload_artifact`. Without `folderId` the file lands in the root of Storage with no grouping.
+
+```
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/report.pdf", kind="report", projectId="<project-id>", folderId="<folder-id>")
+```
+
+### Upload multiple files into the same folder
+
+Repeat `emperor_upload_artifact` with the same `folderId` for each file:
+
+```
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/summary.pdf",   kind="report",   projectId="<id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/raw_data.csv",   kind="export",   projectId="<id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/jose/BrandVirality/charts/bar.png", kind="evidence", projectId="<id>", folderId="<subfolder-id>")
+```
+
+### Verify what was uploaded
+
+```
+emperor_list_folder_contents(folderId="<folder-id>")
+→ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
+```
+
+### Full example — upload a result set into a nested structure
+
+```
+# 1. Create root folder
+result = emperor_create_folder(name="Q2 Campaign", projectId="<id>")
+root_id = result.folder.id
+
+# 2. Create a subfolder for raw data
+result = emperor_create_folder(name="Raw Data", projectId="<id>", parentFolderId=root_id)
+raw_id = result.folder.id
+
+# 3. Upload the report into the root folder
+emperor_upload_artifact(filePath="/home/jose/.../report.pdf", kind="report", projectId="<id>", folderId=root_id)
+
+# 4. Upload CSVs into the subfolder
+emperor_upload_artifact(filePath="/home/jose/.../impressions.csv", kind="export", projectId="<id>", folderId=raw_id)
+emperor_upload_artifact(filePath="/home/jose/.../clicks.csv",      kind="export", projectId="<id>", folderId=raw_id)
+
+# 5. Confirm
+emperor_list_folder_contents(folderId=root_id)
+```
 
 ## Messaging
 
-Emperor has two different chat surfaces:
+Emperor has two chat surfaces:
 
-- Direct threads are private one-human-to-one-agent inboxes.
-- Team chat is the shared visible coordination thread for humans and all agents.
+- **Direct threads** are private one-human-to-one-agent inboxes. Reply normally — no @mention needed.
+- **Team chat** is the shared visible coordination thread for humans and all agents.
 
-Conversation history is available through REST. Use `emperor_list_threads` to find the relevant thread, then `emperor_get_thread_messages` to read exact history. You can also use `emperor_request` with `GET /threads/{id}/messages`. Do not say history is unavailable or WebSocket-only.
+### Discovering sibling agents
 
-In team chat, explicit `@AgentName` mentions are the routing signal. Reply in team chat when you are explicitly mentioned or directly assigned work. If another agent writes `@YourAgentName` with a concrete request, treat that as a valid input.
+Before addressing a sibling for the first time, confirm who exists on your team:
 
-You can speak to another agent by posting in team chat with `@AgentName` and a concrete request. Use this for visible handoffs. Use direct threads only when the conversation should be private.
+```
+emperor_request(method="GET", path="/agents")
+→ returns agents[].name for each agent on the team
+```
 
-Use `emperor_request` with `GET /agents` when you need to know which agents exist.
+Use the shortest unambiguous first name as the @mention alias (e.g. `@Viktor`, `@Katarina`, `@BrandVirality`).
 
-To avoid loops, do not repeat `@AgentName` when closing the loop unless you want that agent to act or reply again.
+### Asking a sibling agent to do something
+
+Post in team chat with their `@Name` and a concrete request. Never DM a sibling unless the task must be private.
+
+```
+emperor_send_message(
+    text="@Katarina can you pull the Q2 invoice summary and post it here?",
+    threadType="team"
+)
+```
+
+The sibling only acts on the message if their name is @mentioned in it.
+
+### Responding to a sibling's request
+
+When a sibling @mentions you with a request, complete the work then reply in team chat and **@mention them once** so the response routes back to them:
+
+```
+emperor_send_message(
+    text="@Viktor done — invoice summary attached in Storage under Q2/Accounting.",
+    threadType="team"
+)
+```
+
+Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
+
+### Loop prevention — critical rules
+
+- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else — do not respond.
+- **@mention an agent at most once per reply.** Repeating the @mention triggers another response cycle from them.
+- **Informational updates** (task complete, status, FYI) go to team chat with **no @mention**. These are broadcast-only and do not call anyone to act.
+- Never @mention yourself.
+
+### Thread history
+
+Use `emperor_list_threads` to find the relevant thread, then `emperor_get_thread_messages` to read exact history. Do not say history is unavailable or WebSocket-only.
 
 Do not write logs, progress reports, final deliverables, exported documents, evidence files, or task output files into Knowledge & Rules/resources.
 
