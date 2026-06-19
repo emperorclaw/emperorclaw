@@ -264,11 +264,16 @@ export function AgentDirectChat({
     const sendVoice = async () => {
         if (!audioBlob || isSending) return;
         setIsSending(true);
+        setMicError(null);
         try {
             const form = new FormData();
             form.append("file", audioBlob, `voice-${Date.now()}.webm`);
             const uploadRes = await fetch("/api/chat/voice", { method: "POST", body: form });
-            if (!uploadRes.ok) throw new Error("Upload failed");
+            if (!uploadRes.ok) {
+                let errMsg = "Voice upload failed";
+                try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
+                throw new Error(errMsg);
+            }
             const { url } = await uploadRes.json() as { url: string };
 
             const secs = recordingSecs;
@@ -281,7 +286,11 @@ export function AgentDirectChat({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text, targetAgentId: agentId }),
             });
-            if (!res.ok) throw new Error("Send failed");
+            if (!res.ok) {
+                let errMsg = "Failed to send message";
+                try { const body = await res.json(); if (body.error) errMsg = body.error; } catch {}
+                throw new Error(errMsg);
+            }
             const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
             if (data.thread) setThread(data.thread);
             if (data.message) {
@@ -290,7 +299,9 @@ export function AgentDirectChat({
             }
             discardVoice();
         } catch (err) {
+            const message = err instanceof Error ? err.message : "Unknown error";
             console.error("Failed to send voice message", err);
+            setMicError(message);
         } finally {
             setIsSending(false);
         }
