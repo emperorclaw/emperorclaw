@@ -48,10 +48,10 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ thread, messages: messages.map(serializeMessage), participants });
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Internal Server Error";
-        const status = message.startsWith("Agent not found") ? 404 : 500;
+        const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
+        const status = isAgentNotFound ? 404 : 500;
         console.error("[/api/chat] GET error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status });
+        return NextResponse.json({ error: isAgentNotFound ? "Agent not found" : "Internal Server Error" }, { status });
     }
 }
 
@@ -88,9 +88,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Internal Server Error";
-        const status = message.startsWith("Agent not found") ? 404 : 500;
+        const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
+        const status = isAgentNotFound ? 404 : 500;
         console.error("[/api/chat] POST error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status });
+        return NextResponse.json({ error: isAgentNotFound ? "Agent not found" : "Internal Server Error" }, { status });
     }
 }
