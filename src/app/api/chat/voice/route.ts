@@ -4,14 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyId } from "@/lib/auth";
 import { storageAdapter } from "@/lib/storage";
 
-const ALLOWED_TYPES = new Set(["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav"]);
-const EXT_MAP: Record<string, string> = {
-    "audio/webm": "webm",
-    "audio/ogg": "ogg",
-    "audio/mp4": "m4a",
-    "audio/mpeg": "mp3",
-    "audio/wav": "wav",
-};
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export async function POST(req: NextRequest) {
@@ -25,15 +17,33 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "file field required" }, { status: 400 });
         }
 
-        const contentType = file.type || "audio/webm";
-        if (!ALLOWED_TYPES.has(contentType)) {
-            return NextResponse.json({ error: "Unsupported audio type" }, { status: 415 });
+        // Strip codec/params from MIME type (e.g. "audio/webm;codecs=opus" → "audio/webm")
+        const rawType = (file.type || "audio/webm").toLowerCase();
+        const contentType = rawType.split(";")[0].trim();
+
+        // Accept any audio/* MIME type — browser defaults vary (webm, ogg, mp4, etc.)
+        if (!contentType.startsWith("audio/")) {
+            return NextResponse.json({ error: "Unsupported audio type — only audio files are accepted" }, { status: 415 });
         }
         if (file.size > MAX_BYTES) {
             return NextResponse.json({ error: "Voice message too large (max 10 MB)" }, { status: 413 });
         }
 
-        const ext = EXT_MAP[contentType] ?? "webm";
+        // Derive extension from MIME type — Map of audio/* subtypes to file extensions
+        const SUBTYPE_EXT: Record<string, string> = {
+            "webm": "webm",
+            "ogg": "ogg",
+            "mp4": "m4a",
+            "mpeg": "mp3",
+            "mpga": "mp3",
+            "wav": "wav",
+            "x-wav": "wav",
+            "x-m4a": "m4a",
+            "aac": "aac",
+            "flac": "flac",
+        };
+        const subtype = contentType.replace("audio/", "");
+        const ext = SUBTYPE_EXT[subtype] ?? "webm";
         const logicalPath = `voice-messages/${crypto.randomUUID()}.${ext}`;
         const buffer = Buffer.from(await file.arrayBuffer());
 
