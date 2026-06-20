@@ -74,6 +74,7 @@ export function AgentDirectChat({
     const [isRecording, setIsRecording] = useState(false);
     const [recordingSecs, setRecordingSecs] = useState(0);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+    const audioBlobRef = useRef<Blob | null>(null);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
     const [micError, setMicError] = useState<string | null>(null);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -221,7 +222,10 @@ export function AgentDirectChat({
             recordingChunksRef.current = [];
             mr.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
             mr.onstop = () => {
-                const blob = new Blob(recordingChunksRef.current, { type: mr.mimeType || "audio/webm" });
+                // Use base MIME type (strip codec params) so the backend doesn't reject it
+                const baseType = (mr.mimeType || "audio/webm").split(";")[0].trim();
+                const blob = new Blob(recordingChunksRef.current, { type: baseType });
+                audioBlobRef.current = blob;
                 setAudioBlob(blob);
                 setAudioPreviewUrl(URL.createObjectURL(blob));
                 stream.getTracks().forEach(t => t.stop());
@@ -256,18 +260,19 @@ export function AgentDirectChat({
 
     const discardVoice = () => {
         if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+        audioBlobRef.current = null;
         setAudioBlob(null);
         setAudioPreviewUrl(null);
         setRecordingSecs(0);
     };
 
     const sendVoice = async () => {
-        if (!audioBlob || isSending) return;
+        if (!audioBlobRef.current || isSending) return;
         setIsSending(true);
         setMicError(null);
         try {
             const form = new FormData();
-            form.append("file", audioBlob, `voice-${Date.now()}.webm`);
+            form.append("file", audioBlobRef.current, `voice-${Date.now()}.webm`);
             const uploadRes = await fetch("/api/chat/voice", { method: "POST", body: form });
             if (!uploadRes.ok) {
                 let errMsg = "Voice upload failed";
