@@ -17,7 +17,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
     const sinceParam = searchParams.get("since");
+    const beforeParam = searchParams.get("before");
     const since = sinceParam ? new Date(sinceParam) : null;
+    const before = beforeParam ? new Date(beforeParam) : null;
 
     const [thread] = await db.select().from(messageThreads).where(
         and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
@@ -27,8 +29,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
-    const messages = await getThreadMessages(companyId, threadId, limit, since && !isNaN(since.getTime()) ? since : null);
-    return NextResponse.json({ thread, messages });
+    const messages = await getThreadMessages(
+        companyId,
+        threadId,
+        limit + 1,
+        since && !isNaN(since.getTime()) ? since : null,
+        before && !isNaN(before.getTime()) ? before : null
+    );
+    const hasMore = !since && messages.length > limit;
+    return NextResponse.json({ thread, messages: hasMore ? messages.slice(1) : messages, hasMore });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

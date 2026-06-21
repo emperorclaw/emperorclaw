@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { db } from "@/db";
 import { agents, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNull } from "drizzle-orm";
 import { MessagingHub } from "@/components/messaging-hub";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 
@@ -48,29 +48,12 @@ export default async function MessagesPage() {
             )
         )
         : [];
-    const directMessages = directThreadIds.length > 0
-        ? await db.select().from(threadMessages).where(
-            and(
-                eq(threadMessages.companyId, companyId),
-                inArray(threadMessages.threadId, directThreadIds)
-            )
-        )
-        : [];
-
     const participantMap = new Map<string, typeof directParticipants>();
     for (const participant of directParticipants) {
         if (!directThreadIdSet.has(participant.threadId)) continue;
         const existing = participantMap.get(participant.threadId) || [];
         existing.push(participant);
         participantMap.set(participant.threadId, existing);
-    }
-
-    const messageMap = new Map<string, typeof directMessages>();
-    for (const message of directMessages) {
-        if (!directThreadIdSet.has(message.threadId)) continue;
-        const existing = messageMap.get(message.threadId) || [];
-        existing.push(message);
-        messageMap.set(message.threadId, existing);
     }
 
     const directThreadByAgentId = new Map<string, DirectThreadSummary>();
@@ -95,16 +78,17 @@ export default async function MessagesPage() {
         const agent = allAgents.find((row) => row.id === agentParticipant.participantId);
         if (!agent) continue;
 
-        const messages = (messageMap.get(thread.id) || [])
-            .slice()
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        const latestMessage = messages[0] || null;
-        const lastReadAt = humanParticipant?.lastReadAt ? new Date(humanParticipant.lastReadAt).getTime() : null;
-        const unreadCount = messages.filter((message) => {
-            if (message.senderType !== "agent") return false;
-            if (!lastReadAt) return true;
-            return new Date(message.createdAt).getTime() > lastReadAt;
-        }).length;
+        const [latestMessage] = await getThreadMessages(companyId, thread.id, 1);
+        const unreadConditions = [
+            eq(threadMessages.companyId, companyId),
+            eq(threadMessages.threadId, thread.id),
+            eq(threadMessages.senderType, "agent"),
+        ];
+        if (humanParticipant?.lastReadAt) {
+            unreadConditions.push(gt(threadMessages.createdAt, humanParticipant.lastReadAt));
+        }
+        const [unreadRow] = await db.select({ value: count() }).from(threadMessages).where(and(...unreadConditions));
+        const unreadCount = unreadRow?.value || 0;
 
         const current = directThreadByAgentId.get(agent.id);
         const latestTime = latestMessage ? new Date(latestMessage.createdAt).getTime() : 0;
@@ -140,11 +124,18 @@ export default async function MessagesPage() {
         .sort((a, b) => a.agentName.localeCompare(b.agentName));
 
     const teamThread = await ensureTeamThread(companyId);
-    const teamMessages = await getThreadMessages(companyId, teamThread.id, 100);
+    const teamMessageWindow = await getThreadMessages(companyId, teamThread.id, 26);
+    const initialTeamHasMore = teamMessageWindow.length > 25;
+    const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
 
     return (
         <div className="h-[calc(100vh-8rem)] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <MessagingHub agents={allAgents} directThreads={directThreadSummaries} initialTeamMessages={teamMessages} />
+            <MessagingHub
+                agents={allAgents}
+                directThreads={directThreadSummaries}
+                initialTeamMessages={teamMessages}
+                initialTeamHasMore={initialTeamHasMore}
+            />
         </div>
     );
 }
