@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
         const since = searchParams.get("since");
-        const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
+        const before = searchParams.get("before");
+        const limit = Math.min(parseInt(searchParams.get("limit") || "25", 10), 200);
         const targetAgentId = searchParams.get("targetAgentId");
         const sinceDate = since ? new Date(since) : null;
+        const beforeDate = before ? new Date(before) : null;
 
         const thread = targetAgentId
             ? await ensureDirectThread(companyId, targetAgentId, await getUserId())
@@ -38,15 +40,18 @@ export async function GET(req: NextRequest) {
         const messages = await getThreadMessages(
             companyId,
             thread.id,
-            limit,
-            sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null
+            limit + 1,
+            sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null,
+            beforeDate && !isNaN(beforeDate.getTime()) ? beforeDate : null
         );
+        const hasMore = !sinceDate && messages.length > limit;
+        const pagedMessages = hasMore ? messages.slice(1) : messages;
 
         const participants = await db.select().from(threadParticipants).where(
             and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.threadId, thread.id))
         );
 
-        return NextResponse.json({ thread, messages: messages.map(serializeMessage), participants });
+        return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore });
     } catch (error: unknown) {
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : 500;
