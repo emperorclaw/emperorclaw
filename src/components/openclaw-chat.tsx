@@ -5,6 +5,8 @@ import { MessageSquare, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { cn } from "@/lib/utils";
 
+const CHAT_PAGE_SIZE = 25;
+
 type AgentSummary = {
     id: string;
     name: string;
@@ -131,6 +133,7 @@ export function OpenClawChat() {
 
     const buildChatUrl = (since?: string | null) => {
         const params = new URLSearchParams();
+        params.set("limit", String(CHAT_PAGE_SIZE));
         if (since) params.set("since", since);
         const query = params.toString();
         return query ? `/api/chat?${query}` : "/api/chat";
@@ -198,7 +201,7 @@ export function OpenClawChat() {
                             }
                         }
 
-                        return newMessages.length > 0 ? [...prev, ...newMessages] : prev;
+                        return newMessages.length > 0 ? [...prev, ...newMessages].slice(-100) : prev;
                     });
 
                     const latest = data.messages[data.messages.length - 1];

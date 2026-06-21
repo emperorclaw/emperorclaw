@@ -1,9 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { User, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
+
+const CHAT_PAGE_SIZE = 25;
+
+type Agent = {
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    status?: string | null;
+};
+
+type TeamMessage = {
+    id: string;
+    senderType: "human" | "agent" | "system" | string;
+    senderId?: string | null;
+    fromUserId?: string | null;
+    text: string;
+    createdAt: string | Date;
+};
+
+type TeamParticipant = {
+    participantType: "human" | "agent" | "system" | string;
+    participantId?: string | null;
+    typingUntil?: string | null;
+    lastReadAt?: string | null;
+};
+
+type ChatResponse = {
+    messages?: TeamMessage[];
+    participants?: TeamParticipant[];
+    hasMore?: boolean;
+    message?: TeamMessage;
+};
 
 // --- Grouping helpers ---
 
@@ -33,12 +65,29 @@ function dateSeparatorLabel(date: string | Date) {
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-export function AgentTeamChat({ initialMessages = [], agents = [], sendable = false }: { initialMessages: any[]; agents: any[]; sendable?: boolean }) {
+function messageCursor(value: string | Date) {
+    return value instanceof Date ? value.toISOString() : value;
+}
+
+export function AgentTeamChat({
+    initialMessages = [],
+    initialHasMore = false,
+    agents = [],
+    sendable = false,
+}: {
+    initialMessages: TeamMessage[];
+    initialHasMore?: boolean;
+    agents: Agent[];
+    sendable?: boolean;
+}) {
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [messages, setMessages] = useState<any[]>(initialMessages);
-    const [participants, setParticipants] = useState<any[]>([]);
+    const preserveScrollHeightRef = useRef<number | null>(null);
+    const [messages, setMessages] = useState<TeamMessage[]>(initialMessages);
+    const [participants, setParticipants] = useState<TeamParticipant[]>([]);
     const [draft, setDraft] = useState("");
     const [isSending, setIsSending] = useState(false);
+    const [hasOlderMessages, setHasOlderMessages] = useState(initialHasMore);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     const [mentionOpen, setMentionOpen] = useState(false);
     const mentionRef = useRef<HTMLDivElement>(null);
 
@@ -54,14 +103,44 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
 
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(
-        initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null
+        initialMessages.length > 0 ? messageCursor(initialMessages[initialMessages.length - 1].createdAt) : null
     );
     const [isAtBottom, setIsAtBottom] = useState(true);
 
     useEffect(() => {
         setMessages(initialMessages);
-        setLastSeenAt(initialMessages.length > 0 ? initialMessages[initialMessages.length - 1].createdAt : null);
-    }, [initialMessages]);
+        setLastSeenAt(initialMessages.length > 0 ? messageCursor(initialMessages[initialMessages.length - 1].createdAt) : null);
+        setHasOlderMessages(initialHasMore);
+    }, [initialHasMore, initialMessages]);
+
+    const loadOlderMessages = useCallback(async () => {
+        if (isLoadingOlder || !hasOlderMessages || messages.length === 0) return;
+
+        preserveScrollHeightRef.current = scrollRef.current?.scrollHeight ?? null;
+        setIsLoadingOlder(true);
+        try {
+            const params = new URLSearchParams({
+                before: String(messages[0].createdAt),
+                limit: String(CHAT_PAGE_SIZE),
+            });
+            const res = await fetch(`/api/chat?${params.toString()}`);
+            if (!res.ok) return;
+
+            const data = await res.json() as ChatResponse;
+            if (data.messages && data.messages.length > 0) {
+                setMessages((prev) => {
+                    const existingIds = new Set(prev.map((m) => m.id));
+                    const olderMessages = data.messages!.filter((m) => !existingIds.has(m.id));
+                    return olderMessages.length > 0 ? [...olderMessages, ...prev] : prev;
+                });
+            }
+            setHasOlderMessages(Boolean(data.hasMore));
+        } catch (err) {
+            console.error("Failed to load older team messages", err);
+        } finally {
+            setIsLoadingOlder(false);
+        }
+    }, [hasOlderMessages, isLoadingOlder, messages]);
 
     useEffect(() => {
         const fetchUpdates = async () => {
@@ -69,25 +148,27 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                 const url = lastSeenAt ? `/api/chat?since=${encodeURIComponent(lastSeenAt)}` : "/api/chat";
                 const res = await fetch(url);
                 if (!res.ok) return;
-                const data = await res.json();
+                const data = await res.json() as ChatResponse;
                 if (data.participants) {
                     setParticipants(data.participants);
                 }
-                if (data.messages && data.messages.length > 0) {
+                const nextMessages = data.messages;
+                if (nextMessages && nextMessages.length > 0) {
                     setMessages((prev) => {
                         const existingIds = new Set(prev.map((m) => m.id));
-                        const newMessages = data.messages.filter((m: any) => !existingIds.has(m.id));
+                        const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
                         if (newMessages.length === 0) return prev;
                         return [...prev, ...newMessages];
                     });
-                    const latest = data.messages[data.messages.length - 1];
+                    const latest = nextMessages[nextMessages.length - 1];
                     setLastSeenAt((prevLast) => {
-                        return new Date(latest.createdAt).getTime() > new Date(prevLast || 0).getTime()
-                            ? latest.createdAt
+                        const latestCreatedAt = messageCursor(latest.createdAt);
+                        return new Date(latestCreatedAt).getTime() > new Date(prevLast || 0).getTime()
+                            ? latestCreatedAt
                             : prevLast;
                     });
                     if (!isAtBottom) {
-                        setUnreadCount((c) => c + data.messages.length);
+                        setUnreadCount((c) => c + nextMessages.length);
                     }
                 }
             } catch (err) {
@@ -100,9 +181,17 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
     }, [lastSeenAt, isAtBottom]);
 
     useEffect(() => {
-        if (scrollRef.current && isAtBottom) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            setUnreadCount(0);
+        if (scrollRef.current) {
+            if (preserveScrollHeightRef.current !== null) {
+                const previousHeight = preserveScrollHeightRef.current;
+                preserveScrollHeightRef.current = null;
+                scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
+                return;
+            }
+            if (isAtBottom) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                setUnreadCount(0);
+            }
         }
     }, [messages, isAtBottom]);
 
@@ -127,10 +216,11 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                 body: JSON.stringify({ text }),
             });
             if (!res.ok) throw new Error("Failed to send");
-            const data = await res.json();
-            if (data.message) {
-                setMessages((prev) => prev.some((m) => m.id === data.message.id) ? prev : [...prev, data.message]);
-                setLastSeenAt(data.message.createdAt);
+            const data = await res.json() as ChatResponse;
+            const sentMessage = data.message;
+            if (sentMessage) {
+                setMessages((prev) => prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]);
+                setLastSeenAt(messageCursor(sentMessage.createdAt));
             }
         } catch (err) {
             console.error("Failed to send team message", err);
@@ -140,7 +230,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
         }
     };
 
-    const getAgentName = (id: string | null) => {
+    const getAgentName = (id: string | null | undefined) => {
         if (!id) return "System";
         const agent = agents.find((a) => a.id === id);
         return agent ? agent.name : "Unknown Agent";
@@ -153,7 +243,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
 
     const agentReadTimes: Record<string, number> = {};
     for (const p of participants) {
-        if (p.participantType === "agent" && p.lastReadAt) {
+        if (p.participantType === "agent" && p.participantId && p.lastReadAt) {
             agentReadTimes[p.participantId] = new Date(p.lastReadAt).getTime();
         }
     }
@@ -180,6 +270,18 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                     <div className="flex h-full items-center justify-center text-sm italic text-zinc-600">No communications yet.</div>
                 ) : (
                     <div>
+                        {hasOlderMessages && (
+                            <div className="mb-4 flex justify-center">
+                                <button
+                                    type="button"
+                                    onClick={loadOlderMessages}
+                                    disabled={isLoadingOlder}
+                                    className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-indigo-500/40 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {isLoadingOlder ? "Loading..." : "Load older messages"}
+                                </button>
+                            </div>
+                        )}
                         {messages.map((msg, i) => {
                             const prev = messages[i - 1] ?? null;
                             const next = messages[i + 1] ?? null;
@@ -197,7 +299,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                                 : [];
 
                             const senderId = msg.fromUserId || msg.senderId || null;
-                            const agentObj = !isHuman ? agents.find((a: any) => a.id === senderId) : null;
+                            const agentObj = !isHuman ? agents.find((a) => a.id === senderId) : null;
                             const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || "agent")}`;
 
                             return (
@@ -262,7 +364,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                                                         {readByAgents.slice(0, 3).map(a => (
                                                             <img
                                                                 key={a.id}
-                                                                src={agents.find((ag: any) => ag.id === a.id)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(a.id)}`}
+                                                                src={agents.find((ag) => ag.id === a.id)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(a.id)}`}
                                                                 title={a.name}
                                                                 className="h-3.5 w-3.5 rounded-full border border-zinc-900 object-cover"
                                                                 alt={a.name}
@@ -317,7 +419,7 @@ export function AgentTeamChat({ initialMessages = [], agents = [], sendable = fa
                                         <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Mention agent</span>
                                     </div>
                                     <div className="max-h-48 overflow-y-auto p-1">
-                                        {agents.map((agent: any) => (
+                                        {agents.map((agent) => (
                                             <button
                                                 key={agent.id}
                                                 type="button"

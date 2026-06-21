@@ -127,6 +127,20 @@
       "when": 1781136000000,
       "tag": "0017_pipelines",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781222400000,
+      "tag": "0018_thread-message-pagination",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781308800000,
+      "tag": "0019_thread-participant-lookups",
+      "breakpoints": true
     }
   ]
 }
