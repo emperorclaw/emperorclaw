@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { name, notes } = body;
+        const { name, notes, billingStreet, billingCity, billingPostalCode, billingCountry } = body;
 
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -58,7 +58,11 @@ export async function POST(req: NextRequest) {
 
         if (existing) {
             [customer] = await db.update(customers).set({
-                notes: notes || existing.notes
+                notes: notes || existing.notes,
+                billingStreet: billingStreet || existing.billingStreet,
+                billingCity: billingCity || existing.billingCity,
+                billingPostalCode: billingPostalCode || existing.billingPostalCode,
+                billingCountry: billingCountry || existing.billingCountry,
             }).where(eq(customers.id, existing.id)).returning();
         } else {
             [customer] = await db.insert(customers).values({
@@ -66,6 +70,10 @@ export async function POST(req: NextRequest) {
                 companyId,
                 name,
                 notes: notes || "",
+                billingStreet: billingStreet || null,
+                billingCity: billingCity || null,
+                billingPostalCode: billingPostalCode || null,
+                billingCountry: billingCountry || null,
             }).returning();
         }
 
