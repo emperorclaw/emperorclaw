@@ -127,6 +127,13 @@
       "when": 1781136000000,
       "tag": "0017_pipelines",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1762560000000,
+      "tag": "0018_structured_billing_address",
+      "breakpoints": true
     }
   ]
 }

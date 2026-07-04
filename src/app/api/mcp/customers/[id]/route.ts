@@ -23,11 +23,11 @@ export async function PATCH(
 
     try {
         const body = await req.json();
-        const { name, notes } = body;
+        const { name, notes, billingStreet, billingCity, billingPostalCode, billingCountry } = body;
 
         // Ensure we actually have something to update
-        if (name === undefined && notes === undefined) {
-            return NextResponse.json({ error: "At least one field (name, notes) to update must be provided" }, { status: 400 });
+        if (name === undefined && notes === undefined && billingStreet === undefined && billingCity === undefined && billingPostalCode === undefined && billingCountry === undefined) {
+            return NextResponse.json({ error: "At least one field (name, notes, billingStreet, billingCity, billingPostalCode, billingCountry) to update must be provided" }, { status: 400 });
         }
 
         const [existing] = await db.select().from(customers).where(
@@ -41,6 +41,10 @@ export async function PATCH(
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
         if (notes !== undefined) updateData.notes = notes;
+        if (billingStreet !== undefined) updateData.billingStreet = billingStreet;
+        if (billingCity !== undefined) updateData.billingCity = billingCity;
+        if (billingPostalCode !== undefined) updateData.billingPostalCode = billingPostalCode;
+        if (billingCountry !== undefined) updateData.billingCountry = billingCountry;
 
         const [updatedCustomer] = await db.update(customers).set(updateData).where(eq(customers.id, customerId)).returning();
 
