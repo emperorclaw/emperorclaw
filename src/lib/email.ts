@@ -68,42 +68,64 @@ function renderEmailShell({
     const safeCtaLabel = ctaLabel ? escapeHtml(ctaLabel) : "";
     const safeFootnote = footnote ? escapeHtml(footnote) : "";
 
-    return `
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${safePreheader}</div>
-    <div style="margin:0;background:#f5f7fb;padding:32px 16px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#111827;">
-        <div style="max-width:640px;margin:0 auto;">
-            <div style="margin-bottom:16px;text-align:center;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;">
-                Emperor Claw
+    return `<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#111827;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">${safePreheader}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;">
+        <tr>
+          <td style="padding-bottom:20px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#64748b;">Emperor Claw</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.06);">
+            <div style="padding:28px 28px 0;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);">
+              <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#93c5fd;">${safeEyebrow}</div>
+              <h1 style="margin:10px 0 0;font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">${safeTitle}</h1>
+              <p style="margin:10px 0 0;font-size:15px;line-height:1.6;color:#cbd5e1;padding-bottom:28px;">${safeIntro}</p>
             </div>
-            <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:24px;overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,0.08);">
-                <div style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#f8fafc;">
-                    <div style="font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#93c5fd;">${safeEyebrow}</div>
-                    <h1 style="margin:12px 0 0;font-size:28px;line-height:1.2;font-weight:700;color:#ffffff;">${safeTitle}</h1>
-                    <p style="margin:12px 0 0;font-size:15px;line-height:1.7;color:#cbd5e1;">${safeIntro}</p>
-                </div>
-                <div style="padding:32px;">
-                    <div style="font-size:15px;line-height:1.7;color:#334155;">
-                        ${bodyHtml}
-                    </div>
-                    ${ctaUrl && ctaLabel ? `
-                    <div style="margin:28px 0 24px;">
-                        <a href="${safeCtaUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:600;">
-                            ${safeCtaLabel}
-                        </a>
-                    </div>
-                    <div style="margin:0 0 24px;font-size:13px;line-height:1.7;color:#64748b;">
-                        If the button does not work, copy and paste this link into your browser:<br/>
-                        <a href="${safeCtaUrl}" style="color:#2563eb;word-break:break-all;">${safeCtaUrl}</a>
-                    </div>` : ""}
-                    ${safeFootnote ? `
-                    <div style="margin-top:24px;padding:16px 18px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;line-height:1.7;color:#64748b;">
-                        ${safeFootnote}
-                    </div>` : ""}
-                </div>
+            <div style="padding:28px;">
+              <div style="font-size:15px;line-height:1.7;color:#334155;">
+                ${bodyHtml}
+              </div>
+              ${ctaUrl && ctaLabel ? `
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 0;">
+                <tr>
+                  <td style="border-radius:12px;background:#2563eb;">
+                    <a href="${safeCtaUrl}" style="display:inline-block;padding:14px 24px;border-radius:12px;background:#2563eb;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;">
+                      ${safeCtaLabel}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <div style="margin-top:18px;font-size:13px;line-height:1.7;color:#64748b;">
+                If the button does not work, copy this link into your browser:<br/>
+                <a href="${safeCtaUrl}" style="color:#2563eb;word-break:break-all;">${safeCtaUrl}</a>
+              </div>` : ""}
+              ${safeFootnote ? `
+              <div style="margin-top:24px;padding:16px 18px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;line-height:1.7;color:#64748b;">
+                ${safeFootnote}
+              </div>` : ""}
             </div>
-        </div>
-    </div>
-    `;
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 8px 0;text-align:center;">
+            <p style="margin:0;font-size:12px;line-height:1.7;color:#64748b;">
+              Malecu s.r.o. · Dolezalova 15C, 82104 Bratislava<br/>
+              <a href="mailto:hello@malecu.eu" style="color:#2563eb;text-decoration:none;">hello@malecu.eu</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
@@ -112,7 +134,7 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
         console.log("--- Email Content ---");
         console.log(`Subject: ${subject}`);
         console.log(html);
-        console.log("---------------------");
+        console.log("--------------------");
         return false;
     }
 
@@ -147,13 +169,21 @@ export function getWelcomeEmailHtml(email: string) {
         preheader: "Your Emperor Claw workspace is ready.",
         eyebrow: "Workspace Ready",
         title: "Welcome to Emperor Claw",
-        intro: "Your control plane is ready. You can now log in and start operating agents inside your workspace.",
+        intro: "Your control plane is ready. Log in and start operating agents inside your workspace.",
         bodyHtml: `
             <p style="margin:0 0 16px;">Hello <strong>${safeEmail}</strong>,</p>
-            <p style="margin:0 0 16px;">Thanks for joining Emperor Claw. This workspace gives your OpenClaw agents durable coordination, scoped resources, and operational state inside a shared company environment.</p>
-            <p style="margin:0;">Start by logging in, connecting your first agents, and reviewing the setup guide before you rely on the workspace for production-critical operations.</p>
+            <p style="margin:0 0 16px;">Thanks for joining Emperor Claw. This workspace gives your agents durable coordination, scoped resources, and operational state.</p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+              <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Quick start</div>
+              <ol style="margin:0;padding-left:18px;font-size:14px;line-height:1.8;color:#334155;">
+                <li>Log in with your credentials</li>
+                <li>Connect your first agents</li>
+                <li>Review the setup guide</li>
+              </ol>
+            </div>
+            <p style="margin:16px 0 0;font-size:14px;color:#64748b;">Beta software — provided as-is. Review expectations before relying on it for production-critical operations.</p>
         `,
-        footnote: "Beta software. Emperor Claw is provided as-is without warranties or guarantees of safety, retention, recovery, availability, or fitness for any purpose. You remain responsible for what you store and operate in the workspace.",
+        footnote: "Emperor Claw is beta software provided as-is. You remain responsible for what you store and operate.",
     });
 }
 
@@ -169,16 +199,15 @@ export function getEmailVerificationEmailHtml(email: string, verificationUrl: st
         bodyHtml: `
             <p style="margin:0 0 16px;">Hello <strong>${safeEmail}</strong>,</p>
             <p style="margin:0 0 16px;">A new Emperor Claw workspace was created for <strong>${safeCompanyName}</strong>. Confirm this email address to activate access.</p>
-            <div style="margin:20px 0;padding:18px;border-radius:16px;background:#eff6ff;border:1px solid #bfdbfe;">
-                <p style="margin:0 0 8px;font-weight:600;color:#1d4ed8;">Before you continue</p>
-                <p style="margin:0;color:#334155;">Emperor Claw is in beta. We do not guarantee safety, retention, recovery, uninterrupted availability, or suitability for regulated or business-critical workloads.</p>
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;">
+              <p style="margin:0 0 6px;font-weight:600;color:#1d4ed8;font-size:14px;">Before you continue</p>
+              <p style="margin:0;font-size:13px;color:#334155;">Emperor Claw is in beta. Do not store secrets, regulated data, or any information you cannot afford to expose or lose. This link expires in 24 hours.</p>
             </div>
-            <p style="margin:0 0 16px;">Do not store secrets, regulated data, production-only credentials, or any information you cannot afford to expose, lose, or recreate.</p>
-            <p style="margin:0;">This verification link expires in 24 hours. If you did not initiate this signup, you can ignore this email.</p>
+            <p style="margin:16px 0 0;font-size:13px;color:#64748b;">If you did not initiate this signup, ignore this email.</p>
         `,
         ctaLabel: "Verify Email",
         ctaUrl: verificationUrl,
-        footnote: "By activating the workspace, you acknowledge that Emperor Claw is beta software provided as-is and that you remain responsible for how it is used and what data is stored inside it.",
+        footnote: "By activating the workspace, you acknowledge Emperor Claw is beta software and you remain responsible for how it is used.",
     });
 }
 
@@ -188,14 +217,14 @@ export function getPasswordResetEmailHtml(email: string, resetUrl: string) {
         preheader: "Reset your Emperor Claw password.",
         eyebrow: "Account Security",
         title: "Reset your password",
-        intro: "Use the secure link below to choose a new password for your Emperor Claw account.",
+        intro: "Use the secure link below to choose a new password.",
         bodyHtml: `
             <p style="margin:0 0 16px;">Hello <strong>${safeEmail}</strong>,</p>
-            <p style="margin:0 0 16px;">We received a request to reset the password for this account. If that was you, use the link below to set a new password.</p>
-            <p style="margin:0;">If you did not request a reset, you can ignore this message. Your existing password will remain unchanged.</p>
+            <p style="margin:0 0 16px;">We received a request to reset the password for this account. Use the link below to set a new password.</p>
+            <p style="margin:16px 0 0;font-size:14px;color:#64748b;">If you did not request a reset, ignore this message. Your existing password will remain unchanged.</p>
         `,
         ctaLabel: "Reset Password",
         ctaUrl: resetUrl,
-        footnote: "For your protection, password reset links expire automatically and active browser sessions are revoked after a successful password change.",
+        footnote: "Password reset links expire automatically. Active browser sessions are revoked after a successful password change.",
     });
 }
