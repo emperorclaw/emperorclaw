@@ -2,21 +2,32 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+    LayoutDashboard,
+    Users,
+    Building2,
+    AlertTriangle,
+    Radio,
+    Store,
+} from "lucide-react";
 
-const OPS_LINKS = [
-    { href: "/ops", label: "Overview" },
-    { href: "/ops/users", label: "Users" },
-    { href: "/ops/companies", label: "Companies" },
-    { href: "/ops/errors", label: "Errors" },
-    { href: "/ops/runtimes", label: "Runtimes" },
+export const OPS_NAV_ITEMS = [
+    { href: "/ops", label: "Overview", icon: LayoutDashboard, section: "Platform" },
+    { href: "/ops/users", label: "Users", icon: Users, section: "Platform" },
+    { href: "/ops/companies", label: "Companies", icon: Building2, section: "Platform" },
+    { href: "/ops/errors", label: "Errors", icon: AlertTriangle, section: "Data" },
+    { href: "/ops/runtimes", label: "Runtimes", icon: Radio, section: "Data" },
+    { href: "/ops/resellers", label: "Resellers", icon: Store, section: "Commerce" },
 ];
+
+export const SECTION_ORDER = ["Platform", "Data", "Commerce"] as const;
 
 export function OpsNav() {
     const pathname = usePathname();
 
     return (
         <nav className="flex flex-wrap gap-2">
-            {OPS_LINKS.map((link) => {
+            {OPS_NAV_ITEMS.map((link) => {
                 const isActive = pathname === link.href;
                 return (
                     <Link
