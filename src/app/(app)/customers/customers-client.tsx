@@ -12,10 +12,6 @@ export default function CustomersClient({ initialData: customerData }: { initial
     const [isAddClientOpen, setIsAddClientOpen] = useState(false);
     const [newClientName, setNewClientName] = useState("");
     const [newClientNotes, setNewClientNotes] = useState("");
-    const [newBillingStreet, setNewBillingStreet] = useState("");
-    const [newBillingCity, setNewBillingCity] = useState("");
-    const [newBillingPostalCode, setNewBillingPostalCode] = useState("");
-    const [newBillingCountry, setNewBillingCountry] = useState("");
     const [sending, setSending] = useState(false);
     const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
 
@@ -26,17 +22,13 @@ export default function CustomersClient({ initialData: customerData }: { initial
             const res = await fetch("/api/customers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newClientName, notes: newClientNotes, billingStreet: newBillingStreet, billingCity: newBillingCity, billingPostalCode: newBillingPostalCode, billingCountry: newBillingCountry }),
+                body: JSON.stringify({ name: newClientName, notes: newClientNotes }),
             });
             if (!res.ok) {
                 throw new Error("Failed to create customer");
             }
             setNewClientName("");
             setNewClientNotes("");
-            setNewBillingStreet("");
-            setNewBillingCity("");
-            setNewBillingPostalCode("");
-            setNewBillingCountry("");
             setIsAddClientOpen(false);
             window.location.reload();
         } catch (error) {
@@ -110,37 +102,6 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 className="h-32 w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                 placeholder="ICP details, project context, operational notes..."
                             />
-                            <div className="border-t border-zinc-800 pt-3">
-                                <p className="mb-3 text-sm font-medium text-zinc-400">Billing Address</p>
-                                <div className="grid gap-3">
-                                    <input
-                                        value={newBillingStreet}
-                                        onChange={(event) => setNewBillingStreet(event.target.value)}
-                                        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="Street address"
-                                    />
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <input
-                                            value={newBillingCity}
-                                            onChange={(event) => setNewBillingCity(event.target.value)}
-                                            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                            placeholder="City"
-                                        />
-                                        <input
-                                            value={newBillingPostalCode}
-                                            onChange={(event) => setNewBillingPostalCode(event.target.value)}
-                                            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                            placeholder="Postal code"
-                                        />
-                                    </div>
-                                    <input
-                                        value={newBillingCountry}
-                                        onChange={(event) => setNewBillingCountry(event.target.value)}
-                                        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                        placeholder="Country"
-                                    />
-                                </div>
-                            </div>
                         </div>
                         <div className="flex justify-end border-t border-zinc-900 pt-2">
                             <button onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-indigo-500">
@@ -206,16 +167,6 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 />
                                 <p className="mt-2 text-xs text-zinc-600">This is stored directly in Emperor as durable customer context.</p>
                             </div>
-                            {(customer.billingStreet || customer.billingCity || customer.billingPostalCode || customer.billingCountry) && (
-                                <div className="border-t border-zinc-800/80 px-5 py-4">
-                                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">Billing Address</p>
-                                    <div className="space-y-1 text-sm text-zinc-300">
-                                        {customer.billingStreet && <p>{customer.billingStreet}</p>}
-                                        <p>{[customer.billingCity, customer.billingPostalCode].filter(Boolean).join(", ")}</p>
-                                        {customer.billingCountry && <p>{customer.billingCountry}</p>}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     ))
                 )}

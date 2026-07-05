@@ -70,10 +70,6 @@ export const customers = pgTable("customers", {
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     name: text("name").notNull(),
     notes: text("notes"),
-    billingStreet: text("billing_street"),
-    billingCity: text("billing_city"),
-    billingPostalCode: text("billing_postal_code"),
-    billingCountry: text("billing_country"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });

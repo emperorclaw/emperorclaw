@@ -746,15 +746,9 @@ Example:
 ```json
 {
   "name": "T-Rex",
-  "notes": "New customer for dinosaur-themed validation.",
-  "billingStreet": "123 Main St",
-  "billingCity": "Austin",
-  "billingPostalCode": "78701",
-  "billingCountry": "US"
+  "notes": "New customer for dinosaur-themed validation."
 }
 ```
-
-All billing fields are optional. When updating via `PATCH /customers/{id}`, only provided fields are modified; omitted fields are left unchanged.
 
 ### `POST /projects`
 
