@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { name, notes, billingStreet, billingCity, billingPostalCode, billingCountry } = body;
+        const { name, notes } = body;
         if (!name || typeof name !== "string") {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
@@ -33,10 +33,6 @@ export async function POST(req: NextRequest) {
             companyId,
             name: name.trim(),
             notes: typeof notes === "string" ? notes : null,
-            billingStreet: typeof billingStreet === "string" ? billingStreet : null,
-            billingCity: typeof billingCity === "string" ? billingCity : null,
-            billingPostalCode: typeof billingPostalCode === "string" ? billingPostalCode : null,
-            billingCountry: typeof billingCountry === "string" ? billingCountry : null,
         }).returning();
 
         return NextResponse.json({ customer }, { status: 201 });
