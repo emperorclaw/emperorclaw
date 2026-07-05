@@ -16,7 +16,7 @@ export async function PATCH(
     try {
         const { id } = await params;
         const body = await req.json();
-        const { name, notes, billingStreet, billingCity, billingPostalCode, billingCountry } = body;
+        const { name, notes } = body;
 
         const [existing] = await db.select().from(customers).where(and(
             eq(customers.companyId, companyId),
@@ -31,10 +31,6 @@ export async function PATCH(
         const [customer] = await db.update(customers).set({
             name: typeof name === "string" && name.trim().length > 0 ? name.trim() : existing.name,
             notes: typeof notes === "string" ? notes : existing.notes,
-            billingStreet: typeof billingStreet === "string" ? billingStreet : existing.billingStreet,
-            billingCity: typeof billingCity === "string" ? billingCity : existing.billingCity,
-            billingPostalCode: typeof billingPostalCode === "string" ? billingPostalCode : existing.billingPostalCode,
-            billingCountry: typeof billingCountry === "string" ? billingCountry : existing.billingCountry,
         }).where(eq(customers.id, id)).returning();
 
         return NextResponse.json({ customer });
