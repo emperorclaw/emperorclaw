@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, numeric } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -534,6 +534,50 @@ export const auditLog = pgTable("audit_log", {
     targetType: text("target_type").notNull(),
     targetId: uuid("target_id").notNull(),
     payloadJson: jsonb("payload_json"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// --- Admin/Reseller Tables ---
+export const platformAdmins = pgTable("platform_admins", {
+    userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+    role: text("role").default('admin').notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const resellers = pgTable("resellers", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: 'set null' }),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: 'set null' }),
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).default('0').notNull(),
+    status: text("status").default('active').notNull(),
+    notes: text("notes"),
+    brandColor: text("brand_color").default('#6366f1'),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+});
+
+export const resellerOrgs = pgTable("reseller_orgs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    resellerId: uuid("reseller_id").notNull().references(() => resellers.id, { onDelete: 'cascade' }),
+    organizationId: uuid("organization_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const resellerCommissions = pgTable("reseller_commissions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    resellerId: uuid("reseller_id").notNull().references(() => resellers.id, { onDelete: 'cascade' }),
+    organizationId: uuid("organization_id").references(() => companies.id, { onDelete: 'set null' }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: text("currency").default('EUR').notNull(),
+    commissionAmount: numeric("commission_amount", { precision: 12, scale: 2 }).notNull(),
+    status: text("status").default('pending').notNull(),
+    paidAt: timestamp("paid_at"),
+    notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
