@@ -40,7 +40,6 @@
     "node_modules",
     "openclaw-mission-control",
     "clawhub",
-    "tests",
-    "scripts"
+    "tests"
   ]
 }
