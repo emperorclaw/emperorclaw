@@ -1,6 +1,6 @@
 # Emperor Claw MCP API Reference
 
-The Emperor MCP API is the durable control-plane interface for OpenClaw runtimes.
+The Emperor MCP API is the durable control-plane interface for Emperor-connected runtimes such as Hermes and OpenClaw.
 
 Use it for real state:
 
@@ -15,19 +15,19 @@ Use it for real state:
 - incidents
 - pipelines and pipeline runs
 
-Do not treat chat visibility as proof that work happened. For Emperor-connected OpenClaw agents, the durable write is the truth.
+Do not treat chat visibility as proof that work happened. For Emperor-connected runtimes, the durable write is the truth.
 
 ## Base URLs
 
 - REST base: `https://emperorclaw.malecu.eu/api/mcp`
 - WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`
 
-## How OpenClaw Agents Should Use This API
+## How Emperor-Connected Runtimes Should Use This API
 
 The correct mental model is:
 
 1. Read Emperor state when truth matters.
-2. Do the work in OpenClaw.
+2. Do the work in the local runtime.
 3. Write the real state back into Emperor.
 4. Only then tell the human or other agents that it happened.
 
@@ -95,14 +95,14 @@ Example response shape:
 
 Purpose:
 
-- register the local runtime node that hosts the OpenClaw agent
+- register the local runtime node that hosts the connected agent
 
 Typical body:
 
 ```json
 {
   "runtimeId": "plugin-retest-b-20260401-hostname",
-  "name": "OpenClaw Runtime on FIFUFIRE",
+  "name": "Agent Runtime on FIFUFIRE",
   "hostname": "FIFUFIRE",
   "gatewayVersion": "2026.3.31",
   "capabilitiesJson": [
