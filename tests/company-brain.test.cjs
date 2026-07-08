@@ -48,6 +48,8 @@ test("Company Brain resource service exposes parsing, graph, proposal, and conte
   ].forEach((name) => {
     assert.ok(hasExport(source, name), `resources.ts should export ${name}`);
   });
+  assertContains(source, 'linkType: "inferred"', "resources.ts should infer links when KB docs mention existing note titles");
+  assertContains(source, "mentionsResourceTitle", "resources.ts should include title mention detection for agent-created docs");
 });
 
 test("Company Brain UI and MCP API routes exist", () => {
@@ -65,10 +67,10 @@ test("Company Brain UI and MCP API routes exist", () => {
 
 test("Knowledge & Rules UI keeps Company Brain advanced concepts operator-friendly", () => {
   const source = read("src/app/(app)/resources/resources-client.tsx");
-  ["Knowledge & Rules", "Company", "Customers", "Projects", "Agents", "Knowledge map", "Related notes", "Advanced relationships", "Auto-send to matching agents"].forEach((needle) => {
+  ["Knowledge & Rules", "customerNames", "projectNames", "agentNames", "Knowledge map", "Related notes", "Advanced relationships", "Auto-send to matching agents"].forEach((needle) => {
     assertContains(source, needle, `resources-client should include ${needle}`);
   });
-  ["Brain Feed", "Backlinks", "Company Brain</h1>", "Suggest an update", "Add to Review Queue", "prefers-reduced-motion"].forEach((needle) => {
+  ["Brain Feed", "Backlinks", "Company Brain</h1>", "Suggest an update", "Add to Review Queue", "Review Queue", "prefers-reduced-motion"].forEach((needle) => {
     assert.equal(source.includes(needle), false, `resources-client should not expose ${needle} as primary UI`);
   });
 });
@@ -81,7 +83,7 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   assertContains(bridge, "/resources/context", "Hermes bridge should resolve context through the centralized endpoint");
 
   const docs = read("src/content/docs/v1.1/company-brain.md");
-  ["operator-approved", "Review Queue", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
+  ["operator-approved", "Agent suggestions", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
     assertContains(docs, needle, `Company Brain docs should include ${needle}`);
   });
 });
