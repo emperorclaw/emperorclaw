@@ -28,6 +28,8 @@ HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "emperor-claw,web,terminal,c
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
 HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "300"))
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
+DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
+MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "12000"))
 
 
 def log(message: str) -> None:
@@ -152,6 +154,53 @@ def format_agent_roster(agent_id: str) -> str:
         alias = sorted(agent_name_aliases(name), key=len)[0] if agent_name_aliases(name) else name
         lines.append(f"- {name}{marker}: @{alias}")
     return "Team roster aliases:\n" + "\n".join(lines)
+
+
+def fetch_shared_resources() -> List[Dict[str, Any]]:
+    try:
+        if DOCTRINE_RESOURCE_ID:
+            payload = api("GET", f"/resources/{DOCTRINE_RESOURCE_ID}")
+            resource = payload.get("resource") if isinstance(payload, dict) else None
+            return [resource] if isinstance(resource, dict) else []
+        payload = api("GET", "/resources", query={
+            "isShared": "true",
+            "status": "active",
+        })
+        resources = payload.get("resources") if isinstance(payload, dict) else []
+        return resources if isinstance(resources, list) else []
+    except Exception as exc:
+        log(f"shared Knowledge & Rules fetch failed: {exc}")
+        return []
+
+
+def format_shared_resources() -> str:
+    resources = fetch_shared_resources()
+    if not resources:
+        return (
+            "Shared Knowledge & Rules: unavailable or empty. "
+            "Use emperor_request GET /resources when reusable doctrine matters."
+        )
+    sections: List[str] = []
+    used = 0
+    for resource in resources[:12]:
+        title = str(resource.get("displayName") or resource.get("name") or resource.get("id") or "Shared resource")
+        resource_type = str(resource.get("resourceType") or resource.get("resource_type") or "resource")
+        scope_type = str(resource.get("scopeType") or resource.get("scope_type") or "company")
+        text = str(resource.get("configText") or resource.get("configJson") or resource.get("content") or "").strip()
+        if not text:
+            continue
+        remaining = MAX_SHARED_RESOURCE_CHARS - used
+        if remaining <= 0:
+            break
+        chunk = text[:remaining]
+        used += len(chunk)
+        sections.append(f"### {title} ({scope_type}/{resource_type})\n{chunk}")
+    if not sections:
+        return (
+            "Shared Knowledge & Rules: found shared resources, but no readable text was returned. "
+            "Use emperor_request GET /resources if needed."
+        )
+    return "Shared Knowledge & Rules loaded from Emperor:\n" + "\n\n".join(sections)
 
 
 def normalize_mention(value: str) -> str:
@@ -279,6 +328,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
     roster_context = format_agent_roster(AGENT_ID)
+    shared_context = format_shared_resources()
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
@@ -287,14 +337,21 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         +
         "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
-        "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n\n"
+        "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
+        "Emperor is the source of truth. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.\n\n"
         "Where to look in Emperor:\n"
         "- Past chat/history: emperor_list_threads, then emperor_get_thread_messages.\n"
         "- Team roster: emperor_request GET /agents.\n"
         "- Projects/tasks: emperor_list_projects, emperor_list_tasks, or scoped GET /projects/{id}, GET /tasks/{id}.\n"
         "- Task progress/history: emperor_request GET /tasks/{id}/notes.\n"
-        "- Knowledge & Rules: emperor_request GET /resources. Storage/files: emperor_request GET /artifacts.\n"
+        "- Knowledge & Rules: emperor_request GET /resources.\n"
+        "- Storage/files: emperor_request GET /artifacts for lookup; emperor_create_folder + emperor_upload_artifact for uploads.\n"
         "- External APIs are not Emperor; use terminal/curl or a dedicated plugin if available.\n\n"
+        "Storage rules:\n"
+        "- Storage is an Emperor abstraction; do not ask for or mention backing blob-provider keys.\n"
+        "- For uploads, create/find the folder first, pass folderId to emperor_upload_artifact, then verify and report artifact id/path.\n"
+        "- Do not upload randomly into the Storage root. Use customer/project/month/type folders when possible.\n"
+        "- If upload fails, report an Emperor Storage upload failure with the tool error.\n\n"
         "Messaging model:\n"
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
@@ -304,6 +361,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- After that one @mention, do NOT repeat it — repeating triggers another response cycle.\n"
         "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n\n"
         f"{roster_context}\n\n"
+        f"{shared_context}\n\n"
         f"Thread: {thread_id}\n"
         f"Latest message: {text}"
     )
@@ -330,7 +388,11 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         result = invoke_hermes(cmd, message)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "Hermes failed").strip())
-    new_session_id = extract_session_id(result.stdout)
+    # Hermes writes the final response to stdout, but the automation-friendly
+    # `session_id: ...` footer is emitted on stderr so piped stdout stays clean.
+    # Parse both streams; otherwise every Emperor message starts a fresh Hermes
+    # conversation because the bridge never records the session to resume.
+    new_session_id = extract_session_id("\n".join([result.stdout or "", result.stderr or ""]))
     if new_session_id:
         sessions[session_key] = new_session_id
     return clean_hermes_output(result.stdout)
