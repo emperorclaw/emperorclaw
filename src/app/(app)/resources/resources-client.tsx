@@ -412,7 +412,7 @@ export default function ResourcesClient({
                     {insights.versions.slice(0, 6).map((version) => (
                       <div key={version.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                         <div className="text-xs font-bold text-zinc-200">{version.changeSummary || "Version"}</div>
-                        <div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} · {version.createdByType}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} Â· {version.createdByType}</div>
                       </div>
                     ))}
                     {!insights.versions.length && <EmptyHint text="Versions appear after edits." />}
@@ -452,7 +452,7 @@ function EmptyHint({ text }: { text: string }) {
 
 function LinkList({ links, empty }: { links: BrainLink[]; empty: string }) {
   if (!links.length) return <EmptyHint text={empty} />;
-  return <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><div className="text-zinc-200">[[{link.linkText}]]</div>{!link.targetResourceId && <div className="mt-1 text-xs text-amber-200">Unresolved — create linked note</div>}</div>)}</div>;
+  return <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><div className="text-zinc-200">[[{link.linkText}]]</div>{!link.targetResourceId && <div className="mt-1 text-xs text-amber-200">Unresolved Â— create linked note</div>}</div>)}</div>;
 }
 
 function GraphPanel({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
@@ -460,15 +460,15 @@ function GraphPanel({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges:
     <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:42px_42px]" />
     <div className="relative z-10 mb-4 flex items-center gap-2 text-sm font-bold text-cyan-100"><Network className="h-4 w-4" /> Graph</div>
     <div className="relative z-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {graph.nodes.map((node) => <div key={node.id} className={cn("rounded-2xl border p-4 shadow-[0_0_40px_rgba(34,211,238,0.08)]", node.id === selectedId ? "border-cyan-300/50 bg-cyan-300/10" : "border-white/10 bg-slate-950/70")}><div className="font-semibold text-white">{node.label}</div><div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">{node.scopeType} · {node.resourceType}</div><div className="mt-3 flex flex-wrap gap-1">{node.tags.slice(0, 3).map((tag) => <span key={tag} className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-cyan-100">#{tag}</span>)}</div></div>)}
+      {graph.nodes.map((node) => <div key={node.id} className={cn("rounded-2xl border p-4 shadow-[0_0_40px_rgba(34,211,238,0.08)]", node.id === selectedId ? "border-cyan-300/50 bg-cyan-300/10" : "border-white/10 bg-slate-950/70")}><div className="font-semibold text-white">{node.label}</div><div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">{node.scopeType} Â· {node.resourceType}</div><div className="mt-3 flex flex-wrap gap-1">{node.tags.slice(0, 3).map((tag) => <span key={tag} className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-cyan-100">#{tag}</span>)}</div></div>)}
     </div>
-    <div className="relative z-10 mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-400">{graph.edges.length} edges · unresolved links stay visible so operators can create missing notes.</div>
+    <div className="relative z-10 mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-400">{graph.edges.length} edges Â· unresolved links stay visible so operators can create missing notes.</div>
   </motion.div>;
 }
 
 function BrainFeed({ proposals, onReview }: { proposals: BrainProposal[]; onReview: (proposal: BrainProposal, status: "approved" | "rejected" | "merged") => void }) {
   return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
     <div className="rounded-2xl border border-violet-300/20 bg-violet-300/10 p-4"><div className="flex items-center gap-2 font-bold text-violet-100"><Sparkles className="h-4 w-4" /> Brain Feed</div><p className="mt-1 text-sm text-zinc-400">Agents and operators propose knowledge here. Humans approve reusable truth before it mutates Company Brain.</p></div>
-    {proposals.length ? proposals.map((proposal) => <div key={proposal.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-semibold text-white">{proposal.title}</div><div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-500">{proposal.action} · {proposal.scopeType} · {dateLabel(proposal.createdAt)}</div></div><div className="flex gap-2"><button onClick={() => onReview(proposal, "approved")} className="rounded-xl bg-emerald-300 px-3 py-1.5 text-xs font-bold text-slate-950"><Check className="inline h-3 w-3" /> Approve</button><button onClick={() => onReview(proposal, "rejected")} className="rounded-xl border border-white/10 px-3 py-1.5 text-xs font-bold text-zinc-300"><X className="inline h-3 w-3" /> Reject</button></div></div><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-xs leading-6 text-zinc-300">{proposal.proposedText}</pre></div>) : <EmptyHint text="No pending proposals." />}
+    {proposals.length ? proposals.map((proposal) => <div key={proposal.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-semibold text-white">{proposal.title}</div><div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-500">{proposal.action} Â· {proposal.scopeType} Â· {dateLabel(proposal.createdAt)}</div></div><div className="flex gap-2"><button onClick={() => onReview(proposal, "approved")} className="rounded-xl bg-emerald-300 px-3 py-1.5 text-xs font-bold text-slate-950"><Check className="inline h-3 w-3" /> Approve</button><button onClick={() => onReview(proposal, "rejected")} className="rounded-xl border border-white/10 px-3 py-1.5 text-xs font-bold text-zinc-300"><X className="inline h-3 w-3" /> Reject</button></div></div><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-xs leading-6 text-zinc-300">{proposal.proposedText}</pre></div>) : <EmptyHint text="No pending proposals." />}
   </motion.div>;
 }
