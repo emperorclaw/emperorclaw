@@ -1,11 +1,11 @@
-# Project And Plugin Architecture
+# Project And Runtime Architecture
 
-This page explains how the repo is split today and where OpenClaw actually fits.
+This page explains how the repo is split today and where Hermes and OpenClaw fit in the runtime model.
 
 The short version:
 
 - Emperor Claw is the durable control plane.
-- OpenClaw is the local executor.
+- OpenClaw and Hermes are local executor surfaces.
 - The supported install path is the native plugin in `clawhub/plugin/emperor-claw-os`.
 - The legacy skill in `clawhub/emperor-claw-os` is still useful as doctrine/reference material, but it is not the primary public install path.
 - The repo-level `agents/*` folders are role packs and examples, not the plugin's live per-agent runtime state.
@@ -26,7 +26,7 @@ This split is intentional. If you collapse these layers mentally, the system bec
 
 ## What This Project Is
 
-Emperor Claw is a Next.js and Postgres control-plane app for OpenClaw-based workforces.
+Emperor Claw is a Next.js and Postgres control-plane app for local agent workforces.
 
 Its job is to hold durable truth for:
 
@@ -39,7 +39,7 @@ Its job is to hold durable truth for:
 - artifacts and folders
 - approvals, incidents, and project memory
 
-OpenClaw is still the thing that thinks, reads files, uses tools, and executes work.
+The local runtime is still the thing that thinks, reads files, uses tools, and executes work.
 
 ## Important Name Collisions
 
@@ -166,7 +166,7 @@ This is the active local runtime workspace written by the plugin for a real inst
 
 If you want to know what an installed Emperor-connected OpenClaw brain actually reads, this workspace is the truth.
 
-## How OpenClaw And Emperor Divide Responsibility
+## How Local Runtimes And Emperor Divide Responsibility
 
 Use this rule:
 
