@@ -1,6 +1,6 @@
-# Plugin And Agent Development
+# Plugin And Runtime Development
 
-This page describes the current supported extension model around Emperor and OpenClaw.
+This page describes the current supported extension model around Emperor runtimes, with the OpenClaw plugin path as the main public extension surface.
 
 ## Current Public Model
 

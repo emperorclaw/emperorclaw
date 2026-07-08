@@ -25,7 +25,7 @@ const inter = Inter({
 });
 
 const heroStats = [
-  { label: "OpenClaw", value: "Already executes" },
+  { label: "Local runtimes", value: "Already execute" },
   { label: "Emperor", value: "Makes it durable" },
   { label: "Status", value: "Free for now" },
 ];
@@ -67,7 +67,7 @@ const primitives = [
 ];
 
 const integrationPoints = [
-  "Local OpenClaw runtime stays powerful and local.",
+  "Local Hermes or OpenClaw runtimes stay powerful and local.",
   "Plugin bootstrap links each agent to Emperor automatically.",
   "Shared doctrine and scoped knowledge reach the right agents.",
   "Direct inboxes and team threads become durable coordination surfaces.",
@@ -115,7 +115,7 @@ export function PublicHomePage() {
                   Emperor Claw
                 </div>
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                  OpenClaw Control Plane
+                  Agent Runtime Control Plane
                 </div>
               </div>
             </Link>
@@ -152,7 +152,7 @@ export function PublicHomePage() {
               <div className="max-w-2xl space-y-7">
                 <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
                   <span className="mr-2 h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
-                  Free for now in beta. Built for OpenClaw.
+                  Free for now in beta. Built for local agent runtimes.
                 </div>
 
                 <div className="space-y-5">
@@ -160,7 +160,7 @@ export function PublicHomePage() {
                     Mission control that makes agents operational.
                   </h1>
                   <p className="max-w-xl text-base leading-8 text-zinc-400 sm:text-lg">
-                    OpenClaw already thinks, codes, browses, and acts. Emperor adds the missing layer:
+                    Local runtimes already think, code, browse, and act. Emperor adds the missing layer:
                     durable work state, visible coordination, scoped context, recoverable operations,
                     and a control plane that actually works on day one.
                   </p>
@@ -318,7 +318,7 @@ export function PublicHomePage() {
                             <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-5">
                               <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-300">
                                 <Sparkles className="mr-2 h-3 w-3" />
-                                OpenClaw linked
+                                Runtime linked
                               </div>
                               <p className="mt-4 text-sm leading-7 text-zinc-300">
                                 Local runtimes stay local. Emperor adds the memory, coordination, and
@@ -342,7 +342,7 @@ export function PublicHomePage() {
                   Why this works
                 </div>
                 <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold tracking-tight text-zinc-100">
-                  OpenClaw already executes. Emperor makes that execution usable.
+                  Local runtimes already execute. Emperor makes that execution usable.
                 </h2>
                 <p className="text-lg leading-8 text-zinc-400">
                   Most agent tooling stops at runtime power. Emperor picks up where that ends:
@@ -394,14 +394,14 @@ export function PublicHomePage() {
                 className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6"
               >
                 <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                  OpenClaw integration
+                  Runtime integration
                 </div>
                 <div className="mt-5 space-y-4">
                   <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-zinc-100">
                     One runtime. One control plane. One durable story.
                   </h3>
                   <p className="text-sm leading-7 text-zinc-400">
-                    Emperor does not replace OpenClaw. It gives OpenClaw teams the missing operating
+                    Emperor does not replace Hermes or OpenClaw. It gives runtime-based teams the missing operating
                     layer: onboarding, doctrine, routing, visible coordination, scoped context, and
                     recoverable state.
                   </p>
@@ -425,7 +425,7 @@ export function PublicHomePage() {
               <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
                 <div className="space-y-5">
                   <div className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-indigo-200">
-                    OpenClaw-native control plane
+                    Runtime-native control plane
                   </div>
                   <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                     Mission control that actually becomes operational on day one.
@@ -500,7 +500,7 @@ export function PublicHomePage() {
                 Emperor Claw
               </div>
               <div className="text-xs uppercase tracking-[0.22em] text-zinc-600">
-                OpenClaw control plane. Free for now in beta.
+                Runtime control plane. Free for now in beta.
               </div>
             </div>
 

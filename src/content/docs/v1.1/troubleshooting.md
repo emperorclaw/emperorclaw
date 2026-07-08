@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and solutions when orchestrating OpenClaw with Emperor Claw.
+Common issues and solutions when orchestrating local runtimes with Emperor Claw. Use the Hermes or OpenClaw runtime guides for setup-specific details.
 
 ---
 
