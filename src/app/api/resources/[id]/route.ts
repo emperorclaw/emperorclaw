@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
-import { archiveScopedResource, updateScopedResource } from "@/lib/resources";
+import { archiveScopedResource, resolveResourceScope, updateScopedResource } from "@/lib/resources";
 
 async function getMembership() {
   const session = await getValidatedServerSession();
@@ -58,7 +58,20 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const patch: any = {};
+    const patch: {
+      name?: string;
+      displayName?: string | null;
+      resourceType?: string;
+      provider?: string;
+      configText?: string;
+      secretText?: string;
+      isShared?: boolean;
+      scopeType?: string;
+      scopeId?: string | null;
+      changeSummary?: string;
+      createdByType?: string;
+      createdById?: string;
+    } = {};
     if (body.name !== undefined) patch.name = typeof body.name === "string" ? body.name.trim() : "";
     if (body.displayName !== undefined) patch.displayName = typeof body.displayName === "string" ? body.displayName.trim() : null;
     if (body.resourceType !== undefined) patch.resourceType = typeof body.resourceType === "string" ? body.resourceType : "external_account";
@@ -68,6 +81,11 @@ export async function PATCH(
     if (body.secretText !== undefined) patch.secretText = body.secretText;
     if (body.secretJson !== undefined) patch.secretText = body.secretJson;
     if (body.isShared !== undefined) patch.isShared = typeof body.isShared === "boolean" ? body.isShared : false;
+    if (body.scopeType !== undefined) patch.scopeType = typeof body.scopeType === "string" ? body.scopeType : "company";
+    if (body.scopeId !== undefined) patch.scopeId = typeof body.scopeId === "string" && body.scopeId.trim() ? body.scopeId.trim() : null;
+    if (body.changeSummary !== undefined && typeof body.changeSummary === "string") patch.changeSummary = body.changeSummary.trim();
+    patch.createdByType = "user";
+    patch.createdById = membership.userId;
 
     const updated = await updateScopedResource({
       companyId: membership.companyId,
@@ -79,7 +97,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ resource: updated });
+    return NextResponse.json({ resource: { ...updated, ...resolveResourceScope(updated), secretText: undefined } });
   } catch (error) {
     console.error("Error updating scoped resource:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

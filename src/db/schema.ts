@@ -488,6 +488,56 @@ export const resourceAccessLogs = pgTable("resource_access_logs", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const resourceLinks = pgTable("resource_links", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    sourceResourceId: uuid("source_resource_id").notNull().references(() => scopedResources.id, { onDelete: 'cascade' }),
+    targetResourceId: uuid("target_resource_id").references(() => scopedResources.id, { onDelete: 'set null' }),
+    linkText: text("link_text").notNull(),
+    linkType: text("link_type").default("wikilink").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const resourceTags = pgTable("resource_tags", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    resourceId: uuid("resource_id").notNull().references(() => scopedResources.id, { onDelete: 'cascade' }),
+    tag: text("tag").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const resourceVersions = pgTable("resource_versions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    resourceId: uuid("resource_id").notNull().references(() => scopedResources.id, { onDelete: 'cascade' }),
+    configText: text("config_text").default("").notNull(),
+    changeSummary: text("change_summary"),
+    createdByType: text("created_by_type").default("system").notNull(),
+    createdById: uuid("created_by_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const resourceProposals = pgTable("resource_proposals", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    proposedByAgentId: uuid("proposed_by_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    proposedByUserId: uuid("proposed_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    scopeType: text("scope_type").notNull(),
+    scopeId: uuid("scope_id"),
+    targetResourceId: uuid("target_resource_id").references(() => scopedResources.id, { onDelete: 'set null' }),
+    action: text("action").default("create").notNull(),
+    title: text("title").notNull(),
+    proposedText: text("proposed_text").default("").notNull(),
+    reason: text("reason"),
+    evidenceJson: jsonb("evidence_json").default('{}').notNull(),
+    status: text("status").default("pending").notNull(),
+    resolutionNote: text("resolution_note"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const incidents = pgTable("incidents", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
