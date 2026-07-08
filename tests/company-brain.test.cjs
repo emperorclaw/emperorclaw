@@ -68,3 +68,16 @@ test("Company Brain operator UI includes brain feed, graph, backlinks, versions,
     assertContains(source, needle, `resources-client should include ${needle}`);
   });
 });
+
+
+test("Hermes bridge and docs use Company Brain context resolver", () => {
+  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_hermes_bridge.py");
+  assertContains(bridge, "format_company_brain_context", "Hermes bridge should use the Company Brain context formatter");
+  assertContains(bridge, "GET", "Hermes bridge should call Emperor APIs for context");
+  assertContains(bridge, "/resources/context", "Hermes bridge should resolve context through the centralized endpoint");
+
+  const docs = read("src/content/docs/v1.1/company-brain.md");
+  ["operator-approved", "Brain Feed", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
+    assertContains(docs, needle, `Company Brain docs should include ${needle}`);
+  });
+});
