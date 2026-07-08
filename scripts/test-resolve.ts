@@ -1,6 +1,6 @@
-import { resolveAgentId } from "./src/lib/mcp";
-import { db } from "./src/db";
-import { companies } from "./src/db/schema";
+﻿import { resolveAgentId } from "../src/lib/mcp";
+import { db } from "../src/db";
+import { companies } from "../src/db/schema";
 
 async function run() {
     try {
@@ -14,3 +14,4 @@ async function run() {
     process.exit(0);
 }
 run();
+

@@ -1,5 +1,5 @@
-import { db } from './src/db';
-import { companies, companyTokens, agents } from './src/db/schema';
+﻿import { db } from '../src/db';
+import { companies, companyTokens, agents } from '../src/db/schema';
 import * as crypto from 'crypto';
 
 async function generateTestToken() {
@@ -31,3 +31,4 @@ async function generateTestToken() {
 }
 
 generateTestToken().catch(console.error);
+
