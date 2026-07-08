@@ -41,6 +41,16 @@ function normalizeBrainKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function mentionsResourceTitle(content: string, title: string) {
+  const normalizedTitle = title.trim();
+  if (normalizedTitle.length < 6) return false;
+  return new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(normalizedTitle)}([^A-Za-z0-9]|$)`, "i").test(content);
+}
+
 function truncateForContext(value: string, maxChars: number) {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, Math.max(0, maxChars - 24)).trimEnd()}\n...[trimmed by Emperor]`;
@@ -337,24 +347,43 @@ export async function syncResourceBrainMetadata(
     })));
   }
 
-  if (metadata.wikilinks.length > 0) {
-    const resources = await listScopedResources({ companyId });
-    const lookup = new Map<string, typeof scopedResources.$inferSelect>();
-    for (const candidate of resources) {
-      lookup.set(normalizeBrainKey(candidate.displayName || candidate.name), candidate);
-      lookup.set(normalizeBrainKey(candidate.name), candidate);
-    }
+  const resources = await listScopedResources({ companyId });
+  const lookup = new Map<string, typeof scopedResources.$inferSelect>();
+  for (const candidate of resources) {
+    lookup.set(normalizeBrainKey(candidate.displayName || candidate.name), candidate);
+    lookup.set(normalizeBrainKey(candidate.name), candidate);
+  }
 
-    await db.insert(resourceLinks).values(metadata.wikilinks.map((linkText) => {
-      const target = lookup.get(normalizeBrainKey(linkText));
-      return {
-        companyId,
-        sourceResourceId: resource.id,
-        targetResourceId: target?.id || null,
-        linkText,
-        linkType: "wikilink",
-      };
+  const explicitLinks = metadata.wikilinks.map((linkText) => {
+    const target = lookup.get(normalizeBrainKey(linkText));
+    return {
+      companyId,
+      sourceResourceId: resource.id,
+      targetResourceId: target?.id || null,
+      linkText,
+      linkType: "wikilink",
+    };
+  });
+
+  const explicitTargetIds = new Set(explicitLinks.map((link) => link.targetResourceId).filter(Boolean));
+  const explicitTexts = new Set(metadata.wikilinks.map((linkText) => normalizeBrainKey(linkText)));
+  const inferredLinks = resources
+    .filter((candidate) => candidate.id !== resource.id)
+    .filter((candidate) => !explicitTargetIds.has(candidate.id))
+    .map((candidate) => ({ candidate, title: candidate.displayName || candidate.name }))
+    .filter(({ title }) => !explicitTexts.has(normalizeBrainKey(title)))
+    .filter(({ title }) => mentionsResourceTitle(resource.configText || "", title))
+    .map(({ candidate, title }) => ({
+      companyId,
+      sourceResourceId: resource.id,
+      targetResourceId: candidate.id,
+      linkText: title,
+      linkType: "inferred",
     }));
+
+  const links = [...explicitLinks, ...inferredLinks];
+  if (links.length > 0) {
+    await db.insert(resourceLinks).values(links);
   }
 
   return metadata;
