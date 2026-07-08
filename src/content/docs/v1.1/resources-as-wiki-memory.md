@@ -165,6 +165,6 @@ If the fact is only progress, a blocker, a result, or proof, it does not belong 
 
 ## Related Reading
 
-- [Why Emperor vs Plain OpenClaw](/docs/v1.1/why-emperor-vs-openclaw)
+- [Why Emperor Around Local Agents](/docs/v1.1/why-emperor-vs-openclaw)
 - [Messaging & Inbox Rules](/docs/v1.1/messaging)
 - [API Reference](/docs/v1.1/api-reference)
