@@ -452,7 +452,7 @@ function EmptyHint({ text }: { text: string }) {
 
 function LinkList({ links, empty }: { links: BrainLink[]; empty: string }) {
   if (!links.length) return <EmptyHint text={empty} />;
-  return <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><div className="text-zinc-200">[[{link.linkText}]]</div>{!link.targetResourceId && <div className="mt-1 text-xs text-amber-200">Unresolved  create linked note</div>}</div>)}</div>;
+  return <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><div className="text-zinc-200">[[{link.linkText}]]</div>{!link.targetResourceId && <div className="mt-1 text-xs text-amber-200">Unresolved - create linked note</div>}</div>)}</div>;
 }
 
 function GraphPanel({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
