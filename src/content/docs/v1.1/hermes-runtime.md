@@ -4,6 +4,8 @@ Emperor can run agents through Hermes Agent instead of OpenClaw. In that setup, 
 
 Use this page when you want to operate Emperor agents from a machine such as a Raspberry Pi, VPS, or workstation with Hermes installed.
 
+For the product-level operating contract that every connected agent should follow, start with [Emperor Operating Pipeline](/docs/v1.1/emperor-operating-pipeline).
+
 ## Runtime Model
 
 | Layer | Owns |
@@ -105,7 +107,18 @@ It also injects short Emperor usage guidance before model calls so agents unders
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
 | Knowledge & Rules | `emperor_request` with `GET /resources` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| Upload a file to Storage | `emperor_create_folder`, then `emperor_upload_artifact` with `folderId` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin — not `emperor_request` |
+
+Storage is an Emperor abstraction. Hermes agents should not know or mention the backing blob provider during normal uploads. If upload fails, report an Emperor Storage failure and include the tool/API error.
+
+Before uploading:
+
+1. Find or create the customer/project folder.
+2. Find or create the right month and output-type folder.
+3. Upload with `folderId`.
+4. Verify with `emperor_list_folder_contents`.
+5. Reply with the artifact id and folder/path.
 
 ## Find The Correct Agent ID
 
@@ -157,6 +170,21 @@ EMPEROR_CLAW_AGENT_INSTRUCTIONS="You are Malecu Builder, the technical implement
 The bridge injects these instructions into every Hermes run.
 
 Each bridge must use a unique `RUNTIME_ID` and a unique `STATE_PATH`. Two bridges sharing a state file corrupt each other's seen-message list.
+
+### Shared Doctrine Loading
+
+Do not solve doctrine drift by pasting the full Emperor manual into every bridge prompt.
+
+The bridge prompt should stay small and stable. The long-form operating doctrine should live in Emperor Knowledge & Rules as a company-scoped `knowledge_base` resource, normally named `emperor-operating-doctrine` and marked `isShared: true`.
+
+Recommended bridge behavior:
+
+1. Fetch shared Knowledge & Rules relevant to the company, project, customer, and agent.
+2. Inject only shared/force-injected resources automatically.
+3. Keep non-shared resources discoverable through `GET /resources`.
+4. Fall back to a tiny hardcoded bootstrap if resource loading fails.
+
+An env var such as `EMPEROR_CLAW_DOCTRINE_RESOURCE_ID` may be used as an optimization, but new installs should work without it by looking up the shared company doctrine resource by name/type/scope.
 
 ## Systemd Service
 
@@ -221,8 +249,9 @@ The bridge does the runtime glue:
 5. Filters messages for the configured agent using `targetAgentId` and `@mention` detection.
 6. Marks the thread read and acting through `/api/mcp/chat/status`.
 7. Runs Hermes with the configured profile and toolsets.
-8. Sends the reply through `/api/mcp/messages/send`.
-9. Marks the thread resolved and heartbeats load back to zero.
+8. Captures the Hermes `session_id` from stdout or stderr and stores it per Emperor thread in bridge state.
+9. Sends the reply through `/api/mcp/messages/send`.
+10. Marks the thread resolved and heartbeats load back to zero.
 
 Mutating Emperor calls include an `Idempotency-Key` header.
 
@@ -304,6 +333,14 @@ tail -20 ~/.hermes/profiles/builder/bridge.log
 A healthy bridge logs `started` once at boot, then `dispatching message` entries as messages arrive. Repeated `started` lines with nothing between them means the bridge is crash-looping — check for a missing model API key.
 
 Check Emperor: the mapped agent should show `online`, direct messages should mark read and show typing while Hermes works, and replies should come from the configured agent name.
+
+Check session continuity after the first reply:
+
+```bash
+cat ~/.hermes/emperor-bridge/<name>/state.json | jq '.sessions'
+```
+
+The `sessions` object should contain a key like `AgentName:<thread-id>` mapped to a Hermes session id. If it stays empty after successful replies, the bridge is not capturing Hermes session ids and every message will start a fresh Hermes conversation.
 
 ## Troubleshooting
 
@@ -400,6 +437,18 @@ hermes -p builder plugins enable emperor-claw
 ### Agent responds to messages meant for other agents
 
 Check that `EMPEROR_CLAW_AGENT_ID` is correct and unique. A wrong ID means the bridge cannot identify its own outbound messages and may re-process them, or it may match DMs meant for a different agent.
+
+### Agent forgets earlier messages in the same Emperor thread
+
+Hermes saves sessions in the profile `state.db`, but the bridge must capture the emitted `session_id` and pass `--resume <session_id>` on the next message.
+
+Check the bridge state:
+
+```bash
+cat ~/.hermes/emperor-bridge/<name>/state.json | jq '.sessions'
+```
+
+If successful replies happened but `sessions` is `{}`, update the bridge script. Modern Hermes emits the `session_id: ...` footer on stderr so piped stdout stays clean; the bridge must parse both stdout and stderr for the session id while using stdout only for the user-facing reply.
 
 ## When To Use Hermes Instead Of OpenClaw
 
