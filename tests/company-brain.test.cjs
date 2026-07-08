@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { existsSync, readFileSync } = require("node:fs");
 const { resolve } = require("node:path");
 const test = require("node:test");
+const { TextDecoder } = require("node:util");
 
 const root = resolve(__dirname, "..");
 
@@ -80,4 +81,10 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   ["operator-approved", "Brain Feed", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
     assertContains(docs, needle, `Company Brain docs should include ${needle}`);
   });
+});
+
+
+test("Company Brain UI source is valid UTF-8", () => {
+  const bytes = require("node:fs").readFileSync(resolve(root, "src/app/(app)/resources/resources-client.tsx"));
+  assert.doesNotThrow(() => new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 });
