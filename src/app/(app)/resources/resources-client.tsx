@@ -6,7 +6,6 @@ import {
   Archive,
   Check,
   ChevronDown,
-  ChevronRight,
   Clock3,
   FileText,
   Link2,
@@ -105,7 +104,6 @@ export default function ResourcesClient({
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
   const [proposals, setProposals] = useState<BrainProposal[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
@@ -271,160 +269,157 @@ export default function ResourcesClient({
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/15 text-indigo-300">
-              <FileText className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Knowledge & Rules</h1>
-              <p className="text-sm text-zinc-500">Company Brain keeps reusable doctrine, SOPs, customer context, and agent rules in one governed place.</p>
-            </div>
+    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
+      <div className="flex h-[calc(100vh-150px)] min-h-[680px] flex-col">
+        <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/95 px-4 py-3">
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold uppercase tracking-wider text-zinc-200">Knowledge & Rules</h1>
+            <p className="text-xs text-zinc-500">Company Brain vault for doctrine, SOPs, customer context, and agent rules.</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button onClick={refreshResources} className="inline-flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-200">
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </button>
+            <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-2 rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">
+              <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
+            </button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={refreshResources} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </button>
-          <button onClick={createResource} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500">
-            <Plus className="h-4 w-4" /> New rule
-          </button>
-          <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">
-            <Check className="h-4 w-4" /> {isSaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </header>
 
-      <div className="grid min-h-[calc(100vh-210px)] grid-cols-1 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 lg:grid-cols-[320px_minmax(0,1fr)_360px]">
-        <aside className="border-b border-zinc-800 bg-zinc-950/80 p-4 lg:border-b-0 lg:border-r">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search knowledge..." className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
-          </div>
-          <div className="mt-3 flex gap-2">
-            {(["all", "shared"] as const).map((item) => (
-              <button key={item} onClick={() => setFilter(item)} className={cn("rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-700" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
-            ))}
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <Stat label="Rules" value={resources.length} />
-            <Stat label="Shared" value={resources.filter((resource) => resource.isShared).length} />
-            <Stat label="Review" value={pendingProposals.length} />
-          </div>
-          <div className="mt-4 max-h-[calc(100vh-410px)] space-y-4 overflow-y-auto pr-1">
-            {resourceTree.map((group) => (
-              <div key={group.key}>
-                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-600">
-                  <ChevronDown className="h-3.5 w-3.5" /> {group.label} <span className="ml-auto text-zinc-700">{group.items.length}</span>
-                </div>
-                <div className="space-y-2 border-l border-zinc-800 pl-3">
-                  {group.items.map((resource) => (
-                    <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("w-full rounded-xl border p-3 text-left transition-colors", selectedResourceId === resource.id ? "border-indigo-500/50 bg-indigo-500/10" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900")}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-zinc-100">{resource.displayName || resource.name}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                            <span>{scopeLabel(resource.scopeType)}</span>
-                            {resource.isShared && <span className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-indigo-300">Shared</span>}
-                          </div>
-                        </div>
-                        <FileText className="h-4 w-4 shrink-0 text-zinc-600" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {!filteredResources.length && <EmptyState>No matching rules.</EmptyState>}
-          </div>
-        </aside>
-
-        <main className="min-h-0 bg-zinc-950 p-4">
-          {selectedResource ? (
-            <div className="flex h-full min-h-[620px] flex-col rounded-xl border border-zinc-800 bg-zinc-900/30">
-              <div className="border-b border-zinc-800 p-4">
-                <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="w-full bg-transparent text-xl font-semibold text-zinc-100 outline-none" />
-                <div className="mt-3 flex gap-2">
-                  <button onClick={() => setMode("preview")} className={cn("rounded-md px-3 py-1.5 text-xs font-medium", mode === "preview" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300")}>Preview</button>
-                  <button onClick={() => setMode("edit")} className={cn("rounded-md px-3 py-1.5 text-xs font-medium", mode === "edit" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300")}>Edit markdown</button>
-                </div>
-              </div>
-              <div className="min-h-0 flex-1 overflow-auto p-4">
-                {mode === "edit" ? (
-                  <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[520px] w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm leading-7 text-zinc-200 outline-none focus:border-indigo-500" />
-                ) : (
-                  <div className="prose prose-invert max-w-none rounded-xl border border-zinc-800 bg-zinc-950/70 p-6">
-                    <MarkdownRenderer content={draftContent || "*No content yet.*"} />
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex h-full min-h-[620px] items-center justify-center rounded-xl border border-dashed border-zinc-800 text-sm text-zinc-500">Select or create a Knowledge & Rules entry.</div>
-          )}
-        </main>
-
-        <aside className="min-h-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/80 p-4 lg:border-l lg:border-t-0">
-          {selectedResource && (
-            <div className="space-y-4">
-              <Panel title="Rule settings" icon={ShieldCheck}>
-                <label className="text-xs font-medium text-zinc-500">Scope</label>
-                <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
-                  <option value="company">Company</option>
-                  <option value="customer">Customer</option>
-                  <option value="project">Project</option>
-                  <option value="agent">Agent</option>
-                </select>
-                {draftScopeType !== "company" && (
-                  <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
-                    <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
-                    {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                  </select>
-                )}
-                <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-lg border p-3 text-sm transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-900")}>
-                  <span>Auto-send to matching agents</span>
-                  <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
+          <aside className="flex min-h-0 flex-col border-b border-zinc-800 bg-zinc-950 lg:border-b-0 lg:border-r">
+            <div className="border-b border-zinc-800 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
+                <button onClick={createResource} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800">
+                  <Plus className="h-3.5 w-3.5" /> New
                 </button>
-                <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive rule</button>
-              </Panel>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                {(["all", "shared"] as const).map((item) => (
+                  <button key={item} onClick={() => setFilter(item)} className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
+                ))}
+                <span className="ml-auto text-[11px] text-zinc-600">{filteredResources.length} notes</span>
+              </div>
+            </div>
 
-
-              {pendingProposals.length > 0 && (
-                <Panel title={`Agent suggestions (${pendingProposals.length})`} icon={Clock3}>
-                  <div className="space-y-3">
-                    {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <div className="space-y-3">
+                {resourceTree.map((group) => (
+                  <div key={group.key}>
+                    <div className="mb-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      <span className="truncate">{group.label}</span>
+                      <span className="ml-auto text-zinc-700">{group.items.length}</span>
+                    </div>
+                    <div className="space-y-0.5 pl-4">
+                      {group.items.map((resource) => (
+                        <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-indigo-500/15 text-indigo-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
+                          <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-indigo-300" : "text-zinc-600 group-hover:text-zinc-400")} />
+                          <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
+                          {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" title="Shared with agents" />}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </Panel>
-              )}
+                ))}
+                {!filteredResources.length && <EmptyState>No matching notes.</EmptyState>}
+              </div>
+            </div>
+          </aside>
 
-              <button onClick={() => setIsAdvancedOpen((open) => !open)} className="flex w-full items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-left text-sm font-medium text-zinc-300 hover:bg-zinc-900">
-                Advanced relationships
-                {isAdvancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              </button>
-              {isAdvancedOpen && (
-                <div className="space-y-4">
-                  <Panel title="Knowledge map" icon={Link2}>
-                    <KnowledgeMap graph={insights.graph} selectedId={selectedResource.id} />
+          <main className="flex min-h-0 flex-col bg-zinc-950">
+            {selectedResource ? (
+              <>
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
+                    <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
+                    {draftShared && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">shared</span>}
+                  </div>
+                  <div className="flex shrink-0 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
+                    <button onClick={() => setMode("preview")} className={cn("rounded px-2.5 py-1 text-[11px] font-medium", mode === "preview" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Reading</button>
+                    <button onClick={() => setMode("edit")} className={cn("rounded px-2.5 py-1 text-[11px] font-medium", mode === "edit" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Source</button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto">
+                  {mode === "edit" ? (
+                    <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[620px] w-full resize-none bg-zinc-950 px-8 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-indigo-500/30" />
+                  ) : (
+                    <article className="mx-auto min-h-full max-w-4xl px-8 py-8">
+                      <div className="prose prose-invert max-w-none">
+                        <MarkdownRenderer content={draftContent || "*No content yet.*"} />
+                      </div>
+                    </article>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-zinc-500">Select or create a note.</div>
+            )}
+          </main>
+
+          <aside className="flex min-h-0 flex-col border-t border-zinc-800 bg-zinc-950 lg:border-l lg:border-t-0">
+            {selectedResource && (
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                <div className="space-y-3">
+                  <Panel title="Properties" icon={ShieldCheck}>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
+                    <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                      <option value="company">Company</option>
+                      <option value="customer">Customer</option>
+                      <option value="project">Project</option>
+                      <option value="agent">Agent</option>
+                    </select>
+                    {draftScopeType !== "company" && (
+                      <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                        <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
+                        {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                      </select>
+                    )}
+                    <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-900")}>
+                      <span>Send to matching agents</span>
+                      <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
+                    </button>
                   </Panel>
-                  <Panel title="Tags" icon={Tags}>{insights.tags.length ? <TagList tags={insights.tags} /> : <EmptyState>Add #tags in markdown.</EmptyState>}</Panel>
-                  <Panel title="Related notes" icon={Link2}>
-                    <LinkList title="This note links to" links={insights.outgoing} empty="No outgoing links." />
+
+                  <Panel title="Local graph" icon={Link2}>
+                    <LocalGraph graph={insights.graph} selectedId={selectedResource.id} />
+                  </Panel>
+
+                  <Panel title="Linked mentions" icon={Link2}>
+                    <LinkList title="Outgoing" links={insights.outgoing} empty="No outgoing links." />
                     <div className="mt-3" />
-                    <LinkList title="Used by" links={insights.backlinks} empty="No notes link here yet." />
+                    <LinkList title="Incoming" links={insights.backlinks} empty="No incoming links yet." />
                   </Panel>
-                  <Panel title="Versions" icon={Clock3}>
+
+                  {insights.tags.length > 0 && <Panel title="Tags" icon={Tags}><TagList tags={insights.tags} /></Panel>}
+
+                  {pendingProposals.length > 0 && (
+                    <Panel title={`Agent suggestions (${pendingProposals.length})`} icon={Clock3}>
+                      <div className="space-y-3">
+                        {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
+                      </div>
+                    </Panel>
+                  )}
+
+                  <Panel title="History" icon={Clock3}>
                     <div className="space-y-2">
-                      {insights.versions.slice(0, 6).map((version) => <div key={version.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"><div className="text-xs font-medium text-zinc-200">{version.changeSummary || "Version"}</div><div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} - {version.createdByType}</div></div>)}
+                      {insights.versions.slice(0, 4).map((version) => <div key={version.id} className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2"><div className="text-xs font-medium text-zinc-200">{version.changeSummary || "Version"}</div><div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} - {version.createdByType}</div></div>)}
                       {!insights.versions.length && <EmptyState>Versions appear after edits.</EmptyState>}
                     </div>
                   </Panel>
+
+                  <button onClick={archiveSelectedResource} className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive note</button>
                 </div>
-              )}
-            </div>
-          )}
-        </aside>
+              </div>
+            )}
+          </aside>
+        </div>
       </div>
     </div>
   );
@@ -451,8 +446,8 @@ function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; 
 }
 
 
-function KnowledgeMap({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
-  if (!graph.nodes.length) return <EmptyState>No map yet. Add [[links]] between rules to build one.</EmptyState>;
+function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
+  if (!graph.nodes.length) return <EmptyState>No graph yet. Add [[links]] or mention another note title to build one.</EmptyState>;
   return <div className="space-y-3">
     <div className="grid grid-cols-2 gap-2">
       <Stat label="Notes" value={graph.nodes.length} />
@@ -461,7 +456,7 @@ function KnowledgeMap({ graph, selectedId }: { graph: { nodes: GraphNode[]; edge
     <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 p-2">
       {graph.nodes.slice(0, 12).map((node) => <div key={node.id} className={cn("rounded-md border px-2 py-1.5 text-xs", node.id === selectedId ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900 text-zinc-400")}>{node.label}</div>)}
     </div>
-    <p className="text-xs leading-5 text-zinc-500">This map is generated from [[links]]. It stays tucked away because most operators only need the rule and where it is used.</p>
+    <p className="text-xs leading-5 text-zinc-500">Generated from [[links]] and inferred title mentions.</p>
   </div>;
 }
 
