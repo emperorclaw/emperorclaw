@@ -63,10 +63,13 @@ test("Company Brain UI and MCP API routes exist", () => {
   ].forEach(assertFile);
 });
 
-test("Company Brain operator UI includes brain feed, graph, backlinks, versions, and reduced motion", () => {
+test("Knowledge & Rules UI keeps Company Brain advanced concepts operator-friendly", () => {
   const source = read("src/app/(app)/resources/resources-client.tsx");
-  ["Company Brain", "Brain Feed", "Backlinks", "Versions", "Graph", "prefers-reduced-motion"].forEach((needle) => {
+  ["Knowledge & Rules", "Review Queue", "Suggest an update", "Related notes", "Advanced relationships", "Auto-send to matching agents"].forEach((needle) => {
     assertContains(source, needle, `resources-client should include ${needle}`);
+  });
+  ["Brain Feed", "Backlinks", "Company Brain</h1>", "prefers-reduced-motion"].forEach((needle) => {
+    assert.equal(source.includes(needle), false, `resources-client should not expose ${needle} as primary UI`);
   });
 });
 
@@ -78,7 +81,7 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   assertContains(bridge, "/resources/context", "Hermes bridge should resolve context through the centralized endpoint");
 
   const docs = read("src/content/docs/v1.1/company-brain.md");
-  ["operator-approved", "Brain Feed", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
+  ["operator-approved", "Review Queue", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
     assertContains(docs, needle, `Company Brain docs should include ${needle}`);
   });
 });
