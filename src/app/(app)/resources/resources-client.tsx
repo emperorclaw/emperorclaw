@@ -1,22 +1,20 @@
+
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   Archive,
-  BrainCircuit,
   Check,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   FileText,
-  GitBranch,
   Link2,
-  Network,
   Plus,
+  RefreshCw,
   Search,
   Send,
-  Share2,
   ShieldCheck,
-  Sparkles,
   Tags,
   X,
 } from "lucide-react";
@@ -71,8 +69,6 @@ type BrainInsights = {
 };
 
 const EMPTY_INSIGHTS: BrainInsights = { outgoing: [], backlinks: [], tags: [], versions: [], graph: { nodes: [], edges: [] } };
-const TABS = ["edit", "preview", "graph", "feed"] as const;
-type BrainTab = (typeof TABS)[number];
 
 function slugifyResourceKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "untitled-note";
@@ -99,9 +95,9 @@ export default function ResourcesClient({
 }) {
   const [resources, setResources] = useState(initialResources);
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
-  const [activeTab, setActiveTab] = useState<BrainTab>("preview");
+  const [mode, setMode] = useState<"edit" | "preview">("preview");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "shared" | "orphans" | "stale">("all");
+  const [filter, setFilter] = useState<"all" | "shared" | "review">("all");
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
   const [draftContent, setDraftContent] = useState(initialResources[0]?.configText || "");
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
@@ -111,27 +107,23 @@ export default function ResourcesClient({
   const [proposals, setProposals] = useState<BrainProposal[]>([]);
   const [proposalText, setProposalText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isProposing, setIsProposing] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
+  const pendingProposals = useMemo(() => proposals.filter((proposal) => proposal.status === "pending"), [proposals]);
+
   const filteredResources = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return resources.filter((resource) => {
       const haystack = `${resource.name} ${resource.displayName || ""} ${resource.configText}`.toLowerCase();
       if (normalized && !haystack.includes(normalized)) return false;
       if (filter === "shared") return resource.isShared;
-      if (filter === "orphans") return !insights.graph.edges.some((edge) => edge.source === resource.id || edge.target === resource.id);
-      if (filter === "stale") return Date.now() - new Date(resource.updatedAt).getTime() > 1000 * 60 * 60 * 24 * 45;
+      if (filter === "review") return pendingProposals.some((proposal) => proposal.targetResourceId === resource.id);
       return true;
     });
-  }, [filter, insights.graph.edges, query, resources]);
-
-  const counts = useMemo(() => ({
-    shared: resources.filter((resource) => resource.isShared).length,
-    proposals: proposals.filter((proposal) => proposal.status === "pending").length,
-    links: insights.graph.edges.length,
-    tags: insights.tags.length,
-  }), [insights.graph.edges.length, insights.tags.length, proposals, resources]);
+  }, [filter, pendingProposals, query, resources]);
 
   useEffect(() => {
     if (!selectedResource) return;
@@ -140,6 +132,7 @@ export default function ResourcesClient({
     setDraftScopeType(selectedResource.scopeType);
     setDraftScopeId(selectedResource.scopeId || "");
     setDraftShared(Boolean(selectedResource.isShared));
+    setProposalText("");
     void loadBrainInsights(selectedResource.id);
   }, [selectedResource]);
 
@@ -164,7 +157,7 @@ export default function ResourcesClient({
       });
     } catch (error) {
       console.error(error);
-      toast.error("Failed to load Company Brain links");
+      toast.error("Could not load related knowledge metadata");
     }
   }
 
@@ -176,8 +169,13 @@ export default function ResourcesClient({
     }
   }
 
-  async function createBrainNote() {
-    const title = "New Company Brain Note";
+  async function refreshResources() {
+    const response = await fetch("/api/resources", { cache: "no-store" });
+    if (response.ok) setResources((await response.json()).resources || []);
+  }
+
+  async function createResource() {
+    const title = "New Knowledge Rule";
     const response = await fetch("/api/resources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -188,16 +186,16 @@ export default function ResourcesClient({
         resourceType: "knowledge_base",
         name: slugifyResourceKey(title),
         displayName: title,
-        configText: "# New Company Brain Note\n\nAdd reusable doctrine, SOPs, or rules here. Link related notes with [[Wikilinks]] and add #tags.",
+        configText: "# New Knowledge Rule\n\nWrite reusable company knowledge, SOPs, customer context, or agent rules here.",
         isShared: false,
       }),
     });
     const body = await response.json();
-    if (!response.ok) return toast.error(body.error || "Failed to create note");
+    if (!response.ok) return toast.error(body.error || "Failed to create rule");
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
-    setActiveTab("edit");
-    toast.success("Company Brain note created");
+    setMode("edit");
+    toast.success("Knowledge rule created");
   }
 
   async function saveSelectedResource() {
@@ -216,51 +214,58 @@ export default function ResourcesClient({
           resourceType: selectedResource.resourceType || "knowledge_base",
           configText: draftContent,
           isShared: draftShared,
-          changeSummary: "Operator updated Company Brain note",
+          changeSummary: "Operator updated Knowledge & Rules entry",
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Failed to save note");
+      if (!response.ok) throw new Error(body.error || "Failed to save rule");
       setResources((current) => current.map((resource) => resource.id === selectedResource.id ? { ...resource, ...body.resource } : resource));
       await loadBrainInsights(selectedResource.id);
-      toast.success("Company Brain note saved");
+      toast.success("Knowledge rule saved");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save note");
+      toast.error(error instanceof Error ? error.message : "Failed to save rule");
     } finally {
       setIsSaving(false);
     }
   }
 
   async function archiveSelectedResource() {
-    if (!selectedResource || !confirm("Archive this Company Brain note?")) return;
+    if (!selectedResource || !confirm("Archive this Knowledge & Rules entry?")) return;
     const response = await fetch(`/api/resources/${selectedResource.id}`, { method: "DELETE" });
-    if (!response.ok) return toast.error("Failed to archive note");
+    if (!response.ok) return toast.error("Failed to archive rule");
     setResources((current) => current.filter((resource) => resource.id !== selectedResource.id));
     setSelectedResourceId(resources.find((resource) => resource.id !== selectedResource.id)?.id || null);
-    toast.success("Company Brain note archived");
+    toast.success("Knowledge rule archived");
   }
 
-  async function submitBrainProposal() {
-    if (!proposalText.trim()) return;
-    const title = selectedResource ? `Update ${selectedResource.displayName || selectedResource.name}` : "New Company Brain proposal";
-    const response = await fetch("/api/resources/proposals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        action: selectedResource ? "update" : "create",
-        targetResourceId: selectedResource?.id || null,
-        scopeType: selectedResource?.scopeType || "company",
-        scopeId: selectedResource?.scopeId || null,
-        proposedText: proposalText,
-        reason: "Manual operator feed",
-      }),
-    });
-    if (!response.ok) return toast.error("Failed to create proposal");
-    setProposalText("");
-    await loadProposals();
-    setActiveTab("feed");
-    toast.success("Brain proposal created");
+  async function submitProposal() {
+    if (!proposalText.trim() || isProposing) return;
+    setIsProposing(true);
+    try {
+      const title = selectedResource ? `Suggested update: ${selectedResource.displayName || selectedResource.name}` : "Suggested Knowledge & Rules entry";
+      const response = await fetch("/api/resources/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          action: selectedResource ? "update" : "create",
+          targetResourceId: selectedResource?.id || null,
+          scopeType: selectedResource?.scopeType || "company",
+          scopeId: selectedResource?.scopeId || null,
+          proposedText: proposalText,
+          reason: "Manual operator suggestion",
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Failed to create suggestion");
+      setProposalText("");
+      await loadProposals();
+      toast.success("Suggestion added to Review Queue");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create suggestion");
+    } finally {
+      setIsProposing(false);
+    }
   }
 
   async function reviewProposal(proposal: BrainProposal, status: "approved" | "rejected" | "merged") {
@@ -270,205 +275,187 @@ export default function ResourcesClient({
       body: JSON.stringify({ status }),
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) return toast.error(body.error || "Failed to review proposal");
+    if (!response.ok) return toast.error(body.error || "Failed to review suggestion");
     await loadProposals();
-    const refreshed = await fetch("/api/resources", { cache: "no-store" });
-    if (refreshed.ok) setResources((await refreshed.json()).resources || []);
-    toast.success(status === "rejected" ? "Proposal rejected" : "Proposal applied");
+    await refreshResources();
+    if (selectedResource) await loadBrainInsights(selectedResource.id);
+    toast.success(status === "rejected" ? "Suggestion rejected" : "Suggestion applied");
   }
 
   return (
-    <div className="company-brain relative min-h-[calc(100vh-120px)] overflow-hidden rounded-[2rem] border border-cyan-400/10 bg-[#02040b] text-zinc-100 shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
-      <style>{`@media (prefers-reduced-motion: reduce) { .company-brain * { animation: none !important; transition-duration: 0.01ms !important; } }`}</style>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_85%_15%,rgba(168,85,247,0.13),transparent_30%),linear-gradient(180deg,rgba(2,4,11,0.2),#02040b)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
-
-      <div className="relative z-10 flex h-[calc(100vh-120px)] flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
-                <BrainCircuit className="h-5 w-5 text-cyan-200" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-white">Company Brain</h1>
-                <p className="text-sm text-zinc-500">Operator-governed knowledge graph for durable agent context.</p>
-              </div>
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/15 text-indigo-300">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Knowledge & Rules</h1>
+              <p className="text-sm text-zinc-500">Company Brain keeps reusable doctrine, SOPs, customer context, and agent rules in one governed place.</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={createBrainNote} className="inline-flex items-center gap-2 rounded-xl bg-cyan-200 px-4 py-2 text-sm font-bold text-slate-950 transition-colors hover:bg-white">
-              <Plus className="h-4 w-4" /> New Note
-            </button>
-            <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-white/[0.1] disabled:opacity-50">
-              <Check className="h-4 w-4" /> Save
-            </button>
-          </div>
-        </header>
-
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_360px]">
-          <aside className="min-h-0 border-r border-white/10 bg-white/[0.025] p-4">
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search brain..." className="w-full rounded-2xl border border-white/10 bg-slate-950/70 py-2.5 pl-9 pr-3 text-sm outline-none transition-colors focus:border-cyan-300/40" />
-            </div>
-            <div className="mb-4 grid grid-cols-2 gap-2">
-              {(["all", "shared", "orphans", "stale"] as const).map((item) => (
-                <button key={item} onClick={() => setFilter(item)} className={cn("rounded-xl border px-3 py-2 text-xs font-bold capitalize transition-colors", filter === item ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.03] text-zinc-500 hover:text-zinc-200")}>{item}</button>
-              ))}
-            </div>
-            <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-              <Metric icon={Share2} label="Shared" value={counts.shared} />
-              <Metric icon={Send} label="Feed" value={counts.proposals} />
-              <Metric icon={Link2} label="Links" value={counts.links} />
-              <Metric icon={Tags} label="Tags" value={counts.tags} />
-            </div>
-            <div className="max-h-[calc(100vh-365px)] space-y-2 overflow-y-auto pr-1">
-              {filteredResources.map((resource) => (
-                <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("w-full rounded-2xl border p-3 text-left transition-colors", selectedResourceId === resource.id ? "border-cyan-300/40 bg-cyan-300/10" : "border-white/10 bg-white/[0.035] hover:border-white/20 hover:bg-white/[0.055]")}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-white">{resource.displayName || resource.name}</div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                        <span>{scopeLabel(resource.scopeType)}</span>
-                        {resource.isShared && <span className="text-cyan-200">Shared</span>}
-                      </div>
-                    </div>
-                    <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <main className="min-h-0 p-4">
-            {selectedResource ? (
-              <div className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/50">
-                <div className="border-b border-white/10 p-4">
-                  <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="w-full bg-transparent text-2xl font-semibold tracking-tight text-white outline-none" />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {TABS.map((tab) => (
-                      <button key={tab} onClick={() => setActiveTab(tab)} className={cn("rounded-xl px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] transition-colors", activeTab === tab ? "bg-cyan-300/15 text-cyan-100" : "text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200")}>{tab}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto p-4">
-                  <AnimatePresence mode="wait">
-                    {activeTab === "edit" && (
-                      <motion.textarea key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[520px] w-full resize-none rounded-2xl border border-white/10 bg-black/35 p-5 font-mono text-sm leading-7 text-zinc-100 outline-none focus:border-cyan-300/40" />
-                    )}
-                    {activeTab === "preview" && (
-                      <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="prose prose-invert max-w-none rounded-2xl border border-white/10 bg-black/25 p-6">
-                        <MarkdownRenderer content={draftContent || "*No content yet.*"} />
-                      </motion.div>
-                    )}
-                    {activeTab === "graph" && <GraphPanel key="graph" graph={insights.graph} selectedId={selectedResource.id} />}
-                    {activeTab === "feed" && <BrainFeed key="feed" proposals={proposals} onReview={reviewProposal} />}
-                  </AnimatePresence>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full items-center justify-center rounded-[1.5rem] border border-white/10 bg-white/[0.03] text-zinc-500">Select or create a Company Brain note.</div>
-            )}
-          </main>
-
-          <aside className="min-h-0 overflow-y-auto border-l border-white/10 bg-white/[0.025] p-4">
-            {selectedResource && (
-              <div className="space-y-4">
-                <InspectorCard title="Context Inspector" icon={ShieldCheck}>
-                  <label className="text-xs text-zinc-500">Scope</label>
-                  <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-2 text-sm">
-                    <option value="company">Company</option>
-                    <option value="customer">Customer</option>
-                    <option value="project">Project</option>
-                    <option value="agent">Agent</option>
-                  </select>
-                  {draftScopeType !== "company" && (
-                    <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 p-2 text-sm">
-                      {(scopeOptions[draftScopeType as keyof typeof scopeOptions] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                    </select>
-                  )}
-                  <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-xl border p-3 text-sm font-bold", draftShared ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.03] text-zinc-400")}>
-                    Auto-inject to agents <span>{draftShared ? "On" : "Off"}</span>
-                  </button>
-                </InspectorCard>
-
-                <InspectorCard title="Tags" icon={Tags}>
-                  <div className="flex flex-wrap gap-2">
-                    {insights.tags.length ? insights.tags.map((tag) => <span key={tag.id} className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-xs text-cyan-100">#{tag.tag}</span>) : <EmptyHint text="Add #tags in markdown." />}
-                  </div>
-                </InspectorCard>
-
-                <InspectorCard title="Backlinks" icon={Link2}>
-                  <LinkList links={insights.backlinks} empty="No backlinks yet." />
-                </InspectorCard>
-
-                <InspectorCard title="Outgoing Links" icon={GitBranch}>
-                  <LinkList links={insights.outgoing} empty="Use [[Wikilinks]] to connect notes." />
-                </InspectorCard>
-
-                <InspectorCard title="Versions" icon={Clock3}>
-                  <div className="space-y-2">
-                    {insights.versions.slice(0, 6).map((version) => (
-                      <div key={version.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                        <div className="text-xs font-bold text-zinc-200">{version.changeSummary || "Version"}</div>
-                        <div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} · {version.createdByType}</div>
-                      </div>
-                    ))}
-                    {!insights.versions.length && <EmptyHint text="Versions appear after edits." />}
-                  </div>
-                </InspectorCard>
-
-                <InspectorCard title="Manual Operator Feed" icon={Sparkles}>
-                  <textarea value={proposalText} onChange={(event) => setProposalText(event.target.value)} placeholder="Propose reusable knowledge, rules, or doctrine. Operators approve before it mutates the Brain." className="min-h-28 w-full resize-none rounded-xl border border-white/10 bg-slate-950 p-3 text-sm outline-none focus:border-cyan-300/40" />
-                  <button onClick={submitBrainProposal} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-300 px-3 py-2 text-sm font-bold text-slate-950 hover:bg-white">
-                    <Send className="h-4 w-4" /> Send to Brain Feed
-                  </button>
-                </InspectorCard>
-
-                <button onClick={archiveSelectedResource} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-200 hover:bg-rose-400/15">
-                  <Archive className="h-4 w-4" /> Archive Note
-                </button>
-              </div>
-            )}
-          </aside>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={refreshResources} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800">
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
+          <button onClick={createResource} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500">
+            <Plus className="h-4 w-4" /> New rule
+          </button>
+          <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">
+            <Check className="h-4 w-4" /> {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </header>
+
+      <div className="grid min-h-[calc(100vh-210px)] grid-cols-1 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 lg:grid-cols-[320px_minmax(0,1fr)_360px]">
+        <aside className="border-b border-zinc-800 bg-zinc-950/80 p-4 lg:border-b-0 lg:border-r">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search knowledge..." className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+          </div>
+          <div className="mt-3 flex gap-2">
+            {(["all", "shared", "review"] as const).map((item) => (
+              <button key={item} onClick={() => setFilter(item)} className={cn("rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-700" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <Stat label="Rules" value={resources.length} />
+            <Stat label="Shared" value={resources.filter((resource) => resource.isShared).length} />
+            <Stat label="Review" value={pendingProposals.length} />
+          </div>
+          <div className="mt-4 max-h-[calc(100vh-410px)] space-y-2 overflow-y-auto pr-1">
+            {filteredResources.map((resource) => (
+              <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("w-full rounded-xl border p-3 text-left transition-colors", selectedResourceId === resource.id ? "border-indigo-500/50 bg-indigo-500/10" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-zinc-100">{resource.displayName || resource.name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <span>{scopeLabel(resource.scopeType)}</span>
+                      {resource.isShared && <span className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-indigo-300">Shared</span>}
+                    </div>
+                  </div>
+                  <FileText className="h-4 w-4 shrink-0 text-zinc-600" />
+                </div>
+              </button>
+            ))}
+            {!filteredResources.length && <EmptyState>No matching rules.</EmptyState>}
+          </div>
+        </aside>
+
+        <main className="min-h-0 bg-zinc-950 p-4">
+          {selectedResource ? (
+            <div className="flex h-full min-h-[620px] flex-col rounded-xl border border-zinc-800 bg-zinc-900/30">
+              <div className="border-b border-zinc-800 p-4">
+                <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="w-full bg-transparent text-xl font-semibold text-zinc-100 outline-none" />
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setMode("preview")} className={cn("rounded-md px-3 py-1.5 text-xs font-medium", mode === "preview" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300")}>Preview</button>
+                  <button onClick={() => setMode("edit")} className={cn("rounded-md px-3 py-1.5 text-xs font-medium", mode === "edit" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300")}>Edit markdown</button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto p-4">
+                {mode === "edit" ? (
+                  <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[520px] w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm leading-7 text-zinc-200 outline-none focus:border-indigo-500" />
+                ) : (
+                  <div className="prose prose-invert max-w-none rounded-xl border border-zinc-800 bg-zinc-950/70 p-6">
+                    <MarkdownRenderer content={draftContent || "*No content yet.*"} />
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full min-h-[620px] items-center justify-center rounded-xl border border-dashed border-zinc-800 text-sm text-zinc-500">Select or create a Knowledge & Rules entry.</div>
+          )}
+        </main>
+
+        <aside className="min-h-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/80 p-4 lg:border-l lg:border-t-0">
+          {selectedResource && (
+            <div className="space-y-4">
+              <Panel title="Rule settings" icon={ShieldCheck}>
+                <label className="text-xs font-medium text-zinc-500">Scope</label>
+                <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                  <option value="company">Company</option>
+                  <option value="customer">Customer</option>
+                  <option value="project">Project</option>
+                  <option value="agent">Agent</option>
+                </select>
+                {draftScopeType !== "company" && (
+                  <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                    <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
+                    {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                  </select>
+                )}
+                <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-lg border p-3 text-sm transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-900")}>
+                  <span>Auto-send to matching agents</span>
+                  <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
+                </button>
+                <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive rule</button>
+              </Panel>
+
+              <Panel title="Suggest an update" icon={Send}>
+                <p className="mb-3 text-xs leading-5 text-zinc-500">Use this when an agent or operator found reusable knowledge but you want review before changing the rule.</p>
+                <textarea value={proposalText} onChange={(event) => setProposalText(event.target.value)} placeholder="Write the proposed reusable rule or correction..." className="min-h-28 w-full resize-none rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                <button onClick={submitProposal} disabled={!proposalText.trim() || isProposing} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Send className="h-4 w-4" /> {isProposing ? "Adding..." : "Add to Review Queue"}
+                </button>
+              </Panel>
+
+              <Panel title={`Review Queue (${pendingProposals.length})`} icon={Clock3}>
+                <div className="space-y-3">
+                  {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
+                  {!pendingProposals.length && <EmptyState>No pending suggestions.</EmptyState>}
+                </div>
+              </Panel>
+
+              <button onClick={() => setIsAdvancedOpen((open) => !open)} className="flex w-full items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-left text-sm font-medium text-zinc-300 hover:bg-zinc-900">
+                Advanced relationships
+                {isAdvancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </button>
+              {isAdvancedOpen && (
+                <div className="space-y-4">
+                  <Panel title="Tags" icon={Tags}>{insights.tags.length ? <TagList tags={insights.tags} /> : <EmptyState>Add #tags in markdown.</EmptyState>}</Panel>
+                  <Panel title="Related notes" icon={Link2}>
+                    <LinkList title="This note links to" links={insights.outgoing} empty="No outgoing links." />
+                    <div className="mt-3" />
+                    <LinkList title="Used by" links={insights.backlinks} empty="No notes link here yet." />
+                  </Panel>
+                  <Panel title="Versions" icon={Clock3}>
+                    <div className="space-y-2">
+                      {insights.versions.slice(0, 6).map((version) => <div key={version.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"><div className="text-xs font-medium text-zinc-200">{version.changeSummary || "Version"}</div><div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} - {version.createdByType}</div></div>)}
+                      {!insights.versions.length && <EmptyState>Versions appear after edits.</EmptyState>}
+                    </div>
+                  </Panel>
+                </div>
+              )}
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );
 }
 
-function Metric({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: number }) {
-  return <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><Icon className="mb-2 h-4 w-4 text-cyan-200" /><div className="text-lg font-semibold text-white">{value}</div><div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</div></div>;
+function Stat({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2"><div className="text-sm font-semibold text-zinc-100">{value}</div><div className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</div></div>;
 }
 
-function InspectorCard({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
-  return <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="mb-3 flex items-center gap-2 text-sm font-bold text-white"><Icon className="h-4 w-4 text-cyan-200" />{title}</div>{children}</section>;
+function Panel({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
+  return <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-zinc-100"><Icon className="h-4 w-4 text-indigo-400" />{title}</div>{children}</section>;
 }
 
-function EmptyHint({ text }: { text: string }) {
-  return <div className="rounded-xl border border-dashed border-white/10 p-3 text-xs text-zinc-500">{text}</div>;
+function EmptyState({ children }: { children: ReactNode }) {
+  return <div className="rounded-lg border border-dashed border-zinc-800 p-3 text-xs text-zinc-500">{children}</div>;
 }
 
-function LinkList({ links, empty }: { links: BrainLink[]; empty: string }) {
-  if (!links.length) return <EmptyHint text={empty} />;
-  return <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><div className="text-zinc-200">[[{link.linkText}]]</div>{!link.targetResourceId && <div className="mt-1 text-xs text-amber-200">Unresolved - create linked note</div>}</div>)}</div>;
+function TagList({ tags }: { tags: BrainTag[] }) {
+  return <div className="flex flex-wrap gap-2">{tags.map((tag) => <span key={tag.id} className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-300">#{tag.tag}</span>)}</div>;
 }
 
-function GraphPanel({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
-  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="relative min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.12),transparent_42%),rgba(0,0,0,0.22)] p-6">
-    <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:42px_42px]" />
-    <div className="relative z-10 mb-4 flex items-center gap-2 text-sm font-bold text-cyan-100"><Network className="h-4 w-4" /> Graph</div>
-    <div className="relative z-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {graph.nodes.map((node) => <div key={node.id} className={cn("rounded-2xl border p-4 shadow-[0_0_40px_rgba(34,211,238,0.08)]", node.id === selectedId ? "border-cyan-300/50 bg-cyan-300/10" : "border-white/10 bg-slate-950/70")}><div className="font-semibold text-white">{node.label}</div><div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">{node.scopeType} · {node.resourceType}</div><div className="mt-3 flex flex-wrap gap-1">{node.tags.slice(0, 3).map((tag) => <span key={tag} className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-cyan-100">#{tag}</span>)}</div></div>)}
-    </div>
-    <div className="relative z-10 mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-400">{graph.edges.length} edges · unresolved links stay visible so operators can create missing notes.</div>
-  </motion.div>;
+function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; empty: string }) {
+  return <div><div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-600">{title}</div>{links.length ? <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300"><span>[[{link.linkText}]]</span>{!link.targetResourceId && <span className="ml-2 text-amber-300">unresolved</span>}</div>)}</div> : <EmptyState>{empty}</EmptyState>}</div>;
 }
 
-function BrainFeed({ proposals, onReview }: { proposals: BrainProposal[]; onReview: (proposal: BrainProposal, status: "approved" | "rejected" | "merged") => void }) {
-  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-    <div className="rounded-2xl border border-violet-300/20 bg-violet-300/10 p-4"><div className="flex items-center gap-2 font-bold text-violet-100"><Sparkles className="h-4 w-4" /> Brain Feed</div><p className="mt-1 text-sm text-zinc-400">Agents and operators propose knowledge here. Humans approve reusable truth before it mutates Company Brain.</p></div>
-    {proposals.length ? proposals.map((proposal) => <div key={proposal.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-semibold text-white">{proposal.title}</div><div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-500">{proposal.action} · {proposal.scopeType} · {dateLabel(proposal.createdAt)}</div></div><div className="flex gap-2"><button onClick={() => onReview(proposal, "approved")} className="rounded-xl bg-emerald-300 px-3 py-1.5 text-xs font-bold text-slate-950"><Check className="inline h-3 w-3" /> Approve</button><button onClick={() => onReview(proposal, "rejected")} className="rounded-xl border border-white/10 px-3 py-1.5 text-xs font-bold text-zinc-300"><X className="inline h-3 w-3" /> Reject</button></div></div><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-xs leading-6 text-zinc-300">{proposal.proposedText}</pre></div>) : <EmptyHint text="No pending proposals." />}
-  </motion.div>;
+function ProposalCard({ proposal, onReview }: { proposal: BrainProposal; onReview: (proposal: BrainProposal, status: "approved" | "rejected" | "merged") => void }) {
+  return <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-medium text-zinc-100">{proposal.title}</div><div className="mt-1 text-[11px] text-zinc-500">{proposal.action} - {scopeLabel(proposal.scopeType)} - {dateLabel(proposal.createdAt)}</div></div></div><pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-900 p-3 text-xs leading-5 text-zinc-300">{proposal.proposedText}</pre><div className="mt-3 flex gap-2"><button onClick={() => onReview(proposal, "approved")} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"><Check className="h-3 w-3" /> Approve</button><button onClick={() => onReview(proposal, "rejected")} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-900"><X className="h-3 w-3" /> Reject</button></div></div>;
 }
