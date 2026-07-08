@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { versions, type DocVersion, type DocPage } from '@/content/docs/versions';
 import { DocsMarkdownRenderer } from './docs-markdown-renderer';
-import { ChevronRight, BookOpen, FileText, Menu, X, ArrowLeft, ExternalLink } from 'lucide-react';
+import { ChevronRight, FileText, Menu, X, ArrowLeft } from 'lucide-react';
 import { CustomLogo } from './custom-logo';
 
 interface DocsViewerProps {
@@ -26,7 +26,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
   const currentPage = selectedVersion.pages.find((p: DocPage) => p.slug === currentPageSlug) || selectedVersion.pages[0];
 
   // Group pages by category (heuristic: use sections or just list them)
-  const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'installation', 'activation'].includes(p.slug));
+  const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'agent-quickstart', 'emperor-operating-pipeline', 'installation', 'activation'].includes(p.slug));
   const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['openclaw-agents', 'hermes-runtime', 'concepts', 'lifecycle', 'messaging', 'incidents', 'retention', 'limits', 'mcp', 'configuration'].includes(p.slug));
   const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'best-practices', 'usage', 'skill-development', 'troubleshooting'].includes(p.slug));
 
@@ -61,7 +61,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
       }
     };
     loadContent();
-  }, [currentVersion, currentPage.file, slug]);
+  }, [currentVersion, currentPage.file, currentPage.title, slug]);
 
   useEffect(() => {
     setCurrentVersion(initialVersion);

@@ -2,6 +2,8 @@
 
 This guide gets a working Hermes agent connected to Emperor in under 10 minutes. It covers a single agent first, then shows how to add a team.
 
+Before creating production agents, read [Emperor Operating Pipeline](/docs/v1.1/emperor-operating-pipeline). That page is the compact operating contract new Hermes and OpenClaw agents should understand: where state lives, when to read Emperor, and where to write results.
+
 Choose your path: give the setup prompt to an AI assistant, or follow the manual commands step by step.
 
 ---
@@ -225,6 +227,8 @@ Use the ID shown in the Emperor chat sidebar, not one from a creation script.
 **Service restarts in a loop with no error line** — the model API key is missing from the env file. Add `DEEPSEEK_API_KEY` and restart the service.
 
 **Other agents reply in someone else's DM** — update the bridge script to the latest version. This was fixed by the `direct_threads` state map which tracks which thread belongs to which agent.
+
+**Agent forgets the previous message in the same Emperor thread** - update the bridge script to the latest version. Hermes prints the `session_id: ...` footer on stderr; the bridge must parse stdout and stderr, store the session id in its `state.json`, and resume the same session on the next message.
 
 ---
 

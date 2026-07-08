@@ -283,10 +283,13 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Knowledge & Rules -> GET /resources; Storage/files/deliverables -> GET /artifacts; "
             "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
             "upload a local file to Storage -> emperor_upload_artifact (never emperor_request, never curl). "
+            "Storage is an Emperor abstraction: do not ask for or mention Bunny/backing blob-provider keys during normal uploads. "
+            "If upload fails, report an Emperor Storage upload failure with the tool error. "
             "Storage folder workflow: (1) emperor_create_folder(name, projectId/customerId) -> returns folder.id; "
             "(2) for a subfolder: emperor_create_folder(name, projectId, parentFolderId=<id>); "
             "(3) emperor_upload_artifact(filePath, kind, projectId, folderId=<id>) for each file. "
             "Always pass folderId when uploading into a folder. Never upload without folderId and expect files to be grouped. "
+            "Use customer/project/month/type folders when possible; search/list before creating duplicates; prefer move/replace over duplicate uploads. "
             "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
             "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it — if your name is absent, the message is for someone else. "
             "(2) To ask a sibling to do something: emperor_send_message(text='@SiblingName <request>', threadType='team'). Discover sibling names first with emperor_request GET /agents. "
@@ -467,7 +470,7 @@ def register(ctx: Any) -> None:
         "emperor_upload_artifact",
         TOOLSET,
         _schema(
-            "Upload a local file from disk to Emperor Storage (artifacts). Use this for any file upload — never use emperor_request or curl for uploads.",
+            "Upload a local file from disk to Emperor Storage (artifacts). Use this for any file upload — never use emperor_request, curl, Bunny, or direct blob-provider APIs for normal uploads. Pass folderId when the file belongs in a folder.",
             {
                 "filePath": {"type": "string", "description": "Absolute path to the file on this machine."},
                 "kind": {"type": "string", "description": "Artifact kind, e.g. report, invoice, deliverable, evidence, export."},

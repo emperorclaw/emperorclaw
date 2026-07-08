@@ -13,7 +13,7 @@ import {
     threadMessages,
     threadParticipants,
 } from "@/db/schema";
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 
@@ -41,41 +41,43 @@ export async function ensureTeamThread(companyId: string) {
 }
 
 export async function ensureDirectThread(companyId: string, agentId: string, userId?: string | null) {
-    const candidateThreads = await db.select().from(messageThreads).where(
-        and(
-            eq(messageThreads.companyId, companyId),
-            eq(messageThreads.type, "direct"),
-            isNull(messageThreads.archivedAt)
-        )
-    );
-
-    if (candidateThreads.length > 0) {
-        const participants = await db.select().from(threadParticipants).where(
+    const targetUserRef = userId || "human-manager";
+    const agentParticipants = await db.select({ threadId: threadParticipants.threadId })
+        .from(threadParticipants)
+        .where(
             and(
                 eq(threadParticipants.companyId, companyId),
-                inArray(threadParticipants.threadId, candidateThreads.map(thread => thread.id))
+                eq(threadParticipants.participantType, "agent"),
+                eq(threadParticipants.participantId, agentId)
             )
         );
+    const agentThreadIds = agentParticipants.map(participant => participant.threadId);
 
-        const participantMap = participants.reduce((acc, participant) => {
-            if (!acc[participant.threadId]) acc[participant.threadId] = [];
-            acc[participant.threadId].push(participant);
-            return acc;
-        }, {} as Record<string, typeof threadParticipants.$inferSelect[]>);
+    if (agentThreadIds.length > 0) {
+        const [humanParticipant] = await db.select({ threadId: threadParticipants.threadId })
+            .from(threadParticipants)
+            .where(
+                and(
+                    eq(threadParticipants.companyId, companyId),
+                    inArray(threadParticipants.threadId, agentThreadIds),
+                    eq(threadParticipants.participantType, "human"),
+                    eq(threadParticipants.participantRef, targetUserRef)
+                )
+            )
+            .limit(1);
 
-        const targetUserRef = userId || "human-manager";
-        const existingThread = candidateThreads.find(thread => {
-            const threadParticipantList = participantMap[thread.id] || [];
-            const hasAgent = threadParticipantList.some(participant =>
-                participant.participantType === "agent" && participant.participantId === agentId
-            );
-            const hasHuman = threadParticipantList.some(participant =>
-                participant.participantType === "human" && participant.participantRef === targetUserRef
-            );
-            return hasAgent && hasHuman;
-        });
+        if (humanParticipant) {
+            const [existingThread] = await db.select().from(messageThreads).where(
+                and(
+                    eq(messageThreads.id, humanParticipant.threadId),
+                    eq(messageThreads.companyId, companyId),
+                    eq(messageThreads.type, "direct"),
+                    isNull(messageThreads.archivedAt)
+                )
+            ).limit(1);
 
-        if (existingThread) return existingThread;
+            if (existingThread) return existingThread;
+        }
     }
 
     const [created] = await db.insert(messageThreads).values({
@@ -97,7 +99,7 @@ export async function ensureDirectThread(companyId: string, agentId: string, use
             threadId: created.id,
             companyId,
             participantType: "human",
-            participantRef: userId || "human-manager",
+            participantRef: targetUserRef,
             role: "member",
         },
     ]);
@@ -178,7 +180,13 @@ export async function updateThreadExecutionState(input: {
     return updated || null;
 }
 
-export async function getThreadMessages(companyId: string, threadId: string, limit = 100, since?: Date | null) {
+export async function getThreadMessages(
+    companyId: string,
+    threadId: string,
+    limit = 100,
+    since?: Date | null,
+    before?: Date | null
+) {
     const conditions = [
         eq(threadMessages.companyId, companyId),
         eq(threadMessages.threadId, threadId),
@@ -186,6 +194,9 @@ export async function getThreadMessages(companyId: string, threadId: string, lim
 
     if (since) {
         conditions.push(sql`${threadMessages.createdAt} > ${since}`);
+    }
+    if (before) {
+        conditions.push(lt(threadMessages.createdAt, before));
     }
 
     const rows = await db.select().from(threadMessages)

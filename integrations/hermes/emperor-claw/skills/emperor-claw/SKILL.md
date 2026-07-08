@@ -34,12 +34,51 @@ Use this lookup map instead of guessing or relying on memory:
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
 | Knowledge & Rules | `emperor_request` with `GET /resources` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
+| Upload a file to Storage | `emperor_create_folder`, then `emperor_upload_artifact` with `folderId` |
 | Browse a folder's subfolders and files | `emperor_list_folder_contents` with `folderId` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
 
 ## Storage Folders
 
 Storage (artifacts) can be organized into folders and nested subfolders. Always use folders when uploading more than one related file so they appear grouped in the Emperor UI.
+
+Storage is an Emperor abstraction. Do not ask for Bunny keys, mention Bunny, or use direct blob-provider APIs for normal uploads. Use Emperor tools. If upload fails, report an Emperor Storage upload failure with the tool error.
+
+Hard rules:
+
+- Search/list existing folders before creating new ones.
+- Create folders intentionally; do not upload related files into the root.
+- Pass `folderId` to `emperor_upload_artifact`.
+- Verify the final folder with `emperor_list_folder_contents`.
+- Report the artifact id and folder/path after upload.
+- Prefer move/replace of an existing artifact over duplicate uploads when updating a file.
+
+Default folder convention:
+
+```
+<Customer>/
+  <Project>/
+    <YYYY-MM>/
+      deliverables/
+      evidence/
+      exports/
+      source-documents/
+      working-files/
+```
+
+Finance/accounting convention:
+
+```
+<Customer>/
+  finance/
+    <YYYY>/
+      <YYYY-MM>/
+        invoices/
+        expenses/
+        statements/
+```
+
+Never create a full path as one folder name. Create each level separately and use `parentFolderId`.
 
 ### Create a top-level folder
 

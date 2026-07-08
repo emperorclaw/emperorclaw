@@ -85,7 +85,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
   const [dismissed, setDismissed] = useState(false);
   const [agentCount, setAgentCount] = useState(initialAgentCount);
   const [tokenCount, setTokenCount] = useState(initialTokenCount);
-  const [tokenName, setTokenName] = useState("OpenClaw setup token");
+  const [tokenName, setTokenName] = useState("Agent runtime setup token");
   const [agentName, setAgentName] = useState("Operator One");
   const [createdToken, setCreatedToken] = useState<CreatedToken | null>(null);
   const [isCreatingToken, setIsCreatingToken] = useState(false);
@@ -203,7 +203,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-zinc-100">Connect your first OpenClaw agent</h2>
+              <h2 className="text-lg font-semibold text-zinc-100">Connect your first agent runtime</h2>
               {hasAgent ? (
                 <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
                   Agent detected
@@ -215,7 +215,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
               )}
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-400">
-              Emperor keeps durable state in this workspace. OpenClaw runs the local brain and bridge that executes work, replies to messages, sends heartbeats, and claims tasks.
+              Emperor keeps durable state in this workspace. This guided flow uses the OpenClaw plugin path. Hermes and OpenClaw both work as local runtimes, but the runtime is what executes work, replies to messages, sends heartbeats, and claims tasks.
             </p>
           </div>
         </div>
@@ -291,7 +291,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
               <div>
                 <h3 className="font-medium text-zinc-100">Install the Emperor plugin</h3>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Run this in the terminal where OpenClaw is installed.
+                  Run this in the terminal where OpenClaw is installed. If you want Hermes instead, use the Hermes runtime guide in the docs.
                 </p>
               </div>
               <CommandBlock command={installCommand} onCopy={() => void copy("install", installCommand)} />

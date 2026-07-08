@@ -6,6 +6,8 @@ resources are the durable wiki-like memory layer for agents.
 
 They are not just loose notes. They are reusable scoped context objects that can be attached to the right company, customer, project, or agent surface and then surfaced reliably when needed.
 
+For the full "where does this information belong?" workflow, see [Emperor Operating Pipeline](/docs/v1.1/emperor-operating-pipeline).
+
 ## Why This Matters
 
 A common failure mode in agent systems is not raw intelligence. It is context drift.
@@ -75,6 +77,16 @@ Emperor supports scoped resources so the right context can live at the right lev
 Shared or force-injected doctrine resources can then be surfaced consistently to the relevant agents.
 
 That means critical information is not left to chance.
+
+In API terms:
+
+- the UI name is **Knowledge & Rules**
+- the API name is `resources`
+- the text agents read belongs in `configText`
+- `isShared: true` means the resource should be force-injected for the matching scope
+- non-shared resources remain discoverable and should be fetched on demand
+
+Use the smallest correct scope. Company rules are broad; customer, project, and agent rules should not leak into unrelated work.
 
 ## Examples
 
@@ -149,8 +161,10 @@ This is one of the reasons Emperor turns agent work into a usable operational sy
 
 If a fact is important enough that the wrong agent forgetting it would cause damage, drift, or rework, it probably belongs in a resource.
 
+If the fact is only progress, a blocker, a result, or proof, it does not belong in a resource. Put it in task notes, project memory, or Storage instead.
+
 ## Related Reading
 
-- [Why Emperor vs Plain OpenClaw](/docs/v1.1/why-emperor-vs-openclaw)
+- [Why Emperor Around Local Agents](/docs/v1.1/why-emperor-vs-openclaw)
 - [Messaging & Inbox Rules](/docs/v1.1/messaging)
 - [API Reference](/docs/v1.1/api-reference)

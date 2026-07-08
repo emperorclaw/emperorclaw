@@ -5,6 +5,8 @@ import { Bot, Mic, Send, Square, Trash2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
+const CHAT_PAGE_SIZE = 25;
+
 type DirectThread = {
     id: string;
     type: string;
@@ -72,8 +74,9 @@ export function AgentDirectChat({
     const [isSending, setIsSending] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [hasOlderMessages, setHasOlderMessages] = useState(false);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     const [recordingSecs, setRecordingSecs] = useState(0);
-    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
     const audioBlobRef = useRef<Blob | null>(null);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
     const [micError, setMicError] = useState<string | null>(null);
@@ -83,10 +86,13 @@ export function AgentDirectChat({
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastSeenAtRef = useRef<string | null>(null);
+    const preserveScrollHeightRef = useRef<number | null>(null);
 
-    const loadMessages = useCallback(async (since?: string | null) => {
+    const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
         const params = new URLSearchParams({ targetAgentId: agentId });
+        params.set("limit", String(CHAT_PAGE_SIZE));
         if (since) params.set("since", since);
+        if (before) params.set("before", before);
 
         const res = await fetch(`/api/chat?${params.toString()}`);
         if (!res.ok) {
@@ -97,16 +103,11 @@ export function AgentDirectChat({
             thread?: DirectThread;
             messages?: DirectMessage[];
             participants?: DirectParticipant[];
+            hasMore?: boolean;
         };
 
         if (data.thread) {
             setThread(data.thread);
-            // Mark as read whenever we successfully poll and have a thread
-            void fetch("/api/chat/status", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ threadId: data.thread.id, markRead: true }),
-            });
         }
 
         if (data.participants) {
@@ -116,15 +117,51 @@ export function AgentDirectChat({
         if (data.messages && data.messages.length > 0) {
             const nextMessages = data.messages;
             setMessages((prev) => {
+                if (before) {
+                    const existingIds = new Set(prev.map((message) => message.id));
+                    const prepended = nextMessages.filter((message) => !existingIds.has(message.id));
+                    return prepended.length > 0 ? [...prepended, ...prev] : prev;
+                }
                 if (!since) return nextMessages;
                 const existingIds = new Set(prev.map((message) => message.id));
                 const appended = nextMessages.filter((message) => !existingIds.has(message.id));
                 return appended.length > 0 ? [...prev, ...appended] : prev;
             });
 
-            lastSeenAtRef.current = nextMessages[nextMessages.length - 1].createdAt;
+            if (!before) {
+                lastSeenAtRef.current = nextMessages[nextMessages.length - 1].createdAt;
+            }
+        }
+
+        const shouldMarkRead = data.thread && !before && (
+            !since || data.messages?.some((message) => message.senderType === "agent")
+        );
+        if (shouldMarkRead) {
+            void fetch("/api/chat/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ threadId: data.thread.id, markRead: true }),
+            });
+        }
+
+        if (!since) {
+            setHasOlderMessages(Boolean(data.hasMore));
         }
     }, [agentId]);
+
+    const loadOlderMessages = useCallback(async () => {
+        if (isLoadingOlder || !hasOlderMessages || messages.length === 0) return;
+
+        preserveScrollHeightRef.current = scrollRef.current?.scrollHeight ?? null;
+        setIsLoadingOlder(true);
+        try {
+            await loadMessages({ before: messages[0].createdAt });
+        } catch (error) {
+            console.error("Failed to load older direct messages", error);
+        } finally {
+            setIsLoadingOlder(false);
+        }
+    }, [hasOlderMessages, isLoadingOlder, loadMessages, messages]);
 
     const handleTyping = (text: string) => {
         setDraft(text);
@@ -180,7 +217,7 @@ export function AgentDirectChat({
         void initialize();
 
         const interval = setInterval(() => {
-            void loadMessages(lastSeenAtRef.current).catch((error) => {
+            void loadMessages({ since: lastSeenAtRef.current }).catch((error) => {
                 if (active) {
                     console.error("Failed to poll direct chat", error);
                 }
@@ -196,9 +233,28 @@ export function AgentDirectChat({
 
     useEffect(() => {
         if (scrollRef.current) {
+            if (preserveScrollHeightRef.current !== null) {
+                const previousHeight = preserveScrollHeightRef.current;
+                preserveScrollHeightRef.current = null;
+                scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
+                return;
+            }
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    useEffect(() => {
+        if (!navigator.permissions) return;
+        navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
+            if (result.state === "denied") {
+                setMicError("blocked");
+            }
+            result.onchange = () => {
+                if (result.state === "denied") setMicError("blocked");
+                else if (result.state === "granted") setMicError(null);
+            };
+        }).catch(() => {/* permissions API not supported */});
+    }, []);
 
     const startRecording = async () => {
         setMicError(null);
@@ -218,6 +274,7 @@ export function AgentDirectChat({
             // Call getUserMedia directly inside the user-gesture handler
             // so the browser shows its native permission prompt naturally.
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            setMicError(null);
             const mr = new MediaRecorder(stream);
             recordingChunksRef.current = [];
             mr.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
@@ -226,7 +283,6 @@ export function AgentDirectChat({
                 const baseType = (mr.mimeType || "audio/webm").split(";")[0].trim();
                 const blob = new Blob(recordingChunksRef.current, { type: baseType });
                 audioBlobRef.current = blob;
-                setAudioBlob(blob);
                 setAudioPreviewUrl(URL.createObjectURL(blob));
                 stream.getTracks().forEach(t => t.stop());
             };
@@ -261,7 +317,6 @@ export function AgentDirectChat({
     const discardVoice = () => {
         if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
         audioBlobRef.current = null;
-        setAudioBlob(null);
         setAudioPreviewUrl(null);
         setRecordingSecs(0);
     };
@@ -390,12 +445,24 @@ export function AgentDirectChat({
                         <div className="max-w-sm rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 p-6 text-center">
                             <div className="text-sm text-zinc-300 mb-2">No direct messages yet.</div>
                             <div className="text-xs text-zinc-500 leading-relaxed">
-                                Send an instruction here and OpenClaw should answer inside this agent's private thread.
+                                Send an instruction here and OpenClaw should answer inside this agent&apos;s private thread.
                             </div>
                         </div>
                     </div>
                 ) : (
                     <div>
+                        {hasOlderMessages && (
+                            <div className="mb-4 flex justify-center">
+                                <button
+                                    type="button"
+                                    onClick={loadOlderMessages}
+                                    disabled={isLoadingOlder}
+                                    className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {isLoadingOlder ? "Loading..." : "Load older messages"}
+                                </button>
+                            </div>
+                        )}
                         {messages.map((message, i) => {
                             const isHuman = message.senderType === "human";
                             const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
@@ -486,9 +553,13 @@ export function AgentDirectChat({
 
             <div className="border-t border-zinc-800 bg-zinc-950/80 p-4 space-y-2">
                 {micError && (
-                    <div className="flex items-center gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
-                        <Mic className="w-3.5 h-3.5 shrink-0 text-red-400" />
-                        {micError}
+                    <div className="flex items-start gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
+                        <Mic className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
+                        <span>
+                            {micError === "blocked"
+                                ? <>Microphone is blocked. Click the <strong>lock icon</strong> in your browser&apos;s address bar → <strong>Site settings</strong> → set Microphone to <strong>Allow</strong>, then reload the page.</>
+                                : micError}
+                        </span>
                     </div>
                 )}
                 {/* State: recording in progress */}
