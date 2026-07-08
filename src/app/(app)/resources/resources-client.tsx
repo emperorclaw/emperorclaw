@@ -121,15 +121,28 @@ export default function ResourcesClient({
     });
   }, [filter, query, resources]);
 
-  const groupedResources = useMemo(() => {
-    const groups = [
-      { key: "company", label: "Company", items: filteredResources.filter((resource) => resource.scopeType === "company") },
-      { key: "customer", label: "Customers", items: filteredResources.filter((resource) => resource.scopeType === "customer") },
-      { key: "project", label: "Projects", items: filteredResources.filter((resource) => resource.scopeType === "project") },
-      { key: "agent", label: "Agents", items: filteredResources.filter((resource) => resource.scopeType === "agent") },
-    ];
-    return groups.filter((group) => group.items.length > 0);
-  }, [filteredResources]);
+  const resourceTree = useMemo(() => {
+    const customerNames = new Map(customers.map((customer) => [customer.id, customer.name]));
+    const projectNames = new Map(projects.map((project) => [project.id, project.name]));
+    const agentNames = new Map(agents.map((agent) => [agent.id, agent.name]));
+    const byScope = new Map<string, { key: string; label: string; items: ResourceRecord[] }>();
+
+    function add(key: string, label: string, resource: ResourceRecord) {
+      if (!byScope.has(key)) byScope.set(key, { key, label, items: [] });
+      byScope.get(key)!.items.push(resource);
+    }
+
+    for (const resource of filteredResources) {
+      if (resource.scopeType === "company") add("company", "Company", resource);
+      else if (resource.scopeType === "customer") add(`customer:${resource.scopeId || "unknown"}`, customerNames.get(resource.scopeId || "") || "Unknown customer", resource);
+      else if (resource.scopeType === "project") add(`project:${resource.scopeId || "unknown"}`, projectNames.get(resource.scopeId || "") || "Unknown project", resource);
+      else if (resource.scopeType === "agent") add(`agent:${resource.scopeId || "unknown"}`, agentNames.get(resource.scopeId || "") || "Unknown agent", resource);
+      else add(resource.scopeType, scopeLabel(resource.scopeType), resource);
+    }
+
+    const rank = (key: string) => key === "company" ? 0 : key.startsWith("customer:") ? 1 : key.startsWith("project:") ? 2 : key.startsWith("agent:") ? 3 : 4;
+    return Array.from(byScope.values()).sort((a, b) => rank(a.key) - rank(b.key) || a.label.localeCompare(b.label));
+  }, [agents, customers, filteredResources, projects]);
 
   useEffect(() => {
     if (!selectedResource) return;
@@ -301,10 +314,10 @@ export default function ResourcesClient({
             <Stat label="Review" value={pendingProposals.length} />
           </div>
           <div className="mt-4 max-h-[calc(100vh-410px)] space-y-4 overflow-y-auto pr-1">
-            {groupedResources.map((group) => (
+            {resourceTree.map((group) => (
               <div key={group.key}>
                 <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-600">
-                  <ChevronDown className="h-3.5 w-3.5" /> {group.label}
+                  <ChevronDown className="h-3.5 w-3.5" /> {group.label} <span className="ml-auto text-zinc-700">{group.items.length}</span>
                 </div>
                 <div className="space-y-2 border-l border-zinc-800 pl-3">
                   {group.items.map((resource) => (

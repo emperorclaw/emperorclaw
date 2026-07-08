@@ -22,7 +22,7 @@ Agents should propose updates unless they were explicitly granted direct resourc
 4. Link artifacts, tasks, or storage files instead of pasting large file contents.
 5. Approve proposals only when the knowledge will still matter after the current task.
 
-Use the Review Queue for pending suggestions:
+Use Agent suggestions for pending agent-proposed changes:
 
 - **Approve** when the proposal is reusable and scoped correctly.
 - **Edit and approve** when the idea is right but the wording/scope is sloppy.
