@@ -1,5 +1,5 @@
-import { db } from './src/db';
-import { chatMessages, companies, users } from './src/db/schema';
+﻿import { db } from '../src/db';
+import { chatMessages, companies, users } from '../src/db/schema';
 import { eq } from 'drizzle-orm';
 import * as crypto from 'crypto';
 
@@ -41,7 +41,7 @@ async function mcpRequestGET(endpoint: string) {
 }
 
 async function runChatTest() {
-    console.log("🚀 Starting Human-Agent Chat Communication Test...");
+    console.log("ðŸš€ Starting Human-Agent Chat Communication Test...");
 
     if (!API_TOKEN) {
         throw new Error("Missing TEST_API_TOKEN");
@@ -58,7 +58,7 @@ async function runChatTest() {
     const threadId = crypto.randomUUID();
 
     // 2. Simulate Human sending a message from UI
-    console.log("👤 Human sending a direct message via UI (/api/chat simulation)...");
+    console.log("ðŸ‘¤ Human sending a direct message via UI (/api/chat simulation)...");
     const [humanMsg] = await db.insert(chatMessages).values({
         companyId: company.id,
         threadId,
@@ -66,15 +66,15 @@ async function runChatTest() {
         fromUserId: user.id,
         text: "OpenClaw, status report on recent SLA incidents."
     }).returning();
-    console.log(`✅ Direct Message Sent. ID: ${humanMsg.id}`);
+    console.log(`âœ… Direct Message Sent. ID: ${humanMsg.id}`);
 
     // Wait a sec
     await new Promise(r => setTimeout(r, 1000));
 
     // 2.5. Simulate OpenClaw polling for messages
-    console.log("🤖 OpenClaw polling for new instructions (/api/mcp/messages/sync)...");
+    console.log("ðŸ¤– OpenClaw polling for new instructions (/api/mcp/messages/sync)...");
     const syncRes = await mcpRequestGET('/api/mcp/messages/sync');
-    console.log(`✅ Polled messages count: ${syncRes.messages.length}`);
+    console.log(`âœ… Polled messages count: ${syncRes.messages.length}`);
     const foundMsg = syncRes.messages.find((m: any) => m.id === humanMsg.id);
     if (!foundMsg) {
         throw new Error(`OpenClaw did not receive the human message via sync endpoint!`);
@@ -84,16 +84,16 @@ async function runChatTest() {
     await new Promise(r => setTimeout(r, 1000));
 
     // 3. Simulate OpenClaw replying via MCP
-    console.log("🤖 OpenClaw Agent replying via MCP (/api/mcp/messages/send)...");
+    console.log("ðŸ¤– OpenClaw Agent replying via MCP (/api/mcp/messages/send)...");
     const replyRes = await mcpRequest('/api/mcp/messages/send', {
         chat_id: threadId,
         text: "I have reviewed the metrics. We had 1 Blocked Task due to a WAF trigger. I have promoted the Stealth SERP tactic to compensate.",
         reply_to_message_id: humanMsg.id
     });
-    console.log(`✅ MCP Reply Sent. Response:`, replyRes);
+    console.log(`âœ… MCP Reply Sent. Response:`, replyRes);
 
     // 4. Verify thread in DB
-    console.log("🔍 Verifying thread in Database...");
+    console.log("ðŸ” Verifying thread in Database...");
     const threadMessages = await db.select().from(chatMessages).where(eq(chatMessages.threadId, threadId)).orderBy(chatMessages.createdAt);
 
     if (threadMessages.length !== 2) {
@@ -102,12 +102,13 @@ async function runChatTest() {
 
     console.log("--- CHAT LOG ---");
     for (const msg of threadMessages) {
-        const sender = msg.senderType === 'human' ? '👤 Admin' : '🤖 OpenClaw';
+        const sender = msg.senderType === 'human' ? 'ðŸ‘¤ Admin' : 'ðŸ¤– OpenClaw';
         console.log(`[${sender}]: ${msg.text}`);
     }
     console.log("----------------");
 
-    console.log("🎉 Chat Communication Test Success!");
+    console.log("ðŸŽ‰ Chat Communication Test Success!");
 }
 
 runChatTest().catch(console.error).then(() => process.exit(0));
+

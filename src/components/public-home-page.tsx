@@ -1,561 +1,555 @@
 import Link from "next/link";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { DM_Sans, Space_Grotesk, Syncopate } from "next/font/google";
 import {
   ArrowRight,
   Bot,
   Boxes,
+  BrainCircuit,
+  Check,
+  ChevronRight,
+  CircleDotDashed,
+  Command,
   Database,
   FileBox,
+  Gem,
+  GitBranch,
+  LockKeyhole,
   MessageSquare,
+  Network,
+  Orbit,
+  Radar,
   ShieldAlert,
   Sparkles,
   Workflow,
+  Zap,
 } from "lucide-react";
 import { CustomLogo } from "@/components/custom-logo";
-import { cn } from "@/lib/utils";
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space-grotesk",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-});
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
+const syncopate = Syncopate({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-syncopate" });
 
 const heroStats = [
-  { label: "Local runtimes", value: "Already execute" },
-  { label: "Emperor", value: "Makes it durable" },
-  { label: "Status", value: "Free for now" },
+  { label: "Runtime mesh", value: "Hermes + OpenClaw", detail: "local execution stays local" },
+  { label: "Durable layer", value: "Tasks · KB · Storage", detail: "truth survives every chat" },
+  { label: "Beta status", value: "Free for now", detail: "operator-grade control plane" },
 ];
 
 const pillars = [
   {
     icon: Bot,
-    title: "Operational on day one",
-    body: "Install the plugin, add an agent, and your runtime is immediately part of a usable control plane instead of a disconnected tool loop.",
+    kicker: "Bootstrap",
+    title: "Agents arrive with doctrine, not amnesia.",
+    body: "New runtimes receive the company operating model, scoped rules, inboxes, and shared context before they start guessing.",
   },
   {
     icon: Database,
-    title: "Durable truth",
-    body: "Customers, projects, tasks, notes, memory, knowledge, files, and threads live in one shared system of record.",
+    kicker: "Memory",
+    title: "The durable record lives outside the chat.",
+    body: "Tasks, knowledge, files, threads, customers, projects, notes, and decisions become queryable company state.",
   },
   {
     icon: MessageSquare,
-    title: "Visible coordination",
-    body: "Direct inboxes, team threads, and @AgentName delegation keep multi-agent work inspectable instead of hidden in private sandboxes.",
+    kicker: "Coordination",
+    title: "Human operators can see the whole swarm.",
+    body: "Direct messages, team rooms, handoffs, approvals, and incidents become visible operations instead of hidden local side effects.",
   },
 ];
 
 const primitives = [
-  {
-    icon: Workflow,
-    title: "Tasks",
-    body: "Execution-ready work, ownership, notes, review, and durable results.",
-  },
-  {
-    icon: Boxes,
-    title: "Knowledge & Rules",
-    body: "Scoped doctrine, SOPs, business rules, context packs, and reference material for the right agents.",
-  },
-  {
-    icon: FileBox,
-    title: "Storage",
-    body: "Reports, deliverables, evidence, and preserved outputs worth keeping.",
-  },
+  { icon: Workflow, title: "Task rails", body: "Ownership, status, review notes, and durable results for work that must actually land." },
+  { icon: Boxes, title: "Knowledge & rules", body: "Shared doctrine, SOPs, client context, and project rules routed to the right runtime." },
+  { icon: FileBox, title: "Storage discipline", body: "Folder-first artifacts, evidence, reports, and deliverables behind one Emperor abstraction." },
+  { icon: Network, title: "Runtime mesh", body: "Hermes and OpenClaw keep their strengths while Emperor standardizes the operating layer." },
 ];
 
-const integrationPoints = [
-  "Local Hermes or OpenClaw runtimes stay powerful and local.",
-  "Plugin bootstrap links each agent to Emperor automatically.",
-  "Shared doctrine and scoped knowledge reach the right agents.",
-  "Direct inboxes and team threads become durable coordination surfaces.",
+const signalSteps = [
+  "Runtime boots and asks Emperor who it is.",
+  "Emperor returns doctrine, scoped knowledge, inboxes, tasks, and rules.",
+  "Agent executes locally, then writes durable truth back.",
+  "Operators inspect, redirect, recover, and scale from one control plane.",
 ];
 
-const operationsFeed = [
-  {
-    sender: "Obsidian",
-    time: "09:12",
-    text: "Detected anomaly in node-7. Routing visible handoff to @Architect.",
-    tone: "zinc" as const,
-  },
-  {
-    sender: "Architect",
-    time: "09:13",
-    text: "Anomaly confirmed. Re-routing traffic and logging durable note in Emperor.",
-    tone: "indigo" as const,
-  },
+const telemetry = [
+  { name: "Doctrine sync", value: "99.8%", hue: "from-cyan-300 to-blue-500" },
+  { name: "Recovered context", value: "14k", hue: "from-fuchsia-300 to-violet-500" },
+  { name: "Routed handoffs", value: "328", hue: "from-amber-200 to-orange-500" },
 ];
 
-const workload = [
-  { name: "Sentinel", load: 82, state: "tracking attention items" },
-  { name: "Architect", load: 61, state: "reviewing shared context" },
-  { name: "Deployer", load: 34, state: "idle / available" },
+const orbitNodes = ["Hermes", "OpenClaw", "KB", "Tasks", "Storage", "Threads"];
+
+const commandLines = [
+  { label: "@Growth", text: "Found campaign evidence. Saving to /clients/acme/2026-07/reports.", tone: "cyan" },
+  { label: "@Architect", text: "Bridge session recovered. Doctrine loaded from shared Emperor resource.", tone: "violet" },
+  { label: "@Operator", text: "Approve the deployment window, then notify finance and QA.", tone: "amber" },
+];
+
+const proofSignals = [
+  "central doctrine",
+  "folder-first storage",
+  "agent inboxes",
+  "durable tasks",
+  "runtime memory",
+  "operator recovery",
 ];
 
 export function PublicHomePage() {
   return (
     <div
-      className={`${spaceGrotesk.variable} ${inter.variable} min-h-screen bg-zinc-950 font-[var(--font-inter)] text-zinc-100`}
+      className={`${spaceGrotesk.variable} ${dmSans.variable} ${syncopate.variable} min-h-screen overflow-hidden bg-[#02030a] font-[var(--font-dm-sans)] text-white selection:bg-cyan-300 selection:text-slate-950`}
     >
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.18),transparent_26%),linear-gradient(180deg,#09090b_0%,#09090b_52%,#0b0b10_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(39,39,42,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(39,39,42,0.06)_1px,transparent_1px)] bg-[size:64px_64px] opacity-20" />
-        <div className="absolute left-[-10rem] top-24 h-[24rem] w-[24rem] rounded-full bg-indigo-500/10 blur-[140px]" />
+      <style>{`
+        @keyframes emperor-orbit { from { transform: rotateX(62deg) rotateZ(0deg); } to { transform: rotateX(62deg) rotateZ(360deg); } }
+        @keyframes emperor-counter-orbit { from { transform: rotateZ(0deg) rotateX(-62deg); } to { transform: rotateZ(-360deg) rotateX(-62deg); } }
+        @keyframes emperor-scan { 0% { transform: translateY(-120%); opacity: 0; } 12%, 55% { opacity: .7; } 100% { transform: translateY(420%); opacity: 0; } }
+        @keyframes emperor-pulse-ring { 0% { transform: scale(.78); opacity: .65; } 100% { transform: scale(1.35); opacity: 0; } }
+        @keyframes emperor-float { 0%,100% { transform: translateY(0) rotateX(0) rotateY(0); } 50% { transform: translateY(-18px) rotateX(2deg) rotateY(-3deg); } }
+        @keyframes emperor-meteor { 0% { transform: translate3d(-20vw,-10vh,0) rotate(18deg); opacity: 0; } 8% { opacity: .8; } 45%,100% { transform: translate3d(120vw,48vh,0) rotate(18deg); opacity: 0; } }
+        .emperor-grid-mask { mask-image: radial-gradient(circle at 50% 24%, black 0%, black 42%, transparent 74%); }
+        .emperor-card-3d { transform-style: preserve-3d; transform: perspective(1200px) rotateX(10deg) rotateY(-13deg) rotateZ(1deg); }
+        .emperor-card-3d:hover { transform: perspective(1200px) rotateX(7deg) rotateY(-8deg) rotateZ(0deg) translateY(-4px); }
+        .emperor-orbit { transform-style: preserve-3d; animation: emperor-orbit 26s linear infinite; }
+        .emperor-counter-orbit { animation: emperor-counter-orbit 26s linear infinite; }
+        .emperor-scanline { animation: emperor-scan 5.8s ease-in-out infinite; }
+        .emperor-floating { animation: emperor-float 8s ease-in-out infinite; }
+        .emperor-meteor { animation: emperor-meteor 9s ease-in-out infinite; }
+        .emperor-delay-2 { animation-delay: -5s; }
+        @media (prefers-reduced-motion: reduce) {
+          .emperor-orbit,.emperor-counter-orbit,.emperor-scanline,.emperor-floating,.emperor-meteor,[data-emperor-animated="true"] { animation: none !important; transition-duration: .01ms !important; }
+          .emperor-card-3d,.emperor-card-3d:hover { transform: none !important; }
+        }
+      `}</style>
 
-        <header className="relative z-10 border-b border-zinc-800/70 bg-zinc-950/80 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6 lg:px-8">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20">
-                <CustomLogo className="h-5 w-5 text-indigo-400" />
-              </div>
-              <div>
-                <div className="font-[var(--font-space-grotesk)] text-sm font-semibold tracking-tight text-white">
-                  Emperor Claw
-                </div>
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                  Agent Runtime Control Plane
-                </div>
-              </div>
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(125,92,255,0.32),transparent_28%),radial-gradient(circle_at_76%_0%,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_52%_86%,rgba(244,114,182,0.18),transparent_34%),linear-gradient(180deg,#02030a_0%,#050816_46%,#02030a_100%)]" />
+        <div className="emperor-grid-mask absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.09)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:72px_72px] opacity-30" />
+        <div className="absolute left-1/2 top-[-18rem] h-[48rem] w-[48rem] -translate-x-1/2 rounded-full border border-cyan-300/10 bg-cyan-300/5 blur-3xl" />
+        <div className="emperor-meteor absolute left-0 top-16 h-[2px] w-48 rounded-full bg-gradient-to-r from-transparent via-cyan-200 to-transparent" />
+        <div className="emperor-meteor emperor-delay-2 absolute left-0 top-64 h-[2px] w-64 rounded-full bg-gradient-to-r from-transparent via-fuchsia-200 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-[#02030a] to-transparent" />
+      </div>
+
+      <header className="fixed left-0 right-0 top-0 z-50 px-4 pt-4 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:px-5">
+          <Link href="/" className="group flex items-center gap-3 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 shadow-[0_0_40px_rgba(34,211,238,0.22)] transition-transform duration-300 group-hover:-translate-y-0.5">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan-300/20 via-violet-400/20 to-fuchsia-300/20" />
+              <CustomLogo className="relative h-5 w-5 text-cyan-200" />
+            </div>
+            <div>
+              <div className="font-[var(--font-space-grotesk)] text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
+              <div className="font-[var(--font-syncopate)] text-[9px] uppercase tracking-[0.22em] text-cyan-200/65">Runtime Control Plane</div>
+            </div>
+          </Link>
+
+          <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] p-1 text-xs font-medium text-slate-300 lg:flex">
+            {[
+              ["System", "#system"],
+              ["Doctrine", "#doctrine"],
+              ["Mesh", "#mesh"],
+              ["Docs", "/docs"],
+            ].map(([label, href]) =>
+              href.startsWith("#") ? (
+                <a key={label} href={href} className="rounded-full px-4 py-2 transition-colors duration-200 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
+                  {label}
+                </a>
+              ) : (
+                <Link key={label} href={href} className="rounded-full px-4 py-2 transition-colors duration-200 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
+                  {label}
+                </Link>
+              ),
+            )}
+          </nav>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/login" className="hidden rounded-xl px-3 py-2 text-sm font-medium text-slate-300 transition-colors duration-200 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 sm:inline-flex">
+              Login
             </Link>
-
-            <nav className="hidden items-center gap-8 text-sm text-zinc-400 md:flex">
-              <a href="#why" className="transition-colors hover:text-zinc-100">
-                Why it works
-              </a>
-              <a href="#integration" className="transition-colors hover:text-zinc-100">
-                Integration
-              </a>
-              <Link href="/docs" className="transition-colors hover:text-zinc-100">
-                Docs
-              </Link>
-            </nav>
-
-            <div className="flex items-center gap-3">
-              <Link href="/login" className="text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100">
-                Login
-              </Link>
-              <Link
-                href="/signup"
-                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"
-              >
-                Start Free
-              </Link>
-            </div>
+            <Link href="/signup" className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-cyan-200/30 bg-cyan-200 px-3 py-2.5 text-xs font-bold text-slate-950 shadow-[0_0_34px_rgba(103,232,249,0.34)] transition duration-200 hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 sm:px-4 sm:text-sm">
+              Start Free
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <main className="relative z-10">
-          <section className="px-5 pb-20 pt-12 sm:px-6 sm:pt-16 lg:px-8 lg:pb-24 lg:pt-20">
-            <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] lg:items-center lg:gap-12 xl:gap-16">
-              <div className="max-w-2xl space-y-7">
-                <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
-                  <span className="mr-2 h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
-                  Free for now in beta. Built for local agent runtimes.
-                </div>
-
-                <div className="space-y-5">
-                  <h1 className="max-w-[10ch] font-[var(--font-space-grotesk)] text-5xl font-semibold leading-[0.9] tracking-tight text-zinc-100 sm:text-6xl xl:text-7xl">
-                    Mission control that makes agents operational.
-                  </h1>
-                  <p className="max-w-xl text-base leading-8 text-zinc-400 sm:text-lg">
-                    Local runtimes already think, code, browse, and act. Emperor adds the missing layer:
-                    durable work state, visible coordination, scoped context, recoverable operations,
-                    and a control plane that actually works on day one.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Link
-                    href="/signup"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"
-                  >
-                    Create Workspace
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href="/docs"
-                    className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/60 px-6 py-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
-                  >
-                    View Documentation
-                  </Link>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {heroStats.map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-4 shadow-sm"
-                    >
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{item.label}</div>
-                      <div className="mt-2 text-sm font-medium text-zinc-200">{item.value}</div>
-                    </div>
-                  ))}
-                </div>
+      <main className="relative z-10">
+        <section className="relative px-5 pb-24 pt-32 sm:px-6 sm:pt-40 lg:px-8 lg:pb-32">
+          <div className="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
+            <div className="space-y-8">
+              <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-50" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-200" />
+                </span>
+                <span className="truncate">Free beta · Hermes + OpenClaw · shared doctrine online</span>
               </div>
 
-              <div className="relative">
-                <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-indigo-500/14 via-transparent to-transparent blur-3xl" />
-                <div className="relative overflow-hidden rounded-[2rem] border border-zinc-800/80 bg-zinc-950/90 shadow-[0_32px_90px_rgba(0,0,0,0.45)]">
-                  <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-indigo-500/8 to-transparent" />
-                  <div className="min-h-[500px] bg-zinc-950/40 p-4 sm:p-5 lg:p-6">
-                    <div className="space-y-6">
-                      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/90 px-4 py-3 shadow-sm">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20">
-                              <CustomLogo className="h-5 w-5 text-indigo-400" />
-                            </div>
-                            <div>
-                              <div className="font-medium text-white">Emperor Claw</div>
-                              <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                                Control Plane
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-[11px] text-zinc-400">
-                              12 agents live
-                            </div>
-                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-[11px] text-zinc-400">
-                              28 inbox
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-6">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <div className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
-                              Control Plane
-                            </div>
-                            <p className="mt-1 text-sm font-medium text-zinc-500">
-                              System overview and active workforce telemetry.
-                            </p>
-                          </div>
-                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-300">
-                            <div className="font-medium text-zinc-100">Recovery healthy</div>
-                            <div className="mt-1 flex items-center gap-2 text-zinc-500">
-                              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                              checkpoint 14s ago
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                          <MetricPanel title="Agents" value="12" hint="registered" accent="indigo" />
-                          <MetricPanel title="Inbox" value="28" hint="awaiting assignment" />
-                          <MetricPanel title="Review" value="4" hint="human action" accent="amber" />
-                          <MetricPanel title="Attention" value="0" hint="needs review" accent="emerald" />
-                        </div>
-
-                        <div className="grid gap-4 xl:grid-cols-[1.18fr_0.82fr]">
-                          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/55 shadow-sm">
-                            <div className="flex items-center justify-between border-b border-zinc-800/80 p-4">
-                              <div className="text-lg font-medium text-zinc-200">Live Agent Operations</div>
-                              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
-                                <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                                Live
-                              </div>
-                            </div>
-
-                            <div className="space-y-4 p-4">
-                              {operationsFeed.map((item) => (
-                                <div key={`${item.sender}-${item.time}`} className="flex gap-3">
-                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-indigo-500/20 bg-indigo-500/10">
-                                    <span className="text-xs font-bold text-indigo-300">{item.sender[0]}</span>
-                                  </div>
-                                  <div
-                                    className={cn(
-                                      "max-w-full rounded-2xl border px-4 py-3 text-sm leading-7 rounded-tl-none sm:max-w-[88%]",
-                                      item.tone === "indigo" && "border-zinc-700/50 bg-zinc-800/55 text-zinc-200",
-                                      item.tone === "zinc" && "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
-                                    )}
-                                  >
-                                    <div className="mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider text-indigo-400">
-                                      <span>{item.sender}</span>
-                                      <span className="text-zinc-600">{item.time}</span>
-                                    </div>
-                                    <p>{item.text}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="space-y-4">
-                            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/55 p-5 shadow-sm">
-                              <div className="text-lg font-medium text-zinc-200">Workforce Health</div>
-                              <div className="mt-5 space-y-5">
-                                {workload.map((agent) => (
-                                  <div key={agent.name} className="space-y-2">
-                                    <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-2">
-                                        <div className="flex h-6 w-6 items-center justify-center rounded-full border border-zinc-800 bg-zinc-800 text-[10px] font-bold text-zinc-300">
-                                          {agent.name[0]}
-                                        </div>
-                                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                                        <span className="font-medium text-zinc-300">{agent.name}</span>
-                                      </div>
-                                      <span className="font-mono text-xs text-zinc-500">{agent.load}% load</span>
-                                    </div>
-                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800/80">
-                                      <div
-                                        className="h-full rounded-full bg-indigo-500 transition-all duration-1000"
-                                        style={{ width: `${agent.load}%` }}
-                                      />
-                                    </div>
-                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">
-                                      {agent.state}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-5">
-                              <div className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-300">
-                                <Sparkles className="mr-2 h-3 w-3" />
-                                Runtime linked
-                              </div>
-                              <p className="mt-4 text-sm leading-7 text-zinc-300">
-                                Local runtimes stay local. Emperor adds the memory, coordination, and
-                                operational truth layer.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section id="why" className="px-5 py-20 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl space-y-10">
-              <div className="max-w-3xl space-y-4">
-                <div className="text-xs font-medium uppercase tracking-[0.24em] text-indigo-300">
-                  Why this works
-                </div>
-                <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold tracking-tight text-zinc-100">
-                  Local runtimes already execute. Emperor makes that execution usable.
-                </h2>
-                <p className="text-lg leading-8 text-zinc-400">
-                  Most agent tooling stops at runtime power. Emperor picks up where that ends:
-                  durable work state, seeded doctrine, scoped context, visible coordination, and a
-                  product that does not require months of platform wiring.
+              <div className="space-y-6">
+                <h1 className="max-w-[11ch] font-[var(--font-space-grotesk)] text-[4.1rem] font-semibold leading-[0.82] tracking-[-0.085em] text-white sm:text-7xl lg:text-8xl xl:text-[7.4rem]">
+                  Give your agents an operating body.
+                </h1>
+                <p className="max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
+                  Local runtimes are the brain and hands. Emperor is the nervous system: durable memory,
+                  scoped doctrine, storage discipline, visible coordination, and operator control for real company work.
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                {pillars.map(({ icon: Icon, title, body }) => (
-                  <article
-                    key={title}
-                    className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6 shadow-sm transition-colors hover:border-zinc-700/50"
-                  >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10">
-                      <Icon className="h-5 w-5 text-indigo-400" />
-                    </div>
-                    <h3 className="mt-5 text-xl font-semibold text-zinc-100">{title}</h3>
-                    <p className="mt-3 text-sm leading-7 text-zinc-400">{body}</p>
-                  </article>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link href="/signup" className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-sm font-bold text-slate-950 shadow-[0_18px_70px_rgba(255,255,255,0.16)] transition duration-200 hover:-translate-y-1 hover:bg-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">
+                  Create Workspace
+                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                </Link>
+                <Link href="/docs" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] px-6 py-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl transition duration-200 hover:-translate-y-1 hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">
+                  Read the doctrine
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {heroStats.map((item) => (
+                  <div key={item.label} className="group min-w-0 rounded-2xl border border-white/10 bg-white/[0.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.09)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-200/30 hover:bg-white/[0.06]">
+                    <div className="font-[var(--font-syncopate)] text-[9px] uppercase tracking-[0.22em] text-slate-500 group-hover:text-cyan-200/80">{item.label}</div>
+                    <div className="mt-3 break-words text-sm font-bold text-white">{item.value}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">{item.detail}</div>
+                  </div>
                 ))}
               </div>
-            </div>
-          </section>
 
-          <section className="px-5 pb-20 sm:px-6 lg:px-8">
-            <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-              <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6">
-                <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                  Durable primitives
-                </div>
-                <div className="mt-6 grid gap-4">
-                  {primitives.map(({ icon: Icon, title, body }) => (
-                    <div key={title} className="flex items-start gap-4 rounded-xl bg-zinc-950/60 p-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900">
-                        <Icon className="h-5 w-5 text-indigo-400" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-zinc-100">{title}</div>
-                        <div className="mt-1 text-sm leading-6 text-zinc-400">{body}</div>
-                      </div>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
+                <div className="flex flex-wrap gap-2">
+                  {proofSignals.map((signal) => (
+                    <div
+                      key={signal}
+                      className="rounded-xl border border-white/10 bg-slate-950/55 px-3 py-2 font-[var(--font-syncopate)] text-[9px] uppercase tracking-[0.18em] text-slate-400"
+                    >
+                      {signal}
                     </div>
                   ))}
                 </div>
               </div>
+            </div>
 
-              <div
-                id="integration"
-                className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6"
-              >
-                <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-                  Runtime integration
+            <HeroCommandCore />
+          </div>
+        </section>
+
+        <section id="system" className="relative px-5 py-24 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+              <div className="space-y-4">
+                <div className="font-[var(--font-syncopate)] text-xs uppercase tracking-[0.28em] text-cyan-200/70">System architecture</div>
+                <h2 className="max-w-3xl font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
+                  Not another chat. A control plane for execution.
+                </h2>
+              </div>
+              <p className="max-w-2xl text-lg leading-8 text-slate-400 lg:ml-auto">
+                The design is simple because the concept must be understood FAST: agents execute locally;
+                Emperor stores truth, routes work, and lets humans operate the swarm.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-5 lg:grid-cols-3">
+              {pillars.map(({ icon: Icon, kicker, title, body }) => (
+                <article key={title} className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-xl transition duration-300 hover:-translate-y-2 hover:border-cyan-200/30 hover:bg-white/[0.055]">
+                  <div className="absolute -right-20 -top-20 h-44 w-44 rounded-full bg-cyan-300/10 blur-3xl transition duration-500 group-hover:bg-fuchsia-300/10" />
+                  <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/60 shadow-[0_0_40px_rgba(34,211,238,0.14)]">
+                    <Icon className="h-5 w-5 text-cyan-200" />
+                  </div>
+                  <div className="relative mt-7 font-[var(--font-syncopate)] text-[10px] uppercase tracking-[0.24em] text-fuchsia-200/70">{kicker}</div>
+                  <h3 className="relative mt-3 font-[var(--font-space-grotesk)] text-2xl font-semibold leading-7 tracking-tight text-white">{title}</h3>
+                  <p className="relative mt-4 text-sm leading-7 text-slate-400">{body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="doctrine" className="px-5 py-24 sm:px-6 lg:px-8">
+          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.03fr_0.97fr] lg:items-stretch">
+            <div className="relative overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.16),rgba(124,58,237,0.10)_38%,rgba(2,3,10,0.72)_100%)] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.11)] sm:p-8">
+              <div className="absolute right-[-12rem] top-[-10rem] h-96 w-96 rounded-full bg-fuchsia-400/20 blur-3xl" />
+              <div className="absolute bottom-[-14rem] left-[-10rem] h-96 w-96 rounded-full bg-cyan-300/15 blur-3xl" />
+              <div className="relative space-y-6">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-cyan-100 backdrop-blur-xl">
+                  <BrainCircuit className="h-4 w-4" />
+                  Centralized knowledge and rules
                 </div>
-                <div className="mt-5 space-y-4">
-                  <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-zinc-100">
-                    One runtime. One control plane. One durable story.
-                  </h3>
-                  <p className="text-sm leading-7 text-zinc-400">
-                    Emperor does not replace Hermes or OpenClaw. It gives runtime-based teams the missing operating
-                    layer: onboarding, doctrine, routing, visible coordination, scoped context, and
-                    recoverable state.
-                  </p>
-                </div>
-                <div className="mt-6 grid gap-3">
-                  {integrationPoints.map((item) => (
-                    <div
-                      key={item}
-                      className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-300"
-                    >
+                <h2 className="max-w-2xl font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
+                  Update doctrine once. Every new agent wakes up smarter.
+                </h2>
+                <p className="max-w-2xl text-lg leading-8 text-slate-300">
+                  Emperor becomes the company knowledge substrate. The bridge should load the shared KB/rules by ID or discovery,
+                  not hardcode stale doctrine into every runtime forever.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {["Shared company KB", "Project-scoped rules", "Client folder conventions", "Storage abstraction discipline"].map((item) => (
+                    <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/35 p-4 text-sm font-semibold text-white backdrop-blur-xl">
+                      <Check className="h-4 w-4 text-cyan-200" />
                       {item}
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-          </section>
 
-          <section className="px-5 pb-20 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl rounded-[1.75rem] border border-indigo-500/20 bg-[linear-gradient(135deg,rgba(79,70,229,0.18),rgba(24,24,27,0.68)_40%,rgba(9,9,11,0.94)_100%)] p-6 sm:p-8">
-              <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-                <div className="space-y-5">
-                  <div className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-indigo-200">
-                    Runtime-native control plane
+            <div className="grid gap-4">
+              {primitives.map(({ icon: Icon, title, body }) => (
+                <div key={title} className="group relative overflow-hidden rounded-[1.7rem] border border-white/10 bg-white/[0.035] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.09)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-200/25 hover:bg-white/[0.055]">
+                  <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-cyan-200 via-fuchsia-300 to-amber-200 opacity-60" />
+                  <div className="flex gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/70">
+                      <Icon className="h-5 w-5 text-cyan-200" />
+                    </div>
+                    <div>
+                      <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">{title}</div>
+                      <p className="mt-1 text-sm leading-6 text-slate-400">{body}</p>
+                    </div>
                   </div>
-                  <h3 className="font-[var(--font-space-grotesk)] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                    Mission control that actually becomes operational on day one.
-                  </h3>
-                  <p className="max-w-2xl text-base leading-8 text-zinc-300">
-                    Install the plugin, add the agent, and the stack comes alive with doctrine,
-                    scoped resources, direct inboxes, team-thread routing, durable tasks, memory, and
-                    artifacts.
-                  </p>
                 </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
+        <section id="mesh" className="px-5 py-24 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] border border-white/10 bg-slate-950/55 p-5 shadow-[0_40px_120px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-2xl sm:p-8">
+            <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-xs font-bold text-cyan-100">
+                  <Orbit className="h-4 w-4" />
+                  Runtime mesh
+                </div>
+                <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
+                  Hermes. OpenClaw. Same operating universe.
+                </h2>
+                <p className="text-lg leading-8 text-slate-400">
+                  Emperor should not care which local runtime did the thinking. It cares that work has ownership,
+                  context, artifacts, memory, and an operator-visible audit trail.
+                </p>
                 <div className="grid gap-3">
-                  <Link
-                    href="/signup"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-4 text-sm font-semibold text-zinc-950 transition-colors hover:bg-zinc-100"
-                  >
-                    Start Free Now
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href="/docs"
-                    className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-zinc-950/35 px-6 py-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-900/60"
-                  >
-                    Read the docs first
-                  </Link>
+                  {signalSteps.map((step, index) => (
+                    <div key={step} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-black text-slate-950">{index + 1}</div>
+                      <div className="text-sm leading-6 text-slate-300">{step}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative min-h-[560px] overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))]">
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:54px_54px] opacity-25" />
+                <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/20" />
+                <div className="absolute left-1/2 top-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-fuchsia-200/15" />
+                <div className="emperor-orbit absolute left-1/2 top-1/2 h-[27rem] w-[27rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-cyan-200/25">
+                  {orbitNodes.map((node, index) => (
+                    <div
+                      key={node}
+                      className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2"
+                      style={{ transform: `rotate(${index * 60}deg) translateX(13.5rem) rotate(${-index * 60}deg) rotateX(-62deg)` }}
+                    >
+                      <div className="emperor-counter-orbit flex h-full w-full items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-center text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-[0_0_44px_rgba(34,211,238,0.18)] backdrop-blur-xl">
+                        {node}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="absolute left-1/2 top-1/2 flex h-48 w-48 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[2rem] border border-cyan-200/25 bg-slate-950/90 shadow-[0_0_90px_rgba(34,211,238,0.24)]">
+                  <div className="absolute inset-[-28px] rounded-[2.4rem] border border-cyan-200/10" data-emperor-animated="true" style={{ animation: "emperor-pulse-ring 2.9s ease-out infinite" }} />
+                  <div className="text-center">
+                    <CustomLogo className="mx-auto h-10 w-10 text-cyan-200" />
+                    <div className="mt-4 font-[var(--font-syncopate)] text-xs uppercase tracking-[0.26em] text-white">Emperor</div>
+                    <div className="mt-2 text-xs text-slate-500">durable truth core</div>
+                  </div>
+                </div>
+                <div className="absolute inset-x-8 bottom-8 grid gap-3 sm:grid-cols-3">
+                  {telemetry.map((item) => (
+                    <div key={item.name} className="rounded-2xl border border-white/10 bg-slate-950/65 p-4 backdrop-blur-xl">
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{item.name}</div>
+                      <div className={`mt-2 bg-gradient-to-r ${item.hue} bg-clip-text font-[var(--font-space-grotesk)] text-3xl font-semibold text-transparent`}>
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <section className="border-y border-zinc-800/80 bg-zinc-950/70 px-5 py-20 sm:px-6 lg:px-8">
-            <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
-              <div className="space-y-5">
-                <div className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-sm font-medium text-amber-300">
-                  <ShieldAlert className="mr-2 h-4 w-4" />
+        <section className="px-5 py-24 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-amber-200/20 bg-[linear-gradient(135deg,rgba(251,191,36,0.14),rgba(2,3,10,0.86)_42%,rgba(34,211,238,0.09))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] sm:p-8">
+            <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/25 bg-amber-200/10 px-3 py-1.5 text-sm font-bold text-amber-100">
+                  <ShieldAlert className="h-4 w-4" />
                   Beta notice
                 </div>
-                <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold tracking-tight text-zinc-100">
-                  Powerful now. Still beta.
+                <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
+                  Beautiful, powerful, and still beta.
                 </h2>
-                  <p className="max-w-3xl text-lg leading-8 text-zinc-400">
-                   Emperor Claw is free for now while in beta. Current beta storage is enforced at 1 GB per company member.
-                   We do not guarantee safety, retention, recovery, or suitability of stored data. You remain
-                   responsible for what you store here, and you should not place critical or irreplaceable
-                   information in the system.
-                  </p>
+                <p className="max-w-4xl text-base leading-8 text-slate-300 sm:text-lg">
+                  Emperor Claw is free for now while in beta. Current beta storage is enforced at 1 GB per company member.
+                  Do not store critical or irreplaceable data until you have validated safety, retention, and recovery for your use case.
+                </p>
               </div>
-
-              <div className="grid gap-3 sm:min-w-[260px]">
-                <Link
-                  href="/signup"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"
-                >
+              <div className="grid gap-3 sm:min-w-72">
+                <Link href="/signup" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-sm font-black text-slate-950 transition duration-200 hover:-translate-y-1 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">
                   Start Free Now
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/50 px-6 py-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/login" className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04] px-6 py-4 text-sm font-bold text-white transition duration-200 hover:-translate-y-1 hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">
                   Return To Workspace
                 </Link>
               </div>
             </div>
-          </section>
-        </main>
+          </div>
+        </section>
+      </main>
 
-        <footer className="relative z-10 bg-zinc-950 px-5 py-10 sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <div className="font-[var(--font-space-grotesk)] text-lg font-semibold tracking-tight text-white">
-                Emperor Claw
+      <footer className="relative z-10 border-t border-white/10 bg-[#02030a]/90 px-5 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <div className="font-[var(--font-space-grotesk)] text-lg font-semibold tracking-tight text-white">Emperor Claw</div>
+            <div className="font-[var(--font-syncopate)] text-[10px] uppercase tracking-[0.22em] text-slate-600">Runtime control plane. Free for now in beta.</div>
+          </div>
+          <div className="flex flex-wrap gap-6 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+            <Link href="/docs" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Documentation</Link>
+            <Link href="/login" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Login</Link>
+            <Link href="/signup" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Create Workspace</Link>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function HeroCommandCore() {
+  return (
+    <div className="relative min-h-[620px] lg:min-h-[720px]">
+      <div className="emperor-floating absolute inset-0 rounded-[3rem] bg-cyan-300/10 blur-3xl" />
+      <div className="emperor-card-3d relative mx-auto max-w-2xl overflow-hidden rounded-[2.5rem] border border-white/10 bg-slate-950/70 shadow-[0_50px_160px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.13)] backdrop-blur-2xl transition-transform duration-700">
+        <div className="emperor-scanline pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-cyan-200/22 via-cyan-200/5 to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_0%,rgba(34,211,238,0.18),transparent_26%),radial-gradient(circle_at_88%_22%,rgba(217,70,239,0.16),transparent_30%)]" />
+        <div className="relative border-b border-white/10 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-200/10">
+                <Command className="h-5 w-5 text-cyan-100" />
               </div>
-              <div className="text-xs uppercase tracking-[0.22em] text-zinc-600">
-                Runtime control plane. Free for now in beta.
+              <div>
+                <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Emperor Command</div>
+                <div className="font-[var(--font-syncopate)] text-[9px] uppercase tracking-[0.22em] text-slate-500">live operator surface</div>
+              </div>
+            </div>
+            <div className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-bold text-emerald-100">systems nominal</div>
+          </div>
+        </div>
+
+        <div className="relative grid gap-4 p-5 sm:p-6">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <MiniPanel icon={Radar} label="Signals" value="1,284" tone="cyan" />
+            <MiniPanel icon={GitBranch} label="Handoffs" value="42" tone="violet" />
+            <MiniPanel icon={LockKeyhole} label="Policy" value="live" tone="amber" />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
+            <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.04] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Agent traffic</div>
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-200" /> live
+                </div>
+              </div>
+              <div className="space-y-3">
+                {commandLines.map((line) => (
+                  <div key={line.text} className="rounded-2xl border border-white/10 bg-slate-950/55 p-3">
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                      <span className={`text-xs font-black ${line.tone === "cyan" ? "text-cyan-200" : line.tone === "violet" ? "text-violet-200" : "text-amber-200"}`}>{line.label}</span>
+                      <span className="text-[10px] text-slate-600">just now</span>
+                    </div>
+                    <p className="text-sm leading-6 text-slate-300">{line.text}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-6 text-xs uppercase tracking-[0.22em] text-zinc-600">
-              <Link href="/docs" className="transition-colors hover:text-indigo-300">
-                Documentation
-              </Link>
-              <Link href="/login" className="transition-colors hover:text-indigo-300">
-                Login
-              </Link>
-              <Link href="/signup" className="transition-colors hover:text-indigo-300">
-                Create Workspace
-              </Link>
+            <div className="space-y-4">
+              <div className="relative overflow-hidden rounded-[1.7rem] border border-cyan-200/15 bg-cyan-200/10 p-5">
+                <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-200/20 blur-2xl" />
+                <div className="relative flex items-center gap-3">
+                  <CircleDotDashed className="h-5 w-5 text-cyan-100" />
+                  <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Bridge doctrine</div>
+                </div>
+                <p className="relative mt-3 text-sm leading-7 text-cyan-50/80">Shared KB loaded from Emperor. Runtime prompt is thin; doctrine stays centralized.</p>
+              </div>
+
+              <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.035] p-5">
+                <div className="mb-5 flex items-center justify-between">
+                  <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Swarm load</div>
+                  <Zap className="h-5 w-5 text-amber-200" />
+                </div>
+                {[
+                  ["Growth", "88%", "w-[88%]"],
+                  ["Builder", "63%", "w-[63%]"],
+                  ["QA", "39%", "w-[39%]"],
+                ].map(([name, value, width]) => (
+                  <div key={name} className="mb-4 last:mb-0">
+                    <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-300">
+                      <span>{name}</span>
+                      <span className="font-mono text-slate-500">{value}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className={`h-full rounded-full bg-gradient-to-r from-cyan-200 via-violet-300 to-fuchsia-300 ${width}`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </footer>
+        </div>
+      </div>
+
+      <div className="absolute -bottom-6 left-4 hidden rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:block lg:left-0">
+        <div className="flex items-center gap-3">
+          <Gem className="h-5 w-5 text-fuchsia-200" />
+          <div>
+            <div className="text-sm font-bold text-white">Storage abstraction</div>
+            <div className="text-xs text-slate-500">agents never talk blob-provider keys</div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function MetricPanel({
-  title,
+function MiniPanel({
+  icon: Icon,
+  label,
   value,
-  hint,
-  accent,
+  tone,
 }: {
-  title: string;
+  icon: typeof Radar;
+  label: string;
   value: string;
-  hint: string;
-  accent?: "indigo" | "amber" | "emerald";
+  tone: "cyan" | "violet" | "amber";
 }) {
-  const accentGlow =
-    accent === "amber"
-      ? "bg-amber-500/10"
-      : accent === "emerald"
-        ? "bg-emerald-500/10"
-        : "bg-indigo-500/10";
-
-  const accentText =
-    accent === "amber"
-      ? "text-amber-400"
-      : accent === "emerald"
-        ? "text-emerald-400"
-        : "text-indigo-400";
+  const toneClass =
+    tone === "cyan"
+      ? "from-cyan-200 to-blue-400"
+      : tone === "violet"
+        ? "from-violet-200 to-fuchsia-400"
+        : "from-amber-200 to-orange-400";
 
   return (
-    <div className="relative h-32 overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4 shadow-sm sm:h-36 sm:p-5">
-      <div className={`absolute right-0 top-0 h-16 w-16 rounded-bl-full blur-xl ${accentGlow}`} />
-      <div className="text-sm font-medium text-zinc-500">{title}</div>
-      <div className="mt-3 text-2xl font-semibold text-zinc-100 sm:mt-4 sm:text-3xl">{value}</div>
-      <div className="mt-2 flex items-center gap-1 text-xs">
-        <span className={accentText}>Live</span>
-        <span className="text-zinc-600">{hint}</span>
+    <div className="relative overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className={`absolute -right-8 -top-8 h-20 w-20 rounded-full bg-gradient-to-br ${toneClass} opacity-20 blur-2xl`} />
+      <div className="relative flex items-center justify-between">
+        <Icon className="h-5 w-5 text-white/80" />
+        <Sparkles className="h-4 w-4 text-white/30" />
       </div>
+      <div className="relative mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</div>
+      <div className="relative mt-1 font-[var(--font-space-grotesk)] text-2xl font-semibold text-white">{value}</div>
     </div>
   );
 }

@@ -133,14 +133,15 @@ export function AgentDirectChat({
             }
         }
 
-        const shouldMarkRead = data.thread && !before && (
+        const threadId = data.thread?.id;
+        const shouldMarkRead = threadId && !before && (
             !since || data.messages?.some((message) => message.senderType === "agent")
         );
         if (shouldMarkRead) {
             void fetch("/api/chat/status", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ threadId: data.thread.id, markRead: true }),
+                body: JSON.stringify({ threadId, markRead: true }),
             });
         }
 

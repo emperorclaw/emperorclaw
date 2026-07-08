@@ -1,4 +1,4 @@
-import { config } from "dotenv";
+﻿import { config } from "dotenv";
 config();
 
 const API_URL = "http://localhost:3000/api/mcp";
@@ -25,12 +25,12 @@ async function mcpRequest(endpoint: string, method: string, body: any) {
     return await res.json();
 }
 
-import { db } from "./src/db/index";
-import { agents, customers } from "./src/db/schema";
+import { db } from "../src/db/index";
+import { agents, customers } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 
 async function simulateOpenClaw() {
-    console.log("=== 🤖 1. Starting OpenClaw Simulation ===");
+    console.log("=== ðŸ¤– 1. Starting OpenClaw Simulation ===");
 
     // Fetch required IDs from DB to use in the API calls
     const [agent] = await db.select().from(agents).limit(1);
@@ -46,7 +46,7 @@ async function simulateOpenClaw() {
         goal: "Deploy the new User Auth flow UI",
         status: "active"
     });
-    console.log(`✅ Project created: ${projectRes.project.id}`);
+    console.log(`âœ… Project created: ${projectRes.project.id}`);
 
     // Step 3: Generate Tasks (Manager logic)
     console.log("\n=== 3. Generating Tasks ===");
@@ -65,7 +65,7 @@ async function simulateOpenClaw() {
         });
         generatedTasks.push(genRes.task);
     }
-    console.log(`✅ Generated ${generatedTasks.length} tasks in "queued" state`);
+    console.log(`âœ… Generated ${generatedTasks.length} tasks in "queued" state`);
 
     // Step 4: Claim a Task (Worker local loop)
     console.log("\n=== 4. Claiming a Task ===");
@@ -79,7 +79,7 @@ async function simulateOpenClaw() {
         console.log("No task claimed. Faking it for the rest of the script...");
         claimedTask = generatedTasks[0];
     } else {
-        console.log(`✅ Claimed Task: ${claimedTask.id} (Now in 'in_progress' state)`);
+        console.log(`âœ… Claimed Task: ${claimedTask.id} (Now in 'in_progress' state)`);
     }
 
 
@@ -89,7 +89,7 @@ async function simulateOpenClaw() {
         chat_id: "human_manager",
         text: `[Agent Output] I am beginning work on TASK-${claimedTask.id.substring(0, 8)}. I will let you know when the UI renders are ready for QA.`,
     });
-    console.log(`✅ Message broadcast to UI Agent Team Chat.`);
+    console.log(`âœ… Message broadcast to UI Agent Team Chat.`);
 
 
     // Step 6: Mark Task as Done with Proof
@@ -100,12 +100,13 @@ async function simulateOpenClaw() {
         outputJson: { "status": "Files created", "files": ["/src/app/login/page.tsx"] },
         proofSummary: "Rendered successfully without linter errors in standard responsive breakpoints.",
     });
-    console.log(`✅ Task marked 'done' with Proof artifacts attached.`);
+    console.log(`âœ… Task marked 'done' with Proof artifacts attached.`);
 
-    console.log("\n=== 🚀 OpenClaw Simulation Complete. Check your UI! ===");
+    console.log("\n=== ðŸš€ OpenClaw Simulation Complete. Check your UI! ===");
 }
 
 simulateOpenClaw().catch(err => {
     console.error("Simulation failed:", err.message);
     process.exit(1);
 });
+

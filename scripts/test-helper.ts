@@ -1,7 +1,7 @@
-import { config } from "dotenv";
+﻿import { config } from "dotenv";
 config();
-import { db } from "./src/db/index";
-import { agents, customers } from "./src/db/schema";
+import { db } from "../src/db/index";
+import { agents, customers } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 
 async function getIds() {
@@ -12,3 +12,4 @@ async function getIds() {
     process.exit(0);
 }
 getIds();
+
