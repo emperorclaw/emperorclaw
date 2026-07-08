@@ -54,10 +54,12 @@ export function MessagingHub({
     agents,
     directThreads,
     initialTeamMessages = [],
+    initialTeamHasMore = false,
 }: {
     agents: Agent[];
     directThreads: DirectThreadSummary[];
     initialTeamMessages?: TeamMessage[];
+    initialTeamHasMore?: boolean;
 }) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
@@ -201,7 +203,12 @@ export function MessagingHub({
                         </div>
                         <div className="flex-1 overflow-hidden relative">
                             <div className="h-full">
-                                <AgentTeamChat initialMessages={initialTeamMessages} agents={agents} sendable={true} />
+                                <AgentTeamChat
+                                    initialMessages={initialTeamMessages}
+                                    initialHasMore={initialTeamHasMore}
+                                    agents={agents}
+                                    sendable={true}
+                                />
                             </div>
                         </div>
                     </div>

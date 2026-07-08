@@ -8,9 +8,11 @@ The short version:
 - OpenClaw is the local runtime that thinks, reads files, uses tools, writes code, and replies.
 - The plugin does not replace the OpenClaw agent model. It seeds and shapes it.
 
+For the shared operating contract across Hermes and OpenClaw agents, read [Emperor Operating Pipeline](/docs/v1.1/emperor-operating-pipeline).
+
 If you need the repo-level architecture and the difference between repo `agents/*`, plugin state, and live OpenClaw workspaces, read:
 
-- [Project & Plugin Architecture](/docs/v1.1/project-architecture)
+- [Project & Runtime Architecture](/docs/v1.1/project-architecture)
 
 ## What OpenClaw Actually Loads
 
