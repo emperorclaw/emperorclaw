@@ -13,7 +13,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Send,
   ShieldCheck,
   Tags,
   X,
@@ -97,7 +96,7 @@ export default function ResourcesClient({
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
   const [mode, setMode] = useState<"edit" | "preview">("preview");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "shared" | "review">("all");
+  const [filter, setFilter] = useState<"all" | "shared">("all");
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
   const [draftContent, setDraftContent] = useState(initialResources[0]?.configText || "");
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
@@ -105,9 +104,7 @@ export default function ResourcesClient({
   const [draftShared, setDraftShared] = useState(Boolean(initialResources[0]?.isShared));
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
   const [proposals, setProposals] = useState<BrainProposal[]>([]);
-  const [proposalText, setProposalText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [isProposing, setIsProposing] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
@@ -120,10 +117,19 @@ export default function ResourcesClient({
       const haystack = `${resource.name} ${resource.displayName || ""} ${resource.configText}`.toLowerCase();
       if (normalized && !haystack.includes(normalized)) return false;
       if (filter === "shared") return resource.isShared;
-      if (filter === "review") return pendingProposals.some((proposal) => proposal.targetResourceId === resource.id);
       return true;
     });
-  }, [filter, pendingProposals, query, resources]);
+  }, [filter, query, resources]);
+
+  const groupedResources = useMemo(() => {
+    const groups = [
+      { key: "company", label: "Company", items: filteredResources.filter((resource) => resource.scopeType === "company") },
+      { key: "customer", label: "Customers", items: filteredResources.filter((resource) => resource.scopeType === "customer") },
+      { key: "project", label: "Projects", items: filteredResources.filter((resource) => resource.scopeType === "project") },
+      { key: "agent", label: "Agents", items: filteredResources.filter((resource) => resource.scopeType === "agent") },
+    ];
+    return groups.filter((group) => group.items.length > 0);
+  }, [filteredResources]);
 
   useEffect(() => {
     if (!selectedResource) return;
@@ -132,7 +138,6 @@ export default function ResourcesClient({
     setDraftScopeType(selectedResource.scopeType);
     setDraftScopeId(selectedResource.scopeId || "");
     setDraftShared(Boolean(selectedResource.isShared));
-    setProposalText("");
     void loadBrainInsights(selectedResource.id);
   }, [selectedResource]);
 
@@ -238,36 +243,6 @@ export default function ResourcesClient({
     toast.success("Knowledge rule archived");
   }
 
-  async function submitProposal() {
-    if (!proposalText.trim() || isProposing) return;
-    setIsProposing(true);
-    try {
-      const title = selectedResource ? `Suggested update: ${selectedResource.displayName || selectedResource.name}` : "Suggested Knowledge & Rules entry";
-      const response = await fetch("/api/resources/proposals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          action: selectedResource ? "update" : "create",
-          targetResourceId: selectedResource?.id || null,
-          scopeType: selectedResource?.scopeType || "company",
-          scopeId: selectedResource?.scopeId || null,
-          proposedText: proposalText,
-          reason: "Manual operator suggestion",
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Failed to create suggestion");
-      setProposalText("");
-      await loadProposals();
-      toast.success("Suggestion added to Review Queue");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create suggestion");
-    } finally {
-      setIsProposing(false);
-    }
-  }
-
   async function reviewProposal(proposal: BrainProposal, status: "approved" | "rejected" | "merged") {
     const response = await fetch(`/api/resources/proposals/${proposal.id}`, {
       method: "PATCH",
@@ -316,7 +291,7 @@ export default function ResourcesClient({
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search knowledge..." className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
           </div>
           <div className="mt-3 flex gap-2">
-            {(["all", "shared", "review"] as const).map((item) => (
+            {(["all", "shared"] as const).map((item) => (
               <button key={item} onClick={() => setFilter(item)} className={cn("rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-700" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
             ))}
           </div>
@@ -325,20 +300,29 @@ export default function ResourcesClient({
             <Stat label="Shared" value={resources.filter((resource) => resource.isShared).length} />
             <Stat label="Review" value={pendingProposals.length} />
           </div>
-          <div className="mt-4 max-h-[calc(100vh-410px)] space-y-2 overflow-y-auto pr-1">
-            {filteredResources.map((resource) => (
-              <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("w-full rounded-xl border p-3 text-left transition-colors", selectedResourceId === resource.id ? "border-indigo-500/50 bg-indigo-500/10" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900")}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-zinc-100">{resource.displayName || resource.name}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                      <span>{scopeLabel(resource.scopeType)}</span>
-                      {resource.isShared && <span className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-indigo-300">Shared</span>}
-                    </div>
-                  </div>
-                  <FileText className="h-4 w-4 shrink-0 text-zinc-600" />
+          <div className="mt-4 max-h-[calc(100vh-410px)] space-y-4 overflow-y-auto pr-1">
+            {groupedResources.map((group) => (
+              <div key={group.key}>
+                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-600">
+                  <ChevronDown className="h-3.5 w-3.5" /> {group.label}
                 </div>
-              </button>
+                <div className="space-y-2 border-l border-zinc-800 pl-3">
+                  {group.items.map((resource) => (
+                    <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("w-full rounded-xl border p-3 text-left transition-colors", selectedResourceId === resource.id ? "border-indigo-500/50 bg-indigo-500/10" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900")}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-zinc-100">{resource.displayName || resource.name}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                            <span>{scopeLabel(resource.scopeType)}</span>
+                            {resource.isShared && <span className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-indigo-300">Shared</span>}
+                          </div>
+                        </div>
+                        <FileText className="h-4 w-4 shrink-0 text-zinc-600" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
             {!filteredResources.length && <EmptyState>No matching rules.</EmptyState>}
           </div>
@@ -393,20 +377,14 @@ export default function ResourcesClient({
                 <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive rule</button>
               </Panel>
 
-              <Panel title="Suggest an update" icon={Send}>
-                <p className="mb-3 text-xs leading-5 text-zinc-500">Use this when an agent or operator found reusable knowledge but you want review before changing the rule.</p>
-                <textarea value={proposalText} onChange={(event) => setProposalText(event.target.value)} placeholder="Write the proposed reusable rule or correction..." className="min-h-28 w-full resize-none rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
-                <button onClick={submitProposal} disabled={!proposalText.trim() || isProposing} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">
-                  <Send className="h-4 w-4" /> {isProposing ? "Adding..." : "Add to Review Queue"}
-                </button>
-              </Panel>
 
-              <Panel title={`Review Queue (${pendingProposals.length})`} icon={Clock3}>
-                <div className="space-y-3">
-                  {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
-                  {!pendingProposals.length && <EmptyState>No pending suggestions.</EmptyState>}
-                </div>
-              </Panel>
+              {pendingProposals.length > 0 && (
+                <Panel title={`Agent suggestions (${pendingProposals.length})`} icon={Clock3}>
+                  <div className="space-y-3">
+                    {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
+                  </div>
+                </Panel>
+              )}
 
               <button onClick={() => setIsAdvancedOpen((open) => !open)} className="flex w-full items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-left text-sm font-medium text-zinc-300 hover:bg-zinc-900">
                 Advanced relationships
@@ -414,6 +392,9 @@ export default function ResourcesClient({
               </button>
               {isAdvancedOpen && (
                 <div className="space-y-4">
+                  <Panel title="Knowledge map" icon={Link2}>
+                    <KnowledgeMap graph={insights.graph} selectedId={selectedResource.id} />
+                  </Panel>
                   <Panel title="Tags" icon={Tags}>{insights.tags.length ? <TagList tags={insights.tags} /> : <EmptyState>Add #tags in markdown.</EmptyState>}</Panel>
                   <Panel title="Related notes" icon={Link2}>
                     <LinkList title="This note links to" links={insights.outgoing} empty="No outgoing links." />
@@ -454,6 +435,21 @@ function TagList({ tags }: { tags: BrainTag[] }) {
 
 function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; empty: string }) {
   return <div><div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-600">{title}</div>{links.length ? <div className="space-y-2">{links.map((link) => <div key={link.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300"><span>[[{link.linkText}]]</span>{!link.targetResourceId && <span className="ml-2 text-amber-300">unresolved</span>}</div>)}</div> : <EmptyState>{empty}</EmptyState>}</div>;
+}
+
+
+function KnowledgeMap({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
+  if (!graph.nodes.length) return <EmptyState>No map yet. Add [[links]] between rules to build one.</EmptyState>;
+  return <div className="space-y-3">
+    <div className="grid grid-cols-2 gap-2">
+      <Stat label="Notes" value={graph.nodes.length} />
+      <Stat label="Links" value={graph.edges.length} />
+    </div>
+    <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 p-2">
+      {graph.nodes.slice(0, 12).map((node) => <div key={node.id} className={cn("rounded-md border px-2 py-1.5 text-xs", node.id === selectedId ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900 text-zinc-400")}>{node.label}</div>)}
+    </div>
+    <p className="text-xs leading-5 text-zinc-500">This map is generated from [[links]]. It stays tucked away because most operators only need the rule and where it is used.</p>
+  </div>;
 }
 
 function ProposalCard({ proposal, onReview }: { proposal: BrainProposal; onReview: (proposal: BrainProposal, status: "approved" | "rejected" | "merged") => void }) {
