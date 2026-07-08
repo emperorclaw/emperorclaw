@@ -43,7 +43,7 @@ You do not need to hand-build the bridge layer, invent your own thread sync, or 
 
 ### 2. Prevents Critical Context Loss
 
-Emperor Knowledge & Rules entries act like scoped wiki memory for agents.
+Emperor Knowledge & Rules entries now surface as **Company Brain**: an operator-approved workspace for markdown doctrine, wikilinks, tags, backlinks, versions, and proposal-first agent learning.
 
 Important doctrine, customer rules, project constraints, and operator instructions can be stored as durable entries and force-injected where needed. The API still calls these `resources`, but the product surface names them Knowledge & Rules because that is what humans use them for.
 

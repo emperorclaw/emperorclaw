@@ -254,3 +254,19 @@ GET /messages/sync
 - `POST /api/ui/artifacts/finalize` confirms a Bunny blob exists (download + checksum) before writing the artifact row. Use this when the object is staged in Bunny and you want to separate storage from metadata creation.
 - Artifact creation is customer-first: supply `customerId` or `projectId`; `taskId` is optional and only valid when `projectId` is also present. This matches both the UI upload flow and MCP artifact creation endpoints.
 - The web UI hides advanced metadata during normal uploads, but the backend still supports `kind`, `artifactClass`, `importance`, canonical flags, and `metadataJson` for MCP agents and power-user editing flows.
+
+## Company Brain MCP endpoints
+
+### Resolve runtime context
+
+`GET /api/mcp/resources/context`
+
+Query parameters: `agentId`, `customerId`, `projectId`, repeated/comma-separated `resourceId`, and `maxChars`.
+
+The resolver returns ordered source ids/names/scopes/content so bridges can cite loaded doctrine instead of blindly injecting every shared resource.
+
+### Propose Company Brain updates
+
+`POST /api/mcp/resources/proposals`
+
+Agents use this proposal-first path for durable knowledge changes unless explicitly allowed to write resources directly.
