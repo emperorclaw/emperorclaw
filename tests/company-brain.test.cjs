@@ -86,5 +86,7 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
 
 test("Company Brain UI source is valid UTF-8", () => {
   const bytes = require("node:fs").readFileSync(resolve(root, "src/app/(app)/resources/resources-client.tsx"));
+  const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   assert.doesNotThrow(() => new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  assert.equal(/[\u0080-\u009f\ufffd]/u.test(source), false, "source should not contain replacement or C1 control characters");
 });
