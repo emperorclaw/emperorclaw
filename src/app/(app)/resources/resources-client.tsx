@@ -4,19 +4,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Archive,
+  ArrowLeft,
+  ArrowRight,
   Check,
   ChevronDown,
-  Clock3,
+  Edit3,
   FileText,
-  Link2,
+  MoreVertical,
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
-  Tags,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -271,30 +271,48 @@ export default function ResourcesClient({
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
       <div className="flex h-[calc(100vh-150px)] min-h-[680px] flex-col">
-        <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/95 px-4 py-3">
-          <div className="min-w-0">
-            <h1 className="text-sm font-semibold uppercase tracking-wider text-zinc-200">Knowledge & Rules</h1>
-            <p className="text-xs text-zinc-500">Company Brain vault for doctrine, SOPs, customer context, and agent rules.</p>
+        <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
+          <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
+            <div className="flex items-center gap-1.5 text-zinc-500">
+              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
+              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New linked note" onClick={createResource}><Plus className="h-4 w-4" /></button>
+              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
+            </div>
+            <button className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Vault settings"><SlidersHorizontal className="h-4 w-4" /></button>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button onClick={refreshResources} className="inline-flex items-center gap-2 rounded-md border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-200">
-              <RefreshCw className="h-3.5 w-3.5" /> Refresh
-            </button>
-            <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-2 rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">
-              <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
-            </button>
+          <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex items-center gap-1 text-zinc-600">
+                <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
+                <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
+              </div>
+              <div className="min-w-0 truncate text-xs text-zinc-500">
+                <span>Knowledge & Rules</span>
+                {selectedResource && <span className="text-zinc-700"> / </span>}
+                {selectedResource && <span className="text-zinc-300">{draftTitle || "Untitled note"}</span>}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
+              <button onClick={() => setMode(mode === "preview" ? "edit" : "preview")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Toggle editor mode"><Edit3 className="h-4 w-4" /></button>
+              <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
+                <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
+              </button>
+              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="More actions"><MoreVertical className="h-4 w-4" /></button>
+            </div>
+          </div>
+          <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
+            <div className="min-w-0 truncate text-xs text-zinc-500">
+              Knowledge graph
+              {selectedResource && <span className="text-zinc-700"> / </span>}
+              {selectedResource && <span className="text-zinc-300">Graph of {draftTitle || "Untitled note"}</span>}
+            </div>
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
           <aside className="flex min-h-0 flex-col border-b border-zinc-800 bg-zinc-950 lg:border-b-0 lg:border-r">
             <div className="border-b border-zinc-800 p-3">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
-                <button onClick={createResource} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800">
-                  <Plus className="h-3.5 w-3.5" /> New
-                </button>
-              </div>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
@@ -365,72 +383,65 @@ export default function ResourcesClient({
 
           <aside className="flex min-h-0 flex-col border-t border-zinc-800 bg-zinc-950 lg:border-l lg:border-t-0">
             {selectedResource && (
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <div className="space-y-3">
-                  <Panel title="Properties" icon={ShieldCheck}>
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
-                    <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
-                      <option value="company">Company</option>
-                      <option value="customer">Customer</option>
-                      <option value="project">Project</option>
-                      <option value="agent">Agent</option>
-                    </select>
-                    {draftScopeType !== "company" && (
-                      <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
-                        <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
-                        {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+              <>
+                <div className="min-h-0 flex-1">
+                  <LocalGraph graph={insights.graph} selectedId={selectedResource.id} />
+                </div>
+
+                <div className="border-t border-zinc-800 p-3">
+                  <div className="grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-500">
+                    <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{insights.backlinks.length}</span> incoming</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{insights.outgoing.length}</span> outgoing</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{draftContent.split(/\s+/).filter(Boolean).length}</span> words</div>
+                  </div>
+                  <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Properties</summary>
+                    <div className="mt-3">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
+                      <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                        <option value="company">Company</option>
+                        <option value="customer">Customer</option>
+                        <option value="project">Project</option>
+                        <option value="agent">Agent</option>
                       </select>
-                    )}
-                    <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-900")}>
-                      <span>Send to matching agents</span>
-                      <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
-                    </button>
-                  </Panel>
-
-                  <Panel title="Local graph" icon={Link2}>
-                    <LocalGraph graph={insights.graph} selectedId={selectedResource.id} />
-                  </Panel>
-
-                  <Panel title="Linked mentions" icon={Link2}>
-                    <LinkList title="Outgoing" links={insights.outgoing} empty="No outgoing links." />
-                    <div className="mt-3" />
-                    <LinkList title="Incoming" links={insights.backlinks} empty="No incoming links yet." />
-                  </Panel>
-
-                  {insights.tags.length > 0 && <Panel title="Tags" icon={Tags}><TagList tags={insights.tags} /></Panel>}
-
+                      {draftScopeType !== "company" && (
+                        <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                          <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
+                          {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                        </select>
+                      )}
+                      <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
+                        <span>Send to matching agents</span>
+                        <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
+                      </button>
+                      {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
+                      <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive note</button>
+                    </div>
+                  </details>
+                  <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Linked mentions</summary>
+                    <div className="mt-3">
+                      <LinkList title="Outgoing" links={insights.outgoing} empty="No outgoing links." />
+                      <div className="mt-3" />
+                      <LinkList title="Incoming" links={insights.backlinks} empty="No incoming links yet." />
+                    </div>
+                  </details>
                   {pendingProposals.length > 0 && (
-                    <Panel title={`Agent suggestions (${pendingProposals.length})`} icon={Clock3}>
-                      <div className="space-y-3">
+                    <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                      <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Agent suggestions ({pendingProposals.length})</summary>
+                      <div className="mt-3 space-y-3">
                         {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
                       </div>
-                    </Panel>
+                    </details>
                   )}
-
-                  <Panel title="History" icon={Clock3}>
-                    <div className="space-y-2">
-                      {insights.versions.slice(0, 4).map((version) => <div key={version.id} className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2"><div className="text-xs font-medium text-zinc-200">{version.changeSummary || "Version"}</div><div className="mt-1 text-[11px] text-zinc-500">{dateLabel(version.createdAt)} - {version.createdByType}</div></div>)}
-                      {!insights.versions.length && <EmptyState>Versions appear after edits.</EmptyState>}
-                    </div>
-                  </Panel>
-
-                  <button onClick={archiveSelectedResource} className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive note</button>
                 </div>
-              </div>
+              </>
             )}
           </aside>
         </div>
       </div>
     </div>
   );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2"><div className="text-sm font-semibold text-zinc-100">{value}</div><div className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</div></div>;
-}
-
-function Panel({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
-  return <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-zinc-100"><Icon className="h-4 w-4 text-indigo-400" />{title}</div>{children}</section>;
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -447,17 +458,47 @@ function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; 
 
 
 function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
-  if (!graph.nodes.length) return <EmptyState>No graph yet. Add [[links]] or mention another note title to build one.</EmptyState>;
-  return <div className="space-y-3">
-    <div className="grid grid-cols-2 gap-2">
-      <Stat label="Notes" value={graph.nodes.length} />
-      <Stat label="Links" value={graph.edges.length} />
+  const nodes = graph.nodes.length ? graph.nodes.slice(0, 14) : [{ id: selectedId, label: "Current note", scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
+  const centerIndex = Math.max(0, nodes.findIndex((node) => node.id === selectedId));
+  const positioned = nodes.map((node, index) => {
+    if (index === centerIndex) return { node, x: 180, y: 230 };
+    const ringIndex = index > centerIndex ? index - 1 : index;
+    const angle = (ringIndex / Math.max(1, nodes.length - 1)) * Math.PI * 2 - Math.PI / 5;
+    const radius = ringIndex % 2 === 0 ? 118 : 152;
+    return { node, x: 180 + Math.cos(angle) * radius, y: 230 + Math.sin(angle) * radius };
+  });
+  const byId = new Map(positioned.map((item) => [item.node.id, item]));
+  const edges = graph.edges.filter((edge) => edge.target && byId.has(edge.source) && byId.has(edge.target)).slice(0, 18);
+
+  return (
+    <div className="relative h-full min-h-[360px] overflow-hidden bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.16),transparent_32%),#09090b]">
+      <svg viewBox="0 0 360 460" className="h-full w-full" role="img" aria-label="Local knowledge graph">
+        <defs>
+          <radialGradient id="selected-node" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#a78bfa" stopOpacity="1" />
+            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.7" />
+          </radialGradient>
+        </defs>
+        {edges.map((edge) => {
+          const source = byId.get(edge.source)!;
+          const target = byId.get(edge.target!)!;
+          return <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="#3f3f46" strokeWidth="1" opacity="0.75" />;
+        })}
+        {positioned.map(({ node, x, y }) => {
+          const selected = node.id === selectedId;
+          return (
+            <g key={node.id}>
+              <circle cx={x} cy={y} r={selected ? 8 : 4.5} fill={selected ? "url(#selected-node)" : node.isShared ? "#818cf8" : "#71717a"} />
+              <text x={x + 8} y={y + 4} fill={selected ? "#e9d5ff" : "#a1a1aa"} fontSize="9" className="select-none">{node.label.slice(0, 28)}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <p className="absolute bottom-3 left-3 right-3 rounded-md border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] leading-4 text-zinc-500 backdrop-blur">
+        Local graph is generated from [[links]] and inferred title mentions.
+      </p>
     </div>
-    <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 p-2">
-      {graph.nodes.slice(0, 12).map((node) => <div key={node.id} className={cn("rounded-md border px-2 py-1.5 text-xs", node.id === selectedId ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-900 text-zinc-400")}>{node.label}</div>)}
-    </div>
-    <p className="text-xs leading-5 text-zinc-500">Generated from [[links]] and inferred title mentions.</p>
-  </div>;
+  );
 }
 
 function ProposalCard({ proposal, onReview }: { proposal: BrainProposal; onReview: (proposal: BrainProposal, status: "approved" | "rejected" | "merged") => void }) {
