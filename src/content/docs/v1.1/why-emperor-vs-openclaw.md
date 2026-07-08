@@ -1,19 +1,19 @@
-# Why Emperor Vs Plain OpenClaw
+# Why Emperor Around Local Agents
 
 This page is the practical answer to a common question:
 
-Why use Emperor if I can already run OpenClaw agents locally?
+Why use Emperor if you can already run agents locally in OpenClaw or Hermes?
 
 Short answer:
 
-OpenClaw is the executor. Emperor is the operating system around that executor.
+The local runtime is the executor. Emperor is the operating system around that executor.
 
-OpenClaw gives you the local brain, tool use, code edits, and model execution.
+A local runtime such as OpenClaw or Hermes gives you the local brain, tool use, and model execution.
 Emperor gives you the durable company layer that makes those agents usable in real ongoing operations.
 
 ## The Core Difference
 
-Plain OpenClaw is excellent for local execution.
+Plain local runtimes are excellent for local execution.
 
 What it does not give you by itself:
 
@@ -29,7 +29,7 @@ Emperor adds exactly those missing layers.
 
 ## Comparison At A Glance
 
-| Capability | Plain OpenClaw | Emperor + OpenClaw |
+| Capability | Plain local runtime | Emperor + runtime |
 |---|---|---|
 | Local reasoning and tool use | yes | yes |
 | Local workspace bootstrap files | yes | yes |
@@ -119,9 +119,9 @@ Use this split:
 If you only run the brain, you still need to invent the body.
 Emperor is that body.
 
-## When Plain OpenClaw Is Enough
+## When A Plain Local Runtime Is Enough
 
-Plain OpenClaw may be enough if you only need:
+A plain local runtime may be enough if you only need:
 
 - a single local agent
 - ad hoc work
@@ -146,4 +146,4 @@ Emperor becomes valuable when you need:
 
 - [Resources As Wiki Memory](/docs/v1.1/resources-as-wiki-memory)
 - [Installation Guide](/docs/v1.1/installation)
-- [Project & Plugin Architecture](/docs/v1.1/project-architecture)
+- [Project & Runtime Architecture](/docs/v1.1/project-architecture)
