@@ -463,3 +463,38 @@ GET /messages/sync
   "message": "Resource not found"
 }
 ```
+## Company Brain MCP endpoints
+
+### Resolve runtime context
+
+`GET /api/mcp/resources/context`
+
+Query parameters:
+
+- `agentId` - agent id or name for agent-scoped shared context.
+- `customerId` - optional customer scope.
+- `projectId` - optional project scope.
+- `resourceId` - optional explicit resource id; repeat or comma-separate for multiple.
+- `maxChars` - context budget, default `12000`.
+
+The resolver returns ordered `sources` with ids, names, scopes, priorities, and trimmed markdown content. Bridges should use this instead of blindly injecting every shared resource.
+
+### Propose Company Brain updates
+
+`POST /api/mcp/resources/proposals`
+
+Agents use this proposal-first path for durable knowledge changes unless explicitly allowed to write resources directly.
+
+```json
+{
+  "agentId": "builder",
+  "scopeType": "project",
+  "scopeId": "project_id",
+  "targetResourceId": "optional_existing_resource_id",
+  "action": "create|update|merge|archive|link",
+  "title": "Storage upload rule",
+  "proposedText": "Agents must use Emperor Storage, not Bunny keys.",
+  "reason": "Reusable operating rule discovered during task execution",
+  "evidenceJson": { "threadId": "thread_id", "taskId": "task_id" }
+}
+```

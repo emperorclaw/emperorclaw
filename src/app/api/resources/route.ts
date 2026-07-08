@@ -75,6 +75,9 @@ export async function POST(request: Request) {
       status: "active",
       ownership: "managed",
       isShared: typeof body.isShared === "boolean" ? body.isShared : false,
+      changeSummary: typeof body.changeSummary === "string" ? body.changeSummary : "Operator created Company Brain note",
+      createdByType: "user",
+      createdById: membership.userId,
     });
 
     return NextResponse.json({

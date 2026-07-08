@@ -12,6 +12,7 @@ export const versions: DocVersion[] = [
       { slug: 'emperor-operating-pipeline', title: 'Emperor Operating Pipeline', file: 'emperor-operating-pipeline.md' },
       { slug: 'why-emperor-vs-openclaw', title: 'Why Emperor Around Local Agents', file: 'why-emperor-vs-openclaw.md' },
       { slug: 'resources-as-wiki-memory', title: 'Resources As Wiki Memory', file: 'resources-as-wiki-memory.md' },
+      { slug: 'company-brain', title: 'Company Brain', file: 'company-brain.md' },
       { slug: 'project-architecture', title: 'Project & Runtime Architecture', file: 'project-architecture.md' },
       { slug: 'installation', title: 'Installation Guide', file: 'installation.md' },
       { slug: 'activation', title: 'Activation Protocol', file: 'activation.md' },

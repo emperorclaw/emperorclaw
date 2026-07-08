@@ -203,6 +203,54 @@ def format_shared_resources() -> str:
     return "Shared Knowledge & Rules loaded from Emperor:\n" + "\n\n".join(sections)
 
 
+def fetch_company_brain_context(message: Dict[str, Any]) -> Dict[str, Any] | None:
+    try:
+        query: Dict[str, Any] = {
+            "agentId": AGENT_ID,
+            "maxChars": MAX_SHARED_RESOURCE_CHARS,
+        }
+        project_id = message.get("projectId") or message.get("project_id")
+        customer_id = message.get("customerId") or message.get("customer_id")
+        if project_id:
+            query["projectId"] = str(project_id)
+        if customer_id:
+            query["customerId"] = str(customer_id)
+        if DOCTRINE_RESOURCE_ID:
+            query["resourceId"] = DOCTRINE_RESOURCE_ID
+        payload = api("GET", "/resources/context", query=query)
+        return payload if isinstance(payload, dict) else None
+    except Exception as exc:
+        log(f"Company Brain context resolver failed: {exc}")
+        return None
+
+
+def format_company_brain_context(message: Dict[str, Any]) -> str:
+    context = fetch_company_brain_context(message)
+    sources = context.get("sources") if isinstance(context, dict) else None
+    if not isinstance(sources, list):
+        return format_shared_resources()
+    sections: List[str] = []
+    for source in sources[:16]:
+        title = str(source.get("name") or source.get("displayName") or source.get("id") or "Company Brain source")
+        scope_type = str(source.get("scopeType") or "company")
+        resource_type = str(source.get("resourceType") or "knowledge_base")
+        priority = source.get("priority")
+        text = str(source.get("content") or "").strip()
+        if not text:
+            continue
+        sections.append(f"### {title} ({scope_type}/{resource_type}, priority {priority})\nsource_id: {source.get('id')}\n{text}")
+    if not sections:
+        return (
+            "Company Brain: resolver returned no readable context. "
+            "Use emperor_request GET /resources/context or propose updates via POST /resources/proposals when durable doctrine matters."
+        )
+    return (
+        "Company Brain context resolved by Emperor. Use these source ids when citing loaded doctrine; "
+        "do not blindly assume every shared resource was injected.\n"
+        + "\n\n".join(sections)
+    )
+
+
 def normalize_mention(value: str) -> str:
     ascii_value = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", "", ascii_value.lower())
@@ -328,7 +376,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
     roster_context = format_agent_roster(AGENT_ID)
-    shared_context = format_shared_resources()
+    shared_context = format_company_brain_context(message)
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
@@ -337,6 +385,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         +
         "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
+        "For reusable knowledge, propose Company Brain updates with POST /resources/proposals instead of silently rewriting doctrine.\n"
         "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
         "Emperor is the source of truth. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.\n\n"
         "Where to look in Emperor:\n"
@@ -344,7 +393,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Team roster: emperor_request GET /agents.\n"
         "- Projects/tasks: emperor_list_projects, emperor_list_tasks, or scoped GET /projects/{id}, GET /tasks/{id}.\n"
         "- Task progress/history: emperor_request GET /tasks/{id}/notes.\n"
-        "- Knowledge & Rules: emperor_request GET /resources.\n"
+        "- Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources/proposals for durable knowledge updates, GET /resources for lookup.\n"
         "- Storage/files: emperor_request GET /artifacts for lookup; emperor_create_folder + emperor_upload_artifact for uploads.\n"
         "- External APIs are not Emperor; use terminal/curl or a dedicated plugin if available.\n\n"
         "Storage rules:\n"
