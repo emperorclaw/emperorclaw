@@ -38,6 +38,54 @@ Use this lookup map instead of guessing or relying on memory:
 | Browse a folder's subfolders and files | `emperor_list_folder_contents` with `folderId` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
 
+## Company Brain Note Protocol
+
+Knowledge & Rules works like a shared Obsidian-style company vault. Create durable notes, not chat logs.
+
+When you create or propose a Knowledge & Rules entry:
+
+1. Pick the smallest correct scope: `company`, `customer`, `project`, or `agent`.
+2. Use a short human title that can be linked as `[[Title]]`.
+3. Add frontmatter properties for `scope`, `type`, `status`, `owner`, and `tags`.
+4. Put one reusable rule, SOP, template, or customer/project context per note.
+5. Link related notes with `[[wikilinks]]`.
+6. Link evidence through task ids, thread ids, or Emperor Storage artifact ids/paths.
+7. Prefer `POST /resources/proposals` unless the operator explicitly asked you to write the resource directly.
+
+Template:
+
+```markdown
+---
+scope: project
+type: project-rule
+status: active
+owner: <agent-name>
+tags:
+  - project/example
+  - implementation
+---
+
+# Project Build Rules
+
+Short summary of the reusable rule.
+
+## Rule
+
+- Durable instruction one.
+- Durable instruction two.
+
+## Evidence
+
+- Task: `<task-id>`
+- Artifact: `<artifact-id or Storage path>`
+
+## Related
+
+- [[Company Operating Doctrine]]
+```
+
+Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships.
+
 ## Storage Folders
 
 Storage (artifacts) can be organized into folders and nested subfolders. Always use folders when uploading more than one related file so they appear grouped in the Emperor UI.

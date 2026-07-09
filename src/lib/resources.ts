@@ -61,6 +61,7 @@ export function parseResourceMarkdownMetadata(markdown: string) {
   const tags = new Set<string>();
   const linkPattern = /\[\[([^\]\n]+)\]\]/g;
   const tagPattern = /(^|[\s(])#([A-Za-z0-9][A-Za-z0-9/_-]*)/g;
+  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
 
   for (const match of markdown.matchAll(linkPattern)) {
     const raw = match[1]?.split("|")[0]?.trim();
@@ -70,6 +71,31 @@ export function parseResourceMarkdownMetadata(markdown: string) {
   for (const match of markdown.matchAll(tagPattern)) {
     const raw = match[2]?.trim().toLowerCase();
     if (raw) tags.add(raw);
+  }
+
+  if (frontmatter?.[1]) {
+    const lines = frontmatter[1].split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const inlineTags = line.match(/^\s*tags\s*:\s*\[(.*)\]\s*$/i);
+      if (inlineTags?.[1]) {
+        inlineTags[1]
+          .split(",")
+          .map((tag) => tag.trim().replace(/^['"]|['"]$/g, "").replace(/^#/, "").toLowerCase())
+          .filter(Boolean)
+          .forEach((tag) => tags.add(tag));
+      }
+
+      if (/^\s*tags\s*:\s*$/i.test(line)) {
+        for (let childIndex = index + 1; childIndex < lines.length; childIndex += 1) {
+          const child = lines[childIndex];
+          if (!/^\s+-\s+/.test(child)) break;
+          const tag = child.replace(/^\s+-\s+/, "").trim().replace(/^['"]|['"]$/g, "").replace(/^#/, "").toLowerCase();
+          if (tag) tags.add(tag);
+          index = childIndex;
+        }
+      }
+    }
   }
 
   return {
