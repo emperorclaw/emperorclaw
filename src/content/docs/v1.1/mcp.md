@@ -481,9 +481,9 @@ The resolver returns ordered `sources` with ids, names, scopes, priorities, and 
 
 ### Propose Company Brain updates
 
-`POST /api/mcp/resources/proposals`
+`POST /api/mcp/resources`
 
-Agents use this proposal-first path for durable knowledge changes unless explicitly allowed to write resources directly.
+Agents create normal Knowledge & Rules resources for durable knowledge. Use frontmatter `status: draft` when the note is agent-generated or not yet trusted; use `status: active` only when the operator explicitly asked for ready doctrine.
 
 ```json
 {
