@@ -52,3 +52,16 @@ test("Customer and pipeline operator copy avoids runtime-specific or internal ja
   assertContains(pipelines, "documentation and grounding, not hidden reasoning", "pipelines should explain Context Pack in operator language");
   assertNotContains(pipelines, "via MCP", "pipelines UI copy should avoid MCP jargon for normal operators");
 });
+
+test("Storage keeps operator workflow folder-first and hides technical metadata", () => {
+  const storage = read("src/app/(app)/artifacts/artifacts-manager.tsx");
+  assertContains(storage, "Folder-first files, deliverables, proofs", "storage should explain the operator workflow first");
+  assertContains(storage, "without knowing the backing storage provider", "storage should keep providers abstracted from agents/operators");
+  assertContains(storage, "Advanced filters", "task/type filters should be behind progressive disclosure");
+  assertContains(storage, "Advanced folder metadata", "folder metadata JSON should be behind progressive disclosure");
+  assertNotContains(storage, "All kinds", "normal storage filters should not expose implementation-ish kind language");
+
+  const directChat = read("src/components/agent-direct-chat.tsx");
+  assertNotContains(directChat, "OpenClaw should answer", "direct chat empty state should be runtime-neutral");
+  assertContains(directChat, "connected agent should answer", "direct chat should refer to the connected agent generically");
+});

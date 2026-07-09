@@ -1111,9 +1111,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">Storage</p>
-                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Files and deliverables</h1>
+                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Storage</h1>
                         <p className="max-w-3xl text-sm text-zinc-400">
-                            Browse durable outputs, proofs, working files, and uploads. Emperor indexes the metadata so agents can find the right file later.
+                            Folder-first files, deliverables, proofs, and working documents. Keep customer and project structure clear so agents can find the right file without knowing the backing storage provider.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1131,7 +1131,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         </Button>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+                <div className="grid gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
                     <div className="relative min-w-[240px] flex-1">
                         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
                         <Input
@@ -1141,78 +1141,87 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             className="border-zinc-800 bg-zinc-900 pl-9 text-zinc-100"
                         />
                     </div>
-                    <select
-                        value={projectFilter}
-                        onChange={(event) => {
-                            const nextProjectId = event.target.value;
-                            setProjectFilter(nextProjectId);
-                            const nextProjectCustomerId = findProjectCustomerId(projects, nextProjectId);
-                            if (nextProjectId && nextProjectCustomerId && customerFilter !== nextProjectCustomerId) {
-                                setCustomerFilter(nextProjectCustomerId);
-                            }
-                            if (taskFilter && !tasks.some((task) => task.id === taskFilter && task.projectId === nextProjectId)) {
-                                setTaskFilter("");
-                            }
-                        }}
-                        className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
-                    >
-                        <option value="">All projects</option>
-                        {projects.map((project) => (
-                            <option key={project.id} value={project.id}>{project.name}</option>
-                        ))}
-                    </select>
-                    <select
-                        value={taskFilter}
-                        onChange={(event) => setTaskFilter(event.target.value)}
-                        className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
-                    >
-                        <option value="">All tasks</option>
-                        {tasks.filter((task) => !projectFilter || task.projectId === projectFilter).map((task) => (
-                            <option key={task.id} value={task.id}>{task.type}</option>
-                        ))}
-                    </select>
-                    <select
-                        value={customerFilter}
-                        onChange={(event) => {
-                            const nextCustomerId = event.target.value;
-                            setCustomerFilter(nextCustomerId);
-                            if (
-                                projectFilter &&
-                                nextCustomerId &&
-                                findProjectCustomerId(projects, projectFilter) !== nextCustomerId
-                            ) {
-                                setProjectFilter("");
-                                setTaskFilter("");
-                            }
-                        }}
-                        className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
-                    >
-                        <option value="">All customers</option>
-                        {customers.map((customer) => (
-                            <option key={customer.id} value={customer.id}>{customer.name}</option>
-                        ))}
-                    </select>
-                    <select
-                        value={kindFilter}
-                        onChange={(event) => setKindFilter(event.target.value)}
-                        className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
-                    >
-                        <option value="">All kinds</option>
-                        <option value="report">report</option>
-                        <option value="invoice">invoice</option>
-                        <option value="statement">statement</option>
-                        <option value="document">document</option>
-                        <option value="export">export</option>
-                    </select>
-                    {hasActiveFilters && (
-                        <Button
-                            variant="outline"
-                            onClick={clearFilters}
-                            className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                    <div className="flex flex-wrap items-center gap-3">
+                        <select
+                            value={customerFilter}
+                            onChange={(event) => {
+                                const nextCustomerId = event.target.value;
+                                setCustomerFilter(nextCustomerId);
+                                if (
+                                    projectFilter &&
+                                    nextCustomerId &&
+                                    findProjectCustomerId(projects, projectFilter) !== nextCustomerId
+                                ) {
+                                    setProjectFilter("");
+                                    setTaskFilter("");
+                                }
+                            }}
+                            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                         >
-                            Clear
-                        </Button>
-                    )}
+                            <option value="">All customers</option>
+                            {customers.map((customer) => (
+                                <option key={customer.id} value={customer.id}>{customer.name}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={projectFilter}
+                            onChange={(event) => {
+                                const nextProjectId = event.target.value;
+                                setProjectFilter(nextProjectId);
+                                const nextProjectCustomerId = findProjectCustomerId(projects, nextProjectId);
+                                if (nextProjectId && nextProjectCustomerId && customerFilter !== nextProjectCustomerId) {
+                                    setCustomerFilter(nextProjectCustomerId);
+                                }
+                                if (taskFilter && !tasks.some((task) => task.id === taskFilter && task.projectId === nextProjectId)) {
+                                    setTaskFilter("");
+                                }
+                            }}
+                            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                        >
+                            <option value="">All projects</option>
+                            {projects.map((project) => (
+                                <option key={project.id} value={project.id}>{project.name}</option>
+                            ))}
+                        </select>
+                        {hasActiveFilters && (
+                            <Button
+                                variant="outline"
+                                onClick={clearFilters}
+                                className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                            >
+                                Clear
+                            </Button>
+                        )}
+                    </div>
+                    <details className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2">
+                        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                            Advanced filters
+                        </summary>
+                        <div className="mt-3 flex flex-wrap gap-3 border-t border-zinc-800/80 pt-3">
+                            <select
+                                value={taskFilter}
+                                onChange={(event) => setTaskFilter(event.target.value)}
+                                className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                            >
+                                <option value="">All tasks</option>
+                                {tasks.filter((task) => !projectFilter || task.projectId === projectFilter).map((task) => (
+                                    <option key={task.id} value={task.id}>{task.type}</option>
+                                ))}
+                            </select>
+                            <select
+                                value={kindFilter}
+                                onChange={(event) => setKindFilter(event.target.value)}
+                                className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                            >
+                                <option value="">All file types</option>
+                                <option value="report">report</option>
+                                <option value="invoice">invoice</option>
+                                <option value="statement">statement</option>
+                                <option value="document">document</option>
+                                <option value="export">export</option>
+                            </select>
+                        </div>
+                    </details>
                 </div>
             </div>
 
@@ -1775,13 +1784,19 @@ function FolderInspector(props: {
                         ))}
                     </select>
                 </Field>
-                <Field label="Metadata JSON">
-                    <Textarea
-                        value={props.draft.metadataJson}
-                        onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
-                        className="min-h-36 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
-                    />
-                </Field>
+                <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">Advanced folder metadata</summary>
+                    <div className="border-t border-zinc-800 px-4 py-4">
+                        <p className="mb-3 text-xs leading-5 text-zinc-500">Optional structured metadata for integrations. Most folders only need name, customer, project, and parent folder.</p>
+                        <Field label="Metadata JSON">
+                            <Textarea
+                                value={props.draft.metadataJson}
+                                onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
+                                className="min-h-36 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
+                            />
+                        </Field>
+                    </div>
+                </details>
                 <div className="flex flex-wrap gap-2">
                     <Button onClick={props.onSave} disabled={props.isSaving || !props.hasChanges}>
                         {props.isSaving && <Loader2 className="size-4 animate-spin" />}
@@ -2095,13 +2110,19 @@ function FolderDialog(props: {
                             ))}
                         </select>
                     </Field>
-                    <Field label="Metadata JSON">
-                        <Textarea
-                            value={props.draft.metadataJson}
-                            onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
-                            className="min-h-28 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
-                        />
-                    </Field>
+                    <details className="rounded-2xl border border-zinc-800 bg-zinc-950/80">
+                        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-300">Advanced folder metadata</summary>
+                        <div className="border-t border-zinc-800 px-4 py-4">
+                            <p className="mb-3 text-xs leading-5 text-zinc-500">Optional structured metadata for integrations. Leave this alone unless you know why the folder needs it.</p>
+                            <Field label="Metadata JSON">
+                                <Textarea
+                                    value={props.draft.metadataJson}
+                                    onChange={(event) => props.onDraftChange((current) => ({ ...current, metadataJson: event.target.value }))}
+                                    className="min-h-28 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100"
+                                />
+                            </Field>
+                        </div>
+                    </details>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={() => props.onOpenChange(false)}>
