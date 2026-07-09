@@ -268,6 +268,40 @@ export default function ResourcesClient({
     }
   }
 
+  async function updatePublicationStatus(nextStatus: "draft" | "active") {
+    if (!selectedResource || isSaving) return;
+    const previousStatus = publicationStatus;
+    setPublicationStatus(nextStatus);
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/resources/${selectedResource.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: slugifyResourceKey(draftTitle),
+          displayName: draftTitle,
+          scopeType: draftScopeType,
+          scopeId: draftScopeType === "company" ? null : draftScopeId || null,
+          provider: selectedResource.provider || "knowledge",
+          resourceType: selectedResource.resourceType || "knowledge_base",
+          configText: setNoteStatus(draftContent, nextStatus),
+          isShared: draftShared,
+          changeSummary: nextStatus === "active" ? "Operator published Knowledge & Rules entry" : "Operator moved Knowledge & Rules entry to draft",
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Failed to update publication status");
+      setResources((current) => current.map((resource) => resource.id === selectedResource.id ? { ...resource, ...body.resource } : resource));
+      await loadBrainInsights(selectedResource.id);
+      toast.success(nextStatus === "active" ? "Knowledge note published" : "Knowledge note moved to draft");
+    } catch (error) {
+      setPublicationStatus(previousStatus);
+      toast.error(error instanceof Error ? error.message : "Failed to update publication status");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function archiveSelectedResource() {
     if (!selectedResource || !confirm("Delete this Knowledge & Rules note? It will be archived and hidden from agents.")) return;
     const response = await fetch(`/api/resources/${selectedResource.id}`, { method: "DELETE" });
@@ -306,6 +340,9 @@ export default function ResourcesClient({
             </div>
             <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
               <button onClick={() => setMode(mode === "preview" ? "edit" : "preview")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Toggle editor mode"><Edit3 className="h-4 w-4" /></button>
+              <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
+                <Check className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
+              </button>
               <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
                 <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
@@ -327,7 +364,7 @@ export default function ResourcesClient({
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/60" />
               </div>
               <div className="mt-3 flex items-center gap-2">
                 {(["all", "shared", "drafts"] as const).map((item) => (
@@ -348,11 +385,11 @@ export default function ResourcesClient({
                     </div>
                     <div className="space-y-0.5 pl-4">
                       {group.items.map((resource) => (
-                        <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-indigo-500/15 text-indigo-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
-                          <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-indigo-300" : "text-zinc-600 group-hover:text-zinc-400")} />
+                        <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
+                          <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
                           <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
                           {noteStatus(resource.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-                          {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" title="Shared with agents" />}
+                          {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Shared with agents" />}
                         </button>
                       ))}
                     </div>
@@ -371,7 +408,7 @@ export default function ResourcesClient({
                     <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
                     <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
                     {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-                    {draftShared && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">shared</span>}
+                    {draftShared && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">shared</span>}
                   </div>
                   <div className="flex shrink-0 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
                     <button onClick={() => setMode("preview")} className={cn("rounded px-2.5 py-1 text-[11px] font-medium", mode === "preview" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Reading</button>
@@ -380,7 +417,7 @@ export default function ResourcesClient({
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
                   {mode === "edit" ? (
-                    <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[620px] w-full resize-none bg-zinc-950 px-8 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-indigo-500/30" />
+                    <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[620px] w-full resize-none bg-zinc-950 px-8 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-cyan-500/30" />
                   ) : (
                     <article className="mx-auto min-h-full max-w-4xl px-8 py-8">
                       <div className="prose prose-invert max-w-none">
@@ -404,34 +441,38 @@ export default function ResourcesClient({
 
                 <div className="shrink-0 p-3">
                   <div className="grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-500">
-                    <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{insights.backlinks.length}</span> incoming</div>
-                    <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{insights.outgoing.length}</span> outgoing</div>
-                    <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{draftContent.split(/\s+/).filter(Boolean).length}</span> words</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{insights.backlinks.length}</span> incoming</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{insights.outgoing.length}</span> outgoing</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{draftContent.split(/\s+/).filter(Boolean).length}</span> words</div>
                   </div>
                   <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Properties</summary>
                     <div className="mt-3">
-                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Publication status</label>
-                      <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
-                        <option value="draft">Needs review</option>
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Publication status</label>
+                      <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
+                        <option value="draft">Draft / Needs review</option>
                         <option value="active">Published</option>
                       </select>
-                      <p className="mt-1 text-[11px] leading-4 text-zinc-600">Published means this note is trusted doctrine. It does not automatically inject it into every agent prompt.</p>
+                      <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={isSaving} className={cn("mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
+                        <Check className="h-3.5 w-3.5" />
+                        {publicationStatus === "draft" ? "Publish note" : "Move back to draft"}
+                      </button>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">Published means this note is trusted doctrine. Shared is separate: it controls agent context injection.</p>
 
                       <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
-                      <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                      <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
                         <option value="company">Company</option>
                         <option value="customer">Customer</option>
                         <option value="project">Project</option>
                         <option value="agent">Agent</option>
                       </select>
                       {draftScopeType !== "company" && (
-                        <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                        <select value={draftScopeId} onChange={(event) => setDraftScopeId(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
                           <option value="">Choose {scopeLabel(draftScopeType).toLowerCase()}</option>
                           {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
                       )}
-                      <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
+                      <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
                         <span>Inject into matching agents</span>
                         <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
                       </button>
