@@ -335,7 +335,7 @@ function buildPipelineMarkdown(pipeline: PipelineRow, runs: RunRow[], agentsMap:
     `- Budget: ${pipeline.contextMaxChars || 8000} chars`,
     "",
     "## Workflow",
-    ...(steps.length > 0 ? steps.map((step, index) => `${index + 1}. **${step.name || step.title || `Step ${index + 1}`}** - ${step.description || step.prompt || "Document this step."}`) : ["1. **No steps registered** - Ask the agent to register steps via MCP."]),
+    ...(steps.length > 0 ? steps.map((step, index) => `${index + 1}. **${step.name || step.title || `Step ${index + 1}`}** - ${step.description || step.prompt || "Document this step."}`) : ["1. **No steps registered** - Ask the agent to register steps through the pipeline API."]),
     "",
     "## Evidence produced",
     latestRun ? `- Latest run: ${latestRun.status} at ${new Date(latestRun.startedAt).toLocaleString()}${latestRun.summary ? ` - ${latestRun.summary}` : ""}` : "- No runs reported yet.",
@@ -498,6 +498,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
 
                   <section className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-4">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-100"><Database className="h-4 w-4" />Context Pack</h3>
+                    <p className="mt-2 text-xs leading-5 text-violet-100/70">The reusable Company Brain context the agent should load before this automation runs. It is documentation and grounding, not hidden reasoning.</p>
                     <dl className="mt-3 space-y-2 text-sm text-zinc-400">
                       <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Query</dt><dd>{selectedPipeline.contextQuery || "Scope-based Company Brain context"}</dd></div>
                       <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Pinned sources</dt><dd>{stringArray(selectedPipeline.contextResourceIds).length || "Scope resolver"}</dd></div>
