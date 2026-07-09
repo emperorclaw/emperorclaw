@@ -433,38 +433,50 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 </div>
             </div>
             <div className="emperor-panel rounded-2xl p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative">
+                <div className="grid gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative min-w-[260px] flex-1">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-72 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
+                            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
+                        </div>
+                        <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
+                            <option value="All Customers">All Customers</option>
+                            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                        </select>
+                        <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
+                            <option value="All Projects">All Projects</option>
+                            {projectItems
+                                .filter(p => customerFilter === "All Customers" ? true : p.customerId === customerFilter)
+                                .map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)
+                            }
+                        </select>
                     </div>
-                    <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-300 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
-                        <option value="All Customers">All Customers</option>
-                        {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                    </select>
-                    <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-300 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
-                        <option value="All Projects">All Projects</option>
-                        {projectItems
-                            .filter(p => customerFilter === "All Customers" ? true : p.customerId === customerFilter)
-                            .map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)
-                        }
-                    </select>
-                    <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-300 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
-                        <option value="All Agents">All Agents</option>
-                        {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                    </select>
-                    <button className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><Filter className="h-4 w-4" /></button>
-                    {selectedProject && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><MoreHorizontal className="h-4 w-4" /></button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
-                                <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />Archive project</DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    )}
+                    <details className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2">
+                        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                            Advanced filters and project actions
+                        </summary>
+                        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-3">
+                            <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
+                                <option value="All Agents">All Agents</option>
+                                {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                            </select>
+                            <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
+                                <Filter className="h-4 w-4" />
+                                Use agent filters only when a board has too much active work.
+                            </div>
+                            {selectedProject && (
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><MoreHorizontal className="h-4 w-4" /></button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                                        <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
+                                        <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />Archive project</DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            )}
+                        </div>
+                    </details>
                 </div>
             </div>
             {mutationError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}

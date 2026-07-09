@@ -67,6 +67,7 @@ test("Storage keeps operator workflow folder-first and hides technical metadata"
 });
 
 test("Core workspaces use the standardized Emperor visual system", () => {
+  const globals = read("src/app/globals.css");
   const dashboard = read("src/app/(app)/page.tsx");
   const projects = read("src/app/(app)/projects/projects-client.tsx");
   const messages = read("src/app/(app)/messages/page.tsx");
@@ -77,7 +78,10 @@ test("Core workspaces use the standardized Emperor visual system", () => {
   assertContains(projects, "emperor-panel", "projects should use shared Emperor panels");
   assertContains(messages, "emperor-panel", "messages should use shared Emperor panels");
   assertContains(projects, "Recurring definitions stay separated", "projects should use clear operator copy");
+  assertContains(projects, "Advanced filters and project actions", "projects should hide secondary controls behind progressive disclosure");
   assertContains(messagingHub, "bg-zinc-950/70", "messages sidebar should match the OLED panel system");
+  assertContains(globals, ".emperor-main .text-zinc-500", "app text contrast should be lifted on dark OLED surfaces");
+  assertContains(globals, "font-weight: 550", "medium text should be heavier for readability on dark surfaces");
 
   [dashboard, projects, messages, messagingHub, teamChat].forEach((source) => {
     assertNotContains(source, "bg-zinc-900/50", "core workspaces should not use the older flat panel surface");

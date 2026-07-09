@@ -251,6 +251,18 @@
       linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
     background-size: 34px 34px;
   }
+
+  .emperor-main .text-zinc-500 {
+    color: rgb(161, 161, 170);
+  }
+
+  .emperor-main .text-zinc-600 {
+    color: rgb(113, 113, 122);
+  }
+
+  .emperor-main .font-medium {
+    font-weight: 550;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
