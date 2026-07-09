@@ -65,3 +65,24 @@ test("Storage keeps operator workflow folder-first and hides technical metadata"
   assertNotContains(directChat, "OpenClaw should answer", "direct chat empty state should be runtime-neutral");
   assertContains(directChat, "connected agent should answer", "direct chat should refer to the connected agent generically");
 });
+
+test("Core workspaces use the standardized Emperor visual system", () => {
+  const dashboard = read("src/app/(app)/page.tsx");
+  const projects = read("src/app/(app)/projects/projects-client.tsx");
+  const messages = read("src/app/(app)/messages/page.tsx");
+  const messagingHub = read("src/components/messaging-hub.tsx");
+  const teamChat = read("src/components/agent-team-chat.tsx");
+
+  assertContains(dashboard, "emperor-panel", "dashboard should use shared Emperor panels");
+  assertContains(projects, "emperor-panel", "projects should use shared Emperor panels");
+  assertContains(messages, "emperor-panel", "messages should use shared Emperor panels");
+  assertContains(projects, "Recurring definitions stay separated", "projects should use clear operator copy");
+  assertContains(messagingHub, "bg-zinc-950/70", "messages sidebar should match the OLED panel system");
+
+  [dashboard, projects, messages, messagingHub, teamChat].forEach((source) => {
+    assertNotContains(source, "bg-zinc-900/50", "core workspaces should not use the older flat panel surface");
+    assertNotContains(source, "text-indigo", "core workspaces should not drift back to the older indigo accent");
+    assertNotContains(source, "bg-indigo", "core workspaces should not drift back to the older indigo accent");
+    assertNotContains(source, "border-indigo", "core workspaces should not drift back to the older indigo accent");
+  });
+});

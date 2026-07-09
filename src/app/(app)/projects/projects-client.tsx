@@ -160,8 +160,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         });
     }, [agentFilter, customers, tasks, projectFilter, projectItems, searchQuery, agents, customerFilter]);
 
-    const recurrentTasks = filteredTasks.filter(isRecurring);
-    const recurrentDefinitions = recurringDefinitions.filter((definition) => {
+    const recurringTasks = filteredTasks.filter(isRecurring);
+    const filteredRecurringDefinitions = recurringDefinitions.filter((definition) => {
         if (projectFilter !== "All Projects" && definition.projectId !== projectFilter) return false;
         if (customerFilter !== "All Customers") {
             const project = projectItems.find((p) => p.id === definition.projectId);
@@ -416,39 +416,48 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const currentProjectMemory = projectMemoryItems.filter((item) => projectFilter === "All Projects" ? true : item.projectId === projectFilter).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return (
-        <div className="relative flex h-full flex-col space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Projects Board</h1>
-                    <p className="text-sm font-medium text-zinc-500">Inbox, execution, review, done, and a recurrent lane when the data supports it.</p>
+        <div className="relative mx-auto flex h-full max-w-[1800px] flex-col space-y-6 animate-in fade-in duration-500">
+            <div className="emperor-panel relative overflow-hidden rounded-[2rem] p-6">
+                <div className="pointer-events-none absolute inset-0 emperor-subtle-grid opacity-20" />
+                <div className="relative flex flex-wrap items-start justify-between gap-5">
+                    <div className="max-w-3xl space-y-3">
+                        <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Projects</p>
+                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">Projects Board</h1>
+                        <p className="text-sm leading-6 text-zinc-400">Track customer/project work from inbox to execution, review, and done. Recurring definitions stay separated from spawned task work.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button onClick={openCreateProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>
+                        <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-4 w-4" />Task</button>
+                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-4 w-4" />Project Brain</button>}
+                    </div>
                 </div>
+            </div>
+            <div className="emperor-panel rounded-2xl p-4">
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-72 rounded-lg border border-zinc-800 bg-zinc-900/50 py-2 pl-9 pr-4 text-sm text-zinc-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60" />
+                        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-72 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
                     </div>
-                    <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
+                    <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-300 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
                         <option value="All Customers">All Customers</option>
                         {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
                     </select>
-                    <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
+                    <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-300 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
                         <option value="All Projects">All Projects</option>
                         {projectItems
                             .filter(p => customerFilter === "All Customers" ? true : p.customerId === customerFilter)
                             .map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)
                         }
                     </select>
-                    <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="h-10 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/60">
+                    <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-300 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
                         <option value="All Agents">All Agents</option>
                         {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                     </select>
-                    <button className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><Filter className="h-4 w-4" /></button>
-                    <button onClick={openCreateProject} className="flex h-10 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>
-                    <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-10 items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600"><Plus className="h-4 w-4" />Task</button>
+                    <button className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><Filter className="h-4 w-4" /></button>
                     {selectedProject && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <button className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><MoreHorizontal className="h-4 w-4" /></button>
+                                <button className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"><MoreHorizontal className="h-4 w-4" /></button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
                                 <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
@@ -456,17 +465,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}
-                    {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 items-center gap-2 rounded-lg border border-indigo-500/50 bg-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500"><Brain className="h-4 w-4" />Project Brain</button>}
                 </div>
             </div>
             {mutationError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <MetricCard label="Inbox" value={byState.inbox.length} hint="Queued work" />
-                <MetricCard label="In Progress" value={byState.inProgress.length} hint="Active execution" accent="indigo" />
+                <MetricCard label="In Progress" value={byState.inProgress.length} hint="Active execution" accent="cyan" />
                 <MetricCard label="Review" value={byState.review.length} hint="Human / proof review" accent="amber" />
                 <MetricCard label="Done" value={byState.done.length} hint="Closed work" accent="emerald" />
-                <MetricCard label="Recurrent" value={recurrentDefinitions.length} hint="Recurring task definitions" accent="slate" />
+                <MetricCard label="Recurring" value={filteredRecurringDefinitions.length} hint="Recurring task definitions" accent="slate" />
             </div>
 
             {(blockedCount > 0 || exceptionTasks.length > 0) && (
@@ -483,7 +491,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <BoardColumn title="Inbox" count={byState.inbox.length} tone="zinc" icon={Inbox}>
                             {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
                         </BoardColumn>
-                        <BoardColumn title="In Progress" count={byState.inProgress.length} tone="indigo" icon={CirclePulseIcon}>
+                        <BoardColumn title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
                             {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} />)}
                         </BoardColumn>
                         <BoardColumn title="Review" count={byState.review.length} tone="amber" icon={CheckCircle2}>
@@ -498,9 +506,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <BoardColumn title="Done" count={byState.done.length} tone="emerald" icon={CheckCircle2}>
                             {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} />)}
                         </BoardColumn>
-                        {(recurrentDefinitions.length > 0 || recurrentTasks.length > 0) && <BoardColumn title="Recurrent" count={recurrentDefinitions.length + recurrentTasks.length} tone="slate" icon={Repeat}>
-                            {recurrentDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
-                            {recurrentTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurrent blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
+                        {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={Repeat}>
+                            {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
+                            {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
                         </BoardColumn>}
                     </div>
                 </div>
@@ -523,25 +531,25 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <span className="rounded bg-zinc-800 px-2.5 py-1 font-medium text-zinc-300">{humanizeKey(selectedTask.state)}</span>
                             <span className="rounded bg-zinc-800 px-2.5 py-1 text-zinc-400">Assigned: {getAgentName(selectedTask.assignedAgentId)}</span>
                             {isBlocked(selectedTask, filteredTasks) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
-                            {isRecurring(selectedTask) && <span className="rounded bg-indigo-500/20 px-2.5 py-1 text-indigo-300">Recurrent</span>}
+                            {isRecurring(selectedTask) && <span className="rounded bg-cyan-500/20 px-2.5 py-1 text-cyan-300">Recurring</span>}
                         </div>
                         <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-2">
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>State</span>
-                                <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { state: event.target.value })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500">
+                                <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { state: event.target.value })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
                                     {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>Assignee</span>
-                                <select value={selectedTask.assignedAgentId || ""} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { assignedAgentId: event.target.value || null })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500">
+                                <select value={selectedTask.assignedAgentId || ""} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { assignedAgentId: event.target.value || null })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
                                     <option value="">Unassigned</option>
                                     {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>Priority</span>
-                                <input type="number" value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-indigo-500" />
+                                <input type="number" value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400" />
                             </label>
                             <div className="flex items-end gap-2">
                                 <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><Edit3 className="h-4 w-4" />Edit</button>
@@ -554,10 +562,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </div>
                     <div className="mt-auto border-t border-zinc-800 pt-6">
                         <div className="mb-2 text-xs font-medium text-zinc-500">Add Task Note / Send to Agent</div>
-                        <div className="flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 focus-within:ring-1 focus-within:ring-indigo-500">
+                        <div className="flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 focus-within:ring-1 focus-within:ring-cyan-500">
                             <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Agent instructions or private notes..." className="h-20 flex-1 resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none" />
-                            <div className="flex flex-col justify-end border-l border-zinc-800 bg-zinc-900/50 p-2">
-                                <button onClick={handleSendComment} disabled={!comment.trim()} className="rounded-md bg-indigo-600 p-2 text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" /></button>
+                            <div className="flex flex-col justify-end border-l border-zinc-800 bg-zinc-950/70 p-2">
+                                <button onClick={handleSendComment} disabled={!comment.trim()} className="rounded-md bg-cyan-400/10 p-2 text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" /></button>
                             </div>
                         </div>
                     </div>
@@ -568,7 +576,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <div className="absolute right-0 top-0 z-50 flex h-full w-[45%] flex-col rounded-l-2xl border-l border-zinc-800 bg-zinc-900/98 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-10 duration-300">
                     <div className="flex items-center justify-between rounded-tl-2xl border-b border-zinc-800 bg-zinc-950/50 p-6">
                         <div className="flex items-center space-x-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-600/20 text-indigo-500 shadow-inner"><Brain className="h-6 w-6" /></div>
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10/20 text-cyan-500 shadow-inner"><Brain className="h-6 w-6" /></div>
                             <div><h2 className="text-lg font-semibold uppercase tracking-tight text-zinc-100">Project Brain</h2><p className="text-xs font-medium text-zinc-500">Persistent context and memory</p></div>
                         </div>
                         <button onClick={() => setIsContextOpen(false)} className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-6 w-6" /></button>
@@ -577,13 +585,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <div className="space-y-3">
                             <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Teach Project New Context</label>
                             <div className="relative">
-                                <textarea value={newContext} onChange={(event) => setNewContext(event.target.value)} placeholder="Enter new goals, findings, or critical context for the agents..." className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-200 outline-none shadow-inner focus:ring-1 focus:ring-indigo-500" />
-                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex items-center space-x-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Append Context</span></button>
+                                <textarea value={newContext} onChange={(event) => setNewContext(event.target.value)} placeholder="Enter new goals, findings, or critical context for the agents..." className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-200 outline-none shadow-inner focus:ring-1 focus:ring-cyan-400" />
+                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100  transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Append Context</span></button>
                             </div>
                         </div>
                         <div className="space-y-4">
                             <h3 className="flex items-center space-x-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500"><History className="h-3 w-3" /><span>Memory Timeline</span></h3>
-                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><Brain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">This project currently has no high-level memory entries.</p><p className="text-xs text-zinc-600">The Brain stores critical cross-task knowledge.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-indigo-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
+                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><Brain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">This project currently has no high-level memory entries.</p><p className="text-xs text-zinc-600">The Brain stores critical cross-task knowledge.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.45)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-cyan-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
                         </div>
                     </div>
                 </div>
@@ -597,35 +605,35 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     <div className="grid gap-4">
                         <label className="space-y-1 text-sm text-zinc-400">
                             <span>Goal</span>
-                            <textarea value={projectForm.goal} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, goal: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            <textarea value={projectForm.goal} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, goal: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                         </label>
                         <div className="grid gap-3 sm:grid-cols-2">
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Customer</span>
-                                <select value={projectForm.customerId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, customerId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                <select value={projectForm.customerId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, customerId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
                                     <option value="">No customer</option>
                                     {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Lead agent</span>
-                                <select value={projectForm.leadAgentId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, leadAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                <select value={projectForm.leadAgentId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, leadAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
                                     <option value="">No lead</option>
                                     {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Status</span>
-                                <select value={projectForm.status} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, status: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                <select value={projectForm.status} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, status: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
                                     {projectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Max active agents</span>
-                                <input type="number" min={1} value={projectForm.maxActiveAgents} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, maxActiveAgents: Number(event.target.value) || 1 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                                <input type="number" min={1} value={projectForm.maxActiveAgents} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, maxActiveAgents: Number(event.target.value) || 1 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                             </label>
                         </div>
-                        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-300 sm:grid-cols-2">
+                        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300 sm:grid-cols-2">
                             <CheckboxRow label="Require approval for done" checked={projectForm.requireApprovalForDone} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, requireApprovalForDone: checked }))} />
                             <CheckboxRow label="Require review before done" checked={projectForm.requireReviewBeforeDone} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, requireReviewBeforeDone: checked }))} />
                             <CheckboxRow label="Require review comments" checked={projectForm.commentRequiredForReview} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, commentRequiredForReview: checked }))} />
@@ -634,7 +642,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setProjectDialogMode(null)} className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-                            <button onClick={() => void submitProject()} disabled={isMutating || !projectForm.goal.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save project"}</button>
+                            <button onClick={() => void submitProject()} disabled={isMutating || !projectForm.goal.trim()} className="rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save project"}</button>
                         </div>
                     </div>
                 </DialogContent>
@@ -649,66 +657,66 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <div className="grid gap-3 sm:grid-cols-2">
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Project</span>
-                                <select value={taskForm.projectId} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, projectId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500 disabled:opacity-60">
+                                <select value={taskForm.projectId} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, projectId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 disabled:opacity-60">
                                     <option value="">Select project</option>
                                     {projectItems.map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Work type</span>
-                                <select value={taskForm.taskType} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, taskType: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500 disabled:opacity-60">
+                                <select value={taskForm.taskType} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, taskType: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 disabled:opacity-60">
                                     {workTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                                 </select>
                             </label>
                         </div>
                         <label className="space-y-1 text-sm text-zinc-400">
                             <span>Title</span>
-                            <input value={taskForm.title} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, title: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            <input value={taskForm.title} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, title: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                         </label>
                         <label className="space-y-1 text-sm text-zinc-400">
                             <span>Description</span>
-                            <textarea value={taskForm.description} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, description: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            <textarea value={taskForm.description} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, description: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                         </label>
                         <div className="grid gap-3 sm:grid-cols-3">
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>State</span>
-                                <select value={taskForm.state} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, state: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                <select value={taskForm.state} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, state: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
                                     {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Assignee</span>
-                                <select value={taskForm.assignedAgentId} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, assignedAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                                <select value={taskForm.assignedAgentId} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, assignedAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
                                     <option value="">Unassigned</option>
                                     {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Priority</span>
-                                <input type="number" value={taskForm.priority} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                                <input type="number" value={taskForm.priority} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                             </label>
                         </div>
                         <label className="space-y-1 text-sm text-zinc-400">
                             <span>Acceptance criteria</span>
-                            <textarea value={taskForm.acceptanceCriteria} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, acceptanceCriteria: event.target.value }))} placeholder="One criterion per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                            <textarea value={taskForm.acceptanceCriteria} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, acceptanceCriteria: event.target.value }))} placeholder="One criterion per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                         </label>
                         <div className="grid gap-3 sm:grid-cols-2">
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Definition of done</span>
-                                <textarea value={taskForm.definitionOfDone} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, definitionOfDone: event.target.value }))} className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                                <textarea value={taskForm.definitionOfDone} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, definitionOfDone: event.target.value }))} className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Deliverables</span>
-                                <textarea value={taskForm.deliverables} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, deliverables: event.target.value }))} placeholder="One deliverable per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
+                                <textarea value={taskForm.deliverables} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, deliverables: event.target.value }))} placeholder="One deliverable per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
                             </label>
                         </div>
-                        <div className="flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-300">
+                        <div className="flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300">
                             <CheckboxRow label="Proof required" checked={taskForm.proofRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, proofRequired: checked }))} />
                             <CheckboxRow label="Human approval required" checked={taskForm.humanApprovalRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, humanApprovalRequired: checked }))} />
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setTaskDialogMode(null)} className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-                            <button onClick={() => void submitTask()} disabled={isMutating || !taskForm.projectId || !taskForm.title.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save task"}</button>
+                            <button onClick={() => void submitTask()} disabled={isMutating || !taskForm.projectId || !taskForm.title.trim()} className="rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save task"}</button>
                         </div>
                     </div>
                 </DialogContent>
@@ -717,8 +725,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     );
 }
 
-function MetricCard({ label, value, hint, accent = "slate" }: { label: string; value: number; hint: string; accent?: "slate" | "indigo" | "amber" | "emerald" }) {
-    const tone = { slate: "border-zinc-800 bg-zinc-950/50", indigo: "border-indigo-500/20 bg-indigo-500/10", amber: "border-amber-500/20 bg-amber-500/10", emerald: "border-emerald-500/20 bg-emerald-500/10" }[accent];
+function MetricCard({ label, value, hint, accent = "slate" }: { label: string; value: number; hint: string; accent?: "slate" | "cyan" | "amber" | "emerald" }) {
+    const tone = { slate: "border-zinc-800 bg-zinc-950/50", cyan: "border-cyan-500/20 bg-cyan-500/10", amber: "border-amber-500/20 bg-amber-500/10", emerald: "border-emerald-500/20 bg-emerald-500/10" }[accent];
     return <div className={cn("rounded-xl border p-4", tone)}><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</div><div className="mt-2 text-2xl font-semibold text-zinc-100">{value}</div><div className="mt-1 text-xs text-zinc-500">{hint}</div></div>;
 }
 
@@ -727,19 +735,19 @@ function BucketBadge({ label, count, tone = "zinc" }: { label: string; count: nu
     return <div className={cn("rounded-lg border px-2 py-1.5", toneClass)}><div className="flex items-center justify-between gap-2"><span>{label}</span><span className="font-mono text-[10px]">{count}</span></div></div>;
 }
 
-function BoardColumn({ title, count, tone, icon: Icon, children }: { title: string; count: number; tone: "zinc" | "indigo" | "amber" | "emerald" | "slate"; icon: any; children: ReactNode }) {
-    const toneClass = { zinc: "border-zinc-800/60 bg-zinc-900/30", indigo: "border-indigo-500/20 bg-indigo-500/5", amber: "border-amber-500/20 bg-amber-500/5", emerald: "border-emerald-500/20 bg-emerald-500/5", slate: "border-zinc-800/60 bg-zinc-900/30" }[tone];
+function BoardColumn({ title, count, tone, icon: Icon, children }: { title: string; count: number; tone: "zinc" | "cyan" | "amber" | "emerald" | "slate"; icon: any; children: ReactNode }) {
+    const toneClass = { zinc: "border-zinc-800/60 bg-zinc-900/30", cyan: "border-cyan-500/20 bg-cyan-500/5", amber: "border-amber-500/20 bg-amber-500/5", emerald: "border-emerald-500/20 bg-emerald-500/5", slate: "border-zinc-800/60 bg-zinc-900/30" }[tone];
     return <div className={cn("flex h-full w-80 flex-col rounded-xl border p-3", toneClass)}><div className="mb-4 flex items-center justify-between px-1"><div className="flex items-center space-x-2"><Icon className="h-4 w-4 text-zinc-500" /><h3 className="text-sm font-medium text-zinc-300">{title}</h3></div><span className="rounded bg-zinc-800/50 px-2 py-0.5 font-mono text-xs text-zinc-500">{count}</span></div><div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-1 pb-2">{children}</div></div>;
 }
 
-function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurrent, active, review, done, onClick }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurrent?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; }) {
+function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; }) {
     const priority = task.priority >= 80 ? { label: "HIGH", cls: "bg-rose-500/10 text-rose-400 border-rose-500/20" } : task.priority >= 50 ? { label: "MED", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" } : { label: "LOW", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
-    const border = blocked ? "border-rose-500/50" : recurrent ? "border-indigo-500/40" : active ? "border-indigo-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
-    return <button onClick={onClick} className={cn("w-full rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80", border)}><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurrent && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">Recurring</span>}</div>{(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}</button>;
+    const border = blocked ? "border-rose-500/50" : recurring ? "border-cyan-500/40" : active ? "border-cyan-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
+    return <button onClick={onClick} className={cn("w-full rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80", border)}><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>{(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}</button>;
 }
 
 function RecurringCard({ definition, project, customer, agent }: { definition: any; project: string; customer: string; agent: string }) {
-    return <div className="w-full rounded-lg border border-indigo-500/30 bg-zinc-950 p-4 text-left"><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-indigo-500/40" /><span className="font-mono text-[10px] text-zinc-500">RECUR-{definition.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{definition.name}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", definition.active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-500")}>{definition.active ? "ACTIVE" : "PAUSED"}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-indigo-300">{getWorkTypeLabel(definition.taskType)}</span>{definition.cronExpression && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{definition.cronExpression}</span>}{definition.nextRunAt && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">Next {new Date(definition.nextRunAt).toLocaleString()}</span>}</div></div>;
+    return <div className="w-full rounded-lg border border-cyan-500/30 bg-zinc-950 p-4 text-left"><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">RECUR-{definition.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{definition.name}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", definition.active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-500")}>{definition.active ? "ACTIVE" : "PAUSED"}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">{getWorkTypeLabel(definition.taskType)}</span>{definition.cronExpression && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{definition.cronExpression}</span>}{definition.nextRunAt && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">Next {new Date(definition.nextRunAt).toLocaleString()}</span>}</div></div>;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -747,18 +755,18 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function TimelineEvent({ time, desc, isNote }: { time: string; desc: string; isNote?: boolean }) {
-    return <div className="flex items-start space-x-3"><div className={cn("mt-1 h-2 w-2 rounded-full", isNote ? "bg-indigo-500" : "bg-zinc-600")} /><div className="flex-1"><div className="text-[10px] text-zinc-500">{time}</div><div className="text-sm text-zinc-300">{desc}</div></div></div>;
+    return <div className="flex items-start space-x-3"><div className={cn("mt-1 h-2 w-2 rounded-full", isNote ? "bg-cyan-500" : "bg-zinc-600")} /><div className="flex-1"><div className="text-[10px] text-zinc-500">{time}</div><div className="text-sm text-zinc-300">{desc}</div></div></div>;
 }
 
 function CheckboxRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
     return (
         <label className="flex items-center gap-2">
-            <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-indigo-500" />
+            <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-cyan-600 focus:ring-cyan-400" />
             <span>{label}</span>
         </label>
     );
 }
 
 function CirclePulseIcon({ className }: { className?: string }) {
-    return <div className={cn("h-4 w-4 rounded-full border border-indigo-400/70", className)} />;
+    return <div className={cn("h-4 w-4 rounded-full border border-cyan-400/70", className)} />;
 }
