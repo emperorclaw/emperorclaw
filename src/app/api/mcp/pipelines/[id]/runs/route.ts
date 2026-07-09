@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
+import { extractRunContextSourceIds, PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
 
 // GET /api/mcp/pipelines/[id]/runs — run history.
 export async function GET(
@@ -40,7 +40,7 @@ export async function GET(
 //   Complete: { runId, status: 'succeeded'|'failed'|'partial',
 //               summary?, stats? }                                  → closes the run
 //   One-shot: { status: 'succeeded'|'failed'|'partial', ... }        → creates an already-closed run
-// stats may carry { taskIds, artifactIds, counts } for traceability.
+// stats may carry { taskIds, artifactIds, counts, contextSourceIds } for traceability.
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -82,6 +82,15 @@ export async function POST(
         }
 
         const isTerminal = status !== "running";
+        const stats = body.stats !== undefined ? body.stats : undefined;
+        const contextSourceIds = extractRunContextSourceIds({
+            contextSourceIds: body.contextSourceIds,
+            stats,
+        });
+        const statsRecord = typeof stats === "object" && stats !== null ? stats as Record<string, unknown> : {};
+        const contextSnapshot = body.contextSnapshot !== undefined
+            ? body.contextSnapshot
+            : (statsRecord.contextSnapshot !== undefined ? statsRecord.contextSnapshot : undefined);
 
         // Complete an existing run.
         if (body.runId) {
@@ -95,7 +104,9 @@ export async function POST(
             const [updated] = await db.update(pipelineRuns).set({
                 status,
                 summary: typeof body.summary === "string" ? body.summary : run.summary,
-                statsJson: body.stats !== undefined ? body.stats : run.statsJson,
+                statsJson: stats !== undefined ? stats : run.statsJson,
+                contextSourceIds: contextSourceIds.length > 0 ? contextSourceIds : run.contextSourceIds,
+                contextSnapshot: contextSnapshot !== undefined ? contextSnapshot : run.contextSnapshot,
                 endedAt: isTerminal ? new Date() : run.endedAt,
             }).where(eq(pipelineRuns.id, run.id)).returning();
 
@@ -119,7 +130,9 @@ export async function POST(
             agentId,
             status,
             summary: typeof body.summary === "string" ? body.summary : null,
-            statsJson: body.stats !== undefined ? body.stats : {},
+            statsJson: stats !== undefined ? stats : {},
+            contextSourceIds,
+            contextSnapshot: contextSnapshot !== undefined ? contextSnapshot : {},
             endedAt: isTerminal ? new Date() : null,
         }).returning();
 

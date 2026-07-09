@@ -274,6 +274,10 @@ export const pipelines = pgTable("pipelines", {
     triggerConfig: jsonb("trigger_config").default('{}').notNull(), // { cron: "0 6 * * *" } | { event: "..." }
     stepsJson: jsonb("steps_json").default('[]').notNull(), // [{ name, agentRef?, taskType?, description?, gate? }]
     diagramMermaid: text("diagram_mermaid"), // always regenerated server-side from stepsJson — never hand-written
+    contextQuery: text("context_query"), // short query describing what Company Brain context this pipeline needs
+    contextResourceIds: jsonb("context_resource_ids").default('[]').notNull(), // explicit Company Brain resource IDs to load
+    contextTagFilters: jsonb("context_tag_filters").default('[]').notNull(), // optional normalized tags such as storage/customer/acme
+    contextMaxChars: integer("context_max_chars").default(8000).notNull(),
     runtimeRef: text("runtime_ref"), // local workflow id/path in the agent's own runtime
     status: text("status").default('draft').notNull(), // 'draft' | 'active' | 'paused' | 'retired'
     runCount: integer("run_count").default(0).notNull(),
@@ -295,6 +299,8 @@ export const pipelineRuns = pgTable("pipeline_runs", {
     status: text("status").default('running').notNull(), // 'running' | 'succeeded' | 'failed' | 'partial'
     summary: text("summary"),
     statsJson: jsonb("stats_json").default('{}').notNull(), // { taskIds: [], artifactIds: [], counts: {} }
+    contextSourceIds: jsonb("context_source_ids").default('[]').notNull(), // Company Brain source IDs used by this run
+    contextSnapshot: jsonb("context_snapshot").default('{}').notNull(), // compact context metadata; not full chain-of-thought
     startedAt: timestamp("started_at").defaultNow().notNull(),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
