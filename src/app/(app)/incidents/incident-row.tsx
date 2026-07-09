@@ -72,7 +72,7 @@ export function IncidentRow({ id, severity, taskId, summary, time, status }: Inc
                         <button
                             onClick={() => updateStatus("acknowledged")}
                             disabled={isPending || isAcknowledged}
-                            className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded border border-indigo-500/20 disabled:opacity-50"
+                            className="rounded border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-400/15 hover:text-cyan-200 disabled:opacity-50"
                         >
                             <span className="inline-flex items-center gap-1.5">
                                 <Eye className="w-3.5 h-3.5" />

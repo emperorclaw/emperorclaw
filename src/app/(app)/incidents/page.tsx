@@ -16,13 +16,14 @@ export default async function IncidentsPage() {
         .orderBy(desc(incidents.createdAt));
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col space-y-1">
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Needs Attention</h1>
-                <p className="text-sm text-zinc-500 font-medium">Items that need a human or lead agent to review.</p>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Attention</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Needs Attention</h1>
+                <p className="text-sm font-medium text-zinc-400">Operational items that need a human or lead agent to review.</p>
             </div>
 
-            <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm">
+            <div className="emperor-panel overflow-hidden rounded-2xl">
                 <div className="grid grid-cols-12 gap-4 p-4 border-b border-zinc-800/50 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
                     <div className="col-span-1">Level</div>
                     <div className="col-span-2">Task</div>

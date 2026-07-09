@@ -111,3 +111,29 @@ test("Directories scale with search-first navigation instead of card dumps", () 
   assertContains(agents, "Agent Directory", "agents should be framed as a scalable directory");
   assertNotContains(customers, "grid gap-6 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-6", "customers should not render a large card dump for every customer");
 });
+
+
+test("Operator polish pass keeps advanced pages consistent and removes dead-feeling interactions", () => {
+  const resources = read("src/app/(app)/resources/resources-client.tsx");
+  const approvals = read("src/app/(app)/approvals/approvals-client.tsx");
+  const attention = read("src/app/(app)/incidents/page.tsx");
+  const settings = read("src/app/(app)/settings/settings-client.tsx");
+  const agents = read("src/app/(app)/agents/agents-client.tsx");
+  const storage = read("src/app/(app)/artifacts/artifacts-manager.tsx");
+
+  assertContains(resources, "Publish note", "draft KB notes should have an obvious publish action");
+  assertContains(resources, "Move back to draft", "published KB notes should be reversible without hunting in metadata");
+  assertContains(resources, "Shared is separate", "KB copy should clarify published versus agent injection");
+
+  [approvals, attention, settings, storage].forEach((source) => {
+    assertContains(source, "max-w-[1800px]", "operator pages should use the standard wide workspace container");
+  });
+
+  assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
+  assertContains(attention, "Operational items", "attention should use clear operator copy");
+  assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
+  assertContains(agents, "Next actions for", "agent cards should expose useful per-agent actions");
+  assertNotContains(storage, "window.confirm", "storage destructive actions should use app-native confirmation dialogs");
+  assertContains(storage, "Delete folder?", "storage should confirm folder deletion in an app dialog");
+  assertContains(storage, "Delete file?", "storage should confirm file deletion in an app dialog");
+});

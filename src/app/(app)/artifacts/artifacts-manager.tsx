@@ -257,6 +257,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [isSavingFolder, setIsSavingFolder] = useState(false);
     const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
     const [previewDialogTab, setPreviewDialogTab] = useState("preview");
+    const [deleteConfirm, setDeleteConfirm] = useState<null | { type: "folder" | "file"; id: string; title: string; description: string }>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [csvEditorRows, setCsvEditorRows] = useState<string[][]>([]);
     const [csvRawDraft, setCsvRawDraft] = useState("");
     const [csvSourceText, setCsvSourceText] = useState("");
@@ -666,11 +668,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         }
     }
 
-    async function handleDeleteFolder(folderId: string) {
-        if (!window.confirm("Delete this folder and hide everything inside it?")) {
-            return;
-        }
+    function requestDeleteFolder(folderId: string) {
+        setDeleteConfirm({
+            type: "folder",
+            id: folderId,
+            title: "Delete folder?",
+            description: "This archives the folder and hides everything inside it from Storage and agent context.",
+        });
+    }
 
+    async function deleteFolder(folderId: string) {
         try {
             const response = await fetch(`/api/ui/folders/${folderId}`, {
                 method: "DELETE",
@@ -938,11 +945,16 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         }
     }
 
-    async function handleDeleteArtifact(artifactId: string) {
-        if (!window.confirm("Delete this file from storage?")) {
-            return;
-        }
+    function requestDeleteArtifact(artifactId: string) {
+        setDeleteConfirm({
+            type: "file",
+            id: artifactId,
+            title: "Delete file?",
+            description: "This archives the file from Storage. Agents will no longer receive it as available evidence.",
+        });
+    }
 
+    async function deleteArtifact(artifactId: string) {
         try {
             const response = await fetch(`/api/ui/artifacts/${artifactId}/delete`, {
                 method: "DELETE",
@@ -958,6 +970,21 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             toast.success("File deleted");
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Unable to delete file");
+        }
+    }
+
+    async function handleConfirmDelete() {
+        if (!deleteConfirm || isDeleting) return;
+        setIsDeleting(true);
+        try {
+            if (deleteConfirm.type === "folder") {
+                await deleteFolder(deleteConfirm.id);
+            } else {
+                await deleteArtifact(deleteConfirm.id);
+            }
+            setDeleteConfirm(null);
+        } finally {
+            setIsDeleting(false);
         }
     }
 
@@ -1030,7 +1057,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         }}>
                             Edit Properties
                         </ContextMenuItem>
-                        <ContextMenuItem variant="destructive" onClick={() => void handleDeleteFolder(folder.id)}>
+                        <ContextMenuItem variant="destructive" onClick={() => requestDeleteFolder(folder.id)}>
                             Delete Folder
                         </ContextMenuItem>
                     </>
@@ -1055,7 +1082,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 }}>
                     Edit Properties
                 </ContextMenuItem>
-                <ContextMenuItem variant="destructive" onClick={() => void handleDeleteArtifact(artifact.id)}>
+                <ContextMenuItem variant="destructive" onClick={() => requestDeleteArtifact(artifact.id)}>
                     Delete File
                 </ContextMenuItem>
             </>
@@ -1106,7 +1133,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         : [{ id: ROOT_ID, name: "Root", path: "" }];
 
     return (
-        <div className="flex h-full flex-col gap-6">
+        <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-6">
             <div className="space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-2">
@@ -1333,7 +1360,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                         beginCreateFolderAt(folder);
                                                     }}>New Folder Here</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
-                                                    <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteFolder(folder.id)}>Delete Folder</DropdownMenuItem>
+                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteFolder(folder.id)}>Delete Folder</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
@@ -1365,7 +1392,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}>Preview</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
-                                                    <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteArtifact(artifact.id)}>Delete File</DropdownMenuItem>
+                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteArtifact(artifact.id)}>Delete File</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
@@ -1494,7 +1521,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         hasChanges={hasFolderChanges}
                                         onDraftChange={setFolderDraft}
                                         onSave={() => void handleSaveFolder()}
-                                        onDelete={() => void handleDeleteFolder(selectedFolder.id)}
+                                        onDelete={() => requestDeleteFolder(selectedFolder.id)}
                                     />
                                 )}
                                 {selectedEntry?.type === "artifact" && artifactDetail && (
@@ -1519,7 +1546,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         onSaveLocation={() => void handleSaveArtifactLocation()}
                                         onReplace={() => replaceInputRef.current?.click()}
                                         onDownload={() => handleDownloadArtifact(artifactDetail.id)}
-                                        onDelete={() => void handleDeleteArtifact(artifactDetail.id)}
+                                        onDelete={() => requestDeleteArtifact(artifactDetail.id)}
                                         onOpenLargePreview={() => {
                                             setPreviewDialogTab("preview");
                                             setIsPreviewDialogOpen(true);
@@ -1529,6 +1556,27 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             </div>
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={Boolean(deleteConfirm)} onOpenChange={(open) => {
+                if (!open && !isDeleting) setDeleteConfirm(null);
+            }}>
+                <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{deleteConfirm?.title || "Delete item?"}</DialogTitle>
+                        <DialogDescription className="text-zinc-400">
+                            {deleteConfirm?.description || "This action archives the selected Storage item."}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteConfirm(null)} disabled={isDeleting} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
+                            Cancel
+                        </Button>
+                        <Button onClick={() => void handleConfirmDelete()} disabled={isDeleting} className="bg-rose-500 text-white hover:bg-rose-400">
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -2560,7 +2608,7 @@ function renderArtifactIcon(artifact: Pick<ArtifactSummary, "contentType" | "ori
 
     if (contentType.includes("json") || name.endsWith(".json")) return <FileJson2 className="size-4 text-sky-300" />;
     if (contentType.includes("csv") || name.endsWith(".csv") || name.endsWith(".xlsx") || name.endsWith(".xls")) return <FileSpreadsheet className="size-4 text-emerald-300" />;
-    if (contentType.includes("markdown") || name.endsWith(".md")) return <FileCode2 className="size-4 text-indigo-300" />;
+    if (contentType.includes("markdown") || name.endsWith(".md")) return <FileCode2 className="size-4 text-cyan-300" />;
     if (contentType.includes("image/")) return <FileImage className="size-4 text-rose-300" />;
     if (contentType.includes("pdf") || name.endsWith(".pdf")) return <FileText className="size-4 text-red-300" />;
     if (name.endsWith(".zip") || name.endsWith(".tar") || name.endsWith(".gz")) return <FileArchive className="size-4 text-amber-300" />;

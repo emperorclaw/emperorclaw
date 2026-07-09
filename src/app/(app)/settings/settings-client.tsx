@@ -111,7 +111,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
     };
 
     return (
-        <div className="mx-auto max-w-6xl space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
             <header className="emperor-panel rounded-[2rem] p-6">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                     <div>

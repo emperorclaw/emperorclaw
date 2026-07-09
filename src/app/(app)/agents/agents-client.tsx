@@ -119,18 +119,23 @@ function AgentDetail({ agent }: { agent: AgentDirectoryItem }) {
             </div>
 
             <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">What belongs here</div>
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
-                    Keep stable identity, role, memory, and runtime health on the agent. Put project rules,
-                    customer-specific process, and shared credentials in Knowledge & Rules.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-cyan-300">
-                    <Link href="/resources" className="hover:text-cyan-200">Open Knowledge & Rules</Link>
-                    <Link href="/docs/v1.1/hermes-runtime" className="hover:text-cyan-200">Hermes guide</Link>
-                    <Link href="/docs/v1.1/openclaw-agents" className="hover:text-cyan-200">OpenClaw guide</Link>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Next actions for {agent.name}</div>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <ActionCard href={`/agents/${agent.id}`} title="Full profile" description="Memory, sessions, messages, and runtime evidence." />
+                    <ActionCard href="/resources" title="Rules and knowledge" description="Scoped doctrine this agent can consume during work." />
+                    <ActionCard href="/docs/v1.1/hermes-runtime" title="Runtime setup" description="Hermes/OpenClaw bridge expectations and setup notes." />
                 </div>
             </div>
         </main>
+    );
+}
+
+function ActionCard({ href, title, description }: { href: string; title: string; description: string }) {
+    return (
+        <Link href={href} className="group rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 transition-colors hover:border-cyan-400/35 hover:bg-cyan-400/10">
+            <span className="block text-sm font-semibold text-zinc-100 group-hover:text-cyan-100">{title}</span>
+            <span className="mt-1 block text-xs leading-5 text-zinc-400">{description}</span>
+        </Link>
     );
 }
 
