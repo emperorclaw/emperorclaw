@@ -8,6 +8,7 @@ import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, Histor
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getArtifactClassLabel, getArtifactImportanceLabel } from "@/lib/artifact-taxonomy";
 import { cn } from "@/lib/utils";
 
@@ -239,6 +240,20 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     };
 
     const selectedProject = projectFilter === "All Projects" ? null : projectItems.find((project) => project.id === projectFilter) || null;
+    const customerOptions = [
+        { value: "All Customers", label: "All Customers", description: `${customers.length} customers` },
+        ...customers.map((customer) => ({ value: customer.id, label: customer.name, description: `${projectItems.filter((project) => project.customerId === customer.id).length} projects` })),
+    ];
+    const projectOptions = [
+        { value: "All Projects", label: "All Projects", description: `${projectItems.length} projects` },
+        ...projectItems
+            .filter((project) => customerFilter === "All Customers" ? true : project.customerId === customerFilter)
+            .map((project) => ({ value: project.id, label: project.goal, description: customers.find((customer) => customer.id === project.customerId)?.name || "No customer" })),
+    ];
+    const agentOptions = [
+        { value: "All Agents", label: "All Agents", description: `${agents.length} agents` },
+        ...agents.map((agent) => ({ value: agent.id, label: agent.name, description: agent.role || "Agent" })),
+    ];
 
     const openCreateProject = () => {
         setMutationError(null);
@@ -439,27 +454,43 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                             <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
                         </div>
-                        <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
-                            <option value="All Customers">All Customers</option>
-                            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                        </select>
-                        <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
-                            <option value="All Projects">All Projects</option>
-                            {projectItems
-                                .filter(p => customerFilter === "All Customers" ? true : p.customerId === customerFilter)
-                                .map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)
-                            }
-                        </select>
+                        <SearchableSelect
+                            value={customerFilter}
+                            options={customerOptions}
+                            placeholder="All Customers"
+                            searchPlaceholder="Search customers..."
+                            onChange={(nextCustomerId) => {
+                                setCustomerFilter(nextCustomerId);
+                                if (
+                                    projectFilter !== "All Projects" &&
+                                    nextCustomerId !== "All Customers" &&
+                                    projectItems.find((project) => project.id === projectFilter)?.customerId !== nextCustomerId
+                                ) {
+                                    setProjectFilter("All Projects");
+                                }
+                            }}
+                        />
+                        <SearchableSelect
+                            value={projectFilter}
+                            options={projectOptions}
+                            placeholder="All Projects"
+                            searchPlaceholder="Search projects..."
+                            onChange={setProjectFilter}
+                            className="min-w-[280px]"
+                        />
                     </div>
                     <details className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2">
                         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
                             Advanced filters and project actions
                         </summary>
                         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-3">
-                            <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60">
-                                <option value="All Agents">All Agents</option>
-                                {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                            </select>
+                            <SearchableSelect
+                                value={agentFilter}
+                                options={agentOptions}
+                                placeholder="All Agents"
+                                searchPlaceholder="Search agents..."
+                                onChange={setAgentFilter}
+                            />
                             <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
                                 <Filter className="h-4 w-4" />
                                 Use agent filters only when a board has too much active work.
