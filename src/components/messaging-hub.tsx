@@ -77,7 +77,7 @@ export function MessagingHub({
     return (
         <div className="flex-1 flex overflow-hidden">
             {/* Sidebar */}
-            <div className="w-80 border-r border-zinc-800 flex flex-col bg-zinc-950/40">
+            <div className="flex w-80 flex-col border-r border-zinc-800/80 bg-zinc-950/70">
                 <div className="p-4 border-b border-zinc-800">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -86,7 +86,7 @@ export function MessagingHub({
                             placeholder="Filter agents..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-4 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                         />
                     </div>
                 </div>
@@ -99,14 +99,14 @@ export function MessagingHub({
                             className={cn(
                                 "w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all group",
                                 selectedAgentId === null
-                                    ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm"
-                                    : "hover:bg-zinc-900 border border-transparent"
+                                    ? "border border-cyan-400/30 bg-cyan-400/10"
+                                    : "border border-transparent hover:bg-zinc-900/70"
                             )}
                         >
                             <div className={cn(
                                 "w-10 h-10 rounded-xl flex items-center justify-center border transition-colors",
                                 selectedAgentId === null
-                                    ? "bg-indigo-500/20 border-indigo-400/30 text-indigo-400"
+                                    ? "bg-cyan-400/15 border-cyan-400/35 text-cyan-300"
                                     : "bg-zinc-800 border-zinc-700 text-zinc-500 group-hover:text-zinc-300"
                             )}>
                                 <Users className="w-5 h-5" />
@@ -114,7 +114,7 @@ export function MessagingHub({
                             <div className="flex flex-col">
                                 <span className={cn(
                                     "text-sm font-semibold tracking-tight",
-                                    selectedAgentId === null ? "text-indigo-100" : "text-zinc-300"
+                                    selectedAgentId === null ? "text-cyan-100" : "text-zinc-300"
                                 )}>
                                     Team Channel
                                 </span>
@@ -133,8 +133,8 @@ export function MessagingHub({
                                 className={cn(
                                     "w-full text-left p-3 rounded-xl flex items-start gap-3 transition-all group",
                                     selectedAgentId === thread.agentId
-                                        ? "bg-indigo-600/10 border border-indigo-500/20 shadow-sm"
-                                        : "hover:bg-zinc-900 border border-transparent"
+                                        ? "border border-cyan-400/30 bg-cyan-400/10"
+                                        : "border border-transparent hover:bg-zinc-900/70"
                                 )}
                             >
                                 <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800 relative shadow-inner shrink-0">
@@ -153,7 +153,7 @@ export function MessagingHub({
                                         <div className="min-w-0">
                                             <span className={cn(
                                                 "block text-sm font-semibold tracking-tight truncate",
-                                                selectedAgentId === thread.agentId ? "text-indigo-100" : "text-zinc-300"
+                                                selectedAgentId === thread.agentId ? "text-cyan-100" : "text-zinc-300"
                                             )}>
                                                 {thread.agentName}
                                             </span>
@@ -163,7 +163,7 @@ export function MessagingHub({
                                         </div>
                                         <div className="flex flex-col items-end gap-1 shrink-0">
                                             {thread.unreadCount > 0 && (
-                                                <span className="min-w-5 rounded-full bg-indigo-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white shadow-sm">
+                                                <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
                                                     {thread.unreadCount}
                                                 </span>
                                             )}
@@ -180,7 +180,7 @@ export function MessagingHub({
                         ))}
 
                         {filteredThreads.length === 0 && (
-                            <div className="p-8 text-center bg-zinc-900/40 rounded-xl border border-dashed border-zinc-800 mt-4">
+                            <div className="mt-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8 text-center">
                                 <div className="text-sm text-zinc-500">No agents found.</div>
                             </div>
                         )}
@@ -189,16 +189,16 @@ export function MessagingHub({
             </div>
 
             {/* Chat Content */}
-            <div className="flex-1 flex flex-col bg-zinc-950 relative overflow-hidden">
+            <div className="relative flex flex-1 flex-col overflow-hidden bg-zinc-950/60">
                 {selectedAgentId === null ? (
                     <div className="h-full flex flex-col">
-                        <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/30">
+                        <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/70 p-5">
                             <div>
                                 <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
-                                    <Users className="w-5 h-5 text-indigo-400" />
+                                    <Users className="w-5 h-5 text-cyan-400" />
                                     Team Channel
                                 </h1>
-                                <p className="text-xs text-zinc-500 mt-0.5 font-medium">Shared channel — everyone on the team sees and can reply here.</p>
+                                <p className="mt-0.5 text-xs font-medium text-zinc-500">Shared channel — everyone on the team sees and can reply here.</p>
                             </div>
                         </div>
                         <div className="flex-1 overflow-hidden relative">
