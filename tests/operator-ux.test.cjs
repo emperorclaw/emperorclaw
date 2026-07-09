@@ -101,6 +101,9 @@ test("Directories scale with search-first navigation instead of card dumps", () 
   const searchableSelect = read("src/components/ui/searchable-select.tsx");
 
   assertContains(searchableSelect, "SearchableSelect", "project filters should use a reusable searchable combobox");
+  assertContains(searchableSelect, "pointerdown", "searchable combobox should close on outside click");
+  assertContains(searchableSelect, "Escape", "searchable combobox should close on escape");
+  assertNotContains(searchableSelect, "onBlur", "searchable combobox should not close when focus moves into its own search input");
   assertContains(projects, "SearchableSelect", "projects should use searchable customer/project/agent filters");
   assertContains(customers, "Search customers", "customers should have directory search");
   assertContains(customers, "Customer Directory", "customers should be framed as a scalable directory");
