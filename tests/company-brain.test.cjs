@@ -70,10 +70,10 @@ test("Company Brain UI and MCP API routes exist", () => {
 
 test("Knowledge & Rules UI keeps Company Brain advanced concepts operator-friendly", () => {
   const source = read("src/app/(app)/resources/resources-client.tsx");
-  ["Knowledge & Rules", "Vault explorer", "Reading", "Source", "Properties", "Local graph", "Linked mentions", "customerNames", "projectNames", "agentNames", "Send to matching agents", "drafts", "status: draft"].forEach((needle) => {
+  ["Knowledge & Rules", "Vault explorer", "Reading", "Source", "Properties", "Local graph", "Linked mentions", "customerNames", "projectNames", "agentNames", "Send to matching agents", "drafts", "status: draft", "Delete note", "createLinkedResource", "selectAdjacentResource", "UnresolvedGraphNode", "Graph connections"].forEach((needle) => {
     assertContains(source, needle, `resources-client should include ${needle}`);
   });
-  ["Brain Feed", "Backlinks", "Company Brain</h1>", "Suggest an update", "Add to Review Queue", "Review Queue", "Agent suggestions", "Advanced relationships", "prefers-reduced-motion"].forEach((needle) => {
+  ["Brain Feed", "Backlinks", "Company Brain</h1>", "Suggest an update", "Add to Review Queue", "Review Queue", "Agent suggestions", "Advanced relationships", "prefers-reduced-motion", "Vault settings", "More actions"].forEach((needle) => {
     assert.equal(source.includes(needle), false, `resources-client should not expose ${needle} as primary UI`);
   });
 });

@@ -10,11 +10,10 @@ import {
   ChevronDown,
   Edit3,
   FileText,
-  MoreVertical,
   Plus,
   RefreshCw,
   Search,
-  SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
@@ -44,6 +43,7 @@ type BrainTag = { id: string; tag: string; resourceId: string };
 type BrainVersion = { id: string; configText: string; changeSummary: string | null; createdAt: string | Date; createdByType: string };
 type GraphNode = { id: string; label: string; scopeType: string; resourceType: string; isShared: boolean; tags: string[] };
 type GraphEdge = { id: string; source: string; target: string | null; label: string; unresolved: boolean };
+type UnresolvedGraphNode = GraphNode & { unresolved: true };
 
 type BrainInsights = {
   outgoing: BrainLink[];
@@ -188,6 +188,43 @@ export default function ResourcesClient({
     toast.success("Knowledge rule created");
   }
 
+  async function createLinkedResource() {
+    const parentTitle = selectedResource ? (selectedResource.displayName || selectedResource.name) : "Company Operating Doctrine";
+    const title = "New Linked Note";
+    const response = await fetch("/api/resources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scopeType: selectedResource?.scopeType || "company",
+        scopeId: selectedResource?.scopeType === "company" ? null : selectedResource?.scopeId || null,
+        provider: "knowledge",
+        resourceType: "knowledge_base",
+        name: slugifyResourceKey(title),
+        displayName: title,
+        configText: `---\nscope: ${selectedResource?.scopeType || "company"}\ntype: knowledge-note\nstatus: draft\nowner: operator\ntags:\n  - knowledge\n---\n\n# ${title}\n\nShort reusable note.\n\n## Related\n\n- [[${parentTitle}]]`,
+        isShared: false,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) return toast.error(body.error || "Failed to create linked note");
+    setResources((current) => [body.resource, ...current]);
+    setSelectedResourceId(body.resource.id);
+    setMode("edit");
+    toast.success("Linked note created");
+  }
+
+  function selectAdjacentResource(direction: "previous" | "next") {
+    if (!selectedResourceId || filteredResources.length === 0) return;
+    const index = filteredResources.findIndex((resource) => resource.id === selectedResourceId);
+    if (index < 0) {
+      setSelectedResourceId(filteredResources[0].id);
+      return;
+    }
+    const offset = direction === "previous" ? -1 : 1;
+    const nextIndex = (index + offset + filteredResources.length) % filteredResources.length;
+    setSelectedResourceId(filteredResources[nextIndex].id);
+  }
+
   async function saveSelectedResource() {
     if (!selectedResource || isSaving) return;
     setIsSaving(true);
@@ -220,12 +257,13 @@ export default function ResourcesClient({
   }
 
   async function archiveSelectedResource() {
-    if (!selectedResource || !confirm("Archive this Knowledge & Rules entry?")) return;
+    if (!selectedResource || !confirm("Delete this Knowledge & Rules note? It will be archived and hidden from agents.")) return;
     const response = await fetch(`/api/resources/${selectedResource.id}`, { method: "DELETE" });
-    if (!response.ok) return toast.error("Failed to archive rule");
-    setResources((current) => current.filter((resource) => resource.id !== selectedResource.id));
-    setSelectedResourceId(resources.find((resource) => resource.id !== selectedResource.id)?.id || null);
-    toast.success("Knowledge rule archived");
+    if (!response.ok) return toast.error("Failed to delete note");
+    const remaining = resources.filter((resource) => resource.id !== selectedResource.id);
+    setResources(remaining);
+    setSelectedResourceId(remaining[0]?.id || null);
+    toast.success("Knowledge note deleted");
   }
 
   return (
@@ -235,16 +273,18 @@ export default function ResourcesClient({
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">
               <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
-              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New linked note" onClick={createResource}><Plus className="h-4 w-4" /></button>
+              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New linked note" onClick={createLinkedResource}><Plus className="h-4 w-4" /></button>
               <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
             </div>
-            <button className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Vault settings"><SlidersHorizontal className="h-4 w-4" /></button>
+            <button onClick={archiveSelectedResource} disabled={!selectedResource} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40">
+              <Trash2 className="h-3.5 w-3.5" /> Delete note
+            </button>
           </div>
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex items-center gap-1 text-zinc-600">
-                <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
-                <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("previous")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("next")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
                 <span>Knowledge & Rules</span>
@@ -257,7 +297,7 @@ export default function ResourcesClient({
               <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
                 <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
-              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="More actions"><MoreVertical className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className="rounded p-1 text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Delete note"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
           <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
@@ -377,7 +417,7 @@ export default function ResourcesClient({
                         <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
                       </button>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
-                      <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Archive note</button>
+                      <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Delete note</button>
                     </div>
                   </details>
                   <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
@@ -412,7 +452,20 @@ function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; 
 
 
 function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
-  const nodes = graph.nodes.length ? graph.nodes.slice(0, 14) : [{ id: selectedId, label: "Current note", scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
+  const unresolvedNodes: UnresolvedGraphNode[] = graph.edges
+    .filter((edge) => !edge.target)
+    .slice(0, 8)
+    .map((edge) => ({
+      id: `unresolved:${edge.id}`,
+      label: edge.label,
+      scopeType: "unresolved",
+      resourceType: "knowledge_base",
+      isShared: false,
+      tags: [],
+      unresolved: true,
+    }));
+  const resolvedNodes = graph.nodes.length ? graph.nodes : [{ id: selectedId, label: "Current note", scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
+  const nodes = [...resolvedNodes, ...unresolvedNodes].slice(0, 18);
   const centerIndex = Math.max(0, nodes.findIndex((node) => node.id === selectedId));
   const positioned = nodes.map((node, index) => {
     if (index === centerIndex) return { node, x: 180, y: 230 };
@@ -422,7 +475,11 @@ function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges:
     return { node, x: 180 + Math.cos(angle) * radius, y: 230 + Math.sin(angle) * radius };
   });
   const byId = new Map(positioned.map((item) => [item.node.id, item]));
-  const edges = graph.edges.filter((edge) => edge.target && byId.has(edge.source) && byId.has(edge.target)).slice(0, 18);
+  const edges = graph.edges.map((edge) => ({
+    ...edge,
+    target: edge.target || `unresolved:${edge.id}`,
+  })).filter((edge) => byId.has(edge.source) && byId.has(edge.target)).slice(0, 24);
+  const connectedNodeIds = new Set(edges.flatMap((edge) => [edge.source, edge.target!]));
 
   return (
     <div className="relative h-full min-h-[360px] overflow-hidden bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.16),transparent_32%),#09090b]">
@@ -432,24 +489,39 @@ function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges:
             <stop offset="0%" stopColor="#a78bfa" stopOpacity="1" />
             <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.7" />
           </radialGradient>
+          <marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#71717a" opacity="0.9" />
+          </marker>
         </defs>
         {edges.map((edge) => {
           const source = byId.get(edge.source)!;
           const target = byId.get(edge.target!)!;
-          return <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="#3f3f46" strokeWidth="1" opacity="0.75" />;
-        })}
-        {positioned.map(({ node, x, y }) => {
-          const selected = node.id === selectedId;
+          const midX = (source.x + target.x) / 2;
+          const midY = (source.y + target.y) / 2;
           return (
-            <g key={node.id}>
-              <circle cx={x} cy={y} r={selected ? 8 : 4.5} fill={selected ? "url(#selected-node)" : node.isShared ? "#818cf8" : "#71717a"} />
-              <text x={x + 8} y={y + 4} fill={selected ? "#e9d5ff" : "#a1a1aa"} fontSize="9" className="select-none">{node.label.slice(0, 28)}</text>
+            <g key={edge.id}>
+              <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={edge.unresolved ? "#f59e0b" : "#818cf8"} strokeWidth="1.35" opacity="0.82" markerEnd="url(#graph-arrow)" />
+              <text x={midX + 3} y={midY - 3} fill={edge.unresolved ? "#fbbf24" : "#a5b4fc"} fontSize="7" className="select-none">{edge.label.slice(0, 18)}</text>
             </g>
           );
         })}
+        {positioned.map(({ node, x, y }) => {
+          const selected = node.id === selectedId;
+          const unresolved = "unresolved" in node;
+          const connected = connectedNodeIds.has(node.id);
+          return (
+            <g key={node.id}>
+              <circle cx={x} cy={y} r={selected ? 9 : connected ? 5.5 : 4.5} fill={selected ? "url(#selected-node)" : unresolved ? "#f59e0b" : node.isShared ? "#818cf8" : "#71717a"} stroke={connected ? "#e4e4e7" : "transparent"} strokeOpacity="0.35" />
+              <text x={x + 8} y={y + 4} fill={selected ? "#e9d5ff" : unresolved ? "#fde68a" : "#c4c4cc"} fontSize="9" className="select-none">{node.label.slice(0, 28)}</text>
+            </g>
+          );
+        })}
+        {edges.length === 0 && (
+          <text x="180" y="230" textAnchor="middle" fill="#71717a" fontSize="11">No graph connections yet</text>
+        )}
       </svg>
       <p className="absolute bottom-3 left-3 right-3 rounded-md border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] leading-4 text-zinc-500 backdrop-blur">
-        Local graph is generated from [[links]] and inferred title mentions.
+        Graph connections: {edges.length}. Local graph is generated from [[links]] and inferred title mentions. Amber nodes are unresolved links.
       </p>
     </div>
   );
