@@ -446,7 +446,7 @@ export function AgentDirectChat({
                         <div className="max-w-sm rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 p-6 text-center">
                             <div className="text-sm text-zinc-300 mb-2">No direct messages yet.</div>
                             <div className="text-xs text-zinc-500 leading-relaxed">
-                                Send an instruction here and OpenClaw should answer inside this agent&apos;s private thread.
+                                Send an instruction here and the connected agent should answer inside this private thread.
                             </div>
                         </div>
                     </div>
