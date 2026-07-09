@@ -191,10 +191,14 @@ export default async function DashboardPage() {
   const teamMessages = await getThreadMessages(companyId, teamThread.id, 50);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Control Plane</h1>
-        <p className="text-zinc-500 font-medium">System overview and active workforce telemetry.</p>
+    <div className="mx-auto max-w-[1800px] space-y-8 animate-in fade-in duration-500">
+      <div className="emperor-panel relative overflow-hidden rounded-[2rem] p-6">
+        <div className="pointer-events-none absolute inset-0 emperor-subtle-grid opacity-20" />
+        <div className="relative flex flex-col gap-3">
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Dashboard</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">Control Plane</h1>
+          <p className="max-w-3xl text-sm leading-6 text-zinc-400">System overview, active workforce telemetry, recent work, and team communication.</p>
+        </div>
       </div>
 
       {totalAgents === 0 && !currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
@@ -215,7 +219,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
         <div className="col-span-2 space-y-4">
           <h2 className="text-lg font-medium text-zinc-200">Recent Activity</h2>
-          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm">
+          <div className="emperor-panel overflow-hidden rounded-2xl">
             <div className="divide-y divide-zinc-800/50">
               {recentActivities.length === 0 ? (
                 <div className="p-4 text-sm text-zinc-500 text-center">No recent activity yet.</div>
@@ -239,7 +243,7 @@ export default async function DashboardPage() {
 
         <div className="space-y-4">
           <h2 className="text-lg font-medium text-zinc-200">Workforce Health</h2>
-          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-5 space-y-5 shadow-sm max-h-[400px] overflow-y-auto">
+          <div className="emperor-panel max-h-[400px] space-y-5 overflow-y-auto rounded-2xl p-5">
             {agentWorkload.length === 0 ? (
               <div className="text-sm text-zinc-500 text-center">No agents registered.</div>
             ) : (
@@ -259,7 +263,7 @@ export default async function DashboardPage() {
           </div>
 
           <h2 className="text-lg font-medium text-zinc-200">Automation</h2>
-          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-5 space-y-3 shadow-sm">
+          <div className="emperor-panel space-y-3 rounded-2xl p-5">
             {activePipelines.length === 0 ? (
               <div className="text-sm text-zinc-500">
                 No pipelines registered. Agents register recurring automation from their own runtimes.
@@ -278,7 +282,7 @@ export default async function DashboardPage() {
                 </div>
               ))
             )}
-            <Link href="/pipelines" className="block text-xs font-medium text-indigo-400 hover:text-indigo-300 pt-1">
+            <Link href="/pipelines" className="block pt-1 text-xs font-medium text-cyan-300 transition-colors hover:text-cyan-200">
               View all pipelines →
             </Link>
           </div>
@@ -289,11 +293,11 @@ export default async function DashboardPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-zinc-200">Team Channel</h2>
-            <Link href="/messages" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
+            <Link href="/messages" className="text-xs font-medium text-cyan-300 transition-colors hover:text-cyan-200">
               Open full channel →
             </Link>
           </div>
-          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden shadow-sm h-[480px]">
+          <div className="emperor-panel h-[480px] overflow-hidden rounded-2xl">
             <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} />
           </div>
         </div>
@@ -304,14 +308,14 @@ export default async function DashboardPage() {
 
 function KpiCard({ title, value, trend, trendLabel, alert, good }: { title: string, value: string, trend: string, trendLabel: string, alert?: boolean, good?: boolean }) {
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-5 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-zinc-700/50 transition-colors">
+    <div className="emperor-panel group relative flex h-36 flex-col justify-between overflow-hidden rounded-2xl p-5 transition-colors hover:border-zinc-700/80">
       {alert && <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-bl-full blur-xl" />}
-      {good && <div className="absolute top-0 right-0 w-16 h-16 bg-indigo-500/10 rounded-bl-full blur-xl" />}
+      {good && <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-500/10 rounded-bl-full blur-xl" />}
       <div className="text-sm font-medium text-zinc-500">{title}</div>
       <div>
         <div className="text-3xl font-semibold text-zinc-100 mt-2">{value}</div>
         <div className="text-xs mt-2 flex items-center space-x-1">
-          <span className={alert ? "text-red-400" : good ? "text-indigo-400" : "text-zinc-300"}>{trend}</span>
+          <span className={alert ? "text-red-400" : good ? "text-cyan-400" : "text-zinc-300"}>{trend}</span>
           <span className="text-zinc-600">{trendLabel}</span>
         </div>
       </div>
@@ -331,7 +335,7 @@ function ActivityRow({ kind, actorLabel, actor, title, detail, time, tone }: { k
     good: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
     warning: "bg-amber-500/15 text-amber-300 border-amber-500/25",
     critical: "bg-red-500/15 text-red-300 border-red-500/25",
-    info: "bg-indigo-500/15 text-indigo-300 border-indigo-500/25",
+    info: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
   }[tone];
 
   return (
@@ -370,7 +374,7 @@ function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: {
       </div>
       <div className="h-1.5 w-full bg-zinc-800/80 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-1000 ${!online ? 'bg-zinc-700' : warning ? 'bg-amber-500' : 'bg-indigo-500'}`}
+          className={`h-full rounded-full transition-all duration-1000 ${!online ? 'bg-zinc-700' : warning ? 'bg-amber-500' : 'bg-cyan-500'}`}
           style={{ width: `${load}%` }}
         />
       </div>
@@ -380,7 +384,7 @@ function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: {
           <div className="space-y-1">
             {workingOn.map((t) => (
               <div key={t.id} className="text-[10px] font-mono text-zinc-500 flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/50 animate-pulse" />
                 <span className="truncate">Working on: TASK-{t.id.substring(0, 8)} ({t.taskType})</span>
               </div>
             ))}

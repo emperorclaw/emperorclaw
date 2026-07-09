@@ -260,7 +260,7 @@ export function AgentTeamChat({
                     )}
                 </div>
                 <div className="flex items-center space-x-2">
-                    <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
+                    <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500" />
                     <span className="text-xs font-medium uppercase tracking-tight text-zinc-500">Live Feed</span>
                 </div>
             </div>
@@ -276,7 +276,7 @@ export function AgentTeamChat({
                                     type="button"
                                     onClick={loadOlderMessages}
                                     disabled={isLoadingOlder}
-                                    className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-indigo-500/40 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-cyan-500/40 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     {isLoadingOlder ? "Loading..." : "Load older messages"}
                                 </button>
@@ -325,7 +325,7 @@ export function AgentTeamChat({
                                                         <User className="h-4 w-4 text-zinc-400" />
                                                     </div>
                                                 ) : (
-                                                    <div className="h-8 w-8 overflow-hidden rounded-full border border-indigo-500/20 bg-indigo-500/10">
+                                                    <div className="h-8 w-8 overflow-hidden rounded-full border border-cyan-500/20 bg-cyan-500/10">
                                                         <img src={avatarSrc} className="h-full w-full object-cover" alt="" />
                                                     </div>
                                                 )
@@ -336,7 +336,7 @@ export function AgentTeamChat({
                                         <div className={cn("flex flex-col max-w-[75%]", isHuman ? "items-end" : "items-start")}>
                                             {/* Sender name — group-start only, agents only */}
                                             {!isContinuation && !isHuman && (
-                                                <span className="text-[10px] font-medium text-indigo-400 mb-1 ml-1">{getAgentName(senderId)}</span>
+                                                <span className="text-[10px] font-medium text-cyan-400 mb-1 ml-1">{getAgentName(senderId)}</span>
                                             )}
 
                                             <div className={cn(
@@ -371,7 +371,7 @@ export function AgentTeamChat({
                                                             />
                                                         ))}
                                                     </div>
-                                                    <span className="text-[10px] font-medium text-indigo-500">
+                                                    <span className="text-[10px] font-medium text-cyan-500">
                                                         {readByAgents.length === 1 ? `Read by ${readByAgents[0].name}` : `Read by ${readByAgents.length} agents`}
                                                     </span>
                                                 </div>
@@ -388,9 +388,9 @@ export function AgentTeamChat({
             {typingAgents.length > 0 && (
                 <div className="flex items-center gap-2 border-t border-zinc-800/60 px-4 py-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
                     <div className="flex gap-1">
-                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
-                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
-                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.3s]" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.15s]" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce" />
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                         {typingAgents.length === 1
@@ -409,7 +409,7 @@ export function AgentTeamChat({
                                 type="button"
                                 onClick={() => setMentionOpen(v => !v)}
                                 title="Mention an agent"
-                                className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-indigo-500/50 hover:text-indigo-400 text-zinc-500 transition-colors"
+                                className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
                             >
                                 <AtSign className="h-4 w-4" />
                             </button>
@@ -459,13 +459,13 @@ export function AgentTeamChat({
                             }}
                             placeholder="Message the team… (@ to mention)"
                             rows={1}
-                            className="flex-1 resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-32 overflow-y-auto"
+                            className="flex-1 resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-32 overflow-y-auto"
                             style={{ minHeight: "2.5rem" }}
                         />
                         <button
                             type="submit"
                             disabled={!draft.trim() || isSending}
-                            className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                             <Send className="h-4 w-4 text-white" />
                         </button>
@@ -490,7 +490,7 @@ function ParsedMessage({ text }: { text: string }) {
     };
 
     if (!sections.update && !sections.evidence && !sections.next) {
-        return <ChatMarkdown content={text} accent="indigo" />;
+        return <ChatMarkdown content={text} accent="cyan" />;
     }
 
     return (
@@ -498,21 +498,21 @@ function ParsedMessage({ text }: { text: string }) {
             {sections.update && (
                 <div className="space-y-1">
                     <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">Update</div>
-                    <ChatMarkdown content={sections.update[1].trim()} accent="indigo" />
+                    <ChatMarkdown content={sections.update[1].trim()} accent="cyan" />
                 </div>
             )}
             {sections.evidence && (
                 <div className="space-y-1">
                     <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">Evidence</div>
                     <div className="rounded border border-zinc-800/50 bg-zinc-950/50 p-3">
-                        <ChatMarkdown content={sections.evidence[1].trim()} accent="indigo" compact />
+                        <ChatMarkdown content={sections.evidence[1].trim()} accent="cyan" compact />
                     </div>
                 </div>
             )}
             {sections.next && (
                 <div className="space-y-1">
                     <div className="text-[10px] font-bold uppercase tracking-tighter text-zinc-500">Next</div>
-                    <ChatMarkdown content={sections.next[1].trim()} accent="indigo" />
+                    <ChatMarkdown content={sections.next[1].trim()} accent="cyan" />
                 </div>
             )}
         </div>
@@ -525,10 +525,10 @@ function ChatMarkdown({
     compact = false,
 }: {
     content: string;
-    accent: "indigo" | "emerald";
+    accent: "cyan" | "emerald";
     compact?: boolean;
 }) {
-    const accentText = accent === "emerald" ? "[&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300" : "[&_.prose_code]:text-indigo-300 [&_.prose_a]:text-indigo-300";
+    const accentText = accent === "emerald" ? "[&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300" : "[&_.prose_code]:text-cyan-300 [&_.prose_a]:text-cyan-300";
     const sizing = compact
         ? "[&_.prose]:text-xs [&_.prose_p]:mb-2 [&_.prose_ul]:mb-2 [&_.prose_ol]:mb-2 [&_.prose_pre]:mb-2"
         : "[&_.prose]:text-sm [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3";
