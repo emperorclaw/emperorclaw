@@ -41,15 +41,20 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     }
 
     return (
-        <div className="w-64 border-r border-zinc-800 bg-zinc-950/50 backdrop-blur-xl h-full flex flex-col">
-            <div className="p-6 flex items-center space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-                    <CustomLogo className="w-5 h-5 text-indigo-400" />
+        <aside className="flex h-full w-20 shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl md:w-72">
+            <div className="border-b border-white/10 p-5">
+                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20">
+                        <CustomLogo className="h-5 w-5 text-cyan-300" />
+                    </div>
+                    <div className="hidden min-w-0 md:block">
+                        <div className="truncate text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
+                        <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">Control Plane</div>
+                    </div>
                 </div>
-                <span className="font-semibold text-lg tracking-tight text-white">Emperor Claw</span>
             </div>
 
-            <nav className="flex-1 px-4 space-y-1 mt-4">
+            <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
                 {links.map((link) => {
                     const Icon = link.icon;
                     const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
@@ -58,50 +63,50 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                             key={link.name}
                             href={link.href}
                             className={cn(
-                                "flex items-center space-x-3 px-3 py-2 rounded-md transition-all duration-200 group text-sm font-medium",
+                                "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                                 isActive
-                                    ? "bg-zinc-800/80 text-white shadow-sm ring-1 ring-zinc-700/50"
-                                    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100"
+                                    ? "border border-cyan-400/20 bg-cyan-400/10 text-white shadow-sm shadow-cyan-950/20"
+                                    : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
                             )}
                         >
-                            <Icon className={cn("w-4 h-4", isActive ? "text-indigo-400" : "text-zinc-500 group-hover:text-zinc-300")} />
-                            <span>{link.name}</span>
+                            <Icon className={cn("h-4 w-4", isActive ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
+                            <span className="hidden truncate md:inline">{link.name}</span>
                         </Link>
                     );
                 })}
             </nav>
 
             {!isDocsPage && (
-                <div className="space-y-3 p-4 border-t border-zinc-800/80">
+                <div className="space-y-3 border-t border-white/10 p-4">
                     <WorkspaceTour />
                     <Link
                         href="/docs"
                         className={cn(
-                            "flex items-center space-x-3 px-3 py-2 rounded-md transition-all duration-200 group text-sm font-medium",
+                            "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                             pathname?.startsWith("/docs")
-                                ? "bg-zinc-800/80 text-white shadow-sm ring-1 ring-zinc-700/50"
-                                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100"
+                                ? "border border-cyan-400/20 bg-cyan-400/10 text-white"
+                                : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
                         )}
                     >
-                        <BookOpen className={cn("w-4 h-4", pathname?.startsWith("/docs") ? "text-indigo-400" : "text-zinc-500 group-hover:text-zinc-300")} />
-                        <span>Documentation</span>
+                        <BookOpen className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
+                        <span className="hidden md:inline">Documentation</span>
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <button className="w-full flex items-center space-x-3 px-3 py-2 rounded-md bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800/80 transition-colors text-left">
-                                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-300">
+                            <button className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]">
+                                <div className="grid h-9 w-9 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
                                     A
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="text-sm font-medium text-zinc-200">Admin</span>
+                                <div className="hidden min-w-0 flex-1 flex-col md:flex">
+                                    <span className="truncate text-sm font-medium text-zinc-100">Admin</span>
                                     <span className="text-xs text-zinc-500">owner</span>
                                 </div>
                             </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-56 bg-zinc-950 border-zinc-800 text-zinc-200">
+                        <DropdownMenuContent align="start" className="w-56 border-zinc-800 bg-zinc-950 text-zinc-200 shadow-2xl shadow-black/40">
                             <DropdownMenuItem asChild className="gap-2 text-zinc-200 focus:bg-zinc-900">
                                 <Link href="/settings">
-                                    <User className="w-4 h-4 text-zinc-400" />
+                                    <User className="h-4 w-4 text-zinc-400" />
                                     <span>Workspace Settings</span>
                                 </Link>
                             </DropdownMenuItem>
@@ -109,13 +114,13 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                                 className="gap-2 text-zinc-200 focus:bg-zinc-900"
                                 onClick={() => signOut({ callbackUrl: "/login" })}
                             >
-                                <LogOut className="w-4 h-4 text-zinc-400" />
+                                <LogOut className="h-4 w-4 text-zinc-400" />
                                 <span>Logout</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
             )}
-        </div>
+        </aside>
     );
 }
