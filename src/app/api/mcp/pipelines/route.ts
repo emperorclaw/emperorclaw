@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { pipelines, projects, customers } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { generateMermaid, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
+import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
 
 // GET /api/mcp/pipelines — list registered pipelines.
 // Filters: ?name= ?status= ?projectId=
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
             name, purpose, docMarkdown,
             trigger = "manual", triggerConfig = {},
             steps: rawSteps = [],
+            contextQuery, contextResourceIds, contextTagFilters, contextMaxChars,
             runtimeRef, projectId, customerId, agentId,
             status: requestedStatus,
         } = body;
@@ -115,6 +116,12 @@ export async function POST(req: NextRequest) {
         }
 
         const diagramMermaid = generateMermaid(trigger, triggerConfig, steps);
+        const contextConfig = parsePipelineContextConfig({
+            contextQuery,
+            contextResourceIds,
+            contextTagFilters,
+            contextMaxChars,
+        });
 
         const [existing] = await db.select().from(pipelines).where(
             and(eq(pipelines.companyId, companyId), eq(pipelines.name, name.trim()), isNull(pipelines.deletedAt))
@@ -143,6 +150,10 @@ export async function POST(req: NextRequest) {
                 triggerConfig,
                 stepsJson: steps,
                 diagramMermaid,
+                contextQuery: contextQuery !== undefined ? contextConfig.contextQuery : existing.contextQuery,
+                contextResourceIds: contextResourceIds !== undefined ? contextConfig.contextResourceIds : existing.contextResourceIds,
+                contextTagFilters: contextTagFilters !== undefined ? contextConfig.contextTagFilters : existing.contextTagFilters,
+                contextMaxChars: contextMaxChars !== undefined ? contextConfig.contextMaxChars : existing.contextMaxChars,
                 runtimeRef: runtimeRef ?? existing.runtimeRef,
                 projectId: projectId ?? existing.projectId,
                 customerId: customerId ?? existing.customerId,
@@ -161,6 +172,10 @@ export async function POST(req: NextRequest) {
                 triggerConfig,
                 stepsJson: steps,
                 diagramMermaid,
+                contextQuery: contextConfig.contextQuery,
+                contextResourceIds: contextConfig.contextResourceIds,
+                contextTagFilters: contextConfig.contextTagFilters,
+                contextMaxChars: contextConfig.contextMaxChars,
                 runtimeRef: runtimeRef ?? null,
                 projectId: projectId ?? null,
                 customerId: customerId ?? null,

@@ -621,11 +621,21 @@ export async function resolveCompanyBrainContext(input: {
   projectId?: string | null;
   agentId?: string | null;
   resourceIds?: string[];
+  tagFilters?: string[];
   maxChars?: number;
 }) {
   const maxChars = input.maxChars || 12000;
   const allResources = await listScopedResources({ companyId: input.companyId, status: "active" });
   const links = await db.select().from(resourceLinks).where(eq(resourceLinks.companyId, input.companyId));
+  const requestedTags = new Set((input.tagFilters || []).map((tag) => tag.replace(/^#/, "").trim()).filter(Boolean));
+  const tagRows = requestedTags.size > 0
+    ? await db.select().from(resourceTags).where(eq(resourceTags.companyId, input.companyId))
+    : [];
+  const resourcesMatchingTags = new Set(
+    tagRows
+      .filter((row) => requestedTags.has(row.tag))
+      .map((row) => row.resourceId)
+  );
   const selected = new Set(input.resourceIds || []);
   const selectedNeighbors = new Set<string>();
 
@@ -644,6 +654,7 @@ export async function resolveCompanyBrainContext(input: {
       (resource.scopeType === "agent" && resource.scopeId === input.agentId)
     )) priority = 2;
     else if (selected.has(resource.id)) priority = 3;
+    else if (resourcesMatchingTags.has(resource.id)) priority = 3;
     else if (selectedNeighbors.has(resource.id)) priority = 4;
     else if (
       resource.scopeType === "company" ||
@@ -680,6 +691,7 @@ export async function resolveCompanyBrainContext(input: {
     totalResources: resources.length,
     usedChars,
     maxChars,
+    tagFilters: Array.from(requestedTags),
   };
 }
 

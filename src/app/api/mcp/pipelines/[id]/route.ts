@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { generateMermaid, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
+import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
 
 async function findPipeline(companyId: string, id: string) {
     const [row] = await db.select().from(pipelines).where(
@@ -76,6 +76,23 @@ export async function PATCH(
         if (typeof body.runtimeRef === "string") updates.runtimeRef = body.runtimeRef;
         if (typeof body.summary === "string") updates.summary = body.summary;
         if (body.nextRunAt) updates.nextRunAt = new Date(body.nextRunAt);
+        if (
+            body.contextQuery !== undefined ||
+            body.contextResourceIds !== undefined ||
+            body.contextTagFilters !== undefined ||
+            body.contextMaxChars !== undefined
+        ) {
+            const contextConfig = parsePipelineContextConfig({
+                contextQuery: body.contextQuery ?? pipeline.contextQuery,
+                contextResourceIds: body.contextResourceIds ?? pipeline.contextResourceIds,
+                contextTagFilters: body.contextTagFilters ?? pipeline.contextTagFilters,
+                contextMaxChars: body.contextMaxChars ?? pipeline.contextMaxChars,
+            });
+            updates.contextQuery = contextConfig.contextQuery;
+            updates.contextResourceIds = contextConfig.contextResourceIds;
+            updates.contextTagFilters = contextConfig.contextTagFilters;
+            updates.contextMaxChars = contextConfig.contextMaxChars;
+        }
 
         let steps = Array.isArray(pipeline.stepsJson) ? pipeline.stepsJson as PipelineStep[] : [];
         let trigger = pipeline.trigger;

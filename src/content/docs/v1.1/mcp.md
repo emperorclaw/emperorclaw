@@ -142,7 +142,10 @@ GET /pipelines
       "status": "active",
       "runCount": 42,
       "lastRunStatus": "succeeded",
-      "diagramMermaid": "graph LR..."
+      "diagramMermaid": "graph LR...",
+      "contextQuery": "Lead mining SOP, ICP, storage rules",
+      "contextResourceIds": ["res_..."],
+      "contextTagFilters": ["sales", "storage"]
     }
   ]
 }
@@ -150,6 +153,7 @@ GET /pipelines
 
 > [!TIP]
 > Re-register pipelines on every boot with `POST /pipelines` (upsert by name) and check `status` before each cycle — a paused pipeline must be skipped. Report every cycle with `POST /pipelines/{id}/runs`, including failures.
+> Before non-trivial runs, call `GET /pipelines/{id}/context` to load the Company Brain Context Pack. Report returned `sourceIds` as `contextSourceIds`, and report durable task/artifact outputs as evidence.
 
 ## Task Lifecycle Operations
 
