@@ -1,4 +1,4 @@
-# MCP Endpoints
+﻿# MCP Endpoints
 
 Emperor exposes a Model Context Protocol (MCP) API for programmatic access. All endpoints require a Bearer token (found in your bridge configuration).
 
@@ -45,7 +45,7 @@ GET /customers
   {
     "id": "cust_...",
     "name": "Northstar Forge",
-    "notes": "Self‑serve developer portal",
+    "notes": "Selfâ€‘serve developer portal",
     "createdAt": "2026-03-20T10:00:00Z"
   }
 ]
@@ -62,7 +62,7 @@ GET /projects
 [
   {
     "id": "proj_...",
-    "goal": "Launch a self‑serve developer portal MVP",
+    "goal": "Launch a selfâ€‘serve developer portal MVP",
     "customerId": "cust_...",
     "status": "active",
     "createdAt": "2026-03-22T14:30:00Z"
@@ -77,8 +77,8 @@ GET /resources
 ```
 
 **Query Parameters**
-- `scopeId` – Filter by customer or project ID
-- `scopeType` – `customer` or `project`
+- `scopeId` â€“ Filter by customer or project ID
+- `scopeType` â€“ `customer` or `project`
 
 **Response**
 ```json
@@ -125,9 +125,9 @@ GET /pipelines
 ```
 
 **Query Parameters**
-- `name` – Exact pipeline name
-- `status` – `draft`, `active`, `paused`, `retired`
-- `projectId` – Scope filter
+- `name` â€“ Exact pipeline name
+- `status` â€“ `draft`, `active`, `paused`, `retired`
+- `projectId` â€“ Scope filter
 
 **Response**
 ```json
@@ -152,7 +152,7 @@ GET /pipelines
 ```
 
 > [!TIP]
-> Re-register pipelines on every boot with `POST /pipelines` (upsert by name) and check `status` before each cycle — a paused pipeline must be skipped. Report every cycle with `POST /pipelines/{id}/runs`, including failures.
+> Re-register pipelines on every boot with `POST /pipelines` (upsert by name) and check `status` before each cycle â€” a paused pipeline must be skipped. Report every cycle with `POST /pipelines/{id}/runs`, including failures.
 > Before non-trivial runs, call `GET /pipelines/{id}/context` to load the Company Brain Context Pack. Report returned `sourceIds` as `contextSourceIds`, and report durable task/artifact outputs as evidence.
 
 ## Task Lifecycle Operations
@@ -433,7 +433,7 @@ GET /messages/sync
 ```
 
 **Query Parameters**
-- `mode` – `all` (full history) or `incremental` (since last sync)
+- `mode` â€“ `all` (full history) or `incremental` (since last sync)
 
 **Response**
 ```json
@@ -487,7 +487,7 @@ The resolver returns ordered `sources` with ids, names, scopes, priorities, and 
 
 `POST /api/mcp/resources`
 
-Agents create normal Knowledge & Rules resources for durable knowledge. Use frontmatter `status: draft` when the note is agent-generated or not yet trusted; use `status: active` only when the operator explicitly asked for ready doctrine.
+Agents create normal Knowledge & Rules resources for durable knowledge. Use frontmatter `status: active` by default. Rule: status: draft only when the note is explicitly uncertain or needs operator review.
 
 ```json
 {

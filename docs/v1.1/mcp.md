@@ -1,4 +1,4 @@
-# MCP Endpoints
+﻿# MCP Endpoints
 
 Emperor exposes a Model Context Protocol (MCP) API for programmatic access. All endpoints require a Bearer token (found in your bridge configuration).
 
@@ -45,7 +45,7 @@ GET /customers
   {
     "id": "cust_...",
     "name": "Northstar Forge",
-    "notes": "Self‑serve developer portal",
+    "notes": "Selfâ€‘serve developer portal",
     "createdAt": "2026-03-20T10:00:00Z"
   }
 ]
@@ -62,7 +62,7 @@ GET /projects
 [
   {
     "id": "proj_...",
-    "goal": "Launch a self‑serve developer portal MVP",
+    "goal": "Launch a selfâ€‘serve developer portal MVP",
     "customerId": "cust_...",
     "status": "active",
     "createdAt": "2026-03-22T14:30:00Z"
@@ -97,8 +97,8 @@ GET /resources
 ```
 
 **Query Parameters**
-- `scopeId` – Filter by customer, project, or agent ID
-- `scopeType` – `customer`, `project`, or `agent`
+- `scopeId` â€“ Filter by customer, project, or agent ID
+- `scopeType` â€“ `customer`, `project`, or `agent`
 
 **Response**
 ```json
@@ -161,11 +161,11 @@ POST /resources
 }
 ```
 
-#### Force‑Sharing Injection
-- **Company‑scoped** (`scopeType: "company"`, `isShared: true`) → Injected to all agents
-- **Agent‑scoped** (`scopeType: "agent"`, `isShared: true`) → Injected only to that specific agent
-- **Customer/Project‑scoped** (`isShared: true`) → Injected when agent is working in that context
-- Bridge always injects force‑shared resources in every message, not just when asked about resources.
+#### Forceâ€‘Sharing Injection
+- **Companyâ€‘scoped** (`scopeType: "company"`, `isShared: true`) â†’ Injected to all agents
+- **Agentâ€‘scoped** (`scopeType: "agent"`, `isShared: true`) â†’ Injected only to that specific agent
+- **Customer/Projectâ€‘scoped** (`isShared: true`) â†’ Injected when agent is working in that context
+- Bridge always injects forceâ€‘shared resources in every message, not just when asked about resources.
 
 ### Update Resource (Force Sharing)
 
@@ -181,7 +181,7 @@ PATCH /resources/{resourceId}
 }
 ```
 
-**Force‑Sharing Behavior:** Setting `isShared: true` causes the bridge to automatically inject the resource content into agent prompts (subject to scope filtering). The bridge injects force‑shared resources in every message, not just when asked about resources.
+**Forceâ€‘Sharing Behavior:** Setting `isShared: true` causes the bridge to automatically inject the resource content into agent prompts (subject to scope filtering). The bridge injects forceâ€‘shared resources in every message, not just when asked about resources.
 
 ### Send Message
 
@@ -208,7 +208,7 @@ GET /messages/sync
 ```
 
 **Query Parameters**
-- `mode` – `all` (full history) or `incremental` (since last sync)
+- `mode` â€“ `all` (full history) or `incremental` (since last sync)
 
 **Response**
 ```json
@@ -269,4 +269,4 @@ The resolver returns ordered source ids/names/scopes/content so bridges can cite
 
 `POST /api/mcp/resources`
 
-Agents create normal Knowledge & Rules resources for durable knowledge. Use frontmatter `status: draft` when the note is agent-generated or not yet trusted; use `status: active` only when the operator explicitly asked for ready doctrine.
+Agents create normal Knowledge & Rules resources for durable knowledge. Use frontmatter `status: active` by default. Rule: status: draft only when the note is explicitly uncertain or needs operator review.
