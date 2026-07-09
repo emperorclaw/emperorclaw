@@ -15,7 +15,6 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
-  X,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
@@ -43,18 +42,6 @@ type ScopeOption = { id: string; name: string };
 type BrainLink = { id: string; sourceResourceId: string; targetResourceId: string | null; linkText: string; linkType: string };
 type BrainTag = { id: string; tag: string; resourceId: string };
 type BrainVersion = { id: string; configText: string; changeSummary: string | null; createdAt: string | Date; createdByType: string };
-type BrainProposal = {
-  id: string;
-  title: string;
-  action: string;
-  scopeType: string;
-  scopeId: string | null;
-  targetResourceId: string | null;
-  proposedText: string;
-  reason: string | null;
-  status: string;
-  createdAt: string | Date;
-};
 type GraphNode = { id: string; label: string; scopeType: string; resourceType: string; isShared: boolean; tags: string[] };
 type GraphEdge = { id: string; source: string; target: string | null; label: string; unresolved: boolean };
 
@@ -76,8 +63,8 @@ function scopeLabel(scopeType: string) {
   return { company: "Company", customer: "Customer", project: "Project", agent: "Agent" }[scopeType] || scopeType;
 }
 
-function dateLabel(value: string | Date) {
-  return new Date(value).toLocaleString();
+function noteStatus(content: string) {
+  return content.match(/^---[\s\S]*?\nstatus:\s*([A-Za-z0-9_-]+)[\s\S]*?\n---/m)?.[1]?.toLowerCase() || "active";
 }
 
 export default function ResourcesClient({
@@ -95,19 +82,17 @@ export default function ResourcesClient({
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
   const [mode, setMode] = useState<"edit" | "preview">("preview");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "shared">("all");
+  const [filter, setFilter] = useState<"all" | "shared" | "drafts">("all");
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
   const [draftContent, setDraftContent] = useState(initialResources[0]?.configText || "");
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
   const [draftScopeId, setDraftScopeId] = useState(initialResources[0]?.scopeId || "");
   const [draftShared, setDraftShared] = useState(Boolean(initialResources[0]?.isShared));
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
-  const [proposals, setProposals] = useState<BrainProposal[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
-  const pendingProposals = useMemo(() => proposals.filter((proposal) => proposal.status === "pending"), [proposals]);
 
   const filteredResources = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -115,6 +100,7 @@ export default function ResourcesClient({
       const haystack = `${resource.name} ${resource.displayName || ""} ${resource.configText}`.toLowerCase();
       if (normalized && !haystack.includes(normalized)) return false;
       if (filter === "shared") return resource.isShared;
+      if (filter === "drafts") return noteStatus(resource.configText || "") === "draft";
       return true;
     });
   }, [filter, query, resources]);
@@ -152,10 +138,6 @@ export default function ResourcesClient({
     void loadBrainInsights(selectedResource.id);
   }, [selectedResource]);
 
-  useEffect(() => {
-    void loadProposals();
-  }, []);
-
   async function loadBrainInsights(resourceId: string) {
     try {
       const [backlinksRes, graphRes] = await Promise.all([
@@ -177,14 +159,6 @@ export default function ResourcesClient({
     }
   }
 
-  async function loadProposals() {
-    const response = await fetch("/api/resources/proposals?status=pending", { cache: "no-store" });
-    if (response.ok) {
-      const body = await response.json();
-      setProposals(body.proposals || []);
-    }
-  }
-
   async function refreshResources() {
     const response = await fetch("/api/resources", { cache: "no-store" });
     if (response.ok) setResources((await response.json()).resources || []);
@@ -202,7 +176,7 @@ export default function ResourcesClient({
         resourceType: "knowledge_base",
         name: slugifyResourceKey(title),
         displayName: title,
-        configText: "# New Knowledge Rule\n\nWrite reusable company knowledge, SOPs, customer context, or agent rules here.",
+        configText: "---\nscope: company\ntype: sop\nstatus: draft\nowner: operator\ntags:\n  - knowledge\n---\n\n# New Knowledge Rule\n\nWrite one reusable rule, SOP, customer context note, or agent instruction here.\n\n## Rule\n\n- \n\n## Related\n\n- [[Company Operating Doctrine]]",
         isShared: false,
       }),
     });
@@ -252,20 +226,6 @@ export default function ResourcesClient({
     setResources((current) => current.filter((resource) => resource.id !== selectedResource.id));
     setSelectedResourceId(resources.find((resource) => resource.id !== selectedResource.id)?.id || null);
     toast.success("Knowledge rule archived");
-  }
-
-  async function reviewProposal(proposal: BrainProposal, status: "approved" | "rejected" | "merged") {
-    const response = await fetch(`/api/resources/proposals/${proposal.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) return toast.error(body.error || "Failed to review suggestion");
-    await loadProposals();
-    await refreshResources();
-    if (selectedResource) await loadBrainInsights(selectedResource.id);
-    toast.success(status === "rejected" ? "Suggestion rejected" : "Suggestion applied");
   }
 
   return (
@@ -318,7 +278,7 @@ export default function ResourcesClient({
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-indigo-500" />
               </div>
               <div className="mt-3 flex items-center gap-2">
-                {(["all", "shared"] as const).map((item) => (
+                {(["all", "shared", "drafts"] as const).map((item) => (
                   <button key={item} onClick={() => setFilter(item)} className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
                 ))}
                 <span className="ml-auto text-[11px] text-zinc-600">{filteredResources.length} notes</span>
@@ -339,6 +299,7 @@ export default function ResourcesClient({
                         <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-indigo-500/15 text-indigo-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
                           <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-indigo-300" : "text-zinc-600 group-hover:text-zinc-400")} />
                           <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
+                          {noteStatus(resource.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
                           {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" title="Shared with agents" />}
                         </button>
                       ))}
@@ -357,6 +318,7 @@ export default function ResourcesClient({
                   <div className="flex min-w-0 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
                     <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
+                    {noteStatus(draftContent) === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
                     {draftShared && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">shared</span>}
                   </div>
                   <div className="flex shrink-0 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
@@ -426,14 +388,6 @@ export default function ResourcesClient({
                       <LinkList title="Incoming" links={insights.backlinks} empty="No incoming links yet." />
                     </div>
                   </details>
-                  {pendingProposals.length > 0 && (
-                    <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-                      <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Agent suggestions ({pendingProposals.length})</summary>
-                      <div className="mt-3 space-y-3">
-                        {pendingProposals.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} onReview={reviewProposal} />)}
-                      </div>
-                    </details>
-                  )}
                 </div>
               </>
             )}
@@ -499,8 +453,4 @@ function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges:
       </p>
     </div>
   );
-}
-
-function ProposalCard({ proposal, onReview }: { proposal: BrainProposal; onReview: (proposal: BrainProposal, status: "approved" | "rejected" | "merged") => void }) {
-  return <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-medium text-zinc-100">{proposal.title}</div><div className="mt-1 text-[11px] text-zinc-500">{proposal.action} - {scopeLabel(proposal.scopeType)} - {dateLabel(proposal.createdAt)}</div></div></div><pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-900 p-3 text-xs leading-5 text-zinc-300">{proposal.proposedText}</pre><div className="mt-3 flex gap-2"><button onClick={() => onReview(proposal, "approved")} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"><Check className="h-3 w-3" /> Approve</button><button onClick={() => onReview(proposal, "rejected")} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-900"><X className="h-3 w-3" /> Reject</button></div></div>;
 }

@@ -209,7 +209,7 @@ When creating or proposing a Knowledge & Rules entry:
 4. Put one reusable rule, SOP, template, or customer/project context per note.
 5. Link related notes with `[[wikilinks]]`.
 6. Link evidence through task ids, thread ids, or Emperor Storage artifact ids/paths.
-7. Prefer `POST /resources/proposals` unless the operator explicitly asked for a direct resource write.
+7. Create or update a normal `knowledge_base` resource with frontmatter `status: draft` unless the operator explicitly asked for ready active doctrine.
 
 Template:
 
@@ -217,7 +217,7 @@ Template:
 ---
 scope: project
 type: project-rule
-status: active
+status: draft
 owner: <agent-name>
 tags:
   - project/example
@@ -243,7 +243,7 @@ Short summary of the reusable rule.
 - [[Company Operating Doctrine]]
 ```
 
-Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships.
+Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships. Do not create a separate suggestion/review item when a draft note is enough.
 
 ## Artifact Doctrine
 

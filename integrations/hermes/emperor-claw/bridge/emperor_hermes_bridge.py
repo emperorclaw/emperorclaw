@@ -242,7 +242,7 @@ def format_company_brain_context(message: Dict[str, Any]) -> str:
     if not sections:
         return (
             "Company Brain: resolver returned no readable context. "
-            "Use emperor_request GET /resources/context or propose updates via POST /resources/proposals when durable doctrine matters."
+            "Use emperor_request GET /resources/context or create/update a draft Knowledge & Rules note via POST /resources when durable doctrine matters."
         )
     return (
         "Company Brain context resolved by Emperor. Use these source ids when citing loaded doctrine; "
@@ -385,8 +385,8 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         +
         "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
-        "For reusable knowledge, propose Company Brain updates with POST /resources/proposals instead of silently rewriting doctrine.\n"
-        "When proposing Knowledge & Rules, write Obsidian-style markdown notes: frontmatter with scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], and Evidence/Related sections when useful.\n"
+        "For reusable knowledge, create or update a normal Company Brain note with frontmatter status: draft unless the operator asked for active doctrine.\n"
+        "When writing Knowledge & Rules, use Obsidian-style markdown notes: frontmatter with scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], and Evidence/Related sections when useful.\n"
         "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope.\n"
         "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
         "Emperor is the source of truth. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.\n\n"
@@ -395,7 +395,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Team roster: emperor_request GET /agents.\n"
         "- Projects/tasks: emperor_list_projects, emperor_list_tasks, or scoped GET /projects/{id}, GET /tasks/{id}.\n"
         "- Task progress/history: emperor_request GET /tasks/{id}/notes.\n"
-        "- Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources/proposals for durable knowledge updates, GET /resources for lookup.\n"
+        "- Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources for draft knowledge notes, GET /resources for lookup.\n"
         "- Storage/files: emperor_request GET /artifacts for lookup; emperor_create_folder + emperor_upload_artifact for uploads.\n"
         "- External APIs are not Emperor; use terminal/curl or a dedicated plugin if available.\n\n"
         "Storage rules:\n"

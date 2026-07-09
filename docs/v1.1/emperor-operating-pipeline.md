@@ -113,7 +113,7 @@ Default note shape:
 ---
 scope: project
 type: project-rule
-status: active
+status: draft
 owner: builder
 tags:
   - project/example
