@@ -109,9 +109,45 @@ The plugin also injects a `pre_llm_call` hook with brief usage guidance so agent
 | Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
 | Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
-| Knowledge & Rules | `emperor_request` with `GET /resources` |
+| Knowledge & Rules | `emperor_request` with `GET /resources/context`, `GET /resources`, or `POST /resources/proposals` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
 | External APIs or websites | terminal/curl, web, or a dedicated plugin; not `emperor_request` |
+
+### Company Brain note shape
+
+Knowledge & Rules should be written like a shared Obsidian-style company vault. Agents should create or propose structured markdown notes, not chat transcripts.
+
+```markdown
+---
+scope: project
+type: project-rule
+status: active
+owner: <agent-name>
+tags:
+  - project/example
+  - implementation
+---
+
+# Project Build Rules
+
+Short summary of the reusable rule.
+
+## Rule
+
+- Durable instruction one.
+- Durable instruction two.
+
+## Evidence
+
+- Task: `<task-id>`
+- Artifact: `<artifact-id or Storage path>`
+
+## Related
+
+- [[Company Operating Doctrine]]
+```
+
+Use scope fields for placement in the vault tree. Do not fake folders in note titles. Use `[[wikilinks]]` to connect notes and frontmatter `tags` for retrieval.
 
 ### Messaging model
 
@@ -295,6 +331,7 @@ Each Emperor agent needs a unique `EMPEROR_CLAW_AGENT_ID`, `EMPEROR_CLAW_RUNTIME
 | Chat threads | `messages` |
 
 - Use `resources` for reusable business rules, SOPs, customer facts, templates, credentials metadata.
+- Prefer `POST /resources/proposals` for agent-generated durable knowledge unless the operator explicitly asked for a direct write.
 - Use `artifacts` for deliverables, reports, exported files, evidence, working documents.
 - Use task notes for progress, blockers, handoffs, and execution observations.
 - Fetch Emperor state lazily — never preload all projects/tasks at session start.

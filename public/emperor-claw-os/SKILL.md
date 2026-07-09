@@ -128,3 +128,79 @@ The bridge examples show how to connect OpenClaw to Emperor Claw for registratio
 They do not implement goal planning, model execution, or scheduling inside Emperor itself.
 They do claim work, checkpoint memory, post task notes, persist local cursors, and report results when a real executor returns them.
 Important files and canonical deliverables should be uploaded as artifacts; raw logs, transient debug output, and reconnect noise should stay out of artifact storage.
+
+## Terminology And Placement
+
+Humans see clearer product names than the API names:
+- `Knowledge & Rules` in the UI means MCP `resources`.
+- `Storage` in the UI means MCP `artifacts` and folders.
+
+Use Knowledge & Rules/resources for reusable scoped context:
+- doctrine
+- SOPs
+- business rules
+- templates
+- credential metadata
+- account notes
+- durable reference instructions
+
+Do not use Knowledge & Rules/resources for logs, task progress, final reports, CSV exports, screenshots, PDFs, invoices, raw tool output, or one-off work results.
+
+Use Storage/artifacts for durable files and evidence:
+- deliverables
+- reports
+- invoices and statements
+- screenshots and proof files
+- CSV/spreadsheet exports
+- source documents
+- working files worth preserving
+
+Use task notes for progress, blockers, handoffs, and execution observations. Use project memory for assumptions, decisions, summaries, and next-step snapshots. If a human says "Storage", use artifact endpoints. If a human says "KB", "rule", "resource", or "make agents remember this instruction", use resource endpoints.
+
+## Company Brain Note Protocol
+
+Knowledge & Rules works like a shared Obsidian-style company vault. Create durable notes, not chat logs.
+
+When creating or proposing a Knowledge & Rules entry:
+
+1. Pick the smallest correct scope: `company`, `customer`, `project`, or `agent`.
+2. Use a short human title that can be linked as `[[Title]]`.
+3. Add frontmatter properties for `scope`, `type`, `status`, `owner`, and `tags`.
+4. Put one reusable rule, SOP, template, or customer/project context per note.
+5. Link related notes with `[[wikilinks]]`.
+6. Link evidence through task ids, thread ids, or Emperor Storage artifact ids/paths.
+7. Prefer `POST /resources/proposals` unless the operator explicitly asked for a direct resource write.
+
+Template:
+
+```markdown
+---
+scope: project
+type: project-rule
+status: active
+owner: <agent-name>
+tags:
+  - project/example
+  - implementation
+---
+
+# Project Build Rules
+
+Short summary of the reusable rule.
+
+## Rule
+
+- Durable instruction one.
+- Durable instruction two.
+
+## Evidence
+
+- Task: `<task-id>`
+- Artifact: `<artifact-id or Storage path>`
+
+## Related
+
+- [[Company Operating Doctrine]]
+```
+
+Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships.

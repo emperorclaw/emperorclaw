@@ -386,6 +386,8 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
         "For reusable knowledge, propose Company Brain updates with POST /resources/proposals instead of silently rewriting doctrine.\n"
+        "When proposing Knowledge & Rules, write Obsidian-style markdown notes: frontmatter with scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], and Evidence/Related sections when useful.\n"
+        "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope.\n"
         "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
         "Emperor is the source of truth. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.\n\n"
         "Where to look in Emperor:\n"
