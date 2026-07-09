@@ -1,4 +1,4 @@
-# Emperor Claw — Hermes Plugin
+﻿# Emperor Claw â€” Hermes Plugin
 
 Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtimes to the [Emperor Claw](https://emperorclaw.malecu.eu) AI agent control plane.
 
@@ -15,18 +15,18 @@ This repo contains two components:
 
 ```
 Emperor Claw (SaaS control plane)
-   │  messages / tasks / projects
-   ▼
-emperor_hermes_bridge.py  ←── polls Emperor every N seconds
-   │  spawns
-   ▼
+   â”‚  messages / tasks / projects
+   â–¼
+emperor_hermes_bridge.py  â†â”€â”€ polls Emperor every N seconds
+   â”‚  spawns
+   â–¼
 hermes chat -Q --toolsets emperor-claw,...
-   │  uses
-   ▼
-Emperor Claw plugin tools  (emperor_health, emperor_list_tasks, …)
+   â”‚  uses
+   â–¼
+Emperor Claw plugin tools  (emperor_health, emperor_list_tasks, â€¦)
 ```
 
-Emperor owns the durable state — tasks, projects, threads, artifacts, resources, audit log. Hermes is the local runtime that thinks and acts. The bridge is the glue between them.
+Emperor owns the durable state â€” tasks, projects, threads, artifacts, resources, audit log. Hermes is the local runtime that thinks and acts. The bridge is the glue between them.
 
 ---
 
@@ -121,7 +121,7 @@ Knowledge & Rules should be written like a shared Obsidian-style company vault. 
 ---
 scope: project
 type: project-rule
-status: draft
+status: active
 owner: <agent-name>
 tags:
   - project/example
@@ -259,7 +259,7 @@ Repeat for each profile-backed agent with its own service file and `HERMES_HOME`
 
 ## Agent Mapping
 
-One Emperor agent → one Hermes profile → one bridge service.
+One Emperor agent â†’ one Hermes profile â†’ one bridge service.
 
 | Emperor agent | Hermes profile | Service | Runtime ID |
 | --- | --- | --- | --- |
@@ -331,10 +331,10 @@ Each Emperor agent needs a unique `EMPEROR_CLAW_AGENT_ID`, `EMPEROR_CLAW_RUNTIME
 | Chat threads | `messages` |
 
 - Use `resources` for reusable business rules, SOPs, customer facts, templates, credentials metadata.
-- Prefer `POST /resources` with frontmatter `status: draft` for agent-generated durable knowledge unless the operator explicitly asked for active doctrine.
+- Prefer `POST /resources` with frontmatter `status: active` for agent-generated durable knowledge by default; use `status: draft` only when the agent is explicitly uncertain.
 - Use `artifacts` for deliverables, reports, exported files, evidence, working documents.
 - Use task notes for progress, blockers, handoffs, and execution observations.
-- Fetch Emperor state lazily — never preload all projects/tasks at session start.
+- Fetch Emperor state lazily â€” never preload all projects/tasks at session start.
 - Call Emperor tools before reporting a state change, not after.
 
 ---

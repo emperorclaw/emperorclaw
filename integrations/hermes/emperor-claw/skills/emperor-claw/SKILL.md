@@ -1,4 +1,4 @@
----
+﻿---
 name: emperor-claw
 description: Use Emperor Claw as the durable control plane for Hermes agents.
 ---
@@ -50,7 +50,7 @@ When you create or propose a Knowledge & Rules entry:
 4. Put one reusable rule, SOP, template, or customer/project context per note.
 5. Link related notes with `[[wikilinks]]`.
 6. Link evidence through task ids, thread ids, or Emperor Storage artifact ids/paths.
-7. Create or update a normal `knowledge_base` resource with frontmatter `status: draft` unless the operator explicitly asked for ready active doctrine.
+7. Create or update a normal `knowledge_base` resource with frontmatter `status: active` by default. Rule: status: draft only when explicitly uncertain or asking the operator to review.
 
 Template:
 
@@ -58,7 +58,7 @@ Template:
 ---
 scope: project
 type: project-rule
-status: draft
+status: active
 owner: <agent-name>
 tags:
   - project/example
@@ -132,7 +132,7 @@ Never create a full path as one folder name. Create each level separately and us
 
 ```
 emperor_create_folder(name="BrandVirality Report", projectId="<project-id>")
-→ returns { folder: { id: "<folder-id>", path: "BrandVirality Report", ... } }
+â†’ returns { folder: { id: "<folder-id>", path: "BrandVirality Report", ... } }
 ```
 
 ### Create a subfolder inside an existing folder
@@ -141,7 +141,7 @@ Pass the parent's `id` as `parentFolderId`:
 
 ```
 emperor_create_folder(name="Charts", projectId="<project-id>", parentFolderId="<folder-id>")
-→ returns { folder: { id: "<subfolder-id>", path: "BrandVirality Report/Charts", ... } }
+â†’ returns { folder: { id: "<subfolder-id>", path: "BrandVirality Report/Charts", ... } }
 ```
 
 ### Upload a file into a folder
@@ -166,10 +166,10 @@ emperor_upload_artifact(filePath="/home/jose/BrandVirality/charts/bar.png", kind
 
 ```
 emperor_list_folder_contents(folderId="<folder-id>")
-→ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
+â†’ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
 ```
 
-### Full example — upload a result set into a nested structure
+### Full example â€” upload a result set into a nested structure
 
 ```
 # 1. Create root folder
@@ -195,7 +195,7 @@ emperor_list_folder_contents(folderId=root_id)
 
 Emperor has two chat surfaces:
 
-- **Direct threads** are private one-human-to-one-agent inboxes. Reply normally — no @mention needed.
+- **Direct threads** are private one-human-to-one-agent inboxes. Reply normally â€” no @mention needed.
 - **Team chat** is the shared visible coordination thread for humans and all agents.
 
 ### Discovering sibling agents
@@ -204,7 +204,7 @@ Before addressing a sibling for the first time, confirm who exists on your team:
 
 ```
 emperor_request(method="GET", path="/agents")
-→ returns agents[].name for each agent on the team
+â†’ returns agents[].name for each agent on the team
 ```
 
 Use the shortest unambiguous first name as the @mention alias (e.g. `@Viktor`, `@Katarina`, `@BrandVirality`).
@@ -228,16 +228,16 @@ When a sibling @mentions you with a request, complete the work then reply in tea
 
 ```
 emperor_send_message(
-    text="@Viktor done — invoice summary attached in Storage under Q2/Accounting.",
+    text="@Viktor done â€” invoice summary attached in Storage under Q2/Accounting.",
     threadType="team"
 )
 ```
 
 Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
 
-### Loop prevention — critical rules
+### Loop prevention â€” critical rules
 
-- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else — do not respond.
+- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else â€” do not respond.
 - **@mention an agent at most once per reply.** Repeating the @mention triggers another response cycle from them.
 - **Informational updates** (task complete, status, FYI) go to team chat with **no @mention**. These are broadcast-only and do not call anyone to act.
 - Never @mention yourself.

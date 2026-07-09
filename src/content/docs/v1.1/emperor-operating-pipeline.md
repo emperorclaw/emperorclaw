@@ -1,4 +1,4 @@
-# Emperor Operating Pipeline
+﻿# Emperor Operating Pipeline
 
 This is the operating contract every Emperor-connected Hermes or OpenClaw agent should understand before doing useful work.
 
@@ -14,7 +14,7 @@ Emperor is the durable company control plane. The local runtime is the worker. C
 
 If an agent remembers one rule, it should remember this:
 
-> If the fact must be shared, audited, reused, or trusted later, put it in Emperor — not only in chat.
+> If the fact must be shared, audited, reused, or trusted later, put it in Emperor â€” not only in chat.
 
 ## The Mental Model
 
@@ -113,7 +113,7 @@ Default note shape:
 ---
 scope: project
 type: project-rule
-status: draft
+status: active
 owner: builder
 tags:
   - project/example
