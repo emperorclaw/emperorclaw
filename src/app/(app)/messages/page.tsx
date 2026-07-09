@@ -129,7 +129,7 @@ export default async function MessagesPage() {
     const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
 
     return (
-        <div className="h-[calc(100vh-8rem)] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-[1800px] flex-col overflow-hidden rounded-[2rem] emperor-panel animate-in fade-in slide-in-from-bottom-2 duration-500">
             <MessagingHub
                 agents={allAgents}
                 directThreads={directThreadSummaries}
