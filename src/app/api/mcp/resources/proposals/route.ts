@@ -1,14 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { createScopedResource } from "@/lib/resources";
 
 function slugify(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "draft-note";
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "knowledge-note";
 }
 
-function ensureDraftFrontmatter(input: { text: string; scopeType: string; owner: string }) {
+function ensurePublishedFrontmatter(input: { text: string; scopeType: string; owner: string }) {
   if (/^---\r?\n[\s\S]*?\r?\n---/.test(input.text)) return input.text;
-  return `---\nscope: ${input.scopeType}\ntype: knowledge-note\nstatus: draft\nowner: ${input.owner || "agent"}\ntags:\n  - agent/draft\n---\n\n${input.text}`;
+  return `---\nscope: ${input.scopeType}\ntype: knowledge-note\nstatus: active\nowner: ${input.owner || "agent"}\ntags:\n  - agent/published\n---\n\n${input.text}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,15 +32,15 @@ export async function POST(req: NextRequest) {
     resourceType: "knowledge_base",
     name: slugify(body.title),
     displayName: body.title,
-    configText: ensureDraftFrontmatter({
-      text: body.proposedText || `# ${body.title}\n\nDraft reusable knowledge note.`,
+    configText: ensurePublishedFrontmatter({
+      text: body.proposedText || `# ${body.title}\n\nPublished reusable knowledge note.`,
       scopeType,
       owner,
     }),
     status: "active",
     ownership: "managed",
     isShared: false,
-    changeSummary: "Created draft Company Brain note from legacy proposal endpoint",
+    changeSummary: "Created published Company Brain note from legacy proposal endpoint",
     createdByType: "agent",
     createdById: body.agentId || null,
   });
@@ -48,6 +48,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     resource,
     deprecated: true,
-    message: "Proposal queues are deprecated. Created a draft Knowledge & Rules note instead.",
+    message: "Proposal queues are deprecated. Created a published Knowledge & Rules note instead.",
   }, { status: 201 });
 }

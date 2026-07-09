@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -67,6 +67,16 @@ function noteStatus(content: string) {
   return content.match(/^---[\s\S]*?\nstatus:\s*([A-Za-z0-9_-]+)[\s\S]*?\n---/m)?.[1]?.toLowerCase() || "active";
 }
 
+function setNoteStatus(content: string, status: "draft" | "active") {
+  if (/^---[\s\S]*?\nstatus:\s*[A-Za-z0-9_-]+[\s\S]*?\n---/m.test(content)) {
+    return content.replace(/^---([\s\S]*?)\nstatus:\s*[A-Za-z0-9_-]+([\s\S]*?\n---)/m, `---$1\nstatus: ${status}$2`);
+  }
+  if (/^---[\s\S]*?\n---/m.test(content)) {
+    return content.replace(/^---\n/, `---\nstatus: ${status}\n`);
+  }
+  return `---\nstatus: ${status}\n---\n\n${content}`;
+}
+
 export default function ResourcesClient({
   initialResources,
   customers,
@@ -88,6 +98,7 @@ export default function ResourcesClient({
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
   const [draftScopeId, setDraftScopeId] = useState(initialResources[0]?.scopeId || "");
   const [draftShared, setDraftShared] = useState(Boolean(initialResources[0]?.isShared));
+  const [publicationStatus, setPublicationStatus] = useState<"draft" | "active">(noteStatus(initialResources[0]?.configText || "") === "draft" ? "draft" : "active");
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -135,6 +146,7 @@ export default function ResourcesClient({
     setDraftScopeType(selectedResource.scopeType);
     setDraftScopeId(selectedResource.scopeId || "");
     setDraftShared(Boolean(selectedResource.isShared));
+    setPublicationStatus(noteStatus(selectedResource.configText || "") === "draft" ? "draft" : "active");
     void loadBrainInsights(selectedResource.id);
   }, [selectedResource]);
 
@@ -239,7 +251,7 @@ export default function ResourcesClient({
           scopeId: draftScopeType === "company" ? null : draftScopeId || null,
           provider: selectedResource.provider || "knowledge",
           resourceType: selectedResource.resourceType || "knowledge_base",
-          configText: draftContent,
+          configText: setNoteStatus(draftContent, publicationStatus),
           isShared: draftShared,
           changeSummary: "Operator updated Knowledge & Rules entry",
         }),
@@ -358,7 +370,7 @@ export default function ResourcesClient({
                   <div className="flex min-w-0 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
                     <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
-                    {noteStatus(draftContent) === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
+                    {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
                     {draftShared && <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">shared</span>}
                   </div>
                   <div className="flex shrink-0 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
@@ -383,14 +395,14 @@ export default function ResourcesClient({
             )}
           </main>
 
-          <aside className="flex min-h-0 flex-col border-t border-zinc-800 bg-zinc-950 lg:border-l lg:border-t-0">
+          <aside className="flex min-h-0 flex-col overflow-y-auto border-t border-zinc-800 bg-zinc-950 lg:border-l lg:border-t-0">
             {selectedResource && (
               <>
-                <div className="min-h-0 flex-1">
+                <div className="h-[360px] shrink-0 border-b border-zinc-800">
                   <LocalGraph graph={insights.graph} selectedId={selectedResource.id} />
                 </div>
 
-                <div className="border-t border-zinc-800 p-3">
+                <div className="shrink-0 p-3">
                   <div className="grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-500">
                     <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{insights.backlinks.length}</span> incoming</div>
                     <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2 py-1"><span className="text-zinc-200">{insights.outgoing.length}</span> outgoing</div>
@@ -399,7 +411,14 @@ export default function ResourcesClient({
                   <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Properties</summary>
                     <div className="mt-3">
-                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Publication status</label>
+                      <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
+                        <option value="draft">Needs review</option>
+                        <option value="active">Published</option>
+                      </select>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-600">Published means this note is trusted doctrine. It does not automatically inject it into every agent prompt.</p>
+
+                      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
                       <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-indigo-500">
                         <option value="company">Company</option>
                         <option value="customer">Customer</option>
@@ -413,9 +432,10 @@ export default function ResourcesClient({
                         </select>
                       )}
                       <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
-                        <span>Send to matching agents</span>
+                        <span>Inject into matching agents</span>
                         <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
                       </button>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-600">shared means context injection for matching agents. Keep it off unless agents should receive it during work.</p>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
                       <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Delete note</button>
                     </div>

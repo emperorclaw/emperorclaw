@@ -70,7 +70,7 @@ test("Company Brain UI and MCP API routes exist", () => {
 
 test("Knowledge & Rules UI keeps Company Brain advanced concepts operator-friendly", () => {
   const source = read("src/app/(app)/resources/resources-client.tsx");
-  ["Knowledge & Rules", "Vault explorer", "Reading", "Source", "Properties", "Local graph", "Linked mentions", "customerNames", "projectNames", "agentNames", "Send to matching agents", "drafts", "status: draft", "Delete note", "createLinkedResource", "selectAdjacentResource", "UnresolvedGraphNode", "Graph connections"].forEach((needle) => {
+  ["Knowledge & Rules", "Vault explorer", "Reading", "Source", "Properties", "Local graph", "Linked mentions", "customerNames", "projectNames", "agentNames", "Publication status", "Needs review", "Published", "setNoteStatus", "Inject into matching agents", "shared means context injection", "drafts", "status: draft", "Delete note", "createLinkedResource", "selectAdjacentResource", "UnresolvedGraphNode", "Graph connections", "overflow-y-auto"].forEach((needle) => {
     assertContains(source, needle, `resources-client should include ${needle}`);
   });
   ["Brain Feed", "Backlinks", "Company Brain</h1>", "Suggest an update", "Add to Review Queue", "Review Queue", "Agent suggestions", "Advanced relationships", "prefers-reduced-motion", "Vault settings", "More actions"].forEach((needle) => {
@@ -84,11 +84,12 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   assertContains(bridge, "format_company_brain_context", "Hermes bridge should use the Company Brain context formatter");
   assertContains(bridge, "GET", "Hermes bridge should call Emperor APIs for context");
   assertContains(bridge, "/resources/context", "Hermes bridge should resolve context through the centralized endpoint");
-  assertContains(bridge, "status: draft", "Hermes bridge should guide agents to draft notes instead of suggestion queues");
+  assertContains(bridge, "status: active", "Hermes bridge should guide agents to published notes by default");
+  assertContains(bridge, "status: draft only", "Hermes bridge should reserve draft for uncertain notes");
   assert.equal(bridge.includes("POST /resources/proposals"), false, "Hermes bridge should not teach proposal queues as the normal path");
 
   const docs = read("src/content/docs/v1.1/company-brain.md");
-  ["shared knowledge vault", "status: draft", "There is no separate review queue", "Agent note contract", "Obsidian-inspired conventions", "GET /api/mcp/resources/context", "POST /api/mcp/resources"].forEach((needle) => {
+  ["shared knowledge vault", "status: active", "status: draft only", "There is no separate review queue", "Agent note contract", "Obsidian-inspired conventions", "GET /api/mcp/resources/context", "POST /api/mcp/resources"].forEach((needle) => {
     assertContains(docs, needle, `Company Brain docs should include ${needle}`);
   });
   ["Agent suggestions", "proposal-first"].forEach((needle) => {
@@ -96,7 +97,7 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   });
 
   const hermesSkill = read("integrations/hermes/emperor-claw/skills/emperor-claw/SKILL.md");
-  ["Company Brain Note Protocol", "frontmatter", "[[wikilinks]]", "status: draft", "POST /resources"].forEach((needle) => {
+  ["Company Brain Note Protocol", "frontmatter", "[[wikilinks]]", "status: active", "status: draft only", "POST /resources"].forEach((needle) => {
     assertContains(hermesSkill, needle, `Hermes skill should teach agents ${needle}`);
   });
   assert.equal(hermesSkill.includes("POST /resources/proposals"), false, "Hermes skill should not teach proposal queues as normal workflow");

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -258,7 +258,7 @@ def normalize_mention(value: str) -> str:
 
 def agent_name_aliases(name: str) -> set[str]:
     clean = re.sub(r"\([^)]*\)", "", str(name or "")).strip()
-    clean = re.split(r"\s+-\s+|\s+—\s+|\s+\|\s+", clean, maxsplit=1)[0].strip()
+    clean = re.split(r"\s+-\s+|\s+â€”\s+|\s+\|\s+", clean, maxsplit=1)[0].strip()
     parts = [part for part in re.split(r"\s+", clean) if part]
     candidates = {name, clean}
     if parts:
@@ -297,7 +297,7 @@ def is_for_agent(message: Dict[str, Any], agent_id: str, state: Dict[str, Any]) 
         return True
     if target and target != agent_id:
         return False
-    # No targetAgentId on this message — check if this thread is a known DM thread.
+    # No targetAgentId on this message â€” check if this thread is a known DM thread.
     # If another agent owns it, @mentions in it must not trigger us.
     direct_threads = state.get("direct_threads", {})
     if thread_id and thread_id in direct_threads:
@@ -385,7 +385,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         +
         "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
-        "For reusable knowledge, create or update a normal Company Brain note with frontmatter status: draft unless the operator asked for active doctrine.\n"
+        "For reusable knowledge, create or update a normal Company Brain note with frontmatter status: active by default; use status: draft only when explicitly uncertain.\n"
         "When writing Knowledge & Rules, use Obsidian-style markdown notes: frontmatter with scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], and Evidence/Related sections when useful.\n"
         "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope.\n"
         "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
@@ -406,10 +406,10 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Messaging model:\n"
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
-        "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
+        "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else â€” stay silent.\n"
         "- To ask a sibling to do something: post in team chat with @SiblingName and a concrete request (use the roster aliases below for the exact @name).\n"
         "- When a sibling @mentions you with a request, complete the work then @mention them ONCE in your reply so the answer routes back: '@Viktor done, here are the results...'\n"
-        "- After that one @mention, do NOT repeat it — repeating triggers another response cycle.\n"
+        "- After that one @mention, do NOT repeat it â€” repeating triggers another response cycle.\n"
         "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n\n"
         f"{roster_context}\n\n"
         f"{shared_context}\n\n"
