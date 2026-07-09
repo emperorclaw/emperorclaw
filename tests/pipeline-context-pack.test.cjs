@@ -83,3 +83,30 @@ test("Pipelines UI and docs explain Context Pack without pretending Emperor exec
 
   assertFile("src/db/migrations/0021_pipeline_context_pack.sql");
 });
+
+test("Pipelines page is a documentation workspace with React Flow visual map", () => {
+  const pkg = JSON.parse(read("package.json"));
+  assert.ok(pkg.dependencies["@xyflow/react"], "package.json should include @xyflow/react");
+  assert.ok(pkg.dependencies.elkjs, "package.json should include elkjs for automatic DAG layout");
+
+  const route = read("src/app/api/pipelines/[id]/route.ts");
+  assertContains(route, "export async function DELETE", "Pipelines UI delete action should have a working API route");
+
+  const ui = read("src/app/(app)/pipelines/pipelines-client.tsx");
+  [
+    "@xyflow/react",
+    "PipelineFlowMap",
+    "Pipeline Explorer",
+    "Visual Map",
+    "Documentation",
+    "No steps registered",
+    "copyPipelineMarkdown",
+    "ReactFlow",
+    "MiniMap",
+    "Controls",
+    "Background",
+    "ELK",
+  ].forEach((needle) => {
+    assertContains(ui, needle, `Pipelines workspace should include ${needle}`);
+  });
+});
