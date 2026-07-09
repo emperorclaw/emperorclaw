@@ -417,13 +417,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
     return (
         <div className="relative mx-auto flex h-full max-w-[1800px] flex-col space-y-6 animate-in fade-in duration-500">
-            <div className="emperor-panel relative overflow-hidden rounded-[2rem] p-6">
+            <div className="emperor-panel relative overflow-hidden rounded-[1.5rem] p-5">
                 <div className="pointer-events-none absolute inset-0 emperor-subtle-grid opacity-20" />
                 <div className="relative flex flex-wrap items-start justify-between gap-5">
-                    <div className="max-w-3xl space-y-3">
+                    <div className="max-w-3xl space-y-2">
                         <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Projects</p>
-                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">Projects Board</h1>
-                        <p className="text-sm leading-6 text-zinc-400">Track customer/project work from inbox to execution, review, and done. Recurring definitions stay separated from spawned task work.</p>
+                        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Projects Board</h1>
+                        <p className="text-sm leading-6 text-zinc-400">Track work from inbox to execution, review, and done. Recurring definitions stay separated from spawned task work.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                         <button onClick={openCreateProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>

@@ -252,12 +252,16 @@
     background-size: 34px 34px;
   }
 
+  .emperor-main .text-zinc-400 {
+    color: rgb(212, 212, 216);
+  }
+
   .emperor-main .text-zinc-500 {
-    color: rgb(161, 161, 170);
+    color: rgb(181, 181, 190);
   }
 
   .emperor-main .text-zinc-600 {
-    color: rgb(113, 113, 122);
+    color: rgb(145, 145, 155);
   }
 
   .emperor-main .font-medium {

@@ -80,8 +80,11 @@ test("Core workspaces use the standardized Emperor visual system", () => {
   assertContains(projects, "Recurring definitions stay separated", "projects should use clear operator copy");
   assertContains(projects, "Advanced filters and project actions", "projects should hide secondary controls behind progressive disclosure");
   assertContains(messagingHub, "bg-zinc-950/70", "messages sidebar should match the OLED panel system");
-  assertContains(globals, ".emperor-main .text-zinc-500", "app text contrast should be lifted on dark OLED surfaces");
+  assertContains(globals, ".emperor-main .text-zinc-400", "app secondary text should be lifted on dark OLED surfaces");
+  assertContains(globals, ".emperor-main .text-zinc-500", "app muted text contrast should be lifted on dark OLED surfaces");
   assertContains(globals, "font-weight: 550", "medium text should be heavier for readability on dark surfaces");
+  assertContains(projects, "sm:text-3xl", "daily workspace headers should stay compact instead of using oversized hero titles");
+  assertNotContains(projects, "sm:text-5xl", "projects should not look like a landing-page hero");
 
   [dashboard, projects, messages, messagingHub, teamChat].forEach((source) => {
     assertNotContains(source, "bg-zinc-900/50", "core workspaces should not use the older flat panel surface");
