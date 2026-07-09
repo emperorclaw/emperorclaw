@@ -14,6 +14,10 @@ type PipelineRow = {
     triggerConfig: Record<string, unknown> | null;
     stepsJson: unknown;
     diagramMermaid: string | null;
+    contextQuery: string | null;
+    contextResourceIds: string[] | null;
+    contextTagFilters: string[] | null;
+    contextMaxChars: number | null;
     runtimeRef: string | null;
     status: string;
     runCount: number;
@@ -31,6 +35,9 @@ type RunRow = {
     pipelineId: string;
     status: string;
     summary: string | null;
+    statsJson?: Record<string, unknown> | null;
+    contextSourceIds?: string[] | null;
+    contextSnapshot?: Record<string, unknown> | null;
     startedAt: string;
     endedAt: string | null;
 };
@@ -84,6 +91,19 @@ function MermaidDiagram({ code, mermaidReady }: { code: string; mermaidReady: bo
         return <pre className="text-xs text-zinc-500 bg-zinc-900/60 rounded-lg p-3 overflow-x-auto">{code}</pre>;
     }
     return <div ref={ref} className="overflow-x-auto [&_svg]:max-w-full" />;
+}
+
+function stringArray(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function runEvidence(run: RunRow) {
+    const stats = run.statsJson || {};
+    return {
+        contextSourceIds: stringArray(run.contextSourceIds).length > 0 ? stringArray(run.contextSourceIds) : stringArray(stats.contextSourceIds),
+        artifactIds: stringArray(stats.artifactIds),
+        taskIds: stringArray(stats.taskIds),
+    };
 }
 
 export default function PipelinesClient({
@@ -276,6 +296,33 @@ export default function PipelinesClient({
                                             </div>
                                         )}
 
+                                        <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/[0.04] p-4 space-y-3">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                                                <GitBranch className="w-3.5 h-3.5" /> Context Pack
+                                            </h3>
+                                            <p className="text-sm text-zinc-400">
+                                                Company Brain context the agent should retrieve before a run. The diagram is the contract; these sources ground the work.
+                                            </p>
+                                            <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
+                                                <div>
+                                                    <span className="font-semibold text-zinc-400">Query:</span>{" "}
+                                                    {p.contextQuery || "Scope-based Company Brain context"}
+                                                </div>
+                                                <div>
+                                                    <span className="font-semibold text-zinc-400">Budget:</span>{" "}
+                                                    {p.contextMaxChars || 8000} chars
+                                                </div>
+                                                <div>
+                                                    <span className="font-semibold text-zinc-400">Pinned sources:</span>{" "}
+                                                    {stringArray(p.contextResourceIds).length || "None"}
+                                                </div>
+                                                <div>
+                                                    <span className="font-semibold text-zinc-400">Tags:</span>{" "}
+                                                    {stringArray(p.contextTagFilters).length > 0 ? stringArray(p.contextTagFilters).map((tag) => `#${tag}`).join(", ") : "None"}
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         {p.docMarkdown && (
                                             <div className="space-y-1.5">
                                                 <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
@@ -295,13 +342,25 @@ export default function PipelinesClient({
                                                 <p className="text-sm text-zinc-600">No runs reported yet.</p>
                                             ) : (
                                                 <ul className="divide-y divide-zinc-800/60 rounded-lg border border-zinc-800/60 bg-zinc-950/40">
-                                                    {pipelineRuns.map(r => (
-                                                        <li key={r.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                                                            <span className={`font-medium ${RUN_STATUS_STYLES[r.status] || "text-zinc-400"}`}>{r.status}</span>
-                                                            <span className="text-zinc-500 text-xs">{new Date(r.startedAt).toLocaleString()}</span>
-                                                            {r.summary && <span className="text-zinc-400 truncate">{r.summary}</span>}
+                                                    {pipelineRuns.map(r => {
+                                                        const evidence = runEvidence(r);
+                                                        return (
+                                                        <li key={r.id} className="space-y-1 px-4 py-2 text-sm">
+                                                            <div className="flex items-center gap-3">
+                                                                <span className={`font-medium ${RUN_STATUS_STYLES[r.status] || "text-zinc-400"}`}>{r.status}</span>
+                                                                <span className="text-zinc-500 text-xs">{new Date(r.startedAt).toLocaleString()}</span>
+                                                                {r.summary && <span className="text-zinc-400 truncate">{r.summary}</span>}
+                                                            </div>
+                                                            {(evidence.contextSourceIds.length > 0 || evidence.artifactIds.length > 0 || evidence.taskIds.length > 0) && (
+                                                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
+                                                                    {evidence.contextSourceIds.length > 0 && <span>Sources used: {evidence.contextSourceIds.length}</span>}
+                                                                    {(evidence.artifactIds.length > 0 || evidence.taskIds.length > 0) && (
+                                                                        <span>Evidence produced: {evidence.taskIds.length} tasks · {evidence.artifactIds.length} artifacts</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </li>
-                                                    ))}
+                                                    );})}
                                                 </ul>
                                             )}
                                         </div>

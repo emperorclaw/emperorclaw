@@ -798,6 +798,7 @@ Pipelines are recurring or recursive automation that agents build and execute in
 |---|---|---|
 | `/pipelines` | `GET/POST` | List, or register/re-register (upsert by name) |
 | `/pipelines/{id}` | `GET/PATCH/DELETE` | Detail with recent runs, update, or retire |
+| `/pipelines/{id}/context` | `GET` | Resolve the Company Brain Context Pack for a run |
 | `/pipelines/{id}/runs` | `GET/POST` | Run history, or start/complete/one-shot report a run |
 
 ### `POST /pipelines`
@@ -811,6 +812,10 @@ Example:
   "docMarkdown": "## How it works\n1. Scrapes sources.\n2. Enriches and dedupes.\n3. Drafts outreach after approval.",
   "trigger": "cron",
   "triggerConfig": { "cron": "0 6 * * *" },
+  "contextQuery": "Lead mining SOP, ICP, storage rules",
+  "contextResourceIds": ["<resource-id>"],
+  "contextTagFilters": ["sales", "storage"],
+  "contextMaxChars": 8000,
   "steps": [
     { "name": "scrape sources", "agentRef": "lead-miner" },
     { "name": "enrich + dedupe", "agentRef": "lead-enricher" },
@@ -826,12 +831,17 @@ Important current behavior:
 
 - registration is an upsert by `(company, name)` — re-register on boot, never duplicate
 - `diagramMermaid` is generated server-side from `steps`; client-supplied diagrams are ignored
+- Context Pack fields tell the agent which Company Brain sources to retrieve before a run
 - `status: "active"` requires `purpose`, `docMarkdown`, and at least one step, otherwise `422`
+
+### `GET /pipelines/{id}/context`
+
+Returns the resolved Company Brain context for that pipeline, including `sourceIds`. Agents should call this before a non-trivial cycle, then report the used IDs as `contextSourceIds`.
 
 ### `POST /pipelines/{id}/runs`
 
 Start: `{ "status": "running", "agentId": "lead-miner" }` returns `runId`.
-Complete: `{ "runId": "<run-id>", "status": "succeeded", "summary": "14 new leads", "stats": { "taskIds": [], "artifactIds": [] } }`.
+Complete: `{ "runId": "<run-id>", "status": "succeeded", "summary": "14 new leads", "contextSourceIds": [], "contextSnapshot": {}, "stats": { "taskIds": [], "artifactIds": [] } }`.
 One-shot: pass a terminal status (`succeeded`, `failed`, `partial`) without `runId`.
 
 ## Incidents

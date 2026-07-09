@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const agentParam = searchParams.get("agentId");
   const agentId = agentParam ? await resolveAgentId(companyId, agentParam) : null;
   const resourceIds = searchParams.getAll("resourceId").flatMap((value) => value.split(",").filter(Boolean));
+  const tagFilters = searchParams.getAll("tag").flatMap((value) => value.split(",").filter(Boolean));
   const maxChars = Number(searchParams.get("maxChars") || "12000");
   const context = await resolveCompanyBrainContext({
     companyId,
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     projectId: searchParams.get("projectId"),
     agentId,
     resourceIds,
+    tagFilters,
     maxChars: Number.isFinite(maxChars) ? maxChars : 12000,
   });
   return NextResponse.json(context);
