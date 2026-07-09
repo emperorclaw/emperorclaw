@@ -676,6 +676,7 @@ export async function resolveCompanyBrainContext(input: {
 
   return {
     resources,
+    sources: resources,
     totalResources: resources.length,
     usedChars,
     maxChars,

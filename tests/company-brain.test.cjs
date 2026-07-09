@@ -52,6 +52,7 @@ test("Company Brain resource service exposes parsing, graph, proposal, and conte
   assertContains(source, "mentionsResourceTitle", "resources.ts should include title mention detection for agent-created docs");
   assertContains(source, "frontmatter", "resources.ts should parse Obsidian-style frontmatter metadata");
   assertContains(source, "inlineTags", "resources.ts should support frontmatter tags for agent-created notes");
+  assertContains(source, "sources: resources", "context resolver should return sources for bridge/source citation compatibility");
 });
 
 test("Company Brain UI and MCP API routes exist", () => {
