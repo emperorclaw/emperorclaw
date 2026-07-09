@@ -37,6 +37,11 @@ test("Pipeline schema stores lightweight Company Brain context rules and run sou
   });
 });
 
+test("Pipeline Context Pack migration is registered for Drizzle migrator", () => {
+  const journal = read("src/db/migrations/meta/_journal.json");
+  assertContains(journal, '"tag": "0021_pipeline_context_pack"', "Drizzle journal should include the 0021 pipeline context migration");
+});
+
 test("Pipeline helpers expose context pack parsing and run source snapshot helpers", () => {
   const source = read("src/lib/pipelines.ts");
   [
