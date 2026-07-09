@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,7 @@ export function SearchableSelect({
 }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
+    const rootRef = useRef<HTMLDivElement>(null);
     const selected = options.find((option) => option.value === value);
     const filtered = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -34,8 +35,30 @@ export function SearchableSelect({
         return options.filter((option) => `${option.label} ${option.description || ""}`.toLowerCase().includes(normalized));
     }, [options, query]);
 
+    useEffect(() => {
+        if (!open) return;
+        const handlePointerDown = (event: PointerEvent) => {
+            if (!rootRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+                setQuery("");
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setOpen(false);
+                setQuery("");
+            }
+        };
+        document.addEventListener("pointerdown", handlePointerDown);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [open]);
+
     return (
-        <div className={cn("relative min-w-[220px]", className)} onBlur={() => window.setTimeout(() => setOpen(false), 120)}>
+        <div ref={rootRef} className={cn("relative min-w-[220px]", className)}>
             <button
                 type="button"
                 onClick={() => setOpen((current) => !current)}
