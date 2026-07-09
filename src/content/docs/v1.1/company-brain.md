@@ -1,6 +1,6 @@
 # Company Brain
 
-Company Brain is Emperor's operator-approved knowledge layer. It uses existing Knowledge & Rules resources as canonical markdown, then adds graph links, tags, versions, proposals, and deterministic context resolution for humans and agents.
+Company Brain is Emperor's shared knowledge vault. It uses existing Knowledge & Rules resources as canonical markdown, then adds graph links, tags, versions, draft notes, and deterministic context resolution for humans and agents.
 
 It is inspired by Obsidian, but it is not a personal notes clone. The job is company doctrine: reusable rules, customer/project context, operating procedures, and references that agents can safely cite.
 
@@ -10,25 +10,19 @@ It is inspired by Obsidian, but it is not a personal notes clone. The job is com
 - `resource_links` stores `[[wikilinks]]`, explicit links, inferred references, and unresolved links.
 - `resource_tags` stores normalized tags such as `customer/acme`, `storage`, `approval`, and `operator/sop`.
 - `resource_versions` snapshots every markdown body change so operators can restore older doctrine.
-- `resource_proposals` is the safe default path for agent-generated learning.
+- Draft notes use frontmatter `status: draft` so agent-generated learning appears in the vault without creating a separate review inbox.
 
-Agents should propose updates unless they were explicitly granted direct resource write permission. Durable company doctrine deserves review. This is architecture, not bureaucracy.
+Agents should create or update normal Knowledge & Rules notes. When they are not sure the knowledge is final, they write `status: draft` in frontmatter and link evidence. The operator can edit, archive, or change the status like any other note.
 
 ## Operator feeding workflow
 
 1. Capture only reusable knowledge.
 2. Save it at the smallest correct scope: company, customer, project, or agent.
-3. Use `#tags` for retrieval and `[[wikilinks]]` for relationships.
-4. Link artifacts, tasks, or storage files instead of pasting large file contents.
-5. Approve proposals only when the knowledge will still matter after the current task.
+3. Use `status: draft` when the note is agent-generated or not yet trusted.
+4. Use `#tags` for retrieval and `[[wikilinks]]` for relationships.
+5. Link artifacts, tasks, or storage files instead of pasting large file contents.
 
-Use Agent suggestions for pending agent-proposed changes:
-
-- **Approve** when the proposal is reusable and scoped correctly.
-- **Edit and approve** when the idea is right but the wording/scope is sloppy.
-- **Merge** when it belongs in an existing note.
-- **Reject** when it is transient progress, speculation, duplicated, or missing evidence.
-- **Ask for evidence** when the claim needs a task, thread, artifact, or resource citation.
+There is no separate review queue. Drafts live in the vault like Obsidian notes. Use the `drafts` filter in the explorer, edit the note in place, then change frontmatter from `status: draft` to `status: active` when it is ready.
 
 ## Agent note contract
 
@@ -49,7 +43,7 @@ Use this shape:
 ---
 scope: company
 type: sop
-status: active
+status: draft
 owner: operator
 tags:
   - storage
@@ -90,12 +84,12 @@ Obsidian works because the primitives stay boring:
 | Vault | Company Brain / Knowledge & Rules | Treat it as the shared company knowledge vault. |
 | Folder explorer | Scope tree: company, customer, project, agent | Pick the smallest correct scope instead of inventing title prefixes. |
 | Markdown note | `scopedResources.configText` | Write durable markdown, not chat transcript. |
-| Properties | Frontmatter | Use properties for structure; do not hide rules there. |
+| Properties | Frontmatter | Use `status: draft` for untrusted/agent-created notes and `status: active` for ready doctrine. |
 | Wikilinks | `[[Resource Name]]` | Link related doctrine explicitly. |
 | Tags | `#tag` or frontmatter `tags` | Use for retrieval categories, not decoration. |
 | Graph | Resource links and inferred title mentions | Improve graph quality by linking notes deliberately. |
 
-Do not create notes named like folders (`Acme / Project / Rule`). Use scope fields for placement and a human title for the note.
+Do not create notes named like folders (`Acme / Project / Rule`). Use scope fields for placement and a human title for the note. Do not create a separate approval item when a draft note is enough.
 
 ## Brain vs memory vs task notes vs Storage
 
@@ -147,17 +141,15 @@ Operator UI:
 - `GET /api/resources/:id/backlinks`
 - `GET /api/resources/:id/versions`
 - `POST /api/resources/:id/restore-version`
-- `GET|POST /api/resources/proposals`
-- `PATCH /api/resources/proposals/:id`
 
 MCP/runtime:
 
 - `GET /api/mcp/resources/context`
-- `POST /api/mcp/resources/proposals`
+- `POST /api/mcp/resources` for draft or active notes
 
 ## Operator checklist
 
-Before marking a note shared or approving a proposal:
+Before marking a note shared or changing `status: draft` to `status: active`:
 
 - Is this reusable knowledge, not transient progress?
 - Is the scope the smallest correct one?

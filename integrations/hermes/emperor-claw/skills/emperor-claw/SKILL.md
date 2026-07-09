@@ -32,7 +32,7 @@ Use this lookup map instead of guessing or relying on memory:
 | Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
 | Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
-| Knowledge & Rules | `emperor_request` with `GET /resources` |
+| Knowledge & Rules | `emperor_request` with `GET /resources/context`, `GET /resources`, or `POST /resources` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
 | Upload a file to Storage | `emperor_create_folder`, then `emperor_upload_artifact` with `folderId` |
 | Browse a folder's subfolders and files | `emperor_list_folder_contents` with `folderId` |
@@ -50,7 +50,7 @@ When you create or propose a Knowledge & Rules entry:
 4. Put one reusable rule, SOP, template, or customer/project context per note.
 5. Link related notes with `[[wikilinks]]`.
 6. Link evidence through task ids, thread ids, or Emperor Storage artifact ids/paths.
-7. Prefer `POST /resources/proposals` unless the operator explicitly asked you to write the resource directly.
+7. Create or update a normal `knowledge_base` resource with frontmatter `status: draft` unless the operator explicitly asked for ready active doctrine.
 
 Template:
 
@@ -58,7 +58,7 @@ Template:
 ---
 scope: project
 type: project-rule
-status: active
+status: draft
 owner: <agent-name>
 tags:
   - project/example
@@ -84,7 +84,7 @@ Short summary of the reusable rule.
 - [[Company Operating Doctrine]]
 ```
 
-Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships.
+Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships. Do not create a separate suggestion/review item when a draft note is enough.
 
 ## Storage Folders
 
