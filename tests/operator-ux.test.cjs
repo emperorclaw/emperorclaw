@@ -93,3 +93,18 @@ test("Core workspaces use the standardized Emperor visual system", () => {
     assertNotContains(source, "border-indigo", "core workspaces should not drift back to the older indigo accent");
   });
 });
+
+test("Directories scale with search-first navigation instead of card dumps", () => {
+  const projects = read("src/app/(app)/projects/projects-client.tsx");
+  const customers = read("src/app/(app)/customers/customers-client.tsx");
+  const agents = read("src/app/(app)/agents/agents-client.tsx");
+  const searchableSelect = read("src/components/ui/searchable-select.tsx");
+
+  assertContains(searchableSelect, "SearchableSelect", "project filters should use a reusable searchable combobox");
+  assertContains(projects, "SearchableSelect", "projects should use searchable customer/project/agent filters");
+  assertContains(customers, "Search customers", "customers should have directory search");
+  assertContains(customers, "Customer Directory", "customers should be framed as a scalable directory");
+  assertContains(agents, "Search agents", "agents should have directory search");
+  assertContains(agents, "Agent Directory", "agents should be framed as a scalable directory");
+  assertNotContains(customers, "grid gap-6 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-6", "customers should not render a large card dump for every customer");
+});
