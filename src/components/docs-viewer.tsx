@@ -26,9 +26,10 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
   const currentPage = selectedVersion.pages.find((p: DocPage) => p.slug === currentPageSlug) || selectedVersion.pages[0];
 
   // Group pages by category (heuristic: use sections or just list them)
-  const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'agent-quickstart', 'emperor-operating-pipeline', 'installation', 'activation'].includes(p.slug));
-  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['openclaw-agents', 'hermes-runtime', 'concepts', 'lifecycle', 'messaging', 'incidents', 'retention', 'limits', 'mcp', 'configuration'].includes(p.slug));
-  const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'best-practices', 'usage', 'skill-development', 'troubleshooting'].includes(p.slug));
+  const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'agent-quickstart', 'emperor-operating-pipeline', 'why-emperor-vs-openclaw', 'installation', 'activation'].includes(p.slug));
+  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'company-brain', 'resources-as-wiki-memory', 'project-architecture', 'lifecycle', 'pipelines', 'messaging', 'incidents', 'retention', 'limits'].includes(p.slug));
+  const runtimePages = selectedVersion.pages.filter((p: DocPage) => ['hermes-runtime', 'openclaw-agents'].includes(p.slug));
+  const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'mcp', 'configuration', 'best-practices', 'usage', 'skill-development', 'troubleshooting'].includes(p.slug));
 
   const filteredPages = selectedVersion.pages.filter((p: DocPage) => 
     p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -182,10 +183,19 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
                     <div>
                       <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
-                        Core Concepts
+                        Operator Manual
                       </h3>
                       <div className="space-y-1">
                         {conceptPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                        Runtime Setup
+                      </h3>
+                      <div className="space-y-1">
+                        {runtimePages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       </div>
                     </div>
 
@@ -240,7 +250,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                   <span>Emperor Claw v1.1.2</span>
                 </div>
                 <div className="h-4 w-px bg-zinc-800" />
-                <span className="text-zinc-600">© {new Date().getFullYear()}</span>
+                <span className="text-zinc-600">Â© {new Date().getFullYear()}</span>
               </div>
             </footer>
           </main>

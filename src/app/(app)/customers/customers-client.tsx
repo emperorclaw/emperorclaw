@@ -125,7 +125,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                     <div className="py-12 text-center">
                         <Building2 className="mx-auto mb-4 h-12 w-12 text-zinc-700" />
                         <h3 className="mb-1 font-medium text-zinc-300">No customers yet</h3>
-                        <p className="text-sm text-zinc-500">Add a customer to define the portfolio and execution context OpenClaw should follow.</p>
+                        <p className="text-sm text-zinc-500">Add a customer to define the portfolio and execution context your agents should follow.</p>
                     </div>
                 ) : (
                     customerData.map((customer) => (
@@ -161,7 +161,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 </div>
                                 <textarea
                                     className="h-48 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 p-4 font-mono text-sm text-zinc-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                    placeholder="# Target Audience\nDescribe who OpenClaw should be optimizing for..."
+                                    placeholder="# Target Audience\nDescribe who the team should optimize for..."
                                     defaultValue={customer.notes || ""}
                                     onChange={(event) => setLocalNotes((prev) => ({ ...prev, [customer.id]: event.target.value }))}
                                 />
