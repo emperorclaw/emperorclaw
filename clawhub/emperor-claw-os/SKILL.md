@@ -197,6 +197,54 @@ Use Storage/artifacts for durable files and evidence:
 
 Use task notes for progress, blockers, handoffs, and execution observations. Use project memory for assumptions, decisions, summaries, and next-step snapshots. If a human says "Storage", use artifact endpoints. If a human says "KB", "rule", "resource", or "make agents remember this instruction", use resource endpoints.
 
+## Company Brain Note Protocol
+
+Knowledge & Rules works like a shared Obsidian-style company vault. Create durable notes, not chat logs.
+
+When creating or proposing a Knowledge & Rules entry:
+
+1. Pick the smallest correct scope: `company`, `customer`, `project`, or `agent`.
+2. Use a short human title that can be linked as `[[Title]]`.
+3. Add frontmatter properties for `scope`, `type`, `status`, `owner`, and `tags`.
+4. Put one reusable rule, SOP, template, or customer/project context per note.
+5. Link related notes with `[[wikilinks]]`.
+6. Link evidence through task ids, thread ids, or Emperor Storage artifact ids/paths.
+7. Prefer `POST /resources/proposals` unless the operator explicitly asked for a direct resource write.
+
+Template:
+
+```markdown
+---
+scope: project
+type: project-rule
+status: active
+owner: <agent-name>
+tags:
+  - project/example
+  - implementation
+---
+
+# Project Build Rules
+
+Short summary of the reusable rule.
+
+## Rule
+
+- Durable instruction one.
+- Durable instruction two.
+
+## Evidence
+
+- Task: `<task-id>`
+- Artifact: `<artifact-id or Storage path>`
+
+## Related
+
+- [[Company Operating Doctrine]]
+```
+
+Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships.
+
 ## Artifact Doctrine
 
 - Upload reports, invoices, and other durable outputs through Emperor's artifact workflow so Bunny owns the bytes and Emperor owns the metadata.

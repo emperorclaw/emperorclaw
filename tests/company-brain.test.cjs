@@ -50,6 +50,8 @@ test("Company Brain resource service exposes parsing, graph, proposal, and conte
   });
   assertContains(source, 'linkType: "inferred"', "resources.ts should infer links when KB docs mention existing note titles");
   assertContains(source, "mentionsResourceTitle", "resources.ts should include title mention detection for agent-created docs");
+  assertContains(source, "frontmatter", "resources.ts should parse Obsidian-style frontmatter metadata");
+  assertContains(source, "inlineTags", "resources.ts should support frontmatter tags for agent-created notes");
 });
 
 test("Company Brain UI and MCP API routes exist", () => {
@@ -83,8 +85,13 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   assertContains(bridge, "/resources/context", "Hermes bridge should resolve context through the centralized endpoint");
 
   const docs = read("src/content/docs/v1.1/company-brain.md");
-  ["operator-approved", "Agent suggestions", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
+  ["operator-approved", "Agent suggestions", "Agent note contract", "Obsidian-inspired conventions", "GET /api/mcp/resources/context", "POST /api/mcp/resources/proposals"].forEach((needle) => {
     assertContains(docs, needle, `Company Brain docs should include ${needle}`);
+  });
+
+  const hermesSkill = read("integrations/hermes/emperor-claw/skills/emperor-claw/SKILL.md");
+  ["Company Brain Note Protocol", "frontmatter", "[[wikilinks]]", "POST /resources/proposals"].forEach((needle) => {
+    assertContains(hermesSkill, needle, `Hermes skill should teach agents ${needle}`);
   });
 });
 
