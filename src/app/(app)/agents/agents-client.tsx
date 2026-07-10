@@ -117,25 +117,7 @@ function AgentDetail({ agent }: { agent: AgentDirectoryItem }) {
                 <Metric label="Tasks Done" value={agent.tasksCompleted.toLocaleString()} />
                 <Metric label="Uptime" value={agent.uptime} />
             </div>
-
-            <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Next actions for {agent.name}</div>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <ActionCard href={`/agents/${agent.id}`} title="Full profile" description="Memory, sessions, messages, and runtime evidence." />
-                    <ActionCard href="/resources" title="Rules and knowledge" description="Scoped doctrine this agent can consume during work." />
-                    <ActionCard href="/docs/v1.1/hermes-runtime" title="Runtime setup" description="Hermes/OpenClaw bridge expectations and setup notes." />
-                </div>
-            </div>
         </main>
-    );
-}
-
-function ActionCard({ href, title, description }: { href: string; title: string; description: string }) {
-    return (
-        <Link href={href} className="group rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 transition-colors hover:border-cyan-400/35 hover:bg-cyan-400/10">
-            <span className="block text-sm font-semibold text-zinc-100 group-hover:text-cyan-100">{title}</span>
-            <span className="mt-1 block text-xs leading-5 text-zinc-400">{description}</span>
-        </Link>
     );
 }
 
