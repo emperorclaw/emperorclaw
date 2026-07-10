@@ -4,7 +4,7 @@ import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
-import { storageAdapter } from "@/lib/storage";
+import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { buildChildPath } from "@/lib/path-utils";
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
             importance,
             title: title || filename || resolvedPath,
             contentType: contentType || download.contentType || "application/octet-stream",
-            storageProvider: "bunny",
+            storageProvider: getStorageProviderName(),
             storageUrl,
             storageKey,
             originalFilename: filename || title || null,

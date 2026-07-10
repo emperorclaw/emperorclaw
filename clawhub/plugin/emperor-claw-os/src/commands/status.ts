@@ -23,7 +23,7 @@ export function registerStatusCommand(api: any, paths: EmperorPluginPaths): void
         pluginId: api.id,
         rootDir: api.rootDir || "unknown",
         localConfigPresent: Boolean(localConfig),
-        configuredApiUrl: localConfig?.apiUrl || "https://emperorclaw.malecu.eu",
+        configuredApiUrl: localConfig?.apiUrl || "http://localhost:3000",
         emperorTokenPresent: Boolean(process.env.EMPEROR_API_TOKEN || process.env.EMPEROR_CLAW_API_TOKEN),
         bridgeContractVersion: BRIDGE_CONTRACT_VERSION,
         requiredBridgeCapabilities: REQUIRED_BRIDGE_CAPABILITIES,

@@ -279,7 +279,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                         <details className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
                             <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Show OpenClaw plugin commands</summary>
                             <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-zinc-950 p-4">
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin</code>
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw plugins install clawhub:emperor-claw-os-plugin</code>
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw emperor add-agent --agent-name &quot;Operator One&quot; --local-brain-agent-id operator-one --token &quot;your_token_here&quot; --profile operator</code>
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor doctor</code>
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor status</code>

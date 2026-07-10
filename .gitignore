@@ -44,3 +44,16 @@ openclaw-mission-control/
 # Debug artifacts
 tmp-openclaw-*
 payload.json
+
+# Graphify knowledge graph output
+graphify-out/
+
+# AI assistant config (may contain personal paths/keys)
+.claude/
+.agent/
+.atl/
+
+# Python virtual environments
+.venv/
+__pycache__/
+*.pyc

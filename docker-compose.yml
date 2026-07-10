@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: emperor
+      POSTGRES_PASSWORD: emperor
+      POSTGRES_DB: emperor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emperor -d emperor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_CONNECTION_STRING=postgres://emperor:emperor@postgres:5432/emperor
+      - APP_URL=http://localhost:3000
+      - NEXTAUTH_URL=http://localhost:3000
+      - STORAGE_BACKEND=local
+      - STORAGE_LOCAL_DIR=./.data/storage
+    volumes:
+      - app-storage:/app/.data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Run migrations on first start, then start the server
+    command: >
+      sh -c "npx tsx src/db/migrate.ts && npx tsx server.ts"
+
+volumes:
+  pgdata:
+  app-storage:

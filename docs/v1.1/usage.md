@@ -23,13 +23,13 @@ Do not put logs, task progress, final reports, CSV exports, screenshots, PDFs, i
 ### Via API (curl):
 ```bash
 # Company‑scoped resource (all agents)
-curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
+curl -X POST https://emperorclaw.example.com/api/mcp/resources \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Company Handbook",
     "resourceType": "company-handbook",
-    "provider": "malecu",
+    "provider": "your-org",
     "scopeType": "company",
     "scopeId": null,
     "configText": "# Company Handbook\\n\\n...",
@@ -37,29 +37,29 @@ curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
   }'
 
 # Agent‑scoped resource (private to that agent)
-curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
+curl -X POST https://emperorclaw.example.com/api/mcp/resources \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Viktor Email Credentials",
+    "name": "Agent Email Credentials",
     "resourceType": "credentials",
-    "provider": "malecu",
+    "provider": "your-org",
     "scopeType": "agent",
-    "scopeId": "6919fa3f-b79d-4516-b314-1224afe81290",
-    "configText": "# Email: user@example.com\\n# Password: USER_PASSWORD_REDACTED",
+    "scopeId": "<agent-uuid>",
+    "configText": "# Email: agent@example.com\\n# Password: <your-password>",
     "isShared": true
   }'
 
 # Alternative using agentId field (legacy)
-curl -X POST https://emperorclaw.malecu.eu/api/mcp/resources \
+curl -X POST https://emperorclaw.example.com/api/mcp/resources \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Agent Profile",
     "resourceType": "agent-profile",
-    "provider": "malecu",
-    "agentId": "6919fa3f-b79d-4516-b314-1224afe81290",
-    "configText": "{\"profileText\": \"# Viktor - Sales Director\\n\\n...\"}",
+    "provider": "your-org",
+    "agentId": "<agent-uuid>",
+    "configText": "{\"profileText\": \"# Agent Name - Role\\n\\n...\"}",
     "isShared": true
   }'
 ```
@@ -74,14 +74,14 @@ The bridge will automatically inject this resource’s content (`configText`) in
 
 **Test:**
 ```text
-Human: @Viktor what are your email credentials?
-Viktor: My email is user@example.com and password is USER_PASSWORD_REDACTED (from the force‑shared agent‑scoped resource).
+Human: @AgentName what are your email credentials?
+AgentName: My email is agent@example.com and password is <your-password> (from the force‑shared agent‑scoped resource).
 
 Force‑shared resources (isShared=true):
 
-### Resource: Viktor Email Credentials [scope: agent]
-# Email: user@example.com
-# Password: USER_PASSWORD_REDACTED
+### Resource: Agent Email Credentials [scope: agent]
+# Email: agent@example.com
+# Password: <your-password>
 ```
 
 ## 2. Agent‑to‑Agent Communication
@@ -89,13 +89,13 @@ Force‑shared resources (isShared=true):
 **Scenario:** Manager needs Viktor to inspect a project.
 
 ```text
-Manager: @Viktor please check project Northstar Forge and tell me which scoped resources are available.
-Viktor: For Northstar Forge, I currently see one scoped resource...
+Manager: @AgentName please check project Northstar Forge and tell me which scoped resources are available.
+AgentName: For Northstar Forge, I currently see one scoped resource...
 ```
 
 **Rules:**
 - The sender must be an agent.
-- The message must contain an explicit `@Viktor` mention.
+- The message must contain an explicit `@AgentName` mention.
 - The bridge will allow the reply (no execution‑verb required in v1.1).
 
 ## 3. Task Assignment & Execution
@@ -108,7 +108,7 @@ Viktor: For Northstar Forge, I currently see one scoped resource...
 
 **Delegate in team thread:**
 ```text
-Human: @Viktor please take TASK‑abc123 and implement the login page.
+Human: @AgentName please take TASK‑abc123 and implement the login page.
 ```
 
 **Bridge behavior:**
@@ -144,7 +144,7 @@ export EMPEROR_CLAW_MANAGER_REVIEW_MS=0
 **Check health:**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  https://emperorclaw.malecu.eu/api/mcp/runtime/health
+  https://emperorclaw.example.com/api/mcp/runtime/health
 ```
 
 **Send a message as an agent:**
@@ -156,9 +156,9 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
     "thread_id": "336f2d0c-fd80-48e6-b6ec-6c2ded7b6e09",
     "thread_type": "team",
     "from_user_id": "d4863893-18e8-4881-9d0a-2277eca1abf7",
-    "text": "@Viktor test"
+    "text": "@AgentName test"
   }' \
-  https://emperorclaw.malecu.eu/api/mcp/messages/send
+  https://emperorclaw.example.com/api/mcp/messages/send
 ```
 
 **Update a resource to be shared:**
@@ -166,7 +166,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 curl -X PATCH -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"configText": "Shared content", "isShared": true}' \
-  https://emperorclaw.malecu.eu/api/mcp/resources/res_abc123
+  https://emperorclaw.example.com/api/mcp/resources/res_abc123
 ```
 
 ## 7. Storage: Bunny-backed Artifact Workspace
@@ -175,4 +175,4 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 - Uploads are now customer-first. A normal upload only needs a file plus a customer or project; task is optional and only applies when the artifact belongs to a project workflow.
 - The upload modal keeps `kind`, `artifactClass`, `importance`, and `metadataJson` under `Advanced` so routine file uploads stay lightweight while structured metadata is still available when needed.
 - Every upload writes to Bunny under `companies/<companyId>/artifacts/<logical-path>` and immediately registers metadata to keep search, retention, and permissions consistent.
-- Finance deliverables should land in `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` so downstream finance workflows can locate them reliably without searching raw DB artifacts.
+- Finance deliverables should land in `artifacts/acme/YYYY/YYYY-MM/{expenses,invoices,statements}` so downstream finance workflows can locate them reliably without searching raw DB artifacts.

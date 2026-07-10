@@ -21,7 +21,7 @@ export type AgentDoctorReport = {
   checks: DoctorCheck[];
 };
 
-const DEFAULT_EMPEROR_API_URL = "https://emperorclaw.malecu.eu";
+const DEFAULT_EMPEROR_API_URL = "http://localhost:3000";
 
 function readBridgeUpdatedAt(bridgeStatePath: string): number | null {
   if (!fs.existsSync(bridgeStatePath)) return null;

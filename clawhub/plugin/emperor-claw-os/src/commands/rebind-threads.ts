@@ -29,7 +29,7 @@ export function registerRebindThreadsCommand(api: any, paths: EmperorPluginPaths
       const params = ctx?.args ? JSON.parse(ctx.args) : {};
       const manifests = loadManifests(paths);
       const token = String(params.token || "");
-      const apiUrl = String(params.apiUrl || api.pluginConfig?.apiUrl || "https://emperorclaw.malecu.eu");
+      const apiUrl = String(params.apiUrl || api.pluginConfig?.apiUrl || "http://localhost:3000");
       const owners = loadThreadOwners(paths);
       const threads = await fetchThreads(token, apiUrl);
       const knownAgentIds = new Set(manifests.map((manifest) => manifest.agentId).filter(Boolean));

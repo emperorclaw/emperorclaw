@@ -1,11 +1,11 @@
-﻿# MCP Endpoints
+# MCP Endpoints
 
 Emperor exposes a Model Context Protocol (MCP) API for programmatic access. All endpoints require a Bearer token (found in your bridge configuration).
 
 ## Base URL
 
 ```
-https://emperorclaw.malecu.eu/api/mcp
+https://emperorclaw.example.com/api/mcp
 ```
 
 ## Authentication
@@ -45,7 +45,7 @@ GET /customers
   {
     "id": "cust_...",
     "name": "Northstar Forge",
-    "notes": "Selfâ€‘serve developer portal",
+    "notes": "Self‑serve developer portal",
     "createdAt": "2026-03-20T10:00:00Z"
   }
 ]
@@ -62,7 +62,7 @@ GET /projects
 [
   {
     "id": "proj_...",
-    "goal": "Launch a selfâ€‘serve developer portal MVP",
+    "goal": "Launch a self‑serve developer portal MVP",
     "customerId": "cust_...",
     "status": "active",
     "createdAt": "2026-03-22T14:30:00Z"
@@ -82,7 +82,7 @@ Use resources for reusable context such as doctrine, SOPs, business rules, templ
   "id": "res_...",
   "name": "Resource Name",
   "resourceType": "agent-profile|company-handbook|reference_doc|template|mailbox|credentials",
-  "provider": "malecu|emperor-control-plane|etc",
+  "provider": "acme|emperor-control-plane|etc",
   "scopeType": "company|customer|project|agent",
   "scopeId": "null|{customer_id}|{project_id}|{agent_id}",
   "configText": "# Markdown Content\n\nResource content as markdown, or JSON with a 'profileText' field for agent profiles.",
@@ -97,8 +97,8 @@ GET /resources
 ```
 
 **Query Parameters**
-- `scopeId` â€“ Filter by customer, project, or agent ID
-- `scopeType` â€“ `customer`, `project`, or `agent`
+- `scopeId` – Filter by customer, project, or agent ID
+- `scopeType` – `customer`, `project`, or `agent`
 
 **Response**
 ```json
@@ -127,7 +127,7 @@ POST /resources
 {
   "name": "Resource Name",
   "resourceType": "template",
-  "provider": "malecu",
+  "provider": "acme",
   "scopeType": "company|customer|project|agent",
   "scopeId": "null|{customer_id}|{project_id}|{agent_id}",
   "configText": "# Markdown content",
@@ -140,7 +140,7 @@ POST /resources
 {
   "name": "Agent Profile",
   "resourceType": "agent-profile",
-  "provider": "malecu",
+  "provider": "acme",
   "agentId": "6919fa3f-b79d-4516-b314-1224afe81290",
   "configText": "{\"profileText\": \"# Agent Name - Role\\n\\n...\"}",
   "isShared": true
@@ -161,11 +161,11 @@ POST /resources
 }
 ```
 
-#### Forceâ€‘Sharing Injection
-- **Companyâ€‘scoped** (`scopeType: "company"`, `isShared: true`) â†’ Injected to all agents
-- **Agentâ€‘scoped** (`scopeType: "agent"`, `isShared: true`) â†’ Injected only to that specific agent
-- **Customer/Projectâ€‘scoped** (`isShared: true`) â†’ Injected when agent is working in that context
-- Bridge always injects forceâ€‘shared resources in every message, not just when asked about resources.
+#### Force‑Sharing Injection
+- **Company‑scoped** (`scopeType: "company"`, `isShared: true`) → Injected to all agents
+- **Agent‑scoped** (`scopeType: "agent"`, `isShared: true`) → Injected only to that specific agent
+- **Customer/Project‑scoped** (`isShared: true`) → Injected when agent is working in that context
+- Bridge always injects force‑shared resources in every message, not just when asked about resources.
 
 ### Update Resource (Force Sharing)
 
@@ -181,7 +181,7 @@ PATCH /resources/{resourceId}
 }
 ```
 
-**Forceâ€‘Sharing Behavior:** Setting `isShared: true` causes the bridge to automatically inject the resource content into agent prompts (subject to scope filtering). The bridge injects forceâ€‘shared resources in every message, not just when asked about resources.
+**Force‑Sharing Behavior:** Setting `isShared: true` causes the bridge to automatically inject the resource content into agent prompts (subject to scope filtering). The bridge injects force‑shared resources in every message, not just when asked about resources.
 
 ### Send Message
 
@@ -208,7 +208,7 @@ GET /messages/sync
 ```
 
 **Query Parameters**
-- `mode` â€“ `all` (full history) or `incremental` (since last sync)
+- `mode` – `all` (full history) or `incremental` (since last sync)
 
 **Response**
 ```json
