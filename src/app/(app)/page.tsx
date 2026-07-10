@@ -196,8 +196,8 @@ export default async function DashboardPage() {
         <div className="pointer-events-none absolute inset-0 emperor-subtle-grid opacity-20" />
         <div className="relative flex flex-col gap-3">
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Dashboard</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">Control Plane</h1>
-          <p className="max-w-3xl text-sm leading-6 text-zinc-400">System overview, active workforce telemetry, recent work, and team communication.</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">Overview</h1>
+          <p className="max-w-3xl text-sm leading-6 text-zinc-400">Your agents, recent work, and team communication — all in one place.</p>
         </div>
       </div>
 
@@ -211,9 +211,9 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
-        <KpiCard title="Tasks In Inbox" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
-        <KpiCard title="Needs Review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
-        <KpiCard title="Needs Attention" value={openIncidents.toString()} trend="Live" trendLabel="items needing review" alert={openIncidents > 0} good={openIncidents === 0} />
+        <KpiCard title="To do" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
+        <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
+        <KpiCard title="Alerts" value={openIncidents.toString()} trend="Live" trendLabel="items needing review" alert={openIncidents > 0} good={openIncidents === 0} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
@@ -242,7 +242,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-lg font-medium text-zinc-200">Workforce Health</h2>
+          <h2 className="text-lg font-medium text-zinc-200">Agent status</h2>
           <div className="emperor-panel max-h-[400px] space-y-5 overflow-y-auto rounded-2xl p-5">
             {agentWorkload.length === 0 ? (
               <div className="text-sm text-zinc-500 text-center">No agents registered.</div>
@@ -262,11 +262,11 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          <h2 className="text-lg font-medium text-zinc-200">Automation</h2>
+          <h2 className="text-lg font-medium text-zinc-200">Automations</h2>
           <div className="emperor-panel space-y-3 rounded-2xl p-5">
             {activePipelines.length === 0 ? (
               <div className="text-sm text-zinc-500">
-                No pipelines registered. Agents register recurring automation from their own runtimes.
+                No automations yet. Agents set these up from their own runtimes.
               </div>
             ) : (
               activePipelines.slice(0, 5).map(pipeline => (
