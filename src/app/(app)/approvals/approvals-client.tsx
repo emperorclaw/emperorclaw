@@ -2,7 +2,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BadgeCheck, Search, ThumbsDown, ThumbsUp } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type ApprovalItem = any;
@@ -14,9 +16,11 @@ const getTaskTitle = (task: any) => {
 };
 
 export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
+    const router = useRouter();
     const [query, setQuery] = useState("");
     const [decisionByTaskId, setDecisionByTaskId] = useState<Record<string, "approved" | "rejected" | "pending">>({});
     const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+    const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
 
     const filteredItems = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -51,6 +55,14 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
     );
 
     const handleDecision = async (item: ApprovalItem, decision: "approved" | "rejected") => {
+        // Require confirmation for reject (irreversible)
+        if (decision === "rejected" && confirmRejectId !== item.task.id) {
+            setConfirmRejectId(item.task.id);
+            setTimeout(() => setConfirmRejectId(null), 4000);
+            return;
+        }
+        setConfirmRejectId(null);
+
         if (busyTaskId) return;
         setBusyTaskId(item.task.id);
 
@@ -93,8 +105,10 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
             }
 
             setDecisionByTaskId((prev) => ({ ...prev, [item.task.id]: decision }));
-            window.location.reload();
+            toast.success(decision === "approved" ? "Approved — agent will continue." : "Rejected — agent will revise and resubmit.");
+            router.refresh();
         } catch (error) {
+            toast.error("Failed to process approval. Please try again.");
             console.error("Approval action failed", error);
         } finally {
             setBusyTaskId(null);
@@ -107,7 +121,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 <div className="space-y-1">
                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Approvals</p>
                     <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Decision Queue</h1>
-                    <p className="text-sm text-zinc-400">Rare human gates, task completion approvals, and operator decisions in one consistent queue.</p>
+                    <p className="text-sm text-zinc-400">Tasks that need your approval before agents can continue.</p>
                 </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -176,11 +190,13 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                                                 "flex items-center rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                                                 isRejected
                                                     ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                                                    : "border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20",
+                                                    : confirmRejectId === item.task.id
+                                                        ? "border-rose-500/40 bg-rose-500/20 text-rose-300"
+                                                        : "border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20",
                                             )}
                                         >
                                             <ThumbsDown className="mr-2 h-4 w-4" />
-                                            {isRejected ? "Rejected" : "Reject"}
+                                            {isRejected ? "Rejected" : confirmRejectId === item.task.id ? "Confirm reject?" : "Reject"}
                                         </button>
                                     </div>
                                 </div>

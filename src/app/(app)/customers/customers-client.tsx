@@ -185,7 +185,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 </div>
                                 <textarea
                                     className="h-[420px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950/80 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
-                                    placeholder="# Target Audience\nDescribe who the team should optimize for..."
+                                    placeholder={"# Target Audience\nDescribe who the team should optimize for..."}
                                     value={localNotes[selectedCustomer.id] ?? selectedCustomer.notes ?? ""}
                                     onChange={(event) => setLocalNotes((prev) => ({ ...prev, [selectedCustomer.id]: event.target.value }))}
                                 />
