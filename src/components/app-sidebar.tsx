@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch, AlertTriangle } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -21,19 +22,24 @@ function cn(...inputs: ClassValue[]) {
 
 export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
     const pathname = usePathname();
+    const { data: session } = useSession();
     const isDocsPage = pathname?.startsWith('/docs') ?? false;
+
+    const userEmail = session?.user?.email || "";
+    const userName = session?.user?.name || userEmail.split("@")[0] || "User";
+    const userInitial = (userName[0] || "U").toUpperCase();
 
     const links = [
         { name: "Dashboard", href: "/", icon: LayoutDashboard },
         { name: "Projects", href: "/projects", icon: FolderKanban },
-        { name: "Pipelines", href: "/pipelines", icon: GitBranch },
-        { name: "Knowledge & Rules", href: "/resources", icon: ScrollText },
+        { name: "Automations", href: "/pipelines", icon: GitBranch },
+        { name: "Knowledge base", href: "/resources", icon: ScrollText },
         { name: "Messages", href: "/messages", icon: MessageSquare },
         { name: "Approvals", href: "/approvals", icon: BadgeCheck },
-        { name: "Attention", href: "/incidents", icon: AlertTriangle },
+        { name: "Alerts", href: "/incidents", icon: AlertTriangle },
         { name: "Agents", href: "/agents", icon: Bot },
         { name: "Customers", href: "/customers", icon: ShieldCheck },
-        { name: "Storage", href: "/artifacts", icon: HardDrive },
+        { name: "Files", href: "/artifacts", icon: HardDrive },
         { name: "Settings", href: "/settings", icon: KeyRound },
     ];
 
@@ -50,7 +56,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                     </div>
                     <div className="hidden min-w-0 md:block">
                         <div className="truncate text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
-                        <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">Control Plane</div>
+                        <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">Overview</div>
                     </div>
                 </div>
             </div>
@@ -96,11 +102,11 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         <DropdownMenuTrigger asChild>
                             <button className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]">
                                 <div className="grid h-9 w-9 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
-                                    A
+                                    {userInitial}
                                 </div>
                                 <div className="hidden min-w-0 flex-1 flex-col md:flex">
-                                    <span className="truncate text-sm font-medium text-zinc-100">Admin</span>
-                                    <span className="text-xs text-zinc-500">owner</span>
+                                    <span className="truncate text-sm font-medium text-zinc-100">{userName}</span>
+                                    <span className="text-xs text-zinc-500">{userEmail}</span>
                                 </div>
                             </button>
                         </DropdownMenuTrigger>

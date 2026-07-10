@@ -438,12 +438,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     <div className="max-w-3xl space-y-2">
                         <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Projects</p>
                         <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Projects Board</h1>
-                        <p className="text-sm leading-6 text-zinc-400">Track work from inbox to execution, review, and done. Recurring definitions stay separated from spawned task work.</p>
+                        <p className="text-sm leading-6 text-zinc-400">Track work from to-do to done across all your projects.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                         <button onClick={openCreateProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>
                         <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-4 w-4" />Task</button>
-                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-4 w-4" />Project Brain</button>}
+                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-4 w-4" />Notes</button>}
                     </div>
                 </div>
             </div>
@@ -493,7 +493,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             />
                             <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
                                 <Filter className="h-4 w-4" />
-                                Use agent filters only when a board has too much active work.
+                                Filter by agent
                             </div>
                             {selectedProject && (
                                 <DropdownMenu>
@@ -513,9 +513,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             {mutationError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <MetricCard label="Inbox" value={byState.inbox.length} hint="Queued work" />
-                <MetricCard label="In Progress" value={byState.inProgress.length} hint="Active execution" accent="cyan" />
-                <MetricCard label="Review" value={byState.review.length} hint="Human / proof review" accent="amber" />
+                <MetricCard label="To do" value={byState.inbox.length} hint="Queued work" />
+                <MetricCard label="In progress" value={byState.inProgress.length} hint="Active execution" accent="cyan" />
+                <MetricCard label="Needs review" value={byState.review.length} hint="Needs your review" accent="amber" />
                 <MetricCard label="Done" value={byState.done.length} hint="Closed work" accent="emerald" />
                 <MetricCard label="Recurring" value={filteredRecurringDefinitions.length} hint="Recurring task definitions" accent="slate" />
             </div>
@@ -523,8 +523,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             {(blockedCount > 0 || exceptionTasks.length > 0) && (
                 <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-sm">
                     {blockedCount > 0 && <span className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-rose-300"><AlertTriangle className="mr-1 inline h-4 w-4" />{blockedCount} blocked tasks</span>}
-                    {exceptionTasks.length > 0 && <span className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-300">{exceptionTasks.length} failed/dead-letter tasks</span>}
-                    <span className="text-zinc-500">Recurring definitions stay in their own lane so spawned execution tasks do not distort workflow metrics.</span>
+                    {exceptionTasks.length > 0 && <span className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-300">{exceptionTasks.length} failed tasks</span>}
                 </div>
             )}
 
@@ -619,22 +618,22 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <div className="absolute right-0 top-0 z-50 flex h-full w-[45%] flex-col rounded-l-2xl border-l border-zinc-800 bg-zinc-900/98 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-10 duration-300">
                     <div className="flex items-center justify-between rounded-tl-2xl border-b border-zinc-800 bg-zinc-950/50 p-6">
                         <div className="flex items-center space-x-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10/20 text-cyan-500 shadow-inner"><Brain className="h-6 w-6" /></div>
-                            <div><h2 className="text-lg font-semibold uppercase tracking-tight text-zinc-100">Project Brain</h2><p className="text-xs font-medium text-zinc-500">Persistent context and memory</p></div>
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10 text-cyan-500 shadow-inner"><Brain className="h-6 w-6" /></div>
+                            <div><h2 className="text-lg font-semibold uppercase tracking-tight text-zinc-100">Project notes</h2><p className="text-xs font-medium text-zinc-500">Notes and context for this project</p></div>
                         </div>
                         <button onClick={() => setIsContextOpen(false)} className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-6 w-6" /></button>
                     </div>
                     <div className="custom-scrollbar flex-1 space-y-8 overflow-y-auto p-6">
                         <div className="space-y-3">
-                            <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Teach Project New Context</label>
+                            <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Add a note</label>
                             <div className="relative">
                                 <textarea value={newContext} onChange={(event) => setNewContext(event.target.value)} placeholder="Enter new goals, findings, or critical context for the agents..." className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-200 outline-none shadow-inner focus:ring-1 focus:ring-cyan-400" />
-                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100  transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Append Context</span></button>
+                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100  transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Save</span></button>
                             </div>
                         </div>
                         <div className="space-y-4">
-                            <h3 className="flex items-center space-x-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500"><History className="h-3 w-3" /><span>Memory Timeline</span></h3>
-                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><Brain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">This project currently has no high-level memory entries.</p><p className="text-xs text-zinc-600">The Brain stores critical cross-task knowledge.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.45)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-cyan-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
+                            <h3 className="flex items-center space-x-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500"><History className="h-3 w-3" /><span>Notes</span></h3>
+                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><Brain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">No notes yet for this project.</p><p className="text-xs text-zinc-600">Add notes to share context across tasks.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.45)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-cyan-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
                         </div>
                     </div>
                 </div>
