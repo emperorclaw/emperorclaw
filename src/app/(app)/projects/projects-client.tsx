@@ -4,7 +4,9 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, Search, Send, Trash2 } from "lucide-react";
+import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, Search, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -69,7 +71,20 @@ const emptyTaskForm = {
     humanApprovalRequired: false,
 };
 const taskStates = ["inbox", "in_progress", "review", "done", "failed", "dead_letter"];
+const COLUMN_DROP_STATE: Record<string, string> = {
+    inbox: "inbox",
+    in_progress: "in_progress",
+    review: "review",
+    done: "done",
+    exceptions: "failed",
+};
 const projectStatuses = ["active", "paused", "completed", "killed"];
+const PROJECT_STATUS_STYLES: Record<string, string> = {
+    active: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+    paused: "border-amber-500/25 bg-amber-500/10 text-amber-300",
+    completed: "border-cyan-500/25 bg-cyan-500/10 text-cyan-300",
+    killed: "border-red-500/25 bg-red-500/10 text-red-300",
+};
 const workTypeOptions = [
     { value: "manual_task", label: "Standard task" },
     { value: "research", label: "Research" },
@@ -116,6 +131,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [isMutating, setIsMutating] = useState(false);
     const [mutationError, setMutationError] = useState<string | null>(null);
     const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
+    const [draggingTask, setDraggingTask] = useState<any | null>(null);
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
     // Initial load from localStorage
     useEffect(() => {
@@ -251,7 +268,15 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         { value: "All Projects", label: "All Projects", description: `${projectItems.length} projects` },
         ...projectItems
             .filter((project) => customerFilter === "All Customers" ? true : project.customerId === customerFilter)
-            .map((project) => ({ value: project.id, label: project.goal, description: customers.find((customer) => customer.id === project.customerId)?.name || "No customer" })),
+            .map((project) => {
+                const customerName = customers.find((customer) => customer.id === project.customerId)?.name || "No customer";
+                const isFinished = project.status === "completed" || project.status === "killed";
+                return {
+                    value: project.id,
+                    label: isFinished ? `${project.goal} (${humanizeKey(project.status)})` : project.goal,
+                    description: project.status === "active" ? customerName : `${customerName} — ${humanizeKey(project.status)}`,
+                };
+            }),
     ];
     const agentOptions = [
         { value: "All Agents", label: "All Agents", description: `${agents.length} agents` },
@@ -418,6 +443,42 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
+    const moveTaskToState = async (task: any, newState: string) => {
+        if (task.state === newState) return;
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const res = await fetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state: newState }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Task move failed");
+            setTasks((prev) => prev.map((item) => item.id === data.task.id ? data.task : item));
+            if (selectedTask?.id === data.task.id) setSelectedTask(data.task);
+            toast.success(`Moved to ${humanizeKey(newState)}`);
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Task move failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    const handleDragStart = (event: DragStartEvent) => {
+        setDraggingTask(tasks.find((task) => task.id === event.active.id) || null);
+    };
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        setDraggingTask(null);
+        const { active, over } = event;
+        if (!over) return;
+        const newState = COLUMN_DROP_STATE[String(over.id)];
+        if (!newState) return;
+        const task = tasks.find((item) => item.id === active.id);
+        if (task) void moveTaskToState(task, newState);
+    };
+
     const archiveTask = async (task: any) => {
         if (confirmingArchive !== task.id) {
             setConfirmingArchive(task.id);
@@ -511,9 +572,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 Filter by agent
                             </div>
                             {selectedProject && (
+                                <span className={cn("rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-wider", PROJECT_STATUS_STYLES[selectedProject.status] || PROJECT_STATUS_STYLES.active)}>
+                                    Project status: {humanizeKey(selectedProject.status)}
+                                </span>
+                            )}
+                            {selectedProject && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <button className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><MoreHorizontal className="h-4 w-4" /></button>
+                                        <button className="cursor-pointer rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><MoreHorizontal className="h-4 w-4" /></button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
                                         <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
@@ -542,40 +608,48 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 </div>
             )}
 
-            <div className="flex min-h-0 flex-1 overflow-hidden -mx-8 px-8">
-                <div className="flex-1 overflow-x-auto pb-4">
-                    <div className="flex h-full min-w-max gap-6">
-                        <BoardColumn title="Inbox" count={byState.inbox.length} tone="zinc" icon={Inbox}>
-                            {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
-                        </BoardColumn>
-                        <BoardColumn title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
-                            {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} />)}
-                        </BoardColumn>
-                        <BoardColumn title="Review" count={byState.review.length} tone="amber" icon={CheckCircle2}>
-                            <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
-                                <BucketBadge label="Approval needed" count={reviewCounts.approval_needed} />
-                                <BucketBadge label="Waiting review" count={reviewCounts.waiting_review} />
-                                <BucketBadge label="Blocked" count={reviewCounts.blocked} tone="rose" />
-                                <BucketBadge label="Ready to close" count={reviewCounts.ready_to_close} tone="emerald" />
-                            </div>
-                            {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} />)}
-                        </BoardColumn>
-                        <BoardColumn title="Done" count={byState.done.length} tone="emerald" icon={CheckCircle2}>
-                            {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} />)}
-                        </BoardColumn>
-                        {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={Repeat}>
-                            {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
-                            {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
-                        </BoardColumn>}
+            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                <div className="flex min-h-0 flex-1 overflow-hidden -mx-8 px-8">
+                    <div className="flex-1 overflow-x-auto pb-4">
+                        <div className="flex h-full min-w-max gap-6">
+                            <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={Inbox}>
+                                {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
+                            </BoardColumn>
+                            <BoardColumn droppableId="in_progress" title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
+                                {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} />)}
+                            </BoardColumn>
+                            <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={CheckCircle2}>
+                                <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
+                                    <BucketBadge label="Approval needed" count={reviewCounts.approval_needed} />
+                                    <BucketBadge label="Waiting review" count={reviewCounts.waiting_review} />
+                                    <BucketBadge label="Blocked" count={reviewCounts.blocked} tone="rose" />
+                                    <BucketBadge label="Ready to close" count={reviewCounts.ready_to_close} tone="emerald" />
+                                </div>
+                                {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} />)}
+                            </BoardColumn>
+                            <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={CheckCircle2}>
+                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} />)}
+                            </BoardColumn>
+                            <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={XCircle}>
+                                {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                            </BoardColumn>
+                            {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={Repeat}>
+                                {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
+                                {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
+                            </BoardColumn>}
+                        </div>
                     </div>
                 </div>
-            </div>
+                <DragOverlay>
+                    {draggingTask ? <TaskCard task={draggingTask} project={getProjectName(draggingTask.projectId)} customer={getCustomerName(draggingTask.projectId)} agent={getAgentName(draggingTask.assignedAgentId)} onClick={() => {}} overlay /> : null}
+                </DragOverlay>
+            </DndContext>
 
             {selectedTask && (
                 <div className="absolute right-0 top-0 z-50 flex h-full w-[42%] flex-col rounded-xl border-l border-zinc-800 bg-zinc-900/95 p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-8 duration-300">
                     <div className="mb-8 flex items-center justify-between">
                         <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-500">TASK-{selectedTask.id.substring(0, 8).toUpperCase()}</div>
-                        <button onClick={() => setSelectedTask(null)} className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-5 w-5" /></button>
+                        <button onClick={() => setSelectedTask(null)} className="cursor-pointer rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-5 w-5" /></button>
                     </div>
                     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">
                         <div>
@@ -609,8 +683,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 <input type="number" value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400" />
                             </label>
                             <div className="flex items-end gap-2">
-                                <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><Edit3 className="h-4 w-4" />Edit</button>
-                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><Trash2 className="h-4 w-4" />{confirmingArchive === selectedTask?.id ? "Click again to confirm" : "Archive"}</button>
+                                <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><Edit3 className="h-4 w-4" />Edit</button>
+                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><Trash2 className="h-4 w-4" />{confirmingArchive === selectedTask?.id ? "Click again to confirm" : "Archive"}</button>
                             </div>
                         </div>
                         {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}
@@ -622,7 +696,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <div className="flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 focus-within:ring-1 focus-within:ring-cyan-500">
                             <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Agent instructions or private notes..." className="h-20 flex-1 resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none" />
                             <div className="flex flex-col justify-end border-l border-zinc-800 bg-zinc-950/70 p-2">
-                                <button onClick={handleSendComment} disabled={!comment.trim()} className="rounded-md bg-cyan-400/10 p-2 text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" /></button>
+                                <button onClick={handleSendComment} disabled={!comment.trim()} className="cursor-pointer rounded-md bg-cyan-400/10 p-2 text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" /></button>
                             </div>
                         </div>
                     </div>
@@ -636,14 +710,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10 text-cyan-500 shadow-inner"><Brain className="h-6 w-6" /></div>
                             <div><h2 className="text-lg font-semibold uppercase tracking-tight text-zinc-100">Project notes</h2><p className="text-xs font-medium text-zinc-500">Notes and context for this project</p></div>
                         </div>
-                        <button onClick={() => setIsContextOpen(false)} className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-6 w-6" /></button>
+                        <button onClick={() => setIsContextOpen(false)} className="cursor-pointer rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-6 w-6" /></button>
                     </div>
                     <div className="custom-scrollbar flex-1 space-y-8 overflow-y-auto p-6">
                         <div className="space-y-3">
                             <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Add a note</label>
                             <div className="relative">
                                 <textarea value={newContext} onChange={(event) => setNewContext(event.target.value)} placeholder="Enter new goals, findings, or critical context for the agents..." className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-200 outline-none shadow-inner focus:ring-1 focus:ring-cyan-400" />
-                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100  transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Save</span></button>
+                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex cursor-pointer items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Save</span></button>
                             </div>
                         </div>
                         <div className="space-y-4">
@@ -698,8 +772,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <CheckboxRow label="Only lead can change status" checked={projectForm.onlyLeadCanChangeStatus} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, onlyLeadCanChangeStatus: checked }))} />
                         </div>
                         <div className="flex justify-end gap-2">
-                            <button onClick={() => setProjectDialogMode(null)} className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-                            <button onClick={() => void submitProject()} disabled={isMutating || !projectForm.goal.trim()} className="rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save project"}</button>
+                            <button onClick={() => setProjectDialogMode(null)} className="cursor-pointer rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
+                            <button onClick={() => void submitProject()} disabled={isMutating || !projectForm.goal.trim()} className="cursor-pointer rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save project"}</button>
                         </div>
                     </div>
                 </DialogContent>
@@ -772,8 +846,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <CheckboxRow label="Human approval required" checked={taskForm.humanApprovalRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, humanApprovalRequired: checked }))} />
                         </div>
                         <div className="flex justify-end gap-2">
-                            <button onClick={() => setTaskDialogMode(null)} className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-                            <button onClick={() => void submitTask()} disabled={isMutating || !taskForm.projectId || !taskForm.title.trim()} className="rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save task"}</button>
+                            <button onClick={() => setTaskDialogMode(null)} className="cursor-pointer rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
+                            <button onClick={() => void submitTask()} disabled={isMutating || !taskForm.projectId || !taskForm.title.trim()} className="cursor-pointer rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save task"}</button>
                         </div>
                     </div>
                 </DialogContent>
@@ -792,15 +866,46 @@ function BucketBadge({ label, count, tone = "zinc" }: { label: string; count: nu
     return <div className={cn("rounded-lg border px-2 py-1.5", toneClass)}><div className="flex items-center justify-between gap-2"><span>{label}</span><span className="font-mono text-[10px]">{count}</span></div></div>;
 }
 
-function BoardColumn({ title, count, tone, icon: Icon, children }: { title: string; count: number; tone: "zinc" | "cyan" | "amber" | "emerald" | "slate"; icon: any; children: ReactNode }) {
-    const toneClass = { zinc: "border-zinc-800/60 bg-zinc-900/30", cyan: "border-cyan-500/20 bg-cyan-500/5", amber: "border-amber-500/20 bg-amber-500/5", emerald: "border-emerald-500/20 bg-emerald-500/5", slate: "border-zinc-800/60 bg-zinc-900/30" }[tone];
-    return <div className={cn("flex h-full w-80 flex-col rounded-xl border p-3", toneClass)}><div className="mb-4 flex items-center justify-between px-1"><div className="flex items-center space-x-2"><Icon className="h-4 w-4 text-zinc-500" /><h3 className="text-sm font-medium text-zinc-300">{title}</h3></div><span className="rounded bg-zinc-800/50 px-2 py-0.5 font-mono text-xs text-zinc-500">{count}</span></div><div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-1 pb-2">{children}</div></div>;
+function EmptyColumnHint({ children }: { children: ReactNode }) {
+    return <div className="rounded-lg border border-dashed border-zinc-800 p-4 text-center text-xs text-zinc-600">{children}</div>;
 }
 
-function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; }) {
+function BoardColumn({ title, count, tone, icon: Icon, children, droppableId }: { title: string; count: number; tone: "zinc" | "cyan" | "amber" | "emerald" | "slate" | "rose"; icon: any; children: ReactNode; droppableId?: string }) {
+    const toneClass = { zinc: "border-zinc-800/60 bg-zinc-900/30", cyan: "border-cyan-500/20 bg-cyan-500/5", amber: "border-amber-500/20 bg-amber-500/5", emerald: "border-emerald-500/20 bg-emerald-500/5", slate: "border-zinc-800/60 bg-zinc-900/30", rose: "border-rose-500/20 bg-rose-500/5" }[tone];
+    const droppable = useDroppable({ id: droppableId || `__nodrop-${title}`, disabled: !droppableId });
+    return (
+        <div ref={droppable.setNodeRef} className={cn("flex h-full w-80 flex-col rounded-xl border p-3 transition-colors", toneClass, droppable.isOver && "border-cyan-400/60 bg-cyan-400/10 ring-1 ring-cyan-400/40")}>
+            <div className="mb-4 flex items-center justify-between px-1"><div className="flex items-center space-x-2"><Icon className="h-4 w-4 text-zinc-500" /><h3 className="text-sm font-medium text-zinc-300">{title}</h3></div><span className="rounded bg-zinc-800/50 px-2 py-0.5 font-mono text-xs text-zinc-500">{count}</span></div>
+            <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-1 pb-2">{children}</div>
+        </div>
+    );
+}
+
+function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; overlay?: boolean }) {
+    const draggable = useDraggable({ id: task.id, disabled: overlay });
     const priority = task.priority >= 80 ? { label: "HIGH", cls: "bg-rose-500/10 text-rose-400 border-rose-500/20" } : task.priority >= 50 ? { label: "MED", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" } : { label: "LOW", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
     const border = blocked ? "border-rose-500/50" : recurring ? "border-cyan-500/40" : active ? "border-cyan-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
-    return <button onClick={onClick} className={cn("w-full rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80", border)}><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>{(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}</button>;
+    const style = overlay ? undefined : { transform: CSS.Translate.toString(draggable.transform) };
+    return (
+        <button
+            ref={overlay ? undefined : draggable.setNodeRef}
+            style={style}
+            {...(overlay ? {} : draggable.listeners)}
+            {...(overlay ? {} : draggable.attributes)}
+            onClick={onClick}
+            className={cn(
+                "w-full cursor-grab touch-none rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80 active:cursor-grabbing",
+                border,
+                draggable.isDragging && "opacity-40",
+                overlay && "cursor-grabbing shadow-2xl shadow-black/50",
+            )}
+        >
+            <div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div>
+            <div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div>
+            <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>
+            {(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}
+        </button>
+    );
 }
 
 function RecurringCard({ definition, project, customer, agent }: { definition: any; project: string; customer: string; agent: string }) {
