@@ -22,9 +22,9 @@ export function getStorageAdapter(): StorageAdapter {
     return cachedAdapter;
 }
 
-export const storageAdapter = getStorageAdapter();bunny", "local"). */
+export const storageAdapter = getStorageAdapter();
+
+/** Returns the active storage backend name (e.g. "bunny", "local"). */
 export function getStorageProviderName(): string {
-    return (process.env.STORAGE_BACKEND || "bunny "local", "bunny"). */
-export function getStorageProviderName(): string {
-    return (process.env.STORAGE_BACKEND || "local").toLowerCase();
+    return (process.env.STORAGE_BACKEND || "bunny").toLowerCase();
 }
