@@ -121,7 +121,7 @@ Primary rule:
 - The bridge is mainly for routing threads, injecting context, preserving session/runtime state, and posting the final reply back into Emperor.
 
 Base details:
-- Base URL: https://emperorclaw.malecu.eu/api/mcp
+- Base URL: http://localhost:3000/api/mcp
 - Auth header: Authorization: Bearer <company token>
 - Mutation safety header: Idempotency-Key: <uuid>
 
@@ -598,10 +598,10 @@ const ARTIFACTS_AND_FOLDERS_QUICK_GUIDE = `# Artifact And Folder Quick Guide
 
 - Search first with GET /artifacts or GET /folders/{id}/contents.
 - Create folders first with POST /folders. Use parentFolderId for child folders. The server derives path from parent + name.
-- Never send a full folder path like /malecu/invoices/2026 as one folder name.
-- To build /malecu/invoices/2026, create three folders in sequence:
-  1. POST /folders { customerId, name: "malecu" }
-  2. POST /folders { customerId, parentFolderId: <malecu-id>, name: "invoices" }
+- Never send a full folder path like /acme/invoices/2026 as one folder name.
+- To build /acme/invoices/2026, create three folders in sequence:
+  1. POST /folders { customerId, name: "acme" }
+  2. POST /folders { customerId, parentFolderId: <acme-id>, name: "invoices" }
   3. POST /folders { customerId, parentFolderId: <invoices-id>, name: "2026" }
 - Upload fresh file bytes with POST /artifacts/upload and pass file, kind, one of customerId/projectId, and folderId when the file belongs in a folder.
 - Then upload into the last folder with POST /artifacts/upload and folderId=<2026-folder-id>.
@@ -986,7 +986,7 @@ These flows show how to operate Emperor correctly from a user request to a durab
 const API_REFERENCE_FILE = `# Emperor API Reference
 
 Base URL:
-- https://emperorclaw.malecu.eu/api/mcp
+- http://localhost:3000/api/mcp
 
 Auth:
 - Authorization: Bearer <company token>
@@ -1056,7 +1056,7 @@ Important note:
 - POST /messages/send
 - POST /chat/status
 - GET /messages/sync
-- websocket: wss://emperorclaw.malecu.eu/api/mcp/ws
+- websocket: wss://emperorclaw.acme.eu/api/mcp/ws
 
 ## Resources
 - GET /resources

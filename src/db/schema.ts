@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -611,7 +611,9 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
     requestHash: text("request_hash").notNull(),
     responseSnapshot: jsonb("response_snapshot"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    uniqueRequest: uniqueIndex("idx_idempotency_unique_request").on(table.companyId, table.requestHash),
+}));
 
 export const messageThreads = pgTable("message_threads", {
     id: uuid("id").primaryKey().defaultRandom(),

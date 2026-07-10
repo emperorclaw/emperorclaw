@@ -3,12 +3,13 @@ import { prepareArtifactRecord } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { db } from "@/db";
 import { artifacts, customers, projects, tasks } from "@/db/schema";
-import { storageAdapter } from "@/lib/storage";
+import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
+import { sanitizeFilenameSegment } from "@/lib/storage/path-sanitizer";
 import {
     ArtifactFileTooLargeError,
     ArtifactStorageQuotaError,
@@ -69,7 +70,9 @@ export async function POST(req: NextRequest) {
         const title = getFormStringValue(form, "title") || fileEntry.name;
         const artifactClass = getFormStringValue(form, "artifactClass");
         const importance = getFormStringValue(form, "importance");
-        const logicalPath = folder ? `${folder.path}/${fileEntry.name}` : fileEntry.name;
+        const logicalPath = folder
+            ? `${folder.path}/${sanitizeFilenameSegment(fileEntry.name)}`
+            : sanitizeFilenameSegment(fileEntry.name);
         const contentType =
             getFormStringValue(form, "contentType") ||
             fileEntry.type ||
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
                 importance,
                 title,
                 contentType: uploadResult.contentType,
-                storageProvider: "bunny",
+                storageProvider: getStorageProviderName(),
                 storageUrl: uploadResult.storageUrl,
                 storageKey: uploadResult.storageKey,
                 originalFilename: fileEntry.name,

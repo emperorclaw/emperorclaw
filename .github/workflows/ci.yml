@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: emperor
+          POSTGRES_PASSWORD: emperor
+          POSTGRES_DB: emperor_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+        continue-on-error: true
+
+      - name: Type check
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Run tests
+        run: npm test
+        env:
+          POSTGRES_CONNECTION_STRING: postgres://emperor:emperor@localhost:5432/emperor_test
+          NEXTAUTH_SECRET: test-secret-do-not-use-in-production
+          EMPEROR_CLAW_MASTER_KEY: 0000000000000000000000000000000000000000000000000000000000000000

@@ -147,8 +147,22 @@ export async function checkIdempotency(req: NextRequest, companyId: string, endp
         return { error: "Idempotency-Key header is required", status: 400 };
     }
 
-    // Generate request hash (simplified by just using the key and endpoint)
-    const requestHash = crypto.createHash('sha256').update(`${idempotencyKey}:${endpoint}`).digest('hex');
+    // Clone request to read body for stronger idempotency.
+    // Include body hash so a reused key with a different body doesn't return a stale response.
+    let bodyHash = "";
+    try {
+        const clonedReq = req.clone();
+        const bodyText = await clonedReq.text();
+        if (bodyText) {
+            bodyHash = crypto.createHash("sha256").update(bodyText).digest("hex").slice(0, 16);
+        }
+    } catch {
+        // Body may be unreadable (e.g. FormData already consumed) — fall back to key+endpoint only
+    }
+
+    const requestHash = crypto.createHash("sha256")
+        .update(`${idempotencyKey}:${endpoint}:${bodyHash}`)
+        .digest("hex");
 
     const [existing] = await db.select().from(idempotencyKeys).where(
         and(
@@ -157,20 +171,30 @@ export async function checkIdempotency(req: NextRequest, companyId: string, endp
         )
     ).limit(1);
 
-    if (existing && existing.responseSnapshot) {
-        return { cachedResponse: existing.responseSnapshot };
+    if (existing?.responseSnapshot) {
+        return { cachedResponse: existing.responseSnapshot as JsonObject };
     }
 
     return { requestHash };
 }
 
-export async function saveIdempotencyResponse(companyId: string, endpoint: string, requestHash: string, responseObj: JsonObject) {
-    await db.insert(idempotencyKeys).values({
-        companyId,
-        endpoint,
-        requestHash,
-        responseSnapshot: responseObj,
-    });
+export async function saveIdempotencyResponse(
+    companyId: string,
+    endpoint: string,
+    requestHash: string,
+    responseObj: JsonObject
+) {
+    try {
+        await db.insert(idempotencyKeys).values({
+            companyId,
+            endpoint,
+            requestHash,
+            responseSnapshot: responseObj,
+        }).onConflictDoNothing();
+    } catch {
+        // If insert failed (e.g. race condition already handled by unique constraint),
+        // it's fine — the first writer's response wins.
+    }
 }
 
 export async function resolveAgentId(

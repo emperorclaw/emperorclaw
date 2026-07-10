@@ -1,13 +1,16 @@
 import nodemailer from "nodemailer";
 import { recordOpsError } from "@/lib/ops-events";
 
-// Temporary hardcoded SMTP defaults for deployment bootstrap.
-// Environment variables still override these values when present.
-const SMTP_HOST = process.env.SMTP_HOST || "smtp.migadu.com";
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "465", 10);
-const SMTP_USER = process.env.SMTP_USER || "no-reply@malecu.eu";
-const SMTP_PASS = process.env.SMTP_PASS || "SMTP_PASSWORD_REDACTED";
-const SMTP_FROM = process.env.SMTP_FROM || "Emperor Claw Beta <no-reply@malecu.eu>";
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM = process.env.SMTP_FROM;
+
+/** Whether email sending is configured and available. */
+export function isEmailConfigured(): boolean {
+  return !!(SMTP_HOST && SMTP_USER && SMTP_PASS && SMTP_FROM);
+}
 
 function sanitizeHeaderValue(value: string, field: string): string {
     const normalized = String(value ?? "").trim();

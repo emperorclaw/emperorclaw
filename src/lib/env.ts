@@ -45,5 +45,7 @@ export function getAppUrl(request?: {
         }
     }
 
+    // Production safety net — self-hosters should set APP_URL or NEXTAUTH_URL explicitly.
+    // This fallback preserves backward compatibility for the existing deployment.
     return "https://emperorclaw.malecu.eu";
 }

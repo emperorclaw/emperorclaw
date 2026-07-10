@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { users, sessions } from "@/db/schema";
 import { and, eq, gt } from "drizzle-orm";
 import * as argon2 from "argon2";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 type AuthToken = JWT & {
     id?: string;
@@ -54,6 +55,17 @@ export const authOptions: NextAuthOptions = {
                 }
 
                 const normalizedEmail = String(credentials.email).trim().toLowerCase();
+
+                // Rate limit login attempts: 10 per minute per email
+                const rateLimitKey = `login:${normalizedEmail}`;
+                const rateResult = consumeRateLimit({
+                    key: rateLimitKey,
+                    limit: 10,
+                    windowMs: 60_000,
+                });
+                if (!rateResult.allowed) {
+                    throw new Error("RATE_LIMITED");
+                }
 
                 const [userRecord] = await db
                     .select()
