@@ -427,7 +427,7 @@ function buildPipelineMarkdown(pipeline: PipelineRow, runs: RunRow[], agentsMap:
   const steps = parseSteps(pipeline.stepsJson);
   const latestRun = runs.find((run) => run.pipelineId === pipeline.id);
   const tags = stringArray(pipeline.contextTagFilters).map((tag) => `#${tag}`).join(", ") || "None";
-  const pinned = stringArray(pipeline.contextResourceIds).join(", ") || "Scope resolver";
+  const pinned = stringArray(pipeline.contextResourceIds).join(", ") || "None";
 
   return [
     `# ${pipeline.name}`,
@@ -438,7 +438,7 @@ function buildPipelineMarkdown(pipeline: PipelineRow, runs: RunRow[], agentsMap:
     `**Trigger:** ${triggerText(pipeline)}`,
     "",
     "## Context Pack",
-    `- Query: ${pipeline.contextQuery || "Scope-based Company Brain context"}`,
+    `- Query: ${pipeline.contextQuery || "Not set"}`,
     `- Pinned sources: ${pinned}`,
     `- Tags: ${tags}`,
     `- Budget: ${pipeline.contextMaxChars || 8000} chars`,
@@ -613,8 +613,8 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                   <section className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-4">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-100"><Database className="h-4 w-4" />Context Pack</h3>
                     <dl className="mt-3 space-y-2 text-sm text-zinc-400">
-                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Query</dt><dd>{selectedPipeline.contextQuery || "Scope-based Company Brain context"}</dd></div>
-                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Pinned sources</dt><dd>{stringArray(selectedPipeline.contextResourceIds).length || "Scope resolver"}</dd></div>
+                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Query</dt><dd>{selectedPipeline.contextQuery || "Not set"}</dd></div>
+                      <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Pinned sources</dt><dd>{stringArray(selectedPipeline.contextResourceIds).length || "None"}</dd></div>
                       <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Tags</dt><dd>{stringArray(selectedPipeline.contextTagFilters).map((tag) => `#${tag}`).join(", ") || "None"}</dd></div>
                       <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Budget</dt><dd>{selectedPipeline.contextMaxChars || 8000} chars</dd></div>
                     </dl>
