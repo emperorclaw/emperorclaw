@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, Cable, CheckCircle2, Copy, KeyRound, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
     const [copied, setCopied] = useState(false);
     const [revokingTokenId, setRevokingTokenId] = useState<string | null>(null);
+    const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null);
 
     const handleGenerate = async () => {
         if (!newTokenName.trim() || generating) return;
@@ -71,11 +73,14 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                 setActiveSecret({ id: data.token.id, name: data.token.name, secret: data.secret });
                 setNewTokenName("");
                 setNewTokenScope("mcp_full");
+                toast.success("API key created.");
             } else {
                 console.error("Failed to generate token");
+                toast.error("Failed to create API key.");
             }
         } catch (e) {
             console.error(e);
+            toast.error("Failed to create API key.");
         } finally {
             setGenerating(false);
         }
@@ -90,6 +95,15 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
 
     const handleRevokeToken = async (tokenId: string) => {
         if (revokingTokenId) return;
+
+        // Require confirmation for revoke (irreversible)
+        if (confirmingRevokeId !== tokenId) {
+            setConfirmingRevokeId(tokenId);
+            setTimeout(() => setConfirmingRevokeId(null), 4000);
+            return;
+        }
+        setConfirmingRevokeId(null);
+
         setRevokingTokenId(tokenId);
 
         try {
@@ -100,11 +114,14 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
             if (res.ok) {
                 setTokens(tokens.filter((token) => token.id !== tokenId));
                 if (activeSecret?.id === tokenId) setActiveSecret(null);
+                toast.success("API key revoked.");
             } else {
                 console.error("Failed to revoke token");
+                toast.error("Failed to revoke API key.");
             }
         } catch (error) {
             console.error(error);
+            toast.error("Failed to revoke API key.");
         } finally {
             setRevokingTokenId(null);
         }
@@ -257,7 +274,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                                             <p className="mt-1 text-xs text-zinc-500">Last used: {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</p>
                                         </div>
                                         <Button variant="destructive" size="sm" onClick={() => handleRevokeToken(token.id)} disabled={revokingTokenId === token.id}>
-                                            <Trash2 className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : "Revoke"}
+                                            <Trash2 className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}
                                         </Button>
                                     </div>
                                 ))
