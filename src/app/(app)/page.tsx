@@ -213,7 +213,7 @@ export default async function DashboardPage() {
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
         <KpiCard title="To do" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
         <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
-        <KpiCard title="Alerts" value={openIncidents.toString()} trend="Live" trendLabel="items needing review" alert={openIncidents > 0} good={openIncidents === 0} />
+        <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
