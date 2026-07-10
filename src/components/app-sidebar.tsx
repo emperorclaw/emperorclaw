@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -20,10 +21,25 @@ function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
+
 export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
     const pathname = usePathname();
     const { data: session } = useSession();
     const isDocsPage = pathname?.startsWith('/docs') ?? false;
+    const [collapsed, setCollapsed] = useState(false);
+
+    useEffect(() => {
+        if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1") setCollapsed(true);
+    }, []);
+
+    function toggleCollapsed() {
+        setCollapsed((current) => {
+            const next = !current;
+            localStorage.setItem(SIDEBAR_COLLAPSE_KEY, next ? "1" : "0");
+            return next;
+        });
+    }
 
     const userEmail = session?.user?.email || "";
     const userName = session?.user?.name || userEmail.split("@")[0] || "User";
@@ -47,16 +63,24 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     }
 
     return (
-        <aside className="flex h-full w-20 shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl md:w-72">
+        <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-200", collapsed ? "w-20" : "w-20 md:w-72")}>
             <div className="border-b border-white/10 p-5">
                 <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20">
                         <CustomLogo className="h-5 w-5 text-cyan-300" />
                     </div>
-                    <div className="hidden min-w-0 md:block">
+                    <div className={cn("hidden min-w-0 flex-1", collapsed ? "" : "md:block")}>
                         <div className="truncate text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
                         <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">Overview</div>
                     </div>
+                    <button
+                        type="button"
+                        onClick={toggleCollapsed}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
+                    >
+                        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                    </button>
                 </div>
             </div>
 
@@ -68,6 +92,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         <Link
                             key={link.name}
                             href={link.href}
+                            title={collapsed ? link.name : undefined}
                             className={cn(
                                 "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                                 isActive
@@ -76,7 +101,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                             )}
                         >
                             <Icon className={cn("h-4 w-4", isActive ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
-                            <span className="hidden truncate md:inline">{link.name}</span>
+                            <span className={cn("hidden truncate", collapsed ? "" : "md:inline")}>{link.name}</span>
                         </Link>
                     );
                 })}
@@ -87,6 +112,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                     <WorkspaceTour />
                     <Link
                         href="/docs"
+                        title={collapsed ? "Documentation" : undefined}
                         className={cn(
                             "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                             pathname?.startsWith("/docs")
@@ -95,15 +121,15 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         )}
                     >
                         <BookOpen className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
-                        <span className="hidden md:inline">Documentation</span>
+                        <span className={cn("hidden", collapsed ? "" : "md:inline")}>Documentation</span>
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]">
-                                <div className="grid h-9 w-9 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
+                                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
                                     {userInitial}
                                 </div>
-                                <div className="hidden min-w-0 flex-1 flex-col md:flex">
+                                <div className={cn("hidden min-w-0 flex-1 flex-col", collapsed ? "" : "md:flex")}>
                                     <span className="truncate text-sm font-medium text-zinc-100">{userName}</span>
                                     <span className="text-xs text-zinc-500">{userEmail}</span>
                                 </div>

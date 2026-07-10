@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { ExpandablePanel } from "@/components/expandable-panel";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -90,7 +91,7 @@ export default function ResourcesClient({
 }) {
   const [resources, setResources] = useState(initialResources);
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
-  const [mode, setMode] = useState<"edit" | "preview">("preview");
+  const [mode, setMode] = useState<"edit" | "preview" | "split">("preview");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "shared" | "drafts">("all");
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
@@ -105,6 +106,7 @@ export default function ResourcesClient({
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
+  const isDeleteArmed = Boolean(selectedResource) && confirmingDelete === selectedResource?.id;
 
   const filteredResources = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -325,19 +327,19 @@ export default function ResourcesClient({
         <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">
-              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
-              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New linked note" onClick={createLinkedResource}><Plus className="h-4 w-4" /></button>
-              <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New linked note" onClick={createLinkedResource}><Plus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
             </div>
-            <button onClick={archiveSelectedResource} disabled={!selectedResource} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40">
-              <Trash2 className="h-3.5 w-3.5" /> {confirmingDelete === selectedResource?.id ? "Click again to confirm" : "Delete note"}
+            <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300")}>
+              <Trash2 className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}
             </button>
           </div>
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex items-center gap-1 text-zinc-600">
-                <button onClick={() => selectAdjacentResource("previous")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
-                <button onClick={() => selectAdjacentResource("next")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
                 <span>Knowledge & Rules</span>
@@ -346,14 +348,14 @@ export default function ResourcesClient({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
-              <button onClick={() => setMode(mode === "preview" ? "edit" : "preview")} className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Toggle editor mode"><Edit3 className="h-4 w-4" /></button>
-              <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
+              <button onClick={() => setMode(mode === "preview" ? "edit" : mode === "edit" ? "split" : "preview")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Cycle editor mode"><Edit3 className="h-4 w-4" /></button>
+              <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
                 <Check className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
               </button>
-              <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
+              <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
                 <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
-              <button onClick={archiveSelectedResource} disabled={!selectedResource} className="rounded p-1 text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40" aria-label={confirmingDelete === selectedResource?.id ? "Click again to confirm delete" : "Delete note"}><Trash2 className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
           <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
@@ -375,7 +377,7 @@ export default function ResourcesClient({
               </div>
               <div className="mt-3 flex items-center gap-2">
                 {(["all", "shared", "drafts"] as const).map((item) => (
-                  <button key={item} onClick={() => setFilter(item)} className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
+                  <button key={item} onClick={() => setFilter(item)} className={cn("cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
                 ))}
                 <span className="ml-auto text-[11px] text-zinc-600">{filteredResources.length} notes</span>
               </div>
@@ -392,7 +394,7 @@ export default function ResourcesClient({
                     </div>
                     <div className="space-y-0.5 pl-4">
                       {group.items.map((resource) => (
-                        <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
+                        <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
                           <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
                           <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
                           {noteStatus(resource.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
@@ -418,13 +420,23 @@ export default function ResourcesClient({
                     {draftShared && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">shared</span>}
                   </div>
                   <div className="flex shrink-0 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
-                    <button onClick={() => setMode("preview")} className={cn("rounded px-2.5 py-1 text-[11px] font-medium", mode === "preview" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Reading</button>
-                    <button onClick={() => setMode("edit")} className={cn("rounded px-2.5 py-1 text-[11px] font-medium", mode === "edit" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Source</button>
+                    <button onClick={() => setMode("preview")} className={cn("cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium", mode === "preview" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Reading</button>
+                    <button onClick={() => setMode("split")} className={cn("cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium", mode === "split" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Split</button>
+                    <button onClick={() => setMode("edit")} className={cn("cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium", mode === "edit" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Source</button>
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
                   {mode === "edit" ? (
                     <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[620px] w-full resize-none bg-zinc-950 px-8 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-cyan-500/30" />
+                  ) : mode === "split" ? (
+                    <div className="grid h-full min-h-[620px] grid-cols-2 divide-x divide-zinc-800">
+                      <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-full resize-none bg-zinc-950 px-6 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-cyan-500/30" />
+                      <article className="min-h-full overflow-y-auto px-6 py-7">
+                        <div className="prose prose-invert max-w-none">
+                          <MarkdownRenderer content={draftContent || "*No content yet.*"} />
+                        </div>
+                      </article>
+                    </div>
                   ) : (
                     <article className="mx-auto min-h-full max-w-4xl px-8 py-8">
                       <div className="prose prose-invert max-w-none">
@@ -442,8 +454,14 @@ export default function ResourcesClient({
           <aside className="flex min-h-0 flex-col overflow-y-auto border-t border-zinc-800 bg-zinc-950 lg:border-l lg:border-t-0">
             {selectedResource && (
               <>
-                <div className="h-[360px] shrink-0 border-b border-zinc-800">
-                  <LocalGraph graph={insights.graph} selectedId={selectedResource.id} />
+                <div className="shrink-0 border-b border-zinc-800">
+                  <ExpandablePanel
+                    className="h-[360px] overflow-hidden"
+                    expandedClassName="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/60"
+                    label="Expand graph"
+                  >
+                    {() => <div className="h-full"><LocalGraph graph={insights.graph} selectedId={selectedResource.id} /></div>}
+                  </ExpandablePanel>
                 </div>
 
                 <div className="shrink-0 p-3">
@@ -460,7 +478,7 @@ export default function ResourcesClient({
                         <option value="draft">Draft / Needs review</option>
                         <option value="active">Published</option>
                       </select>
-                      <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={isSaving} className={cn("mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
+                      <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={isSaving} className={cn("mt-2 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
                         <Check className="h-3.5 w-3.5" />
                         {publicationStatus === "draft" ? "Publish note" : "Move back to draft"}
                       </button>
@@ -479,13 +497,13 @@ export default function ResourcesClient({
                           {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
                       )}
-                      <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
+                      <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full cursor-pointer items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
                         <span>Inject into matching agents</span>
                         <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
                       </button>
                       <p className="mt-1 text-[11px] leading-4 text-zinc-600">shared means context injection for matching agents. Keep it off unless agents should receive it during work.</p>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
-                      <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> {confirmingDelete === selectedResource?.id ? "Click again to confirm" : "Delete note"}</button>
+                      <button onClick={archiveSelectedResource} className={cn("mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-600 hover:text-red-300")}><Archive className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}</button>
                     </div>
                   </details>
                   <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
