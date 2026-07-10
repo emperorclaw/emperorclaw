@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, Search, Send, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -114,6 +115,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [taskForm, setTaskForm] = useState<any>(emptyTaskForm);
     const [isMutating, setIsMutating] = useState(false);
     const [mutationError, setMutationError] = useState<string | null>(null);
+    const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
 
     // Initial load from localStorage
     useEffect(() => {
@@ -217,6 +219,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             setComment("");
         } catch (error) {
             console.error("Failed to send task context", error);
+            toast.error("Failed to send. Please try again.");
         }
     };
 
@@ -307,7 +310,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     };
 
     const archiveProject = async (project: any) => {
-        if (!window.confirm(`Archive project "${project.goal}"? Its tasks will no longer appear on this board.`)) return;
+        if (confirmingArchive !== project.id) {
+            setConfirmingArchive(project.id);
+            setTimeout(() => setConfirmingArchive(null), 4000);
+            return;
+        }
+        setConfirmingArchive(null);
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -317,6 +325,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             setProjectItems((prev) => prev.filter((item) => item.id !== project.id));
             setTasks((prev) => prev.filter((task) => task.projectId !== project.id));
             if (projectFilter === project.id) setProjectFilter("All Projects");
+            toast.success("Project archived.");
             router.refresh();
         } catch (error) {
             setMutationError(error instanceof Error ? error.message : "Project archive failed");
@@ -410,7 +419,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     };
 
     const archiveTask = async (task: any) => {
-        if (!window.confirm(`Archive task "${getTaskTitle(task)}"?`)) return;
+        if (confirmingArchive !== task.id) {
+            setConfirmingArchive(task.id);
+            setTimeout(() => setConfirmingArchive(null), 4000);
+            return;
+        }
+        setConfirmingArchive(null);
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -419,6 +433,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             if (!res.ok) throw new Error(data.error || "Task archive failed");
             setTasks((prev) => prev.filter((item) => item.id !== task.id));
             setSelectedTask(null);
+            toast.success("Task archived.");
             router.refresh();
         } catch (error) {
             setMutationError(error instanceof Error ? error.message : "Task archive failed");
@@ -502,7 +517,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
                                         <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
-                                        <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />Archive project</DropdownMenuItem>
+                                        <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />{confirmingArchive === selectedProject ? "Click again to confirm" : "Archive project"}</DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
@@ -595,7 +610,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             </label>
                             <div className="flex items-end gap-2">
                                 <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><Edit3 className="h-4 w-4" />Edit</button>
-                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><Trash2 className="h-4 w-4" />Archive</button>
+                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><Trash2 className="h-4 w-4" />{confirmingArchive === selectedTask?.id ? "Click again to confirm" : "Archive"}</button>
                             </div>
                         </div>
                         {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}

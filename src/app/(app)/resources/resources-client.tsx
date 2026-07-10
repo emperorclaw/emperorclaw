@@ -101,6 +101,7 @@ export default function ResourcesClient({
   const [publicationStatus, setPublicationStatus] = useState<"draft" | "active">(noteStatus(initialResources[0]?.configText || "") === "draft" ? "draft" : "active");
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
@@ -303,7 +304,13 @@ export default function ResourcesClient({
   }
 
   async function archiveSelectedResource() {
-    if (!selectedResource || !confirm("Delete this Knowledge & Rules note? It will be archived and hidden from agents.")) return;
+    if (!selectedResource) return;
+    if (confirmingDelete !== selectedResource.id) {
+      setConfirmingDelete(selectedResource.id);
+      setTimeout(() => setConfirmingDelete(null), 4000);
+      return;
+    }
+    setConfirmingDelete(null);
     const response = await fetch(`/api/resources/${selectedResource.id}`, { method: "DELETE" });
     if (!response.ok) return toast.error("Failed to delete note");
     const remaining = resources.filter((resource) => resource.id !== selectedResource.id);
@@ -323,7 +330,7 @@ export default function ResourcesClient({
               <button className="rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
             </div>
             <button onClick={archiveSelectedResource} disabled={!selectedResource} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40">
-              <Trash2 className="h-3.5 w-3.5" /> Delete note
+              <Trash2 className="h-3.5 w-3.5" /> {confirmingDelete === selectedResource?.id ? "Click again to confirm" : "Delete note"}
             </button>
           </div>
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
@@ -346,7 +353,7 @@ export default function ResourcesClient({
               <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
                 <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
-              <button onClick={archiveSelectedResource} disabled={!selectedResource} className="rounded p-1 text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Delete note"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className="rounded p-1 text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40" aria-label={confirmingDelete === selectedResource?.id ? "Click again to confirm delete" : "Delete note"}><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
           <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
@@ -478,7 +485,7 @@ export default function ResourcesClient({
                       </button>
                       <p className="mt-1 text-[11px] leading-4 text-zinc-600">shared means context injection for matching agents. Keep it off unless agents should receive it during work.</p>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
-                      <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> Delete note</button>
+                      <button onClick={archiveSelectedResource} className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-zinc-600 hover:text-red-300"><Archive className="h-3.5 w-3.5" /> {confirmingDelete === selectedResource?.id ? "Click again to confirm" : "Delete note"}</button>
                     </div>
                   </details>
                   <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">

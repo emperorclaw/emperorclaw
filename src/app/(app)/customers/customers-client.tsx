@@ -2,13 +2,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Building2, Save, Search, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type CustomerSummary = any;
 
 export default function CustomersClient({ initialData: customerData }: { initialData: CustomerSummary[] }) {
+    const router = useRouter();
     const [isAddClientOpen, setIsAddClientOpen] = useState(false);
     const [newClientName, setNewClientName] = useState("");
     const [newClientNotes, setNewClientNotes] = useState("");
@@ -37,9 +40,11 @@ export default function CustomersClient({ initialData: customerData }: { initial
             setNewClientName("");
             setNewClientNotes("");
             setIsAddClientOpen(false);
-            window.location.reload();
+            toast.success("Customer created.");
+            router.refresh();
         } catch (error) {
             console.error("Failed to create customer", error);
+            toast.error("Failed to create customer.");
         } finally {
             setSending(false);
         }
@@ -56,9 +61,11 @@ export default function CustomersClient({ initialData: customerData }: { initial
                 body: JSON.stringify({ notes }),
             });
             if (!res.ok) throw new Error("Failed to save customer notes");
-            window.location.reload();
+            toast.success("Notes saved.");
+            router.refresh();
         } catch (error) {
             console.error("Failed to save customer notes", error);
+            toast.error("Failed to save notes.");
         } finally {
             setSending(false);
         }

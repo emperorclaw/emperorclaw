@@ -377,6 +377,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
   const [selectedId, setSelectedId] = useState(initialPipelines[0]?.id || "");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const filteredPipelines = useMemo(() => {
     return pipelines.filter((pipeline) => {
@@ -392,7 +393,12 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
   const selectedMarkdown = selectedPipeline ? buildPipelineMarkdown(selectedPipeline, selectedRuns, agentsMap, projectsMap, customersMap) : "";
 
   const deletePipeline = useCallback(async (pipeline: PipelineRow) => {
-    if (!confirm(`Delete pipeline "${pipeline.name}"? This removes the documentation registry, not external agent work.`)) return;
+    if (confirmingDelete !== pipeline.id) {
+      setConfirmingDelete(pipeline.id);
+      setTimeout(() => setConfirmingDelete(null), 4000);
+      return;
+    }
+    setConfirmingDelete(null);
     const res = await fetch(`/api/pipelines/${pipeline.id}`, { method: "DELETE" });
     if (!res.ok) {
       toast.error("Could not delete pipeline");
@@ -478,7 +484,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                         <Copy className="h-4 w-4" /> Copy docs
                       </button>
                       <button type="button" onClick={() => deletePipeline(selectedPipeline)} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-500/15">
-                        <Trash2 className="h-4 w-4" /> Delete
+                        <Trash2 className="h-4 w-4" /> {confirmingDelete === selectedPipeline?.id ? "Click again to confirm" : "Delete"}
                       </button>
                     </div>
                   </div>
