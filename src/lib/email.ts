@@ -110,7 +110,7 @@ function renderEmailShell({
 }
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-    if (!SMTP_HOST || !SMTP_USER) {
+    if (!SMTP_HOST || !SMTP_USER || !SMTP_FROM) {
         console.warn("SMTP credentials not configured. Email not sent to:", to);
         console.log("--- Email Content ---");
         console.log(`Subject: ${subject}`);
@@ -119,9 +119,12 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
         return false;
     }
 
+    // TypeScript narrowing: all SMTP vars are strings after the guard above
+    const from = SMTP_FROM as string;
+
     try {
         const info = await transporter.sendMail({
-            from: sanitizeHeaderValue(SMTP_FROM, "SMTP_FROM"),
+            from: sanitizeHeaderValue(from, "SMTP_FROM"),
             to: sanitizeHeaderValue(to, "recipient"),
             subject: sanitizeHeaderValue(subject, "subject"),
             html,
