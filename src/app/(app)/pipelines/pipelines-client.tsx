@@ -21,6 +21,8 @@ import {
   Database,
   FileText,
   Layers3,
+  Maximize2,
+  Minimize2,
   Network,
   Play,
   Repeat,
@@ -163,7 +165,7 @@ function PipelineDocNode({ data }: NodeProps<Node<PipelineNodeData>>) {
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-zinc-950 !bg-current" />
       <div className="text-[10px] font-bold uppercase tracking-[0.22em] opacity-65">{data.eyebrow}</div>
       <div className="mt-1 text-sm font-semibold leading-tight">{data.label}</div>
-      <p className="mt-2 line-clamp-3 text-xs leading-relaxed opacity-75">{data.body}</p>
+      {data.body ? <p className="mt-2 line-clamp-3 text-xs leading-relaxed opacity-75">{data.body}</p> : null}
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-zinc-950 !bg-current" />
     </div>
   );
@@ -181,7 +183,7 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       id: "trigger",
       type: "pipelineDoc",
       position: { x: 0, y: 0 },
-      data: { label: triggerText(pipeline), eyebrow: "Trigger", body: "What causes the agent or runtime to start this documented process.", tone: "trigger" },
+      data: { label: triggerText(pipeline), eyebrow: "Trigger", body: "", tone: "trigger" },
     },
     {
       id: "context",
@@ -190,13 +192,13 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       data: {
         label: "Context Pack",
         eyebrow: "RAG contract",
-        body: pipeline.contextQuery || contextTags || `${contextSources || "Scope"} Company Brain sources before execution.`,
+        body: pipeline.contextQuery || contextTags || (contextSources > 0 ? `${contextSources} pinned source${contextSources === 1 ? "" : "s"}` : ""),
         tone: "context",
       },
     },
   ];
 
-  const stepNodes = steps.length > 0 ? steps : [{ id: "empty", name: "No steps registered", description: "Ask the agent to register the pipeline steps so humans can inspect the workflow." }];
+  const stepNodes = steps.length > 0 ? steps : [{ id: "empty", name: "No steps registered", description: "" }];
 
   stepNodes.forEach((step, index) => {
     nodes.push({
@@ -206,7 +208,7 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       data: {
         label: step.name || step.title || `Step ${index + 1}`,
         eyebrow: step.type || `Step ${index + 1}`,
-        body: step.description || step.prompt || "Document what this stage reads, decides, creates, and hands off.",
+        body: step.description || step.prompt || "",
         tone: "step",
       },
     });
@@ -217,7 +219,7 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       id: "output",
       type: "pipelineDoc",
       position: { x: 680 + stepNodes.length * 260, y: 40 },
-      data: { label: "Output contract", eyebrow: "Deliverable", body: pipeline.docMarkdown || pipeline.purpose || "Expected result, storage location, and owner-facing outcome.", tone: "output" },
+      data: { label: "Output contract", eyebrow: "Deliverable", body: pipeline.docMarkdown || pipeline.purpose || "", tone: "output" },
     },
     {
       id: "evidence",
@@ -226,7 +228,7 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
       data: {
         label: latestRun ? `${latestRun.status} run evidence` : "Run evidence",
         eyebrow: "Audit trail",
-        body: latestRun?.summary || "Recent runs show sources used, artifacts produced, and task evidence when agents report them.",
+        body: latestRun?.summary || "",
         tone: "evidence",
       },
     },
@@ -284,16 +286,44 @@ function useElkLayout(initialNodes: Node<PipelineNodeData>[], initialEdges: Edge
 function PipelineFlowMap({ pipeline, runs }: { pipeline: PipelineRow; runs: RunRow[] }) {
   const graph = useMemo(() => buildPipelineGraph(pipeline, runs), [pipeline, runs]);
   const { nodes, edges } = useElkLayout(graph.nodes, graph.edges);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [expanded]);
 
   return (
-    <div className="h-[560px] overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507]">
+    <>
+      {expanded ? (
+        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" onClick={() => setExpanded(false)} />
+      ) : null}
+      <div
+        className={
+          expanded
+            ? "fixed inset-4 z-50 overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60"
+            : "relative h-[70vh] min-h-[520px] overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507]"
+        }
+      >
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="absolute right-3 top-3 z-10 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/90 px-3 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
+      >
+        {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+        {expanded ? "Collapse" : "Expand"}
+      </button>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        minZoom={0.35}
-        maxZoom={1.35}
+        minZoom={0.15}
+        maxZoom={1.75}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
@@ -310,7 +340,8 @@ function PipelineFlowMap({ pipeline, runs }: { pipeline: PipelineRow; runs: RunR
         }} />
         <Controls className="!border !border-zinc-800 !bg-zinc-950/90 !text-zinc-100" />
       </ReactFlow>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -499,12 +530,10 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                   <section>
                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-violet-300"><FileText className="h-4 w-4" />Documentation</div>
                     <h2 className="mt-2 text-xl font-semibold text-white">Human-readable contract</h2>
-                    <p className="mt-2 text-sm leading-6 text-zinc-400">Use this as the baseline doc for what the pipeline does, which context it reads, and what evidence it should produce.</p>
                   </section>
 
                   <section className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-4">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-100"><Database className="h-4 w-4" />Context Pack</h3>
-                    <p className="mt-2 text-xs leading-5 text-violet-100/70">The reusable Company Brain context the agent should load before this automation runs. It is documentation and grounding, not hidden reasoning.</p>
                     <dl className="mt-3 space-y-2 text-sm text-zinc-400">
                       <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Query</dt><dd>{selectedPipeline.contextQuery || "Scope-based Company Brain context"}</dd></div>
                       <div><dt className="text-xs uppercase tracking-wider text-zinc-500">Pinned sources</dt><dd>{stringArray(selectedPipeline.contextResourceIds).length || "Scope resolver"}</dd></div>
