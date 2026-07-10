@@ -8,6 +8,7 @@ import type {
     StorageUploadParams,
     StorageUploadResult,
 } from "./types";
+import { sanitizeLogicalPath } from "./path-sanitizer";
 import { optionalEnv, requireEnv } from "../env";
 
 const REGION_HOSTS: Record<string, string> = {
@@ -168,15 +169,7 @@ export class BunnyStorageAdapter implements StorageAdapter {
     }
 
     private normalizeLogicalPath(logicalPath: string): string {
-        const cleaned = logicalPath.replace(/\\\\/g, "/");
-        const segments = cleaned
-            .split("/")
-            .map((segment) => segment.trim())
-            .filter(Boolean);
-        if (segments.length === 0) {
-            throw new Error("logicalPath must include at least one segment");
-        }
-        return segments.join("/");
+        return sanitizeLogicalPath(logicalPath);
     }
 
     private joinWithBase(base: string, storageKey: string): string {

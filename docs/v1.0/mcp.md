@@ -5,7 +5,7 @@ Emperor exposes a Model Context Protocol (MCP) API for programmatic access. All 
 ## Base URL
 
 ```
-https://emperorclaw.malecu.eu/api/mcp
+https://emperorclaw.example.com/api/mcp
 ```
 
 ## Authentication

@@ -11,7 +11,7 @@ export function registerInstallCommand(api: any, paths: EmperorPluginPaths): voi
       ensurePluginLayout(paths);
       const params = ctx?.args ? JSON.parse(ctx.args) : {};
       const configPath = writeLocalConfig(paths, {
-        apiUrl: String(params.apiUrl || api.pluginConfig?.apiUrl || "https://emperorclaw.malecu.eu"),
+        apiUrl: String(params.apiUrl || api.pluginConfig?.apiUrl || "http://localhost:3000"),
         defaultOwnerName: String(params.defaultOwnerName || api.pluginConfig?.defaultOwnerName || "Jose"),
         defaultOwnerTimezone: String(params.defaultOwnerTimezone || api.pluginConfig?.defaultOwnerTimezone || "UTC"),
         installedAt: new Date().toISOString()

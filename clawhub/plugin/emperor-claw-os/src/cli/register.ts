@@ -49,7 +49,7 @@ export function registerEmperorCli(api: any, program: any): void {
       pluginId: api.id,
       rootDir: api.rootDir || "unknown",
       localConfigPresent: Boolean(localConfig),
-      configuredApiUrl: localConfig?.apiUrl || "https://emperorclaw.malecu.eu",
+      configuredApiUrl: localConfig?.apiUrl || "http://localhost:3000",
       emperorTokenPresent: Boolean(process.env.EMPEROR_API_TOKEN || process.env.EMPEROR_CLAW_API_TOKEN),
       bridgeContractVersion: BRIDGE_CONTRACT_VERSION,
       requiredBridgeCapabilities: REQUIRED_BRIDGE_CAPABILITIES,
@@ -98,7 +98,7 @@ export function registerEmperorCli(api: any, program: any): void {
     .action(async (opts: any) => {
       ensurePluginLayout(paths);
       const configPath = writeLocalConfig(paths, {
-        apiUrl: String(opts.apiUrl || api.pluginConfig?.apiUrl || "https://emperorclaw.malecu.eu"),
+        apiUrl: String(opts.apiUrl || api.pluginConfig?.apiUrl || "http://localhost:3000"),
         defaultOwnerName: String(opts.ownerName || api.pluginConfig?.defaultOwnerName || "Jose"),
         defaultOwnerTimezone: String(opts.ownerTimezone || api.pluginConfig?.defaultOwnerTimezone || "UTC"),
         installedAt: new Date().toISOString()
@@ -171,7 +171,7 @@ export function registerEmperorCli(api: any, program: any): void {
       ensurePluginLayout(paths);
       const localConfig = loadLocalConfig(paths);
       const result = await bootstrapAgent(paths, {
-        apiUrl: String(opts.apiUrl || localConfig?.apiUrl || api.pluginConfig?.apiUrl || "https://emperorclaw.malecu.eu"),
+        apiUrl: String(opts.apiUrl || localConfig?.apiUrl || api.pluginConfig?.apiUrl || "http://localhost:3000"),
         token: String(opts.token || ""),
         agentName: String(opts.agentName || ""),
         localBrainAgentId: String(opts.localBrainAgentId || ""),
@@ -263,7 +263,7 @@ export function registerEmperorCli(api: any, program: any): void {
       ensurePluginLayout(paths);
       const manifests = loadManifests(paths);
       const token = String(opts.token || "");
-      const apiUrl = String(opts.apiUrl || api.pluginConfig?.apiUrl || "https://emperorclaw.malecu.eu");
+      const apiUrl = String(opts.apiUrl || api.pluginConfig?.apiUrl || "http://localhost:3000");
       const owners = loadThreadOwners(paths);
       const threads = await fetchThreads(token, apiUrl);
       const knownAgentIds = new Set(manifests.map((manifest) => manifest.agentId).filter(Boolean));

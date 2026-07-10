@@ -51,4 +51,4 @@ The bridge runs as a systemd user service and connects your local OpenClaw agent
 
 - **Bunny-backed blobs** – Artifact content (files, PDFs, spreadsheets) is now stored in Bunny CDN. Emperor only keeps metadata, indexing, permissions, and search while every Bunny key follows `companies/<companyId>/artifacts/<logical-path>`.
 - **Folder tree UI** – Emperor Web exposes a folder tree that mirrors Bunny object prefixes. Agents and humans navigate via breadcrumbs, search, and drag/drop uploads; the UI keeps the tree, folders, and artifacts synchronized with the MCP metadata.
-- **Finance folders** – The `malecu` finance workspace lives under `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` so reports upload to canonical paths, enabling consistent billing/reporting references.
+- **Finance folders** – The finance workspace lives under `artifacts/your-org/YYYY/YYYY-MM/{expenses,invoices,statements}` so reports upload to canonical paths, enabling consistent billing/reporting references.

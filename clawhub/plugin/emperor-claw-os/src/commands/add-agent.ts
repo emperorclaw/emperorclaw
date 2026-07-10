@@ -14,7 +14,7 @@ export function registerAddAgentCommand(api: any, paths: EmperorPluginPaths): vo
       const pluginCfg = (api.pluginConfig || {}) as Record<string, string | undefined>;
       const localConfig = loadLocalConfig(paths);
       const result = await bootstrapAgent(paths, {
-        apiUrl: String(params.apiUrl || localConfig?.apiUrl || pluginCfg.apiUrl || "https://emperorclaw.malecu.eu"),
+        apiUrl: String(params.apiUrl || localConfig?.apiUrl || pluginCfg.apiUrl || "http://localhost:3000"),
         token: String(params.token || ""),
         agentName: String(params.agentName || ""),
         localBrainAgentId: String(params.localBrainAgentId || ""),

@@ -36,14 +36,27 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
             (typeof artifact.originalFilename === "string" && artifact.originalFilename) ||
             (typeof artifact.title === "string" && artifact.title) ||
             (artifact.id as string);
-        const disposition = req.nextUrl.searchParams.get("disposition") === "inline" ? "inline" : "attachment";
+
         const contentTypeValue =
             (typeof artifact.contentType === "string" && artifact.contentType) ||
             "application/octet-stream";
+
+        // Only allow inline disposition for safe browser-renderable types.
+        // Force attachment for everything else to prevent stored-XSS.
+        const SAFE_INLINE_TYPES = new Set([
+            "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+            "application/pdf", "text/plain", "text/csv", "text/markdown",
+        ]);
+        const disposition = req.nextUrl.searchParams.get("disposition") === "inline" &&
+            SAFE_INLINE_TYPES.has(contentTypeValue)
+            ? "inline"
+            : "attachment";
+
         const headers = new Headers({
             "Content-Type": contentTypeValue,
             "Content-Length": download.sizeBytes.toString(),
             "Content-Disposition": `${disposition}; filename="${encodeURIComponent(filename)}"`,
+            "X-Content-Type-Options": "nosniff",
         });
 
         const responseBody = new Uint8Array(download.buffer);
