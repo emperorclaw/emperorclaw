@@ -11,7 +11,6 @@
     "db:generate": "drizzle-kit generate",
     "db:seed": "npx tsx src/db/seed.ts",
     "skill:publish": "node scripts/publish-skill.js",
-    "deploy:vps": "python scripts/deploy-vps.py",
     "install:openclaw": "node scripts/control-plane.js bootstrap",
     "control-plane:bootstrap": "node scripts/control-plane.js bootstrap",
     "control-plane:doctor": "node scripts/control-plane.js doctor",
@@ -19,8 +18,7 @@
     "control-plane:repair": "node scripts/control-plane.js repair",
     "control-plane:session-inspect": "node scripts/control-plane.js session-inspect",
     "test": "node --test tests/architecture-boundary.test.cjs tests/service-layer-smoke.test.cjs tests/company-brain.test.cjs tests/pipeline-context-pack.test.cjs tests/ui-system.test.cjs tests/operator-ux.test.cjs",
-    "db:migrate": "npx tsx src/db/migrate.ts",
-    "db:tunnel": "./db-tunnel.sh"
+    "db:migrate": "npx tsx src/db/migrate.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

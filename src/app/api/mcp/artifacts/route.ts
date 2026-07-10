@@ -12,6 +12,7 @@ import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-or
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
+import { getStorageProviderName } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -229,7 +230,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "customerId or projectId is required." }, { status: 400 });
         }
 
-        const finalStorageProvider = storageProvider || (storageKey ? "bunny" : undefined);
+        const finalStorageProvider = storageProvider || getStorageProviderName();
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
         if (folderId && !folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });

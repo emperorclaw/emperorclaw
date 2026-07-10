@@ -1,102 +1,103 @@
 # Emperor Claw
 
-Emperor Claw is a multi-tenant control plane for OpenClaw-based agent workforces.
+A self-hostable control plane for AI agent workforces — durable state, coordination, and audit for teams of agents backed by OpenClaw or any MCP-compatible runtime.
 
-It is responsible for durable company state: agents, projects, tasks, incidents, pipelines, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), chat threads, and audit history.
-It is not the runtime that thinks or executes work. OpenClaw remains the runtime.
+**⚠️ Requires a single long-running process.** Emperor Claw uses WebSockets, a background watchdog, and a Postgres advisory lock for leader election. It does **not** run on serverless platforms (Vercel, Lambda, etc.). Deploy it on a VPS, a dedicated server, or a VM.
 
-## Operating Model
+## Quick Start
 
-- Emperor is the system of record.
-- OpenClaw is the executor.
-- WebSocket events are notification and coordination signals, not proof that work happened.
-- Tasks are lease-based and must be renewed by heartbeat while work is in progress.
-- Customer and project scoped Knowledge & Rules entries/resources can be leased into runtime work without cloning permanent customer-facing agents.
-- Customer mailboxes, project identities, templates, and billing profiles should live in scoped Knowledge & Rules, not in per-agent SMTP forms.
-- Durable files, proofs, reports, invoices, exports, and deliverables should live in Storage/artifacts, not Knowledge & Rules.
-- Human-to-agent communication should flow through real threads, not fake orchestration helpers.
-- Pipelines are built and executed in the agent's local runtime; Emperor is the registry. Agents register pipelines (upsert by name), the system generates the diagram from declared steps, activation requires written documentation, and every run is reported back.
-- The bridge companion keeps a local state journal so reconnects can resume with bounded backoff and dedupe instead of replaying the same writes.
-
-More detail is in [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md).
-The concrete next-step roadmap is in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
-
-## What Changed Recently
-
-- Added the agent-first Pipelines Registry: `pipelines` + `pipeline_runs` tables, MCP registration/run-reporting endpoints, server-generated mermaid diagrams, and a new Pipelines page. Legacy playbooks/schedules surfaces are superseded.
-
-- Removed the fake "mission for today" orchestration path from the active product flow.
-- Hardened MCP auth and agent resolution so invalid agent ids do not silently create ghost agents.
-- Added task lease renewal on heartbeat and watchdog fanout for retries, dead-lettering, and incident creation.
-- Added a real incident resolution path for both UI and MCP.
-- Tightened thread/message ownership checks so chat updates stay aligned with company scope.
-- Reframed the skill package as an honest OpenClaw control-plane contract instead of a replacement runtime.
-
-## Core Stack
-
-- Next.js App Router
-- PostgreSQL
-- Drizzle ORM
-- NextAuth
-- WebSocket fanout over Postgres LISTEN/NOTIFY
-- Background watchdog started from instrumentation
-
-## Development
+### Docker (recommended)
 
 ```bash
-npm run dev
+cp .env.example .env
+# Edit .env — set NEXTAUTH_SECRET and EMPEROR_CLAW_MASTER_KEY
+docker compose up
 ```
 
 Open `http://localhost:3000`.
 
-## Install In OpenClaw
-
-The public front door is `https://emperorclaw.malecu.eu/setup`.
-
-Install the published plugin in OpenClaw:
+### Manual
 
 ```bash
-openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
+cp .env.example .env
+npm install
+npm run db:generate
+npm run db:migrate
+npm run dev
 ```
 
-Then bootstrap an agent:
+## What It Is
+
+Emperor Claw is the **system of record** for agent workforces:
+
+- **Agents** — Register, heartbeat, lease tasks
+- **Projects & Tasks** — Kanban-style task tracking with lease-based execution
+- **Incidents** — SLA breaches, dead letters, operator attention
+- **Knowledge & Rules** — Reusable context (SOPs, templates, credentials, handbooks) scoped to company/customer/project/agent
+- **Storage / Artifacts** — Durable files (reports, proofs, deliverables, invoices) with folder tree
+- **Pipelines** — Agent-registered execution pipelines with auto-generated Mermaid diagrams
+- **Chat & Threads** — Agent-to-agent and human-to-agent communication over WebSocket + Postgres LISTEN/NOTIFY
+
+Emperor Claw is **not** the runtime that thinks or executes work — that's OpenClaw (or any MCP-compatible agent). Emperor is the durable control plane.
+
+## Architecture
+
+```
+Emperor Claw (Next.js + custom server.ts)
+  ├── WebSocket server (/api/mcp/ws) — realtime fanout
+  ├── Postgres LISTEN/NOTIFY — cross-process events
+  ├── Background watchdog — lease expiry, dead letters, incident creation
+  └── Postgres advisory lock (20261010) — single-leader guard
+
+Storage: local filesystem (default) or Bunny CDN (opt-in)
+Auth: NextAuth v4 (Credentials + argon2) for UI, Bearer tokens for MCP API
+```
+
+## Storage Backends
+
+| Backend | Config | Best For |
+|---------|--------|----------|
+| **local** (default) | `STORAGE_BACKEND=local` | Self-hosting, zero external deps |
+| **bunny** | `STORAGE_BACKEND=bunny` + Bunny env vars | Production CDN-backed storage |
+
+Local storage streams downloads through the authenticated app route — more secure than a public CDN URL, but not CDN-accelerated.
+
+Want S3/MinIO/R2? See [CONTRIBUTING.md](./CONTRIBUTING.md) — it's a great first PR.
+
+## Configuration
+
+All configuration is via environment variables. See [`.env.example`](./.env.example) for the full reference with defaults and comments.
+
+Required:
+- `POSTGRES_CONNECTION_STRING`
+- `NEXTAUTH_SECRET` (generate: `openssl rand -base64 32`)
+- `EMPEROR_CLAW_MASTER_KEY` (generate: `openssl rand -hex 32`)
+
+## OpenClaw Integration
+
+Emperor Claw ships with a bridge runtime and plugin for OpenClaw agents. The bridge connects your local OpenClaw agents to the Emperor control plane, handles heartbeat, memory sync, and WebSocket events.
+
+See [`clawhub/plugin/emperor-claw-os/`](./clawhub/plugin/emperor-claw-os/) for the integration package.
+
+## Development
 
 ```bash
-export EMPEROR_CLAW_API_TOKEN="<company-token>"
-openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$EMPEROR_CLAW_API_TOKEN"
-openclaw emperor doctor
+npm run dev     # Start dev server (custom server.ts + WebSocket)
+npm run lint    # ESLint
+npm test        # Architecture & smoke tests
+npm run db:generate  # Generate Drizzle migrations
+npm run db:migrate   # Apply migrations
 ```
 
-On Windows PowerShell:
+## Docs
 
-```powershell
-$env:EMPEROR_CLAW_API_TOKEN="<company-token>"
-openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$env:EMPEROR_CLAW_API_TOKEN"
-openclaw emperor doctor
-```
+- [OPENCLAW_ALIGNMENT.md](./OPENCLAW_ALIGNMENT.md) — Architecture alignment with OpenClaw
+- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — Roadmap
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — How to contribute
 
-Generated companion runtime files and bridge state live under your OpenClaw-managed local area.
-After install, manage customer and project credentials in the Emperor `Knowledge & Rules` workspace.
-Use agent `Runtime Integrations` only for machine-local payloads that truly belong to one worker.
+## License
 
-## Plugin
-
-The supported public integration package lives in [clawhub/plugin/emperor-claw-os](./clawhub/plugin/emperor-claw-os).
-
-The older skill package still exists historically in [clawhub/emperor-claw-os](./clawhub/emperor-claw-os), but it is not the recommended install path anymore.
-
-Publish with:
-
-```bash
-npx clawhub package publish "./clawhub/plugin/emperor-claw-os" ...
-```
-
-Bootstrap the local companion and verify the bridge contract with:
-
-```bash
-npm run control-plane:bootstrap
-npm run control-plane:doctor
-```
+MIT — see [LICENSE](./LICENSE).
 
 Extra companion commands:
 

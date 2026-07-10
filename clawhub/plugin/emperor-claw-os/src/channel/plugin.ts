@@ -19,7 +19,7 @@ export const emperorChannelPlugin = createChatChannelPlugin({
     meta: {
       label: "Emperor",
       selectionLabel: "Emperor",
-      docsPath: "https://emperorclaw.malecu.eu/docs",
+      docsPath: "http://localhost:3000/docs",
       blurb: "Connect OpenClaw to Emperor thread messaging."
     },
     setup: {

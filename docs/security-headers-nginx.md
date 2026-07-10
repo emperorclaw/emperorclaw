@@ -4,7 +4,7 @@ The app sets security headers through Next.js, but the public nginx proxy should
 also set them with `always` so nginx-owned redirects and error responses are
 hardened too.
 
-Add this inside the HTTPS `server` block for `emperorclaw.malecu.eu`:
+Add this inside the HTTPS `server` block for `emperorclaw.acme.eu`:
 
 ```nginx
 server_tokens off;

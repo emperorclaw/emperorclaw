@@ -26,11 +26,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const API_URL = process.env.EMPEROR_CLAW_API_URL || "https://emperorclaw.malecu.eu";
+const API_URL = process.env.EMPEROR_CLAW_API_URL || "http://localhost:3000";
 const API_TOKEN = process.env.EMPEROR_CLAW_API_TOKEN;
 const RUNTIME_ID = process.env.EMPEROR_CLAW_RUNTIME_ID || crypto.randomUUID();
 const AGENT_ID = process.env.EMPEROR_CLAW_AGENT_ID || null;
-const AGENT_NAME = process.env.EMPEROR_CLAW_AGENT_NAME || "Viktor";
+const AGENT_NAME = process.env.EMPEROR_CLAW_AGENT_NAME || "agent-name";
 const AGENT_ROLE = process.env.EMPEROR_CLAW_AGENT_ROLE || "manager";
 const GATEWAY_VERSION = process.env.OPENCLAW_GATEWAY_VERSION || "unknown";
 const HEARTBEAT_MS = Number(process.env.EMPEROR_CLAW_HEARTBEAT_MS || 30000);
@@ -56,7 +56,7 @@ const { promisify } = require("node:util");
 const execFileAsync = promisify(execFile);
 const OPENCLAW_GATEWAY_PORT = Number(process.env.OPENCLAW_GATEWAY_PORT || 18789);
 const OPENCLAW_GATEWAY_TOKEN = String(process.env.OPENCLAW_GATEWAY_TOKEN || "").trim();
-const LOCAL_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "viktor";
+const LOCAL_BRAIN_AGENT_ID = process.env.EMPEROR_CLAW_BRAIN_AGENT_ID || "agent-name";
 const LOCAL_BRAIN_THINKING = process.env.EMPEROR_CLAW_BRAIN_THINKING || "medium";
 const LOCAL_BRAIN_TIMEOUT_SECONDS = Number(process.env.EMPEROR_CLAW_BRAIN_TIMEOUT_SECONDS || 300);
 const LOCAL_BRAIN_SESSION_KEY = process.env.EMPEROR_CLAW_BRAIN_SESSION_KEY || `hook:${LOCAL_BRAIN_AGENT_ID}:emperor-brain`;
@@ -653,7 +653,7 @@ function appendDebugLog(baseDir, entry) {
 function getSharedOperatorDoctrine() {
   return [
     "Emperor Claw is the control plane and system of record; OpenClaw is the runtime executor.",
-    "Connection model: API base is https://emperorclaw.malecu.eu, MCP REST base is https://emperorclaw.malecu.eu/api/mcp, websocket is wss://emperorclaw.malecu.eu/api/mcp/ws, and auth uses Authorization: Bearer <company_token> from EMPEROR_CLAW_API_TOKEN.",
+    "Connection model: API base is http://localhost:3000, MCP REST base is http://localhost:3000/api/mcp, websocket is wss://emperorclaw.malecu.eu/api/mcp/ws, and auth uses Authorization: Bearer <company_token> from EMPEROR_CLAW_API_TOKEN.",
     "Endpoint cheat sheet when direct MCP calls are needed: GET /agents, /customers, /projects, /tasks, /resources, /threads, /tasks/{id}/context; POST /projects, /tasks, /messages/send, /projects/{id}/memory, /tasks/{id}/notes, /tasks/{id}/assign, /tasks/{id}/result.",
     "Primary operating rule: use Emperor MCP directly from your runtime when you need to read or mutate Emperor state. The bridge is mainly for message routing, session lifecycle, context injection, and posting the final thread reply back into Emperor.",
     "Use Emperor as canonical for customers, projects, tasks, task notes/events, project memory, scoped resources, artifacts, threads, schedules, templates, tactics, playbooks, incidents, approvals, and agent context when relevant.",
@@ -1373,7 +1373,7 @@ class EmperorBridge {
 
   async defaultMessageHandler(message, thread) {
     const text = String(message?.text || "").trim();
-    const agentName = String(this.agent?.name || AGENT_NAME || "Viktor").trim();
+    const agentName = String(this.agent?.name || AGENT_NAME || "agent-name").trim();
     const lowered = text.toLowerCase();
     const isDirectThread = String(thread?.type || "").toLowerCase() === "direct";
     const senderType = String(message?.senderType || "unknown").toLowerCase();
