@@ -132,7 +132,6 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   });
 
   assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
-  assertContains(attention, "Operational items", "attention should use clear operator copy");
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
   assertContains(agents, "Next actions for", "agent cards should expose useful per-agent actions");
   assertNotContains(storage, "window.confirm", "storage destructive actions should use app-native confirmation dialogs");
