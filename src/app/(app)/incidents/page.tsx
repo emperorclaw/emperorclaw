@@ -18,9 +18,9 @@ export default async function IncidentsPage() {
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col space-y-1">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Attention</p>
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Needs Attention</h1>
-                <p className="text-sm font-medium text-zinc-400">Operational items that need a human or lead agent to review.</p>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Alerts</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Alerts</h1>
+                <p className="text-sm font-medium text-zinc-400">Things that need your attention — flagged issues, failures, and SLA breaches.</p>
             </div>
 
             <div className="emperor-panel overflow-hidden rounded-2xl">
