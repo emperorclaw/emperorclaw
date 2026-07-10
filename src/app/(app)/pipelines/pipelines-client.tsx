@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
+  BaseEdge,
   Controls,
+  getBezierPath,
   Handle,
   MiniMap,
   Position,
   ReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
@@ -109,12 +112,43 @@ const RUN_STATUS_STYLES: Record<string, string> = {
   running: "text-sky-400",
 };
 
-const toneStyles: Record<PipelineNodeData["tone"], string> = {
-  trigger: "border-cyan-400/35 bg-cyan-400/10 text-cyan-100",
-  context: "border-violet-400/35 bg-violet-400/10 text-violet-100",
-  step: "border-zinc-600/70 bg-zinc-950/95 text-zinc-100",
-  output: "border-emerald-400/35 bg-emerald-400/10 text-emerald-100",
-  evidence: "border-amber-400/35 bg-amber-400/10 text-amber-100",
+const STATUS_DOT_STYLES: Record<string, string> = {
+  active: "bg-emerald-400",
+  draft: "bg-zinc-400",
+  paused: "bg-amber-400",
+  retired: "bg-red-400",
+};
+
+const toneBarStyles: Record<PipelineNodeData["tone"], string> = {
+  trigger: "bg-cyan-400",
+  context: "bg-violet-400",
+  step: "bg-zinc-500",
+  output: "bg-emerald-400",
+  evidence: "bg-amber-400",
+};
+
+const toneTextStyles: Record<PipelineNodeData["tone"], string> = {
+  trigger: "text-cyan-300",
+  context: "text-violet-300",
+  step: "text-zinc-400",
+  output: "text-emerald-300",
+  evidence: "text-amber-300",
+};
+
+const toneHex: Record<PipelineNodeData["tone"], string> = {
+  trigger: "#22d3ee",
+  context: "#a78bfa",
+  step: "#71717a",
+  output: "#34d399",
+  evidence: "#f59e0b",
+};
+
+const toneIcons: Record<PipelineNodeData["tone"], typeof Play> = {
+  trigger: Play,
+  context: Database,
+  step: Layers3,
+  output: FileText,
+  evidence: CheckCircle2,
 };
 
 function stringArray(value: unknown): string[] {
@@ -160,18 +194,44 @@ function scopeLabel(pipeline: PipelineRow, agentsMap: Record<string, string>, pr
 }
 
 function PipelineDocNode({ data }: NodeProps<Node<PipelineNodeData>>) {
+  const Icon = toneIcons[data.tone];
   return (
-    <div className={`min-w-[230px] max-w-[280px] rounded-2xl border p-4 shadow-2xl shadow-black/30 backdrop-blur ${toneStyles[data.tone]}`}>
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-zinc-950 !bg-current" />
-      <div className="text-[10px] font-bold uppercase tracking-[0.22em] opacity-65">{data.eyebrow}</div>
-      <div className="mt-1 text-sm font-semibold leading-tight">{data.label}</div>
-      {data.body ? <p className="mt-2 line-clamp-3 text-xs leading-relaxed opacity-75">{data.body}</p> : null}
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-zinc-950 !bg-current" />
+    <div className="min-w-[230px] max-w-[280px] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/30 backdrop-blur">
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-zinc-950 !bg-current" style={{ color: toneHex[data.tone] }} />
+      <div className={`h-1 w-full ${toneBarStyles[data.tone]}`} />
+      <div className="p-4">
+        <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] ${toneTextStyles[data.tone]}`}>
+          <Icon className="h-3 w-3" />
+          {data.eyebrow}
+        </div>
+        <div className="mt-1.5 text-sm font-semibold leading-tight text-zinc-100">{data.label}</div>
+        {data.body ? <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-zinc-400">{data.body}</p> : null}
+      </div>
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-zinc-950 !bg-current" style={{ color: toneHex[data.tone] }} />
     </div>
   );
 }
 
 const nodeTypes = { pipelineDoc: PipelineDocNode };
+
+type FlowEdgeData = { color?: string };
+
+function AnimatedFlowEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, style, markerEnd, data }: EdgeProps<Edge<FlowEdgeData>>) {
+  const [edgePath] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  const color = data?.color || "#71717a";
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
+      <circle r="3" fill={color}>
+        <animateMotion dur="2.4s" repeatCount="indefinite">
+          <mpath href={`#${id}`} />
+        </animateMotion>
+      </circle>
+    </>
+  );
+}
+
+const edgeTypes = { flowEdge: AnimatedFlowEdge };
 
 function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Node<PipelineNodeData>[]; edges: Edge[] } {
   const steps = parseSteps(pipeline.stepsJson);
@@ -234,18 +294,27 @@ function buildPipelineGraph(pipeline: PipelineRow, runs: RunRow[]): { nodes: Nod
     },
   );
 
+  const flowEdge = (id: string, source: string, target: string, color: string): Edge => ({
+    id,
+    source,
+    target,
+    type: "flowEdge",
+    style: { stroke: color, strokeWidth: 1.5 },
+    data: { color },
+  });
+
   const edges: Edge[] = [
-    { id: "trigger-context", source: "trigger", target: "context", animated: true },
-    { id: "context-first", source: "context", target: "step-0", animated: false },
+    flowEdge("trigger-context", "trigger", "context", toneHex.trigger),
+    flowEdge("context-first", "context", "step-0", toneHex.context),
   ];
 
   stepNodes.forEach((_, index) => {
-    if (index < stepNodes.length - 1) edges.push({ id: `step-${index}-step-${index + 1}`, source: `step-${index}`, target: `step-${index + 1}` });
+    if (index < stepNodes.length - 1) edges.push(flowEdge(`step-${index}-step-${index + 1}`, `step-${index}`, `step-${index + 1}`, toneHex.step));
   });
 
   edges.push(
-    { id: "last-output", source: `step-${stepNodes.length - 1}`, target: "output" },
-    { id: "output-evidence", source: "output", target: "evidence", animated: true },
+    flowEdge("last-output", `step-${stepNodes.length - 1}`, "output", toneHex.step),
+    flowEdge("output-evidence", "output", "evidence", toneHex.output),
   );
 
   return { nodes, edges };
@@ -283,10 +352,15 @@ function useElkLayout(initialNodes: Node<PipelineNodeData>[], initialEdges: Edge
   return { nodes, edges: initialEdges };
 }
 
-function PipelineFlowMap({ pipeline, runs }: { pipeline: PipelineRow; runs: RunRow[] }) {
+function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow; runs: RunRow[]; agentsMap: Record<string, string> }) {
   const graph = useMemo(() => buildPipelineGraph(pipeline, runs), [pipeline, runs]);
   const { nodes, edges } = useElkLayout(graph.nodes, graph.edges);
   const [expanded, setExpanded] = useState(false);
+
+  const steps = parseSteps(pipeline.stepsJson);
+  const latestRun = runs.find((run) => run.pipelineId === pipeline.id);
+  const contextCount = stringArray(pipeline.contextResourceIds).length + stringArray(pipeline.contextTagFilters).length;
+  const ownerName = pipeline.ownerAgentId ? agentsMap[pipeline.ownerAgentId] || "Agent" : "Any agent";
 
   useEffect(() => {
     if (!expanded) return;
@@ -305,8 +379,8 @@ function PipelineFlowMap({ pipeline, runs }: { pipeline: PipelineRow; runs: RunR
       <div
         className={
           expanded
-            ? "fixed inset-4 z-50 overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60"
-            : "relative h-[70vh] min-h-[520px] overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507]"
+            ? "fixed inset-4 z-50 flex flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507] shadow-2xl shadow-black/60"
+            : "relative flex h-[70vh] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_25%_10%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_75%_20%,rgba(168,85,247,0.12),transparent_32%),#050507]"
         }
       >
       <button
@@ -317,29 +391,33 @@ function PipelineFlowMap({ pipeline, runs }: { pipeline: PipelineRow; runs: RunR
         {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
         {expanded ? "Collapse" : "Expand"}
       </button>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.15}
-        maxZoom={1.75}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color="rgba(148,163,184,0.18)" gap={28} />
-        <MiniMap pannable zoomable className="!border !border-zinc-800 !bg-zinc-950/90" nodeColor={(node) => {
-          const tone = (node.data as PipelineNodeData).tone;
-          if (tone === "trigger") return "#22d3ee";
-          if (tone === "context") return "#a78bfa";
-          if (tone === "output") return "#34d399";
-          if (tone === "evidence") return "#f59e0b";
-          return "#71717a";
-        }} />
-        <Controls className="!border !border-zinc-800 !bg-zinc-950/90 !text-zinc-100" />
-      </ReactFlow>
+      <div className="min-h-0 flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          colorMode="dark"
+          fitView
+          minZoom={0.15}
+          maxZoom={1.75}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="rgba(148,163,184,0.18)" gap={28} />
+          <MiniMap pannable zoomable className="!border !border-zinc-800 !bg-zinc-950/90" nodeColor={(node) => toneHex[(node.data as PipelineNodeData).tone]} />
+          <Controls className="!border !border-zinc-800 !bg-zinc-950/90 !text-zinc-100" />
+        </ReactFlow>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-xs text-zinc-500">
+        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_STYLES[pipeline.status] || "bg-zinc-600"}`} />{pipeline.status}</span>
+        <span>{steps.length || 0} step{steps.length === 1 ? "" : "s"}</span>
+        <span>Owner: {ownerName}</span>
+        <span>{contextCount} context source{contextCount === 1 ? "" : "s"}</span>
+        <span>{latestRun ? `Last run: ${latestRun.status}` : "No runs yet"}</span>
+      </div>
       </div>
     </>
   );
@@ -519,7 +597,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                       </button>
                     </div>
                   </div>
-                  <PipelineFlowMap pipeline={selectedPipeline} runs={selectedRuns} />
+                  <PipelineFlowMap pipeline={selectedPipeline} runs={selectedRuns} agentsMap={agentsMap} />
                 </>
               )}
             </main>
