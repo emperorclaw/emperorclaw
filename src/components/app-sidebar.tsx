@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -36,7 +36,6 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
         { name: "Knowledge base", href: "/resources", icon: ScrollText },
         { name: "Messages", href: "/messages", icon: MessageSquare },
         { name: "Approvals", href: "/approvals", icon: BadgeCheck },
-        { name: "Alerts", href: "/incidents", icon: AlertTriangle },
         { name: "Agents", href: "/agents", icon: Bot },
         { name: "Customers", href: "/customers", icon: ShieldCheck },
         { name: "Files", href: "/artifacts", icon: HardDrive },
