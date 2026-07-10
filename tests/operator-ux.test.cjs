@@ -32,10 +32,13 @@ test("Settings is runtime-neutral for operators and hides dangerous details behi
 
 test("Operator navigation and docs expose the right pages without hiding key manuals", () => {
   const sidebar = read("src/components/app-sidebar.tsx");
-  assertContains(sidebar, 'name: "Attention", href: "/incidents"', "sidebar should route Attention to the real incidents page");
-
-  const attention = read("src/app/(app)/attention/page.tsx");
-  assertContains(attention, 'redirect("/incidents")', "legacy attention route should redirect to incidents, not projects");
+  assertContains(sidebar, 'name: "Dashboard"', "sidebar should include Dashboard");
+  assertContains(sidebar, 'name: "Projects"', "sidebar should include Projects");
+  assertContains(sidebar, 'name: "Approvals"', "sidebar should include Approvals");
+  assertContains(sidebar, 'name: "Agents"', "sidebar should include Agents");
+  assertContains(sidebar, 'name: "Files"', "sidebar should include Files");
+  assertNotContains(sidebar, 'name: "Attention"', "sidebar should no longer route to the removed Attention/Incidents page");
+  assertNotContains(sidebar, 'name: "Alerts"', "sidebar should no longer route to the removed Alerts/Incidents page");
 
   const docs = read("src/components/docs-viewer.tsx");
   ["Operator Manual", "Runtime Setup", "company-brain", "resources-as-wiki-memory", "project-architecture", "pipelines"].forEach((needle) => {
@@ -77,7 +80,7 @@ test("Core workspaces use the standardized Emperor visual system", () => {
   assertContains(dashboard, "emperor-panel", "dashboard should use shared Emperor panels");
   assertContains(projects, "emperor-panel", "projects should use shared Emperor panels");
   assertContains(messages, "emperor-panel", "messages should use shared Emperor panels");
-  assertContains(projects, "Recurring definitions stay separated", "projects should use clear operator copy");
+  assertContains(projects, "Track work from to-do to done", "projects should use clear operator copy");
   assertContains(projects, "Advanced filters and project actions", "projects should hide secondary controls behind progressive disclosure");
   assertContains(messagingHub, "bg-zinc-950/70", "messages sidebar should match the OLED panel system");
   assertContains(globals, ".emperor-main .text-zinc-400", "app secondary text should be lifted on dark OLED surfaces");
@@ -116,7 +119,6 @@ test("Directories scale with search-first navigation instead of card dumps", () 
 test("Operator polish pass keeps advanced pages consistent and removes dead-feeling interactions", () => {
   const resources = read("src/app/(app)/resources/resources-client.tsx");
   const approvals = read("src/app/(app)/approvals/approvals-client.tsx");
-  const attention = read("src/app/(app)/incidents/page.tsx");
   const settings = read("src/app/(app)/settings/settings-client.tsx");
   const agents = read("src/app/(app)/agents/agents-client.tsx");
   const storage = read("src/app/(app)/artifacts/artifacts-manager.tsx");
@@ -125,7 +127,7 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   assertContains(resources, "Move back to draft", "published KB notes should be reversible without hunting in metadata");
   assertContains(resources, "Shared is separate", "KB copy should clarify published versus agent injection");
 
-  [approvals, attention, settings, storage].forEach((source) => {
+  [approvals, settings, storage].forEach((source) => {
     assertContains(source, "max-w-[1800px]", "operator pages should use the standard wide workspace container");
   });
 
