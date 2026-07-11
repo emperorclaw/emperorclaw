@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bot, Search } from "lucide-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 type AgentDirectoryItem = {
@@ -36,14 +37,12 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
 
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Agents</p>
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Agent Directory</h1>
-                    <p className="text-sm text-zinc-400">Find agents, inspect workload, and jump into the durable profile when you need details.</p>
-                </div>
-                <CreateAgentDialog />
-            </div>
+            <PageHeader
+                eyebrow="Agents"
+                title="Agent Directory"
+                description="Find agents, inspect workload, and jump into the durable profile when you need details."
+                actions={<CreateAgentDialog />}
+            />
 
             {agents.length === 0 ? (
                 <div className="emperor-panel rounded-2xl py-12 text-center">

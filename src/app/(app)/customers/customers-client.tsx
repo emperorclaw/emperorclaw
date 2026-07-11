@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Building2, Save, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 type CustomerSummary = any;
@@ -85,45 +86,45 @@ export default function CustomersClient({ initialData: customerData }: { initial
 
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Customers</p>
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Customer Directory</h1>
-                    <p className="text-sm text-zinc-400">Find a customer, inspect its portfolio health, and maintain the customer context agents should follow.</p>
-                </div>
-                <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-                    <DialogTrigger asChild>
-                        <button className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">
-                            Add Customer
-                        </button>
-                    </DialogTrigger>
-                    <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-200 sm:max-w-[500px]">
-                        <DialogHeader>
-                            <DialogTitle className="mb-2 text-xl font-medium tracking-tight">Create Customer</DialogTitle>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <p className="text-sm text-zinc-400">Create a durable customer record and attach initial portfolio context.</p>
-                            <input
-                                value={newClientName}
-                                onChange={(event) => setNewClientName(event.target.value)}
-                                className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
-                                placeholder="Customer name"
-                            />
-                            <textarea
-                                value={newClientNotes}
-                                onChange={(event) => setNewClientNotes(event.target.value)}
-                                className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
-                                placeholder="ICP details, project context, operational notes..."
-                            />
-                        </div>
-                        <div className="flex justify-end border-t border-zinc-900 pt-2">
-                            <button onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 hover:bg-cyan-400/15">
-                                {sending ? "Creating..." : "Create Customer"}
+            <PageHeader
+                eyebrow="Customers"
+                title="Customer Directory"
+                description="Find a customer, inspect its portfolio health, and maintain the customer context agents should follow."
+                actions={
+                    <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
+                        <DialogTrigger asChild>
+                            <button className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">
+                                Add Customer
                             </button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-            </div>
+                        </DialogTrigger>
+                        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-200 sm:max-w-[500px]">
+                            <DialogHeader>
+                                <DialogTitle className="mb-2 text-xl font-medium tracking-tight">Create Customer</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <p className="text-sm text-zinc-400">Create a durable customer record and attach initial portfolio context.</p>
+                                <input
+                                    value={newClientName}
+                                    onChange={(event) => setNewClientName(event.target.value)}
+                                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
+                                    placeholder="Customer name"
+                                />
+                                <textarea
+                                    value={newClientNotes}
+                                    onChange={(event) => setNewClientNotes(event.target.value)}
+                                    className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
+                                    placeholder="ICP details, project context, operational notes..."
+                                />
+                            </div>
+                            <div className="flex justify-end border-t border-zinc-900 pt-2">
+                                <button onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 hover:bg-cyan-400/15">
+                                    {sending ? "Creating..." : "Create Customer"}
+                                </button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                }
+            />
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <SummaryCard label="Customers" value={customerData.length} hint="Portfolio records" />

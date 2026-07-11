@@ -26,7 +26,6 @@ import {
   Layers3,
   Maximize2,
   Minimize2,
-  Network,
   Play,
   Repeat,
   Search,
@@ -35,6 +34,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/page-header";
 
 type PipelineStep = {
   id?: string;
@@ -525,22 +525,18 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-100 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-[1800px] flex-col gap-6">
-        <header className="rounded-[2rem] border border-zinc-800 bg-[linear-gradient(135deg,rgba(39,39,42,0.92),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/30">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300"><Network className="h-4 w-4" />Pipeline documentation</div>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Pipelines</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">
-                A simple workspace to understand what agents do: visual map, Context Pack, run evidence, and copy-ready docs. Emperor documents and audits; agents execute in their own runtime.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-3 sm:min-w-[520px]">
+        <PageHeader
+          eyebrow="Automations"
+          title="Pipelines"
+          description="A simple workspace to understand what agents do: visual map, Context Pack, run evidence, and copy-ready docs. Emperor documents and audits; agents execute in their own runtime."
+          actions={
+            <div className="grid grid-cols-3 gap-3 sm:min-w-[420px]">
               <Metric label="Active" value={activeCount} icon={Play} />
               <Metric label="Runs" value={runCount} icon={Repeat} />
               <Metric label="Documented" value={documentedCount} icon={FileText} />
             </div>
-          </div>
-        </header>
+          }
+        />
 
         {pipelines.length === 0 ? <EmptyPipelineState /> : (
           <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)_430px]">
