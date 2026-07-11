@@ -9,6 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, Search, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { PageHeader } from "@/components/page-header";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -508,21 +509,18 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
     return (
         <div className="relative mx-auto flex h-full max-w-[1800px] flex-col space-y-6 animate-in fade-in duration-500">
-            <div className="emperor-panel relative overflow-hidden rounded-[1.5rem] p-5">
-                <div className="pointer-events-none absolute inset-0 emperor-subtle-grid opacity-20" />
-                <div className="relative flex flex-wrap items-start justify-between gap-5">
-                    <div className="max-w-3xl space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Projects</p>
-                        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Projects Board</h1>
-                        <p className="text-sm leading-6 text-zinc-400">Track work from to-do to done across all your projects.</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
+            <PageHeader
+                eyebrow="Projects"
+                title="Projects Board"
+                description="Track work from to-do to done across all your projects."
+                actions={
+                    <>
                         <button onClick={openCreateProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>
                         <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-4 w-4" />Task</button>
                         {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-4 w-4" />Notes</button>}
-                    </div>
-                </div>
-            </div>
+                    </>
+                }
+            />
             <div className="emperor-panel rounded-2xl p-4">
                 <div className="grid gap-3">
                     <div className="flex flex-wrap items-center gap-3">

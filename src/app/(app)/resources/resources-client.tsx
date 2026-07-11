@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ExpandablePanel } from "@/components/expandable-panel";
+import { PageHeader } from "@/components/page-header";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -368,8 +369,14 @@ export default function ResourcesClient({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
-      <div className="flex h-[calc(100vh-150px)] min-h-[680px] flex-col">
+    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500">
+      <PageHeader
+        eyebrow="Knowledge base"
+        title="Knowledge & Rules"
+        description="Durable notes, SOPs, and instructions your agents read before they act."
+      />
+      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
+      <div className="flex h-full min-h-[500px] flex-col">
         <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">
@@ -578,6 +585,7 @@ export default function ResourcesClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
