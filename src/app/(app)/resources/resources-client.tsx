@@ -487,7 +487,7 @@ export default function ResourcesClient({
                 <div className="min-h-0 flex-1 overflow-auto">
                   <MarkdownLiveEditor
                     key={selectedResource.id}
-                    markdown={splitFrontmatter(draftContent).body}
+                    markdown={splitFrontmatter(selectedResource.configText || "").body}
                     onChange={(nextBody) => setDraftContent(joinFrontmatter(splitFrontmatter(draftContent).frontmatter, nextBody))}
                     placeholder="Write one reusable rule, SOP, or instruction here..."
                     className="mx-auto min-h-[620px] max-w-4xl px-4 py-4"
