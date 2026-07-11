@@ -9,19 +9,20 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
-  Edit3,
   FileText,
   Plus,
   RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { ExpandablePanel } from "@/components/expandable-panel";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
+const MarkdownLiveEditor = dynamic(() => import("@/components/markdown-live-editor").then((mod) => mod.MarkdownLiveEditor), { ssr: false });
 
 type ResourceRecord = {
   id: string;
@@ -81,6 +82,31 @@ function setNoteStatus(content: string, status: "draft" | "active") {
   return `---\nstatus: ${status}\n---\n\n${content}`;
 }
 
+const FRONTMATTER_PATTERN = /^---\n[\s\S]*?\n---\n?/;
+
+/** Splits leading YAML frontmatter from the note body. Frontmatter fields
+ * (scope, status, tags, owner) are already managed by the Properties panel
+ * controls, so only the body needs to go into the live markdown editor. */
+function splitFrontmatter(content: string): { frontmatter: string; body: string } {
+  const match = content.match(FRONTMATTER_PATTERN);
+  if (!match) return { frontmatter: "", body: content };
+  return { frontmatter: match[0], body: content.slice(match[0].length) };
+}
+
+function joinFrontmatter(frontmatter: string, body: string) {
+  return frontmatter ? `${frontmatter}\n${body}` : body;
+}
+
+/** MDXEditor's markdown serializer defensively backslash-escapes literal
+ * "[[" sequences (they're not valid CommonMark link syntax on their own),
+ * which would silently break the [[Note Name]] wiki-link convention the
+ * backlinks graph parses with a plain /\[\[.../ regex. Undo that escaping
+ * only at save time, not on every keystroke, so it never fights the
+ * editor's own internal state while typing. */
+function unescapeWikilinkBrackets(content: string) {
+  return content.replace(/\\(\[|\])/g, "$1");
+}
+
 export default function ResourcesClient({
   initialResources,
   customers,
@@ -94,7 +120,6 @@ export default function ResourcesClient({
 }) {
   const [resources, setResources] = useState(initialResources);
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
-  const [mode, setMode] = useState<"edit" | "preview" | "split">("preview");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "shared" | "drafts">("all");
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
@@ -106,6 +131,8 @@ export default function ResourcesClient({
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [deleteDialogTarget, setDeleteDialogTarget] = useState<ResourceRecord | null>(null);
+  const [isDeletingDialog, setIsDeletingDialog] = useState(false);
 
   const scopeOptions = useMemo(() => ({ customer: customers, project: projects, agent: agents }), [agents, customers, projects]);
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
@@ -202,7 +229,6 @@ export default function ResourcesClient({
     if (!response.ok) return toast.error(body.error || "Failed to create rule");
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
-    setMode("edit");
     toast.success("Knowledge rule created");
   }
 
@@ -227,7 +253,6 @@ export default function ResourcesClient({
     if (!response.ok) return toast.error(body.error || "Failed to create linked note");
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
-    setMode("edit");
     toast.success("Linked note created");
   }
 
@@ -257,7 +282,7 @@ export default function ResourcesClient({
           scopeId: draftScopeType === "company" ? null : draftScopeId || null,
           provider: selectedResource.provider || "knowledge",
           resourceType: selectedResource.resourceType || "knowledge_base",
-          configText: setNoteStatus(draftContent, publicationStatus),
+          configText: setNoteStatus(unescapeWikilinkBrackets(draftContent), publicationStatus),
           isShared: draftShared,
           changeSummary: "Operator updated Knowledge & Rules entry",
         }),
@@ -290,7 +315,7 @@ export default function ResourcesClient({
           scopeId: draftScopeType === "company" ? null : draftScopeId || null,
           provider: selectedResource.provider || "knowledge",
           resourceType: selectedResource.resourceType || "knowledge_base",
-          configText: setNoteStatus(draftContent, nextStatus),
+          configText: setNoteStatus(unescapeWikilinkBrackets(draftContent), nextStatus),
           isShared: draftShared,
           changeSummary: nextStatus === "active" ? "Operator published Knowledge & Rules entry" : "Operator moved Knowledge & Rules entry to draft",
         }),
@@ -324,15 +349,33 @@ export default function ResourcesClient({
     toast.success("Knowledge note deleted");
   }
 
+  async function confirmDeleteFromContextMenu() {
+    if (!deleteDialogTarget || isDeletingDialog) return;
+    setIsDeletingDialog(true);
+    try {
+      const response = await fetch(`/api/resources/${deleteDialogTarget.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete note");
+      const remaining = resources.filter((resource) => resource.id !== deleteDialogTarget.id);
+      setResources(remaining);
+      if (selectedResourceId === deleteDialogTarget.id) setSelectedResourceId(remaining[0]?.id || null);
+      toast.success("Knowledge note deleted");
+      setDeleteDialogTarget(null);
+    } catch {
+      toast.error("Failed to delete note");
+    } finally {
+      setIsDeletingDialog(false);
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
       <div className="flex h-[calc(100vh-150px)] min-h-[680px] flex-col">
         <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="New linked note" onClick={createLinkedResource}><Plus className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><Plus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
             </div>
             <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300")}>
               <Trash2 className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}
@@ -341,8 +384,8 @@ export default function ResourcesClient({
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex items-center gap-1 text-zinc-600">
-                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
-                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Previous note" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Next note" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
                 <span>Knowledge & Rules</span>
@@ -351,14 +394,13 @@ export default function ResourcesClient({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
-              <button onClick={() => setMode(mode === "preview" ? "edit" : mode === "edit" ? "split" : "preview")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" aria-label="Cycle editor mode"><Edit3 className="h-4 w-4" /></button>
               <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
                 <Check className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
               </button>
               <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
                 <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
-              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><Trash2 className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? "Click again to confirm delete" : "Delete note"} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
           <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
@@ -397,12 +439,24 @@ export default function ResourcesClient({
                     </div>
                     <div className="space-y-0.5 pl-4">
                       {group.items.map((resource) => (
-                        <button key={resource.id} onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
-                          <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
-                          <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
-                          {noteStatus(resource.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-                          {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Shared with agents" />}
-                        </button>
+                        <ContextMenu key={resource.id}>
+                          <ContextMenuTrigger asChild>
+                            <button onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
+                              <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
+                              <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
+                              {noteStatus(resource.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
+                              {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Shared with agents" />}
+                            </button>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                            <ContextMenuItem onClick={() => setSelectedResourceId(resource.id)}>
+                              <FileText className="h-3.5 w-3.5" /> Open
+                            </ContextMenuItem>
+                            <ContextMenuItem variant="destructive" onClick={() => setDeleteDialogTarget(resource)}>
+                              <Trash2 className="h-3.5 w-3.5" /> Delete note
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       ))}
                     </div>
                   </div>
@@ -422,31 +476,15 @@ export default function ResourcesClient({
                     {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
                     {draftShared && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">shared</span>}
                   </div>
-                  <div className="flex shrink-0 rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
-                    <button onClick={() => setMode("preview")} className={cn("cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium", mode === "preview" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Reading</button>
-                    <button onClick={() => setMode("split")} className={cn("cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium", mode === "split" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Split</button>
-                    <button onClick={() => setMode("edit")} className={cn("cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium", mode === "edit" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>Source</button>
-                  </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
-                  {mode === "edit" ? (
-                    <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-[620px] w-full resize-none bg-zinc-950 px-8 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-cyan-500/30" />
-                  ) : mode === "split" ? (
-                    <div className="grid h-full min-h-[620px] grid-cols-2 divide-x divide-zinc-800">
-                      <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="h-full min-h-full resize-none bg-zinc-950 px-6 py-7 font-mono text-sm leading-7 text-zinc-200 outline-none selection:bg-cyan-500/30" />
-                      <article className="min-h-full overflow-y-auto px-6 py-7">
-                        <div className="prose prose-invert max-w-none">
-                          <MarkdownRenderer content={draftContent || "*No content yet.*"} />
-                        </div>
-                      </article>
-                    </div>
-                  ) : (
-                    <article className="mx-auto min-h-full max-w-4xl px-8 py-8">
-                      <div className="prose prose-invert max-w-none">
-                        <MarkdownRenderer content={draftContent || "*No content yet.*"} />
-                      </div>
-                    </article>
-                  )}
+                  <MarkdownLiveEditor
+                    key={selectedResource.id}
+                    markdown={splitFrontmatter(draftContent).body}
+                    onChange={(nextBody) => setDraftContent(joinFrontmatter(splitFrontmatter(draftContent).frontmatter, nextBody))}
+                    placeholder="Write one reusable rule, SOP, or instruction here..."
+                    className="mx-auto min-h-[620px] max-w-4xl px-4 py-4"
+                  />
                 </div>
               </>
             ) : (
@@ -471,7 +509,7 @@ export default function ResourcesClient({
                   <div className="grid grid-cols-3 gap-2 text-center text-[11px] text-zinc-500">
                     <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{insights.backlinks.length}</span> incoming</div>
                     <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{insights.outgoing.length}</span> outgoing</div>
-                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{draftContent.split(/\s+/).filter(Boolean).length}</span> words</div>
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1"><span className="text-zinc-200">{splitFrontmatter(draftContent).body.split(/\s+/).filter(Boolean).length}</span> words</div>
                   </div>
                   <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Properties</summary>
@@ -523,6 +561,23 @@ export default function ResourcesClient({
           </aside>
         </div>
       </div>
+
+      <Dialog open={Boolean(deleteDialogTarget)} onOpenChange={(open) => { if (!open && !isDeletingDialog) setDeleteDialogTarget(null); }}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete &ldquo;{deleteDialogTarget?.displayName || deleteDialogTarget?.name}&rdquo;?</DialogTitle>
+            <DialogDescription className="text-zinc-400">This can&apos;t be undone. Any links pointing to this note will become unresolved.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button type="button" onClick={() => setDeleteDialogTarget(null)} disabled={isDeletingDialog} className="cursor-pointer rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
+              Cancel
+            </button>
+            <button type="button" onClick={() => void confirmDeleteFromContextMenu()} disabled={isDeletingDialog} className="cursor-pointer rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50">
+              {isDeletingDialog ? "Deleting..." : "Delete"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
