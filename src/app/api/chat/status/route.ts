@@ -5,7 +5,7 @@ import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
-import { updateThreadExecutionState } from "@/lib/control-plane";
+import { markThreadRead, updateThreadExecutionState } from "@/lib/control-plane";
 
 export async function POST(req: NextRequest) {
     const companyId = await getCompanyId();
@@ -16,30 +16,34 @@ export async function POST(req: NextRequest) {
         const { threadId, typing, markRead, executionState } = await req.json();
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
 
-        const updates: { lastReadAt?: Date; typingUntil?: Date | null } = {};
-        if (markRead) updates.lastReadAt = new Date();
+        let markedReadAt: Date | undefined;
+        if (markRead) {
+            // Blind UPDATE can no-op: the shared team thread never gets a
+            // human threadParticipants row from ensureTeamThread, so this
+            // finds-or-creates it instead.
+            markedReadAt = new Date();
+            await markThreadRead(companyId, threadId, userId);
+        }
         if (typeof typing === 'boolean') {
             // Typing for 5 seconds by default
-            updates.typingUntil = typing ? new Date(Date.now() + 5000) : null;
-        }
-
-        if (Object.keys(updates).length > 0) {
             await db.update(threadParticipants)
-                .set(updates)
+                .set({ typingUntil: typing ? new Date(Date.now() + 5000) : null })
                 .where(and(
                     eq(threadParticipants.companyId, companyId),
                     eq(threadParticipants.threadId, threadId),
                     eq(threadParticipants.participantType, "human"),
                     eq(threadParticipants.participantRef, userId)
                 ));
-            
+        }
+
+        if (markRead || typeof typing === 'boolean') {
             // Broadcast so the agent sees the human's status (optional, but good)
             broadcastMcpEvent(companyId, {
                 type: "participant_status",
                 threadId,
                 participantId: userId,
                 typing: !!typing,
-                lastReadAt: updates.lastReadAt,
+                lastReadAt: markedReadAt,
             });
         }
 

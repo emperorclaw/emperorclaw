@@ -107,6 +107,37 @@ export async function ensureDirectThread(companyId: string, agentId: string, use
     return created;
 }
 
+/**
+ * Marks a thread read for a human user. Direct threads always have a human
+ * `threadParticipants` row (created by ensureDirectThread), but the shared
+ * team thread does not — ensureTeamThread only creates the thread itself, so
+ * a blind UPDATE against threadParticipants would silently affect 0 rows.
+ * This finds-or-creates the participant row first.
+ */
+export async function markThreadRead(companyId: string, threadId: string, userId: string) {
+    const [existing] = await db.select({ id: threadParticipants.id })
+        .from(threadParticipants)
+        .where(and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.threadId, threadId),
+            eq(threadParticipants.participantType, "human"),
+            eq(threadParticipants.participantRef, userId),
+        ))
+        .limit(1);
+
+    if (existing) {
+        await db.update(threadParticipants).set({ lastReadAt: new Date() }).where(eq(threadParticipants.id, existing.id));
+    } else {
+        await db.insert(threadParticipants).values({
+            threadId,
+            companyId,
+            participantType: "human",
+            participantRef: userId,
+            lastReadAt: new Date(),
+        });
+    }
+}
+
 export async function appendThreadMessage(input: {
     companyId: string;
     threadId: string;

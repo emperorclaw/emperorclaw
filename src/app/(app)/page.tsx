@@ -298,7 +298,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
           <div className="emperor-panel h-[480px] overflow-hidden rounded-2xl">
-            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} />
+            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} teamThreadId={teamThread.id} />
           </div>
         </div>
       </div>

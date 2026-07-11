@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { User, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { MentionTextarea } from "@/components/mention-textarea";
 import { cn } from "@/lib/utils";
 
 const CHAT_PAGE_SIZE = 25;
@@ -74,11 +75,13 @@ export function AgentTeamChat({
     initialHasMore = false,
     agents = [],
     sendable = false,
+    teamThreadId,
 }: {
     initialMessages: TeamMessage[];
     initialHasMore?: boolean;
     agents: Agent[];
     sendable?: boolean;
+    teamThreadId?: string;
 }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const preserveScrollHeightRef = useRef<number | null>(null);
@@ -88,18 +91,7 @@ export function AgentTeamChat({
     const [isSending, setIsSending] = useState(false);
     const [hasOlderMessages, setHasOlderMessages] = useState(initialHasMore);
     const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-    const [mentionOpen, setMentionOpen] = useState(false);
-    const mentionRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
-                setMentionOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
+    const teamTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(
@@ -203,8 +195,19 @@ export function AgentTeamChat({
         if (atBottom) setUnreadCount(0);
     };
 
-    const handleSend = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // Mark the shared team thread read whenever we're scrolled to the
+    // bottom and messages exist — otherwise lastReadAt on this thread never
+    // advances and the sidebar unread badge never clears.
+    useEffect(() => {
+        if (!teamThreadId || !isAtBottom || messages.length === 0) return;
+        void fetch("/api/chat/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ threadId: teamThreadId, markRead: true }),
+        });
+    }, [teamThreadId, isAtBottom, messages]);
+
+    const sendMessage = async () => {
         const text = draft.trim();
         if (!text || isSending) return;
         setIsSending(true);
@@ -228,6 +231,11 @@ export function AgentTeamChat({
         } finally {
             setIsSending(false);
         }
+    };
+
+    const handleSend = (e: React.FormEvent) => {
+        e.preventDefault();
+        void sendMessage();
     };
 
     const getAgentName = (id: string | null | undefined) => {
@@ -403,63 +411,27 @@ export function AgentTeamChat({
             {sendable ? (
                 <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-3">
                     <div className="flex items-end gap-2">
-                        {/* @ mention picker */}
-                        <div className="relative shrink-0" ref={mentionRef}>
-                            <button
-                                type="button"
-                                onClick={() => setMentionOpen(v => !v)}
-                                title="Mention an agent"
-                                className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
-                            >
-                                <AtSign className="h-4 w-4" />
-                            </button>
-                            {mentionOpen && agents.length > 0 && (
-                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-20">
-                                    <div className="px-3 py-2 border-b border-zinc-800">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Mention agent</span>
-                                    </div>
-                                    <div className="max-h-48 overflow-y-auto p-1">
-                                        {agents.map((agent) => (
-                                            <button
-                                                key={agent.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setDraft(prev => {
-                                                        const trimmed = prev.trimEnd();
-                                                        return trimmed ? `${trimmed} @${agent.name} ` : `@${agent.name} `;
-                                                    });
-                                                    setMentionOpen(false);
-                                                }}
-                                                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-zinc-800 text-left transition-colors"
-                                            >
-                                                <div className="relative shrink-0">
-                                                    <img
-                                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
-                                                        className="w-6 h-6 rounded-full object-cover"
-                                                        alt=""
-                                                    />
-                                                    <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-zinc-900 ${agent.status === "online" ? "bg-emerald-500" : "bg-zinc-600"}`} />
-                                                </div>
-                                                <span className="text-sm text-zinc-300 truncate">{agent.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <textarea
-                            value={draft}
-                            onChange={(e) => setDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    void handleSend(e as unknown as React.FormEvent);
-                                }
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDraft((prev) => (prev.trimEnd() ? `${prev.trimEnd()} @` : "@"));
+                                requestAnimationFrame(() => teamTextareaRef.current?.focus());
                             }}
+                            title="Mention an agent"
+                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
+                        >
+                            <AtSign className="h-4 w-4" />
+                        </button>
+
+                        <MentionTextarea
+                            ref={teamTextareaRef}
+                            value={draft}
+                            onValueChange={setDraft}
+                            agents={agents}
+                            onSubmit={sendMessage}
                             placeholder="Message the team… (@ to mention)"
                             rows={1}
-                            className="flex-1 resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-32 overflow-y-auto"
+                            className="w-full resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-32 overflow-y-auto"
                             style={{ minHeight: "2.5rem" }}
                         />
                         <button
