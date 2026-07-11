@@ -7,7 +7,47 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+/**
+ * Unwrapped unified-diff text (lines starting with +/-, @@ hunk headers)
+ * breaks CommonMark parsing: leading +/- read as list bullets and indented
+ * code lines each become their own fenced block, producing a mess of empty
+ * bullets and fragmented code boxes. Wrap contiguous diff hunks in a fenced
+ * ```diff block so they render as one preformatted block instead. Skips
+ * spans already inside an existing code fence.
+ */
+function wrapUnifiedDiffHunks(content: string): string {
+  if (!content.includes("@@ ")) return content;
+  const lines = content.split("\n");
+  const out: string[] = [];
+  let inFence = false;
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      out.push(line);
+      i++;
+      continue;
+    }
+    if (!inFence && /^@@ .*@@/.test(line)) {
+      const hunk: string[] = [line];
+      i++;
+      while (i < lines.length && (/^[+\- ]/.test(lines[i]) || lines[i] === "")) {
+        hunk.push(lines[i]);
+        i++;
+      }
+      while (hunk.length > 0 && hunk[hunk.length - 1] === "") hunk.pop();
+      out.push("```diff", ...hunk, "```");
+      continue;
+    }
+    out.push(line);
+    i++;
+  }
+  return out.join("\n");
+}
+
 export function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
+  const normalizedContent = wrapUnifiedDiffHunks(content);
   return (
     <div className={`markdown-content prose prose-zinc prose-invert max-w-none ${className}`}>
       <ReactMarkdown
@@ -39,7 +79,7 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
           hr: ({ ...props }) => <hr className="border-zinc-800 my-8" {...props} />,
         }}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );
