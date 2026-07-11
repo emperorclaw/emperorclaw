@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { db } from "@/db";
-import { threadParticipants } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
-import { updateThreadExecutionState } from "@/lib/control-plane";
+import { updateAgentThreadParticipant, updateThreadExecutionState } from "@/lib/control-plane";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -31,15 +28,8 @@ export async function POST(req: NextRequest) {
         }
 
         if (Object.keys(updates).length > 0) {
-            await db.update(threadParticipants)
-                .set(updates)
-                .where(and(
-                    eq(threadParticipants.companyId, companyId),
-                    eq(threadParticipants.threadId, threadId),
-                    eq(threadParticipants.participantType, "agent"),
-                    eq(threadParticipants.participantId, resolvedAgentId)
-                ));
-            
+            await updateAgentThreadParticipant(companyId, threadId, resolvedAgentId, updates);
+
             // Broadcast for UI reactivity
             broadcastMcpEvent(companyId, {
                 type: "participant_status",
