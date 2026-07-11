@@ -39,6 +39,7 @@ import {
     Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1135,29 +1136,27 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     return (
         <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-6">
             <div className="space-y-2">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">Storage</p>
-                        <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Storage</h1>
-                        <p className="max-w-3xl text-sm text-zinc-400">
-                            Folder-first files, deliverables, proofs, and working documents. Keep customer and project structure clear so agents can find the right file without knowing the backing storage provider.
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={() => void reloadWorkspace()} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
-                            <RefreshCcw className="size-4" />
-                            Refresh
-                        </Button>
-                        <Button variant="outline" onClick={beginCreateFolder} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
-                            <FolderPlus className="size-4" />
-                            New Folder
-                        </Button>
-                        <Button onClick={beginUpload} className="bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
-                            <Upload className="size-4" />
-                            Upload
-                        </Button>
-                    </div>
-                </div>
+                <PageHeader
+                    eyebrow="Storage"
+                    title="Storage"
+                    description="Folder-first files, deliverables, proofs, and working documents. Keep customer and project structure clear so agents can find the right file without knowing the backing storage provider."
+                    actions={
+                        <>
+                            <Button variant="outline" onClick={() => void reloadWorkspace()} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
+                                <RefreshCcw className="size-4" />
+                                Refresh
+                            </Button>
+                            <Button variant="outline" onClick={beginCreateFolder} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
+                                <FolderPlus className="size-4" />
+                                New Folder
+                            </Button>
+                            <Button onClick={beginUpload} className="bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
+                                <Upload className="size-4" />
+                                Upload
+                            </Button>
+                        </>
+                    }
+                />
                 <div className="grid gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
                     <div className="relative min-w-[240px] flex-1">
                         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
