@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import {
   Archive,
   ArrowLeft,
@@ -19,6 +20,8 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 type ResourceRecord = {
   id: string;
@@ -460,7 +463,7 @@ export default function ResourcesClient({
                     expandedClassName="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/60"
                     label="Expand graph"
                   >
-                    {() => <div className="h-full"><LocalGraph graph={insights.graph} selectedId={selectedResource.id} /></div>}
+                    {(expanded) => <div className="h-full"><LocalGraph key={expanded ? "expanded" : "collapsed"} graph={insights.graph} selectedId={selectedResource.id} /></div>}
                   </ExpandablePanel>
                 </div>
 
@@ -537,77 +540,158 @@ function LinkList({ title, links, empty }: { title: string; links: BrainLink[]; 
 }
 
 
+type ForceNode = { id: string; label: string; unresolved: boolean; isShared: boolean; selected: boolean; val: number; x?: number; y?: number; [key: string]: unknown };
+type ForceLink = { source: string; target: string; label: string; unresolved: boolean; [key: string]: unknown };
+
+function useContainerSize<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    // Debounced: some canvas libraries only correctly normalize their
+    // devicePixelRatio scaling on the FIRST non-default size they receive.
+    // A ResizeObserver can otherwise fire more than once with different
+    // transitional sizes while layout settles, feeding the canvas two
+    // distinct sizes and leaving its transform matrix mis-scaled.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }), 80);
+    });
+    observer.observe(element);
+    return () => {
+      clearTimeout(timeout);
+      observer.disconnect();
+    };
+  }, []);
+  return { ref, size };
+}
+
 function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
-  const unresolvedNodes: UnresolvedGraphNode[] = graph.edges
-    .filter((edge) => !edge.target)
-    .slice(0, 8)
-    .map((edge) => ({
-      id: `unresolved:${edge.id}`,
-      label: edge.label,
-      scopeType: "unresolved",
-      resourceType: "knowledge_base",
-      isShared: false,
-      tags: [],
-      unresolved: true,
-    }));
-  const resolvedNodes = graph.nodes.length ? graph.nodes : [{ id: selectedId, label: "Current note", scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
-  const nodes = [...resolvedNodes, ...unresolvedNodes].slice(0, 18);
-  const centerIndex = Math.max(0, nodes.findIndex((node) => node.id === selectedId));
-  const positioned = nodes.map((node, index) => {
-    if (index === centerIndex) return { node, x: 180, y: 230 };
-    const ringIndex = index > centerIndex ? index - 1 : index;
-    const angle = (ringIndex / Math.max(1, nodes.length - 1)) * Math.PI * 2 - Math.PI / 5;
-    const radius = ringIndex % 2 === 0 ? 118 : 152;
-    return { node, x: 180 + Math.cos(angle) * radius, y: 230 + Math.sin(angle) * radius };
-  });
-  const byId = new Map(positioned.map((item) => [item.node.id, item]));
-  const edges = graph.edges.map((edge) => ({
-    ...edge,
-    target: edge.target || `unresolved:${edge.id}`,
-  })).filter((edge) => byId.has(edge.source) && byId.has(edge.target)).slice(0, 24);
-  const connectedNodeIds = new Set(edges.flatMap((edge) => [edge.source, edge.target!]));
+  const { ref: containerRef, size } = useContainerSize<HTMLDivElement>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const graphRef = useRef<any>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
+  // Memoized against graph/selectedId only: node/link *objects* must stay
+  // referentially stable across renders (d3-force mutates them in place with
+  // x/y/vx/vy), or the simulation restarts from scratch on every unrelated
+  // re-render (e.g. hover) and never settles into a spread-out layout.
+  const { graphData, neighborMap } = useMemo(() => {
+    const unresolvedNodes: UnresolvedGraphNode[] = graph.edges
+      .filter((edge) => !edge.target)
+      .slice(0, 8)
+      .map((edge) => ({
+        id: `unresolved:${edge.id}`,
+        label: edge.label,
+        scopeType: "unresolved",
+        resourceType: "knowledge_base",
+        isShared: false,
+        tags: [],
+        unresolved: true,
+      }));
+    const resolvedNodes = graph.nodes.length ? graph.nodes : [{ id: selectedId, label: "Current note", scopeType: "company", resourceType: "knowledge_base", isShared: false, tags: [] }];
+    const rawNodes = [...resolvedNodes, ...unresolvedNodes].slice(0, 18);
+    const nodeIds = new Set(rawNodes.map((node) => node.id));
+
+    const computedLinks: ForceLink[] = graph.edges
+      .map((edge) => ({ source: edge.source, target: edge.target || `unresolved:${edge.id}`, label: edge.label, unresolved: edge.unresolved }))
+      .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+      .slice(0, 24);
+    const computedConnectedNodeIds = new Set(computedLinks.flatMap((link) => [link.source, link.target]));
+    const computedNeighborMap = new Map<string, Set<string>>();
+    for (const link of computedLinks) {
+      if (!computedNeighborMap.has(link.source)) computedNeighborMap.set(link.source, new Set());
+      if (!computedNeighborMap.has(link.target)) computedNeighborMap.set(link.target, new Set());
+      computedNeighborMap.get(link.source)!.add(link.target);
+      computedNeighborMap.get(link.target)!.add(link.source);
+    }
+
+    const computedNodes: ForceNode[] = rawNodes.map((node) => {
+      const unresolved = "unresolved" in node;
+      const selected = node.id === selectedId;
+      return { id: node.id, label: node.label, unresolved, isShared: node.isShared, selected, val: selected ? 9 : computedConnectedNodeIds.has(node.id) ? 5 : 3.5 };
+    });
+
+    return { graphData: { nodes: computedNodes, links: computedLinks }, connectedNodeIds: computedConnectedNodeIds, neighborMap: computedNeighborMap };
+  }, [graph, selectedId]);
+  const { links } = graphData;
+
+  useEffect(() => {
+    // Re-fit repeatedly for a bit: node positions keep moving while the force
+    // simulation settles, and a single early zoomToFit call locks onto a
+    // still-clustered layout that never gets corrected afterwards.
+    const interval = setInterval(() => graphRef.current?.zoomToFit(400, 32), 200);
+    const stop = setTimeout(() => clearInterval(interval), 2000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(stop);
+    };
+  }, [graphData, size.width, size.height]);
+
+  const highlightNodes = hoveredNodeId ? new Set([hoveredNodeId, ...(neighborMap.get(hoveredNodeId) || [])]) : null;
 
   return (
-    <div className="relative h-full min-h-[360px] overflow-hidden bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.16),transparent_32%),#09090b]">
-      <svg viewBox="0 0 360 460" className="h-full w-full" role="img" aria-label="Local knowledge graph">
-        <defs>
-          <radialGradient id="selected-node" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#a78bfa" stopOpacity="1" />
-            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.7" />
-          </radialGradient>
-          <marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 Z" fill="#71717a" opacity="0.9" />
-          </marker>
-        </defs>
-        {edges.map((edge) => {
-          const source = byId.get(edge.source)!;
-          const target = byId.get(edge.target!)!;
-          const midX = (source.x + target.x) / 2;
-          const midY = (source.y + target.y) / 2;
-          return (
-            <g key={edge.id}>
-              <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={edge.unresolved ? "#f59e0b" : "#818cf8"} strokeWidth="1.35" opacity="0.82" markerEnd="url(#graph-arrow)" />
-              <text x={midX + 3} y={midY - 3} fill={edge.unresolved ? "#fbbf24" : "#a5b4fc"} fontSize="7" className="select-none">{edge.label.slice(0, 18)}</text>
-            </g>
-          );
-        })}
-        {positioned.map(({ node, x, y }) => {
-          const selected = node.id === selectedId;
-          const unresolved = "unresolved" in node;
-          const connected = connectedNodeIds.has(node.id);
-          return (
-            <g key={node.id}>
-              <circle cx={x} cy={y} r={selected ? 9 : connected ? 5.5 : 4.5} fill={selected ? "url(#selected-node)" : unresolved ? "#f59e0b" : node.isShared ? "#818cf8" : "#71717a"} stroke={connected ? "#e4e4e7" : "transparent"} strokeOpacity="0.35" />
-              <text x={x + 8} y={y + 4} fill={selected ? "#e9d5ff" : unresolved ? "#fde68a" : "#c4c4cc"} fontSize="9" className="select-none">{node.label.slice(0, 28)}</text>
-            </g>
-          );
-        })}
-        {edges.length === 0 && (
-          <text x="180" y="230" textAnchor="middle" fill="#71717a" fontSize="11">No graph connections yet</text>
-        )}
-      </svg>
+    <div ref={containerRef} className="relative h-full min-h-[360px] overflow-hidden bg-[radial-gradient(circle_at_50%_35%,rgba(99,102,241,0.16),transparent_32%),#09090b]">
+      {size.width > 0 && size.height > 0 && (
+        <ForceGraph2D
+          ref={graphRef}
+          width={size.width}
+          height={size.height}
+          graphData={graphData}
+          backgroundColor="rgba(0,0,0,0)"
+          nodeRelSize={3}
+          nodeLabel={(raw: unknown) => (raw as ForceNode).label}
+          onNodeHover={(raw: unknown) => setHoveredNodeId((raw as ForceNode | null)?.id || null)}
+          linkColor={(raw: unknown) => {
+            const link = raw as ForceLink;
+            const dimmed = highlightNodes && !(highlightNodes.has(link.source as unknown as string) && highlightNodes.has(link.target as unknown as string));
+            if (link.unresolved) return dimmed ? "rgba(245,158,11,0.25)" : "rgba(245,158,11,0.75)";
+            return dimmed ? "rgba(129,140,248,0.18)" : "rgba(129,140,248,0.65)";
+          }}
+          linkWidth={1.4}
+          linkDirectionalArrowLength={5}
+          linkDirectionalArrowRelPos={1}
+          linkDirectionalParticles={2}
+          linkDirectionalParticleWidth={2}
+          linkDirectionalParticleSpeed={0.006}
+          linkDirectionalParticleColor={(raw: unknown) => ((raw as ForceLink).unresolved ? "#fbbf24" : "#a5b4fc")}
+          cooldownTicks={120}
+          d3VelocityDecay={0.35}
+          nodeCanvasObject={(raw: unknown, ctx: CanvasRenderingContext2D, globalScale: number) => {
+            const node = raw as ForceNode;
+            const isHighlighted = !highlightNodes || highlightNodes.has(node.id);
+            const color = node.selected ? "#a78bfa" : node.unresolved ? "#f59e0b" : node.isShared ? "#818cf8" : "#a1a1aa";
+            const radius = node.val;
+            ctx.save();
+            ctx.globalAlpha = isHighlighted ? 1 : 0.25;
+            if (node.selected || hoveredNodeId === node.id) {
+              ctx.shadowColor = color;
+              ctx.shadowBlur = 14;
+            }
+            ctx.beginPath();
+            ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            const fontSize = Math.max(10 / globalScale, 3.2);
+            ctx.font = `${node.selected ? "700" : "500"} ${fontSize}px Inter, sans-serif`;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = node.selected ? "#e9d5ff" : node.unresolved ? "#fde68a" : "#d4d4d8";
+            ctx.fillText(node.label.slice(0, 30), (node.x || 0) + radius + 3, node.y || 0);
+            ctx.restore();
+          }}
+        />
+      )}
+      {links.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-zinc-600">No graph connections yet</div>
+      )}
       <p className="absolute bottom-3 left-3 right-3 rounded-md border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] leading-4 text-zinc-500 backdrop-blur">
-        Graph connections: {edges.length}. Local graph is generated from [[links]] and inferred title mentions. Amber nodes are unresolved links.
+        Graph connections: {links.length}. Local graph is generated from [[links]] and inferred title mentions. Amber nodes are unresolved links.
       </p>
     </div>
   );
