@@ -358,14 +358,14 @@ export function AgentTeamChat({
                                         </div>
 
                                         {/* Bubble + read receipts */}
-                                        <div className={cn("flex flex-col max-w-[75%]", isHuman ? "items-end" : "items-start")}>
+                                        <div className={cn("flex min-w-0 max-w-[75%] flex-col", isHuman ? "items-end" : "items-start")}>
                                             {/* Sender name — group-start only, agents only */}
                                             {!isContinuation && !isHuman && (
                                                 <span className="text-[10px] font-medium text-cyan-400 mb-1 ml-1">{getAgentName(senderId)}</span>
                                             )}
 
                                             <div className={cn(
-                                                "rounded-2xl border px-4 py-2.5 text-sm",
+                                                "min-w-0 max-w-full rounded-2xl border px-4 py-2.5 text-sm",
                                                 isHuman
                                                     ? "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
                                                     : "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
@@ -533,7 +533,7 @@ function ChatMarkdown({
     return (
         <MarkdownRenderer
             content={content}
-            className={`[&_.prose]:max-w-none [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 ${sizing} ${accentText}`}
+            className={`break-words [&_.prose]:max-w-none [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 ${sizing} ${accentText}`}
         />
     );
 }
