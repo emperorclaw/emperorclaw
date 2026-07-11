@@ -289,7 +289,7 @@ export function OpenClawChat() {
             </button>
 
             {isOpen && (
-                <div className="fixed bottom-6 right-6 w-[420px] h-[580px] bg-zinc-950 border border-zinc-800 shadow-2xl rounded-2xl flex flex-col z-50 animate-in slide-in-from-bottom-5 fade-in duration-200 overflow-hidden">
+                <div className="fixed bottom-4 right-4 w-[calc(100vw-2rem)] max-w-[420px] h-[calc(100vh-6rem)] max-h-[580px] sm:bottom-6 sm:right-6 bg-zinc-950 border border-zinc-800 shadow-2xl rounded-2xl flex flex-col z-50 animate-in slide-in-from-bottom-5 fade-in duration-200 overflow-hidden">
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/60 shrink-0">
                         <div className="flex flex-col">
@@ -346,15 +346,15 @@ export function OpenClawChat() {
 
                                     {isHuman ? (
                                         <div className={cn("flex justify-end", isContinuation ? "mt-0.5" : "mt-3")}>
-                                            <div className="flex flex-col items-end max-w-[80%]">
+                                            <div className="flex min-w-0 max-w-[80%] flex-col items-end">
                                                 {!isContinuation && (
                                                     <span className="text-[10px] font-medium text-zinc-500 mb-1 mr-1">You</span>
                                                 )}
                                                 <div className={cn(
-                                                    "px-3.5 py-2 text-sm bg-indigo-600 text-white rounded-2xl",
+                                                    "min-w-0 max-w-full px-3.5 py-2 text-sm bg-indigo-600 text-white rounded-2xl",
                                                     isLastInGroup && "rounded-br-none"
                                                 )}>
-                                                    <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap leading-relaxed prose-sm" />
+                                                    <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap break-words leading-relaxed prose-sm" />
                                                 </div>
                                                 {isLastInGroup && (
                                                     <span className="text-[10px] text-zinc-600 mt-0.5 mr-1">
@@ -379,10 +379,10 @@ export function OpenClawChat() {
                                                         <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{getAgentName(senderId)}</span>
                                                     )}
                                                     <div className={cn(
-                                                        "px-3.5 py-2 text-sm bg-zinc-800/80 text-zinc-200 rounded-2xl",
+                                                        "min-w-0 max-w-full px-3.5 py-2 text-sm bg-zinc-800/80 text-zinc-200 rounded-2xl",
                                                         isLastInGroup && "rounded-bl-none"
                                                     )}>
-                                                        <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap leading-relaxed prose-sm" />
+                                                        <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap break-words leading-relaxed prose-sm" />
                                                     </div>
                                                     {isLastInGroup && (
                                                         <span className="text-[10px] text-zinc-600 mt-0.5 ml-1">

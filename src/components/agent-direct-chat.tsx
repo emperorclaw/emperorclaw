@@ -507,14 +507,14 @@ export function AgentDirectChat({
                                         `flex ${isHuman ? "justify-end" : "justify-start"}`,
                                         isContinuation ? "mt-0.5" : "mt-3"
                                     )}>
-                                        <div className={cn("flex flex-col max-w-[80%]", isHuman ? "items-end" : "items-start")}>
+                                        <div className={cn("flex min-w-0 max-w-[80%] flex-col", isHuman ? "items-end" : "items-start")}>
                                             {/* Agent name label — only on group-start agent messages */}
                                             {!isHuman && !isContinuation && (
                                                 <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{agentName}</span>
                                             )}
 
                                             <div className={cn(
-                                                `rounded-2xl border px-4 py-3 shadow-sm`,
+                                                `min-w-0 max-w-full rounded-2xl border px-4 py-3 shadow-sm`,
                                                 isHuman
                                                     ? "bg-emerald-500 text-emerald-950 border-emerald-400/40"
                                                     : "bg-zinc-950/85 text-zinc-200 border-zinc-800",
@@ -669,7 +669,7 @@ function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
         return (
             <MarkdownRenderer
                 content={text}
-                className="[&_.prose]:max-w-none [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
+                className="break-words [&_.prose]:max-w-none [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
             />
         );
     }
