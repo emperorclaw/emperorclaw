@@ -138,6 +138,43 @@ export async function markThreadRead(companyId: string, threadId: string, userId
     }
 }
 
+/**
+ * Applies a status update (typing/read) for an agent participant. Same
+ * find-or-create need as markThreadRead: agents only get a threadParticipants
+ * row for direct threads via ensureDirectThread — the shared team thread
+ * never creates one, so a blind UPDATE from the team channel would silently
+ * affect 0 rows and agent typing indicators would never appear there.
+ */
+export async function updateAgentThreadParticipant(
+    companyId: string,
+    threadId: string,
+    agentId: string,
+    updates: { lastReadAt?: Date; typingUntil?: Date | null },
+) {
+    const [existing] = await db.select({ id: threadParticipants.id })
+        .from(threadParticipants)
+        .where(and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.threadId, threadId),
+            eq(threadParticipants.participantType, "agent"),
+            eq(threadParticipants.participantId, agentId),
+        ))
+        .limit(1);
+
+    if (existing) {
+        await db.update(threadParticipants).set(updates).where(eq(threadParticipants.id, existing.id));
+    } else {
+        await db.insert(threadParticipants).values({
+            threadId,
+            companyId,
+            participantType: "agent",
+            participantId: agentId,
+            role: "member",
+            ...updates,
+        });
+    }
+}
+
 export async function appendThreadMessage(input: {
     companyId: string;
     threadId: string;

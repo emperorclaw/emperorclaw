@@ -25,8 +25,8 @@ type TeamMessage = {
 
 type ThreadParticipant = {
     participantType: string;
-    userId?: string | null;
-    agentId?: string | null;
+    participantId?: string | null;
+    participantRef?: string | null;
     typingUntil?: string | null;
 };
 
@@ -265,7 +265,7 @@ export function OpenClawChat() {
         p => p.participantType === 'agent' && p.typingUntil && new Date(p.typingUntil).getTime() > Date.now()
     );
     const typingNames = typingAgents.map(p => {
-        const agent = agents.find(a => a.id === (p.userId || p.agentId));
+        const agent = agents.find(a => a.id === p.participantId);
         return agent ? agent.name : 'Unknown';
     });
 
