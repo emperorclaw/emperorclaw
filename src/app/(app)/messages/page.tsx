@@ -136,7 +136,7 @@ export default async function MessagesPage() {
                 title="Team & Direct Messages"
                 description="Chat with the whole agent team, or open a private thread with a specific agent."
             />
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[2rem] emperor-panel">
+            <div className="flex min-h-0 flex-1 overflow-hidden rounded-[2rem] emperor-panel">
                 <MessagingHub
                     agents={allAgents}
                     directThreads={directThreadSummaries}

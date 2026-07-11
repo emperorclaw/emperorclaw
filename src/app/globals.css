@@ -277,3 +277,148 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Knowledge base live editor (MDXEditor) — match the app's markdown typography */
+.emperor-mdx-editor {
+  --font-size: 0.9375rem;
+  background: transparent;
+  color: rgb(212, 212, 216);
+}
+
+.emperor-mdx-editor .mdxeditor-toolbar {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(63, 63, 70, 0.6);
+  background: rgba(24, 24, 27, 0.7);
+}
+
+.emperor-mdx-content {
+  color: rgb(212, 212, 216);
+  line-height: 1.7;
+}
+
+.emperor-mdx-content h1 {
+  margin: 1.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgb(39, 39, 42);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: rgb(244, 244, 245);
+}
+
+.emperor-mdx-content h1:first-child { margin-top: 0; }
+
+.emperor-mdx-content h2 {
+  margin: 1.25rem 0 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: rgb(244, 244, 245);
+}
+
+.emperor-mdx-content h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: rgb(244, 244, 245);
+}
+
+.emperor-mdx-content h4,
+.emperor-mdx-content h5,
+.emperor-mdx-content h6 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(228, 228, 231);
+}
+
+.emperor-mdx-content p {
+  margin: 0 0 1rem;
+}
+
+.emperor-mdx-content ul,
+.emperor-mdx-content ol {
+  margin: 0 0 1rem;
+  padding-left: 1.5rem;
+}
+
+.emperor-mdx-content ul { list-style-type: disc; }
+.emperor-mdx-content ol { list-style-type: decimal; }
+
+.emperor-mdx-content li {
+  margin-bottom: 0.25rem;
+}
+
+.emperor-mdx-content li > ul,
+.emperor-mdx-content li > ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.emperor-mdx-content blockquote {
+  margin: 0 0 1rem;
+  padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 4px solid rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.05);
+  color: rgb(161, 161, 170);
+  font-style: italic;
+}
+
+.emperor-mdx-content code {
+  border-radius: 0.25rem;
+  background: rgb(39, 39, 42);
+  padding: 0.125rem 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  color: rgb(165, 180, 252);
+}
+
+.emperor-mdx-content pre {
+  margin: 0 0 1rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(39, 39, 42);
+  background: rgba(24, 24, 27, 0.8);
+  padding: 1rem;
+}
+
+.emperor-mdx-content pre code {
+  background: transparent;
+  padding: 0;
+  color: rgb(212, 212, 216);
+}
+
+.emperor-mdx-content table {
+  margin: 0 0 1.5rem;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid rgb(39, 39, 42);
+}
+
+.emperor-mdx-content th,
+.emperor-mdx-content td {
+  border: 1px solid rgb(39, 39, 42);
+  padding: 0.5rem;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.emperor-mdx-content th {
+  background: rgba(39, 39, 42, 0.8);
+  font-weight: 600;
+  color: rgb(228, 228, 231);
+}
+
+.emperor-mdx-content a {
+  color: rgb(129, 140, 248);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.emperor-mdx-content a:hover {
+  color: rgb(165, 180, 252);
+}
+
+.emperor-mdx-content hr {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid rgb(39, 39, 42);
+}
