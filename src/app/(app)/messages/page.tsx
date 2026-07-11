@@ -135,6 +135,7 @@ export default async function MessagesPage() {
                 directThreads={directThreadSummaries}
                 initialTeamMessages={teamMessages}
                 initialTeamHasMore={initialTeamHasMore}
+                teamThreadId={teamThread.id}
             />
         </div>
     );

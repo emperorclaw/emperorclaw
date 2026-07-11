@@ -28,10 +28,35 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     const { data: session } = useSession();
     const isDocsPage = pathname?.startsWith('/docs') ?? false;
     const [collapsed, setCollapsed] = useState(false);
+    const [unreadMessages, setUnreadMessages] = useState(0);
 
     useEffect(() => {
+        // Deliberately deferred to an effect: localStorage isn't available
+        // during SSR, so reading it in the initial render would mismatch
+        // between server and client hydration output.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1") setCollapsed(true);
     }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const poll = async () => {
+            try {
+                const res = await fetch("/api/chat/unread-count");
+                if (!res.ok || cancelled) return;
+                const data = await res.json();
+                if (!cancelled) setUnreadMessages(data.count || 0);
+            } catch {
+                // Non-critical — badge just stays at its last known value.
+            }
+        };
+        void poll();
+        const interval = setInterval(poll, 20000);
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [pathname]);
 
     function toggleCollapsed() {
         setCollapsed((current) => {
@@ -88,20 +113,31 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                 {links.map((link) => {
                     const Icon = link.icon;
                     const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
+                    const showUnread = link.name === "Messages" && unreadMessages > 0;
                     return (
                         <Link
                             key={link.name}
                             href={link.href}
-                            title={collapsed ? link.name : undefined}
+                            title={collapsed ? (showUnread ? `${link.name} (${unreadMessages} unread)` : link.name) : undefined}
                             className={cn(
-                                "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                                 isActive
                                     ? "border border-cyan-400/20 bg-cyan-400/10 text-white shadow-sm shadow-cyan-950/20"
                                     : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
                             )}
                         >
-                            <Icon className={cn("h-4 w-4", isActive ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
-                            <span className={cn("hidden truncate", collapsed ? "" : "md:inline")}>{link.name}</span>
+                            <span className="relative shrink-0">
+                                <Icon className={cn("h-4 w-4", isActive ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
+                                {showUnread && collapsed && (
+                                    <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+                                )}
+                            </span>
+                            <span className={cn("hidden min-w-0 flex-1 truncate", collapsed ? "" : "md:inline")}>{link.name}</span>
+                            {showUnread && !collapsed && (
+                                <span className="hidden shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white md:inline-block">
+                                    {unreadMessages > 99 ? "99+" : unreadMessages}
+                                </span>
+                            )}
                         </Link>
                     );
                 })}
