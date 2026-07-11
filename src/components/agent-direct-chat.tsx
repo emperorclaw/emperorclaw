@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Bot, Mic, Send, Square, Trash2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -87,6 +88,14 @@ export function AgentDirectChat({
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastSeenAtRef = useRef<string | null>(null);
     const preserveScrollHeightRef = useRef<number | null>(null);
+
+    const rowVirtualizer = useVirtualizer({
+        count: messages.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: () => 88,
+        overscan: 8,
+        getItemKey: (index) => messages[index].id,
+    });
 
     const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
         const params = new URLSearchParams({ targetAgentId: agentId });
@@ -240,9 +249,11 @@ export function AgentDirectChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            if (messages.length > 0) {
+                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+            }
         }
-    }, [messages]);
+    }, [messages, rowVirtualizer]);
 
     useEffect(() => {
         if (!navigator.permissions) return;
@@ -464,7 +475,10 @@ export function AgentDirectChat({
                                 </button>
                             </div>
                         )}
-                        {messages.map((message, i) => {
+                        <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                            const i = virtualRow.index;
+                            const message = messages[i];
                             const isHuman = message.senderType === "human";
                             const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
                             const prev = messages[i - 1] ?? null;
@@ -475,7 +489,12 @@ export function AgentDirectChat({
                             const isLastInGroup = !next || !isGroupContinuation(next, message);
 
                             return (
-                                <div key={message.id}>
+                                <div
+                                    key={message.id}
+                                    ref={rowVirtualizer.measureElement}
+                                    data-index={i}
+                                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
+                                >
                                     {showDaySep && (
                                         <div className="flex items-center gap-2 my-4">
                                             <div className="flex-1 border-t border-zinc-800" />
@@ -534,6 +553,7 @@ export function AgentDirectChat({
                                 </div>
                             );
                         })}
+                        </div>
                         {isAgentTyping && (
                             <div className="flex justify-start mt-3 animate-in fade-in slide-in-from-left-2 duration-300">
                                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-2">
