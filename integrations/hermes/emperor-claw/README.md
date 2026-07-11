@@ -1,4 +1,4 @@
-﻿# Emperor Claw â€” Hermes Plugin
+﻿# Emperor Claw — Hermes Plugin
 
 Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtimes to the [Emperor Claw](https://emperorclaw.malecu.eu) AI agent control plane.
 
@@ -26,7 +26,7 @@ hermes chat -Q --toolsets emperor-claw,...
 Emperor Claw plugin tools  (emperor_health, emperor_list_tasks, â€¦)
 ```
 
-Emperor owns the durable state â€” tasks, projects, threads, artifacts, resources, audit log. Hermes is the local runtime that thinks and acts. The bridge is the glue between them.
+Emperor owns the durable state — tasks, projects, threads, artifacts, resources, audit log. Hermes is the local runtime that thinks and acts. The bridge is the glue between them.
 
 ---
 
@@ -334,7 +334,7 @@ Each Emperor agent needs a unique `EMPEROR_CLAW_AGENT_ID`, `EMPEROR_CLAW_RUNTIME
 - Prefer `POST /resources` with frontmatter `status: active` for agent-generated durable knowledge by default; use `status: draft` only when the agent is explicitly uncertain.
 - Use `artifacts` for deliverables, reports, exported files, evidence, working documents.
 - Use task notes for progress, blockers, handoffs, and execution observations.
-- Fetch Emperor state lazily â€” never preload all projects/tasks at session start.
+- Fetch Emperor state lazily — never preload all projects/tasks at session start.
 - Call Emperor tools before reporting a state change, not after.
 
 ---
