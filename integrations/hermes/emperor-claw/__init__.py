@@ -293,10 +293,10 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Always pass folderId when uploading into a folder. Never upload without folderId and expect files to be grouped. "
             "Use customer/project/month/type folders when possible; search/list before creating duplicates; prefer move/replace over duplicate uploads. "
             "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
-            "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it â€” if your name is absent, the message is for someone else. "
+            "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it — if your name is absent, the message is for someone else. "
             "(2) To ask a sibling to do something: emperor_send_message(text='@SiblingName <request>', threadType='team'). Discover sibling names first with emperor_request GET /agents. "
             "(3) When responding to a sibling's request, @mention them once in your reply so the message routes back: '@Viktor here are the results...'. "
-            "(4) After that single @mention do NOT repeat it â€” repeating triggers another response cycle from them. "
+            "(4) After that single @mention do NOT repeat it — repeating triggers another response cycle from them. "
             "(5) Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention. "
             "Use emperor_send_message threadType=direct only when the message must be private. "
             "Call Emperor tools before claiming a state change. "
@@ -436,7 +436,7 @@ def register(ctx: Any) -> None:
         TOOLSET,
         _schema(
             "Create a Storage folder (or a nested subfolder) in Emperor. "
-            "Returns folder.id â€” pass it as folderId when uploading files into this folder.",
+            "Returns folder.id — pass it as folderId when uploading files into this folder.",
             {
                 "name": {"type": "string", "description": "Folder name."},
                 "projectId": {"type": "string", "description": "Required unless customerId is provided."},
@@ -472,7 +472,7 @@ def register(ctx: Any) -> None:
         "emperor_upload_artifact",
         TOOLSET,
         _schema(
-            "Upload a local file from disk to Emperor Storage (artifacts). Use this for any file upload â€” never use emperor_request, curl, Bunny, or direct blob-provider APIs for normal uploads. Pass folderId when the file belongs in a folder.",
+            "Upload a local file from disk to Emperor Storage (artifacts). Use this for any file upload — never use emperor_request, curl, Bunny, or direct blob-provider APIs for normal uploads. Pass folderId when the file belongs in a folder.",
             {
                 "filePath": {"type": "string", "description": "Absolute path to the file on this machine."},
                 "kind": {"type": "string", "description": "Artifact kind, e.g. report, invoice, deliverable, evidence, export."},

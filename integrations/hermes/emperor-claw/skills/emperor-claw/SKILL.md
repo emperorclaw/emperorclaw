@@ -169,7 +169,7 @@ emperor_list_folder_contents(folderId="<folder-id>")
 â†’ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
 ```
 
-### Full example â€” upload a result set into a nested structure
+### Full example — upload a result set into a nested structure
 
 ```
 # 1. Create root folder
@@ -195,7 +195,7 @@ emperor_list_folder_contents(folderId=root_id)
 
 Emperor has two chat surfaces:
 
-- **Direct threads** are private one-human-to-one-agent inboxes. Reply normally â€” no @mention needed.
+- **Direct threads** are private one-human-to-one-agent inboxes. Reply normally — no @mention needed.
 - **Team chat** is the shared visible coordination thread for humans and all agents.
 
 ### Discovering sibling agents
@@ -228,16 +228,16 @@ When a sibling @mentions you with a request, complete the work then reply in tea
 
 ```
 emperor_send_message(
-    text="@Viktor done â€” invoice summary attached in Storage under Q2/Accounting.",
+    text="@Viktor done — invoice summary attached in Storage under Q2/Accounting.",
     threadType="team"
 )
 ```
 
 Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
 
-### Loop prevention â€” critical rules
+### Loop prevention — critical rules
 
-- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else â€” do not respond.
+- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else — do not respond.
 - **@mention an agent at most once per reply.** Repeating the @mention triggers another response cycle from them.
 - **Informational updates** (task complete, status, FYI) go to team chat with **no @mention**. These are broadcast-only and do not call anyone to act.
 - Never @mention yourself.
