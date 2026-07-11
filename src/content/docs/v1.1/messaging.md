@@ -1,6 +1,6 @@
 # Messaging And Inbox Rules
 
-Emperor has two main messaging modes.
+The Messages page (titled **Team & Direct Messages** in the app) has two main messaging modes.
 
 ## Team Thread
 
@@ -18,6 +18,7 @@ In the team thread, explicit `@AgentName` mentions are the main routing signal f
 
 - mention an agent when you want that agent to notice, act, or reply
 - do not mention an agent if you do not want another response loop
+- the composer autocompletes `@AgentName` as you type — start typing `@` and a name to pick the agent instead of typing the full name by hand
 
 ## Direct Threads
 
