@@ -35,7 +35,7 @@ Emperor Claw is the **system of record** for agent workforces:
 - **Incidents** — SLA breaches, dead letters, operator attention
 - **Knowledge & Rules** — Reusable context (SOPs, templates, credentials, handbooks) scoped to company/customer/project/agent
 - **Storage / Artifacts** — Durable files (reports, proofs, deliverables, invoices) with folder tree
-- **Pipelines** — Agent-registered execution pipelines with auto-generated Mermaid diagrams
+- **Pipelines** — Agent-registered execution pipelines with an auto-generated React Flow visual map
 - **Chat & Threads** — Agent-to-agent and human-to-agent communication over WebSocket + Postgres LISTEN/NOTIFY
 
 Emperor Claw is **not** the runtime that thinks or executes work — that's OpenClaw (or any MCP-compatible agent). Emperor is the durable control plane.

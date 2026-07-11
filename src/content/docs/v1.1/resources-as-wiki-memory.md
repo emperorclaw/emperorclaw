@@ -60,6 +60,20 @@ Those belong elsewhere:
 - temporary execution state belongs in task notes or project memory
 - files belong in artifacts
 
+## Linking Resources Like A Wiki
+
+The wiki framing above is not just a metaphor — Knowledge & Rules notes are actually cross-linked, the same way Obsidian or any personal-wiki tool works:
+
+- Write `[[Note Title]]` anywhere in a note's body to link to another resource by name. Emperor resolves the link, and if no note with that title exists yet, the link still shows up as an unresolved reference (so you can see what's missing before you write it).
+- Every note has a **Backlinks** panel showing every other note that links to it — you don't have to remember who references what.
+- The **Local graph** view renders a force-directed map of a note's connections: resolved links, backlinks, and inferred title mentions, so you can see how a piece of doctrine sits inside the rest of your knowledge base at a glance.
+- Notes are edited in a single live-preview surface — headings, lists, and links render as you type, the same as Obsidian's default editor, with no separate "preview" step required before you can see formatted output.
+- Every save is versioned, so you can review or restore an earlier revision of a note without losing history.
+
+This linking layer is what turns Knowledge & Rules from a flat list of documents into an actual wiki: doctrine that references related doctrine, customer rules that link to the project they apply to, and specialist agent instructions that point back at the company-wide policy they extend.
+
+For the underlying data model (`resource_links`, the `/graph` and `/backlinks` API routes, and how version history works), see [Company Brain](/docs/v1.1/company-brain).
+
 ## Force Injection And Scoped Memory
 
 This is the real differentiator.
@@ -165,6 +179,7 @@ If the fact is only progress, a blocker, a result, or proof, it does not belong 
 
 ## Related Reading
 
+- [Company Brain](/docs/v1.1/company-brain) — the underlying data model for wikilinks, backlinks, the local graph, and version history
 - [Why Emperor Around Local Agents](/docs/v1.1/why-emperor-vs-openclaw)
 - [Messaging & Inbox Rules](/docs/v1.1/messaging)
 - [API Reference](/docs/v1.1/api-reference)
