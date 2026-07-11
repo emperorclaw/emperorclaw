@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { MessageSquare, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { MentionTextarea } from "@/components/mention-textarea";
 import { cn } from "@/lib/utils";
 
 const CHAT_PAGE_SIZE = 25;
@@ -61,7 +62,6 @@ export function OpenClawChat() {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [history, setHistory] = useState<TeamMessage[]>([]);
-    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [agents, setAgents] = useState<AgentSummary[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
@@ -72,64 +72,7 @@ export function OpenClawChat() {
     const [threadId, setThreadId] = useState<string | null>(null);
     const [isTyping, setIsTyping] = useState(false);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const [mentionOpen, setMentionOpen] = useState(false);
-    const mentionRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-    // Click-outside for mention popover
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
-                setMentionOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    const mentionAlias = (name: string) => {
-        const clean = name.replace(/\([^)]*\)/g, "").split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0].trim();
-        return clean.split(/\s+/)[0] || name;
-    };
-
-    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-    const removeLeadingMentions = (text: string) => {
-        let next = text.trimStart();
-        let changed = true;
-        while (changed) {
-            changed = false;
-            for (const agent of agents) {
-                const aliases = [agent.name, mentionAlias(agent.name || "")].filter(Boolean);
-                for (const alias of aliases) {
-                    const pattern = new RegExp(`^@${escapeRegex(alias)}(?:\\s+|$)`, "i");
-                    const replaced = next.replace(pattern, "");
-                    if (replaced !== next) {
-                        next = replaced.trimStart();
-                        changed = true;
-                    }
-                }
-            }
-            const fallback = next.replace(/^@\S+\s*/, "");
-            if (fallback !== next) {
-                next = fallback.trimStart();
-                changed = true;
-            }
-        }
-        return next;
-    };
-
-    const setSelectedAgentMention = (agent: AgentSummary | null) => {
-        setSelectedAgentId(agent?.id || null);
-        if (!agent?.name) {
-            setMessage((prev) => removeLeadingMentions(prev));
-            return;
-        }
-        setMessage((prev) => {
-            const rest = removeLeadingMentions(prev);
-            return `@${mentionAlias(agent.name)}${rest ? ` ${rest}` : " "}`;
-        });
-    };
 
     const buildChatUrl = (since?: string | null) => {
         const params = new URLSearchParams();
@@ -193,10 +136,19 @@ export function OpenClawChat() {
                     setHistory((prev) => {
                         const existingIds = new Set(prev.map(m => m.id));
                         const newMessages = (data.messages as TeamMessage[]).filter((m) => !existingIds.has(m.id));
+                        const newAgentMessages = newMessages.filter((m) => m.senderType === 'agent').length;
 
-                        if (newMessages.length > 0 && !isOpen) {
-                            const newAgentMessages = newMessages.filter((m) => m.senderType === 'agent').length;
-                            if (newAgentMessages > 0) {
+                        if (newAgentMessages > 0) {
+                            if (isOpen && threadId) {
+                                // Widget is open and visible — keep lastReadAt
+                                // advancing instead of letting it go stale,
+                                // or the sidebar unread badge never clears.
+                                void fetch("/api/chat/status", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ threadId, markRead: true }),
+                                });
+                            } else if (!isOpen) {
                                 setUnreadCount((c) => c + newAgentMessages);
                             }
                         }
@@ -221,8 +173,7 @@ export function OpenClawChat() {
 
         const interval = setInterval(pollHistory, 5000); // Poll every 5 seconds
         return () => clearInterval(interval);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, initialized, selectedAgentId, lastSeenAt]);
+    }, [isOpen, initialized, lastSeenAt, threadId]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -238,7 +189,6 @@ export function OpenClawChat() {
         } else if (baseTitleRef.current) {
             document.title = baseTitleRef.current;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [unreadCount]);
 
     useEffect(() => {
@@ -272,12 +222,10 @@ export function OpenClawChat() {
         }, 3000);
     };
 
-    const handleSend = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const sendMessage = async () => {
         const textToSend = message;
 
         setMessage("");
-        setSelectedAgentId(null);
 
         try {
             const res = await fetch('/api/chat', {
@@ -299,6 +247,11 @@ export function OpenClawChat() {
         } catch (err) {
             console.error("Failed to send message", err);
         }
+    };
+
+    const handleSend = (e: React.FormEvent) => {
+        e.preventDefault();
+        void sendMessage();
     };
 
     const getAgentName = (id?: string | null) => {
@@ -461,61 +414,27 @@ export function OpenClawChat() {
 
                     {/* Input Area */}
                     <form onSubmit={handleSend} className="flex items-end gap-2 p-3 border-t border-zinc-800 shrink-0">
-                        {/* @ mention button */}
-                        <div className="relative shrink-0" ref={mentionRef}>
-                            <button
-                                type="button"
-                                onClick={() => setMentionOpen(v => !v)}
-                                title="Mention an agent"
-                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-indigo-500/50 hover:text-indigo-400 text-zinc-500 transition-colors"
-                            >
-                                <AtSign className="w-4 h-4" />
-                            </button>
-                            {mentionOpen && agents.length > 0 && (
-                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-20">
-                                    <div className="px-3 py-2 border-b border-zinc-800">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Mention agent</span>
-                                    </div>
-                                    <div className="max-h-48 overflow-y-auto p-1">
-                                        {agents.map((agent) => (
-                                            <button
-                                                key={agent.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedAgentMention(agent);
-                                                    setMentionOpen(false);
-                                                    textareaRef.current?.focus();
-                                                }}
-                                                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-zinc-800 text-left transition-colors"
-                                            >
-                                                <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-700/50 shrink-0">
-                                                    <img
-                                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
-                                                        className="w-full h-full object-cover"
-                                                        alt=""
-                                                    />
-                                                </div>
-                                                <span className="text-sm text-zinc-300 truncate">{agent.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                handleTyping(message.trimEnd() ? `${message.trimEnd()} @` : "@");
+                                requestAnimationFrame(() => textareaRef.current?.focus());
+                            }}
+                            title="Mention an agent"
+                            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-indigo-500/50 hover:text-indigo-400 text-zinc-500 transition-colors"
+                        >
+                            <AtSign className="w-4 h-4" />
+                        </button>
 
-                        <textarea
+                        <MentionTextarea
                             ref={textareaRef}
                             value={message}
-                            onChange={(e) => handleTyping(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    void handleSend(e as unknown as React.FormEvent);
-                                }
-                            }}
+                            onValueChange={handleTyping}
+                            agents={agents}
+                            onSubmit={sendMessage}
                             placeholder="Message Team Channel…"
                             rows={1}
-                            className="flex-1 resize-none bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-24 overflow-y-auto"
+                            className="w-full resize-none bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-24 overflow-y-auto"
                             style={{ minHeight: "2.25rem" }}
                         />
 

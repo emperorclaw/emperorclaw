@@ -55,11 +55,13 @@ export function MessagingHub({
     directThreads,
     initialTeamMessages = [],
     initialTeamHasMore = false,
+    teamThreadId,
 }: {
     agents: Agent[];
     directThreads: DirectThreadSummary[];
     initialTeamMessages?: TeamMessage[];
     initialTeamHasMore?: boolean;
+    teamThreadId: string;
 }) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
@@ -208,6 +210,7 @@ export function MessagingHub({
                                     initialHasMore={initialTeamHasMore}
                                     agents={agents}
                                     sendable={true}
+                                    teamThreadId={teamThreadId}
                                 />
                             </div>
                         </div>
