@@ -473,11 +473,18 @@ export function AgentTeamChat({
 function ParsedMessage({ text }: { text: string }) {
     if (!text) return null;
 
-    const sections = {
-        update: text.match(/Update:([\s\S]*?)(?=Evidence:|Next:|$)/i),
-        evidence: text.match(/Evidence:([\s\S]*?)(?=Update:|Next:|$)/i),
-        next: text.match(/Next:([\s\S]*?)(?=Update:|Evidence:|$)/i),
-    };
+    // Only treat a message as a structured Update/Evidence/Next status report
+    // when it actually opens with one of those markers — otherwise a diff or
+    // code dump that happens to contain the word "Next:" mid-content (e.g. a
+    // "### Next:" markdown heading being added to a file) gets misparsed,
+    // silently discarding everything before the false match.
+    const looksStructured = /^(update|evidence|next):/i.test(text.trimStart());
+
+    const sections = looksStructured ? {
+        update: text.match(/^Update:([\s\S]*?)(?=^Evidence:|^Next:|$)/im),
+        evidence: text.match(/^Evidence:([\s\S]*?)(?=^Update:|^Next:|$)/im),
+        next: text.match(/^Next:([\s\S]*?)(?=^Update:|^Evidence:|$)/im),
+    } : { update: null, evidence: null, next: null };
 
     if (!sections.update && !sections.evidence && !sections.next) {
         return <ChatMarkdown content={text} accent="cyan" />;
