@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { User, Send, AtSign } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
@@ -99,6 +100,14 @@ export function AgentTeamChat({
     );
     const [isAtBottom, setIsAtBottom] = useState(true);
 
+    const rowVirtualizer = useVirtualizer({
+        count: messages.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: () => 72,
+        overscan: 8,
+        getItemKey: (index) => messages[index].id,
+    });
+
     useEffect(() => {
         setMessages(initialMessages);
         setLastSeenAt(initialMessages.length > 0 ? messageCursor(initialMessages[initialMessages.length - 1].createdAt) : null);
@@ -180,12 +189,12 @@ export function AgentTeamChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            if (isAtBottom) {
-                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            if (isAtBottom && messages.length > 0) {
+                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end" });
                 setUnreadCount(0);
             }
         }
-    }, [messages, isAtBottom]);
+    }, [messages, isAtBottom, rowVirtualizer]);
 
     const handleScroll = () => {
         if (!scrollRef.current) return;
@@ -290,7 +299,10 @@ export function AgentTeamChat({
                                 </button>
                             </div>
                         )}
-                        {messages.map((msg, i) => {
+                        <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                            const i = virtualRow.index;
+                            const msg = messages[i];
                             const prev = messages[i - 1] ?? null;
                             const next = messages[i + 1] ?? null;
                             const isHuman = msg.senderType === "human";
@@ -311,7 +323,12 @@ export function AgentTeamChat({
                             const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || "agent")}`;
 
                             return (
-                                <div key={msg.id}>
+                                <div
+                                    key={msg.id}
+                                    ref={rowVirtualizer.measureElement}
+                                    data-index={i}
+                                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
+                                >
                                     {showDaySep && (
                                         <div className="flex items-center gap-2 my-4">
                                             <div className="flex-1 border-t border-zinc-800" />
@@ -389,6 +406,7 @@ export function AgentTeamChat({
                                 </div>
                             );
                         })}
+                        </div>
                     </div>
                 )}
             </div>
