@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BadgeCheck, Search, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 type ApprovalItem = any;
@@ -117,17 +118,17 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
 
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Approvals</p>
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Decision Queue</h1>
-                    <p className="text-sm text-zinc-400">Tasks that need your approval before agents can continue.</p>
-                </div>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                    <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search approvals..." className="w-80 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40" />
-                </div>
-            </div>
+            <PageHeader
+                eyebrow="Approvals"
+                title="Decision Queue"
+                description="Tasks that need your approval before agents can continue."
+                actions={
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search approvals..." className="w-80 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40" />
+                    </div>
+                }
+            />
 
             <div className="grid gap-3 sm:grid-cols-3">
                 <SummaryCard label="Pending" value={counts.pending} hint="Awaiting decision" />

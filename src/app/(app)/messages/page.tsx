@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { agents, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { and, count, eq, gt, inArray, isNull } from "drizzle-orm";
 import { MessagingHub } from "@/components/messaging-hub";
+import { PageHeader } from "@/components/page-header";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 
 export const dynamic = "force-dynamic";
@@ -129,14 +130,21 @@ export default async function MessagesPage() {
     const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
 
     return (
-        <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-[1800px] flex-col overflow-hidden rounded-[2rem] emperor-panel animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <MessagingHub
-                agents={allAgents}
-                directThreads={directThreadSummaries}
-                initialTeamMessages={teamMessages}
-                initialTeamHasMore={initialTeamHasMore}
-                teamThreadId={teamThread.id}
+        <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <PageHeader
+                eyebrow="Messages"
+                title="Team & Direct Messages"
+                description="Chat with the whole agent team, or open a private thread with a specific agent."
             />
+            <div className="min-h-0 flex-1 overflow-hidden rounded-[2rem] emperor-panel">
+                <MessagingHub
+                    agents={allAgents}
+                    directThreads={directThreadSummaries}
+                    initialTeamMessages={teamMessages}
+                    initialTeamHasMore={initialTeamHasMore}
+                    teamThreadId={teamThread.id}
+                />
+            </div>
         </div>
     );
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Cable, CheckCircle2, Copy, KeyRound, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Cable, CheckCircle2, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -129,17 +130,11 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
 
     return (
         <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
-            <header className="emperor-panel rounded-[2rem] p-6">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">
-                            <ShieldCheck className="h-4 w-4" /> Workspace control
-                        </div>
-                        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">Workspace & Access</h1>
-                        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                            Connect agent runtimes, manage access tokens, and keep dangerous setup details behind an advanced section.
-                        </p>
-                    </div>
+            <PageHeader
+                eyebrow="Settings"
+                title="Workspace & Access"
+                description="Connect agent runtimes, manage access tokens, and keep dangerous setup details behind an advanced section."
+                actions={
                     <div className="grid grid-cols-2 gap-3 sm:min-w-80">
                         <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                             <div className="text-xs uppercase tracking-wider text-zinc-500">Active tokens</div>
@@ -150,8 +145,8 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                             <div className="mt-1 text-2xl font-semibold text-white">2</div>
                         </div>
                     </div>
-                </div>
-            </header>
+                }
+            />
 
             <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 p-2">
                 {([

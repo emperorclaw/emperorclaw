@@ -8,6 +8,7 @@ import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 import { PublicHomePage } from "@/components/public-home-page";
 import { OnboardingTour } from "@/components/onboarding-tour";
+import { PageHeader } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
 
@@ -192,14 +193,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1800px] space-y-8 animate-in fade-in duration-500">
-      <div className="emperor-panel relative overflow-hidden rounded-[2rem] p-6">
-        <div className="pointer-events-none absolute inset-0 emperor-subtle-grid opacity-20" />
-        <div className="relative flex flex-col gap-3">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Dashboard</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">Overview</h1>
-          <p className="max-w-3xl text-sm leading-6 text-zinc-400">Your agents, recent work, and team communication — all in one place.</p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Dashboard"
+        title="Overview"
+        description="Your agents, recent work, and team communication — all in one place."
+      />
 
       {totalAgents === 0 && !currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
         <OnboardingTour
