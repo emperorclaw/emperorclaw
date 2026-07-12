@@ -43,9 +43,11 @@ export function getAppUrl(request?: {
             const proto = headers?.get("x-forwarded-proto") || "http";
             return normalizeBaseUrl(`${proto}://${host}`);
         }
+
+        return "http://localhost:3000";
     }
 
-    // Production safety net — self-hosters should set APP_URL or NEXTAUTH_URL explicitly.
-    // This fallback preserves backward compatibility for the existing deployment.
-    return "https://emperorclaw.malecu.eu";
+    throw new Error(
+        "Cannot determine the app's public URL: set APP_URL (or NEXTAUTH_URL) in your environment."
+    );
 }

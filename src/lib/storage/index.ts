@@ -7,9 +7,9 @@ let cachedAdapter: StorageAdapter | null = null;
 export function getStorageAdapter(): StorageAdapter {
     if (cachedAdapter) return cachedAdapter;
 
-    // Default to "bunny" for backward compatibility (existing production deployments).
-    // Self-hosters should explicitly set STORAGE_BACKEND=local in their .env.
-    const backend = (process.env.STORAGE_BACKEND || "bunny").toLowerCase();
+    // Default to "local" so a fresh install works with zero external services.
+    // Deployments using Bunny CDN must set STORAGE_BACKEND=bunny explicitly.
+    const backend = (process.env.STORAGE_BACKEND || "local").toLowerCase();
 
     if (backend === "bunny") {
         cachedAdapter = new BunnyStorageAdapter();
@@ -26,5 +26,5 @@ export const storageAdapter = getStorageAdapter();
 
 /** Returns the active storage backend name (e.g. "bunny", "local"). */
 export function getStorageProviderName(): string {
-    return (process.env.STORAGE_BACKEND || "bunny").toLowerCase();
+    return (process.env.STORAGE_BACKEND || "local").toLowerCase();
 }
