@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { verifyMcpToken } from "@/lib/mcp";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
+import { parseJsonBody, optionalString } from "@/lib/validation";
+
+const sendMessageSchema = z.object({
+    text: z.string().min(1, "text is required"),
+    chat_id: optionalString,
+    thread_id: optionalString,
+    from_user_id: optionalString,
+    agentId: optionalString,
+    targetAgentId: optionalString,
+    target_agent_id: optionalString,
+    thread_type: optionalString,
+}).loose();
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -11,12 +24,11 @@ export async function POST(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
 
     try {
-        const body = await req.json();
-        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = body;
-
-        if (!text) {
-            return NextResponse.json({ error: "text is required" }, { status: 400 });
+        const parsed = await parseJsonBody(req, sendMessageSchema);
+        if (parsed.error !== undefined) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
+        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = parsed.data;
 
         const result = await sendThreadMessageFromMcp({
             companyId,

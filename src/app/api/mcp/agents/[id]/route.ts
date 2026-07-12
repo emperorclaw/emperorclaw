@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
+import { parseJsonBody, optionalString } from "@/lib/validation";
+
+const updateAgentSchema = z.object({
+    name: z.string().min(1).optional(),
+    role: optionalString.optional(),
+    avatarUrl: optionalString.optional(),
+    skillsJson: z.array(z.unknown()).optional(),
+    memory: optionalString.optional(),
+    modelPolicyJson: z.record(z.string(), z.unknown()).optional(),
+    concurrencyLimit: z.number().int().min(0).optional(),
+}).loose();
 
 export async function PATCH(
     req: NextRequest,
@@ -23,8 +35,11 @@ export async function PATCH(
     if (cachedResponse) return NextResponse.json(cachedResponse);
 
     try {
-        const body = await req.json();
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
+        const parsed = await parseJsonBody(req, updateAgentSchema);
+        if (parsed.error !== undefined) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
+        }
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = parsed.data;
 
         // Ensure we actually have something to update
         if (name === undefined && role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined) {

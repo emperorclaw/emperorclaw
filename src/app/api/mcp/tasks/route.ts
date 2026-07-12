@@ -1,8 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
 import { createTaskForProject, listTasksForCompany } from "@/lib/openclaw/tasks";
 import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
+import { parseJsonBody, optionalString } from "@/lib/validation";
+
+const createTaskSchema = z.object({
+    projectId: z.string().min(1, "projectId is required"),
+    taskType: z.string().min(1, "taskType is required"),
+    templateVersion: optionalString,
+    contractVersion: optionalString,
+    inputJson: z.record(z.string(), z.unknown()).nullish(),
+    title: optionalString,
+    description: optionalString,
+    acceptanceCriteria: z.unknown().optional(),
+    definitionOfDone: z.unknown().optional(),
+    deliverables: z.unknown().optional(),
+    blockedReason: optionalString,
+    goal: optionalString,
+    ownerRole: optionalString,
+    priority: z.number().int().default(0),
+    proofRequired: z.boolean().default(false),
+    humanApprovalRequired: z.boolean().nullish(),
+    proofTypesJson: z.union([z.string(), z.array(z.unknown())]).default("[]"),
+    blockedByTaskIds: z.array(z.string()).default([]),
+    taskKind: z.string().default("standard"),
+    recurringTaskDefinitionId: optionalString.default(null),
+    allowUnderspecified: z.boolean().default(false),
+}).loose();
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -64,7 +90,10 @@ export async function POST(req: NextRequest) {
     if (idempError) return NextResponse.json({ error: idempError }, { status });
     if (cachedResponse) return NextResponse.json(cachedResponse);
 
-    const body = await req.json();
+    const parsed = await parseJsonBody(req, createTaskSchema);
+    if (parsed.error !== undefined) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
     const {
         projectId,
         taskType,
@@ -79,19 +108,15 @@ export async function POST(req: NextRequest) {
         blockedReason,
         goal,
         ownerRole,
-        priority = 0,
-        proofRequired = false,
+        priority,
+        proofRequired,
         humanApprovalRequired,
-        proofTypesJson = "[]",
-        blockedByTaskIds = [],
-        taskKind = "standard",
-        recurringTaskDefinitionId = null,
-        allowUnderspecified = false,
-    } = body;
-
-    if (!projectId || !taskType) {
-        return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
-    }
+        proofTypesJson,
+        blockedByTaskIds,
+        taskKind,
+        recurringTaskDefinitionId,
+        allowUnderspecified,
+    } = parsed.data;
 
     const inputPayload = {
         ...(inputJson && typeof inputJson === "object" ? inputJson : {}),
@@ -131,7 +156,7 @@ export async function POST(req: NextRequest) {
             inputJson: inputPayload,
             priority,
             proofRequired,
-            humanApprovalRequired,
+            humanApprovalRequired: humanApprovalRequired ?? undefined,
             proofTypesJson,
             blockedByTaskIds,
             source: "mcp_api",
