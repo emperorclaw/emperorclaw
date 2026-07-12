@@ -20,3 +20,5 @@ BEGIN
             FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;
     END IF;
 END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "artifacts_company_customer_idx" ON "artifacts" ("company_id", "customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "artifacts_company_agent_idx" ON "artifacts" ("company_id", "agent_id");--> statement-breakpoint
