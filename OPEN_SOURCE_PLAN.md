@@ -2,7 +2,7 @@
 
 **Audience:** an implementing agent (or engineer) taking Emperor Claw from a private, single-tenant hosted app (`emperorclaw.malecu.eu`) to a self-hostable, open-source project that anyone can `git clone` and run locally — with a **local filesystem storage option** instead of Bunny CDN, an **easy install**, and a codebase that doesn't embarrass the author when it hits the front page.
 
-**How to use this document:** work top-to-bottom. Phase 0 is a hard security gate — **do not make the repo public until Phase 0 is 100% complete.** Phases 1–2 make it actually installable and are the core of the "opensource it to run locally" ask. Phases 3–6 are the polish that makes it a *good* open-source project rather than a dump. Each task lists concrete files with line references (from an audit of the repo at the time of writing — re-verify line numbers before editing, they drift).
+**How to use this document:** work top-to-bottom. Phase 0 is a hard security gate — **do not make the repo public until Phase 0 is 100% complete.** Phases 1–2 make it actually installable and are the core of the "opensource it to run locally" ask. Phases 3–6 are the polish that makes it a *good* open-source project rather than a dump. **Phases 7–8 are the business layer**: the fair-source license + brand moat that keeps a paid cloud possible for the author, and the launch/authority playbook that keeps the author the recognized creator of the category rather than an anonymous repo. Each task lists concrete files with line references (from an audit of the repo at the time of writing — re-verify line numbers before editing, they drift).
 
 **Do NOT start coding features before Phase 0.** Secrets are already in git history.
 
@@ -70,7 +70,7 @@ After 0.1 + 0.2, the tracked secrets are still in history. Use `git filter-repo`
 
 ## 0.5 — License + copyright
 
-- `LICENSE` is MIT but reads `Copyright (c) 2024-2026 Malecu OU`. Decide: keep MIT (fine for OSS) but update the copyright holder line to your chosen public identity, or relicense deliberately. **This is a decision for the owner — flag it, don't guess.**
+- **Decision made — see Phase 7.** The repo ships under **FSL-1.1-Apache-2.0** (Functional Source License), not MIT. Because the repo has never been public, replacing the current MIT file *before* first release is legally clean: no third party ever received an MIT grant, so there is nobody to grandfather. Replace `LICENSE` with the FSL text and set the copyright holder per Phase 7.1. **Do this inside Phase 0 — a license change after launch is a community event; before launch it's a file edit.**
 
 ---
 
@@ -315,19 +315,119 @@ Make it read like a real open-source project, not a working directory.
 
 ---
 
+# PHASE 7 — License, brand & commercial moat (author stays relevant, cloud stays possible)
+
+> **The strategic frame:** the author is a solo builder with no VC backing. Under plain MIT, the day this hits the front page, anyone with a marketing budget can stand up "AgentClaw Cloud" on this exact codebase and outrun the author on their own work — that is the MongoDB/Elastic/Redis-vs-AWS story at indie scale. The goal of this phase is a structure where **the code is genuinely open for self-hosters** (that's the adoption engine and the authority engine) but **the only party who can sell it as a hosted service is the author** (that's the moat and the future revenue). The models to copy are Sentry, n8n, and Cal.com — not Kubernetes.
+
+## 7.1 — License: FSL-1.1-Apache-2.0
+
+Adopt Sentry's **Functional Source License** (fsl.software), the Apache-2.0-future variant:
+
+- **What users get:** read, run, modify, self-host, use internally for any commercial purpose, redistribute. For a self-hoster or a company running its own agent fleet, it is indistinguishable from MIT.
+- **The one restriction:** no "Competing Use" — you cannot offer Emperor Claw itself as a paid hosted/managed service that substitutes for the author's cloud.
+- **The trust valve:** every release automatically converts to **Apache 2.0 two years after that release's publication date.** This is the feature that defuses the "fake open source" criticism: the author isn't locking anything up forever, only reserving a two-year head start on commercializing their own work. Say this sentence, verbatim, in the README and the launch post.
+- **Why FSL over BSL:** BSL requires hand-writing "Additional Use Grants" that lawyers and HN both squint at; FSL is a fixed, readable, increasingly recognized text with exactly one restriction. Less surface area to argue about.
+- **Honest cost, stated up front:** FSL is not OSI-approved open source. Debian/Fedora/Homebrew-core won't package it, and some purists will say "source-available, not open source." Accept the label — use "**Fair Source**" (fair.io) in messaging, don't claim OSI open source, and never argue the definition in comment threads. The self-hosting audience this project serves does not care; the audience that cares was never going to pay for cloud anyway.
+
+**Mechanics (in-repo, do during Phase 0):**
+- Replace `LICENSE` with the FSL-1.1-Apache-2.0 text; copyright line: the entity that will sign cloud contracts (Malecu OU today; changing later requires only the author's consent since there are no outside copyright holders yet — one more reason to sort the CLA below).
+- Add a `LICENSE` section to the README in plain words: *"Free to self-host, modify, and use commercially. The one thing you can't do is sell Emperor Claw itself as a hosted service. Every release becomes Apache 2.0 after two years."*
+- The **Hermes plugin (`integrations/hermes/emperor-claw/`) and any client SDKs stay MIT** — integration surfaces should be maximally permissive so nobody hesitates to embed them. Moat the server, not the adapters.
+
+## 7.2 — CLA: keep relicensing power (do this before the first external PR, not after)
+
+FSL only works if the author can relicense the whole codebase at will (e.g., the automatic Apache conversion, a future dual-license deal, or an EE split). The moment an outside contribution lands under "inbound = outbound," that flexibility is gone without hunting down every contributor.
+
+- Add a lightweight **individual CLA** (copy Sentry's or n8n's) granting the author a broad license to contributions, including relicensing. Enforce with the free **cla-assistant.io** GitHub app — contributors click once, it's recorded, done.
+- Mention it in `CONTRIBUTING.md` in one non-scary sentence: *"We use a CLA so the project can guarantee the FSL→Apache conversion and keep licensing options open; it takes one click on your first PR."*
+- **This is a now-or-never task**: retrofitting a CLA after PRs exist is painful and reads as a rug-pull. Before the repo is public, it's free.
+
+## 7.3 — Brand: the name is the moat the license can't provide
+
+FSL still allows forks. What forks can't take is the **name**:
+
+- **Register the trademark** (human task for the owner, not an agent): "Emperor Claw" word mark via **EUIPO**, Nice classes **9** (software) + **42** (SaaS) — roughly €850–1,000 for one EU-wide registration; add USPTO later if US revenue materializes. File before launch publicity creates prior-use disputes.
+- **Buy the neutral domain now** (owner task): `emperorclaw.com` / `.dev` / `.io` — whichever is available — plus the GitHub org `emperorclaw`. The project must not live at `malecu.eu` paths or under a personal GitHub account: a neutral home reads as a real project, and the author's name then gets attached as *creator* rather than *hostname*. Redirect `emperorclaw.malecu.eu` → the new cloud domain.
+- **Add `TRADEMARK.md`** (copy the shape of Plausible's or n8n's): forks and self-hosted instances are welcome and may state "powered by Emperor Claw"; public forks and competing services must use a different name and logo; the logo files in-repo are for referring to the genuine project.
+- Reserve the name on npm (`emperor-claw` scope), PyPI, Docker Hub, X/Twitter, Discord vanity — an afternoon of squatting-prevention that is miserable to fix later.
+
+## 7.4 — The open-core line: what is cloud-only
+
+Rule of thumb (Sentry's, works): **anything a single self-hosting team needs is open; anything only a company at scale or a hosting provider needs is paid.**
+
+- **Open (everything currently in the repo):** all agent features, messaging, Knowledge Base, Storage with local adapter, pipelines, the Hermes bridge, single-workspace multi-user. Do not carve features *out* of what already shipped — clawing back is how projects burn goodwill.
+- **Cloud-only value at launch — pure ops, zero code split:** hosting, upgrades, backups, uptime, support, the convenience of not running Postgres. This is enough to charge for on day one and requires no `ee/` directory.
+- **Cloud/EE later (build only when a real customer asks):** SSO/SAML, audit-log export, multi-workspace management, usage-based agent quotas, priority support SLAs. When that day comes, use an `ee/` folder with its own commercial license file (Cal.com pattern) rather than a private fork — keeps one repo, one CI, one community.
+- **Pricing anchor (decide later, document now):** free self-hosted forever; cloud starts as a flat early-adopter tier (~€29–49/mo per workspace) — the point at launch is a "Cloud" button that works, not revenue optimization.
+
+## 7.5 — The two-repo question
+
+Keep **one public monorepo** (app + docs + Hermes plugin). The private ops repo (VPS deploy workflows, real `.env`s, the Pi fleet scripts deleted in Phase 0.2) becomes a separate private `emperorclaw-ops` repo. The public repo must never again know production hostnames or credentials — that boundary also keeps the GitHub Actions prod-deploy pipeline (Phase 6) out of public view.
+
+---
+
+# PHASE 8 — Launch & authority playbook (being the author is the business model)
+
+> **The strategic frame:** for a solo fair-source project, the author's visible expertise *is* the marketing budget. Every artifact of this launch should make "the person who built the control plane for AI agent workforces" a little more true as a public fact. Relevance compounds from shipping in public with a name attached — not from the repo existing.
+
+## 8.1 — Positioning: own a category, not a feature list
+
+One sentence, everywhere, verbatim — README, HN post, X bio, docs landing:
+
+> **Emperor Claw is the control plane for AI agent workforces — the durable system of record your agents report to, so work survives the conversation.**
+
+The differentiation to hammer: **Emperor is not another agent framework.** LangChain/CrewAI/AutoGen are *runtimes* (the brain); Emperor is the *operating body* — tasks, approvals, knowledge, files, and messaging that persist when the context window doesn't. "Bring your own agents" is the pitch; the Hermes bridge is the proof. Write the comparison page (`docs: "Emperor vs. agent frameworks"`) before launch, because HN will ask in the first ten comments and the author should be quoting their own doc, not improvising.
+
+## 8.2 — Pre-launch assets (all block launch day)
+
+- **The 90-second demo GIF/video** at the top of the README: human posts `@Viktor build the Q2 report` in team chat → agent picks it up, typing indicator, replies with artifact in Storage → human approves. The multi-agent loop-guard pause notice is a great cameo — nobody else demos *safety* in agent-to-agent chat.
+- **A live read-only demo instance** (`demo.emperorclaw.*`, seeded, resets hourly). Lurkers outnumber installers 100:1; give them a URL.
+- **Docs site** from the existing `src/content/docs` (already good after this session's pass) at `docs.emperorclaw.*`.
+- **10–15 seeded GitHub issues** before launch: a few `good first issue` (the S3/MinIO storage adapter from Phase 2.4 is the flagship), a few `discussion` architecture threads. An empty issue tracker reads as dead; a curated one reads as invitation.
+- **GitHub Discussions on, Discord deferred** until there are ~20 genuinely active people — a dead Discord is worse than none.
+- **The launch blog post, written by the author in first person:** "I run 6 AI agents as a real workforce. Here's the control plane I had to build." Concrete war stories from this repo's history are the credibility: the agent reply loop that needed a mechanical circuit breaker, the wikilink brain agents actually read, why agents get an inbox and read receipts. This post is the single highest-leverage authority artifact in the whole plan.
+
+## 8.3 — Launch sequence
+
+1. **Soft launch (1–2 weeks before):** repo public quietly, ask 5–10 friendly devs to install via `docker compose up` and file friction issues. Fix those. The HN comment you're preventing is "install broke in step 2."
+2. **Show HN:** title `Show HN: Emperor Claw – open control plane for AI agent workforces`. First comment is the author's: what it is, the 6-agents-on-a-Pi story, honest FSL disclosure *with the two-year Apache line in the same sentence*, what's rough. Post Tue–Thu ~14:00–15:00 UTC. Stay at the keyboard for 6 hours answering everything.
+3. **Same week:** r/selfhosted (self-hosting angle), r/LocalLLaMA (agents-on-your-hardware angle), X/Twitter thread of the demo GIF cut into moments. Each community gets its own angle, not a crosspost.
+4. **Product Hunt deliberately later** (a month+), when the README has social proof (stars, screenshots of real usage) — PH rewards polish, HN rewards substance.
+5. **Post-launch cadence, non-negotiable:** ship something visible weekly; write **"Emperor Claw This Month"** on the author's blog (features, contributor shout-outs, roadmap deltas); respond to every issue within 24h for the first month — early-responsiveness is the #1 signal people check before adopting a solo-maintainer project.
+
+## 8.4 — Authority mechanics (the "stay relevant" engine)
+
+- **Everything ships under the author's name.** Launch post, changelog, releases, HN/Reddit replies — "Jose, creator of Emperor Claw" is the byline being built. The neutral org owns the repo; the human owns the voice.
+- **Governance = BDFL, stated plainly** in `GOVERNANCE.md` (three sentences: author is maintainer and decider; contributions welcome under CLA; roadmap is public). Ambiguity invites governance drama; clarity reads as leadership.
+- **Public roadmap** as a pinned GitHub Discussion or `ROADMAP.md` — being seen deciding the future of the category is the authority play.
+- **A content flywheel from real operations:** the Pi fleet running 6 agents through Emperor is a permanent story mine — "what my agents did this week," post-mortems of agent failures, cost breakdowns of agents vs. tasks. Nobody else writing about agent orchestration *operates* a fleet in production; that asymmetry is the entire content strategy.
+- **Answer where the category is being defined:** when agent-memory/agent-orchestration threads trend, the author replies with experience (and a link only when directly relevant). Two thoughtful comments a week beat any ad spend at this scale.
+- **Conference/podcast pipeline (month 2+):** the pitch "I run an AI agent workforce with no human in the loop, here's the infrastructure" is an easy accept for AI-engineering podcasts and meetups. Each appearance compounds the byline.
+
+## 8.5 — What "relevant" means in numbers (so drift is visible)
+
+90-day targets, reviewed monthly — miss them and change tactics, not goals: **1,000+ GitHub stars** (category projects that landed HN front page clear this), **50+ real self-host installs** (proxy: Docker pulls, unique issue reporters), **10+ external contributors** under CLA, **5+ paying cloud workspaces** (validates the moat exists), **1 canonical piece of content** that ranks for "AI agent control plane." The star count is vanity except as distribution proof; the paying-workspace count is the one that funds year two.
+
+---
+
 # Suggested execution order (dependency-aware)
 
-1. **Phase 0** — security gate. Nothing public until done. (Rotate → scrub tree → scrub history → verify.)
+**Owner-only tasks to start in parallel on day 1** (they have external lead times and block launch, not code): buy the neutral domain + GitHub org (7.3), file the EUIPO trademark (7.3), rotate credentials (0.1).
+
+1. **Phase 0** — security gate, now including the FSL license swap (0.5/7.1) and the CLA setup (7.2). Nothing public until done. (Rotate → scrub tree → scrub history → license/CLA → verify.)
 2. **Phase 3.2** (path traversal sanitizer) — needed before local storage exists.
 3. **Phase 2** — local storage backend + env selection. Delivers the headline "run locally without Bunny."
 4. **Phase 1** — `.env.example`, Docker Compose, migration consolidation, non-destructive bootstrap, README. Delivers "easy install."
 5. **Phase 3.1, 3.3, 3.5–3.7** — remaining security/correctness.
 6. **Phase 4** — UI/UX punch list (HIGH first: error boundaries, tactics deletion, destructive-action confirms, unbounded fetch, a11y).
-7. **Phase 5** — repo hygiene + de-personalization.
+7. **Phase 5** — repo hygiene + de-personalization (now also: split private `emperorclaw-ops` repo, 7.5; add `TRADEMARK.md` + `GOVERNANCE.md`, 7.3/8.4).
 8. **Phase 6** — CI, tests, release checklist.
+9. **Phase 8.2** — pre-launch assets: demo GIF, live demo instance, docs site, seeded issues, the launch post.
+10. **Phase 8.3** — soft launch → Show HN → community rollout → monthly cadence.
 
 # Definition of done
 
+**Technical (launch gate):**
 - Fresh machine: `git clone` → `cp .env.example .env` → `docker compose up` → working app at `localhost:3000` with **local** storage, no Bunny account, no external services beyond the bundled Postgres.
 - Secret scan over full history: **zero** hits. All leaked creds rotated.
 - No hardcoded `malecu`/personal hosts/paths anywhere in the tree.
@@ -335,4 +435,13 @@ Make it read like a real open-source project, not a working directory.
 - Every mutating API route authenticated and tenant-scoped; the three HIGH bugs closed with regression tests.
 - CI runs lint + typecheck + tests on PR; no auto-migrate-to-prod.
 - No white screen on error (`error.tsx`/`not-found.tsx` present); no fake-data pages; destructive actions confirmed and give feedback.
+
+**Business (moat gate — all in place *before* the repo is public):**
+- `LICENSE` is FSL-1.1-Apache-2.0; Hermes plugin/SDKs are MIT; README states the license terms in one honest plain-English paragraph.
+- CLA live via cla-assistant; mentioned in `CONTRIBUTING.md`.
+- Neutral domain + GitHub org secured; trademark application filed; names reserved on npm/Docker Hub/X; `TRADEMARK.md` and `GOVERNANCE.md` committed.
+- Private `emperorclaw-ops` repo holds everything production-specific; public repo knows no production hostnames.
+- Cloud signup path exists on the official domain (even as a waitlist) so "the author's hosted version" is a live fact from day one, not a promise.
+
+**Relevance (90-day gate, per 8.5):** 1,000+ stars, 50+ real installs, 10+ CLA'd contributors, 5+ paying cloud workspaces, 1 ranking piece of content — reviewed monthly, tactics adjusted on miss.
 ```
