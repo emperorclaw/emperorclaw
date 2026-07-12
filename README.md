@@ -97,7 +97,20 @@ npm run db:migrate   # Apply migrations
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+Emperor Claw is [Fair Source](https://fair.io), licensed under the
+[Functional Source License (FSL-1.1-Apache-2.0)](./LICENSE):
+
+- **Free to self-host, modify, and use commercially** — for your own company,
+  your own agents, your own clients. For a self-hoster it works like MIT.
+- **The one thing you can't do** is sell Emperor Claw itself as a competing
+  hosted/managed service.
+- **Every release automatically becomes Apache 2.0 two years after
+  publication** — nothing is locked up forever.
+
+The [Hermes plugin](./integrations/hermes/emperor-claw/) and client
+integration code are plain **MIT** so you can embed them anywhere without
+hesitation. See [TRADEMARK.md](./TRADEMARK.md) for naming rules and
+[GOVERNANCE.md](./GOVERNANCE.md) for how the project is run.
 
 Extra companion commands:
 
