@@ -25,7 +25,7 @@ export function sanitizeLogicalPath(raw: string): string {
     }
 
     // Normalize backslashes to forward slashes
-    let cleaned = raw.replace(/\\/g, "/");
+    const cleaned = raw.replace(/\\/g, "/");
 
     // Reject absolute paths
     if (cleaned.startsWith("/")) {
@@ -86,14 +86,20 @@ export function sanitizeFilenameSegment(raw: string): string {
     // Strip path separators and null bytes
     let cleaned = raw.replace(/[\\/]+/g, "-").replace(/\0/g, "").trim();
 
-    // Strip leading dots that could be traversal
-    cleaned = cleaned.replace(/^\.+/, "");
-
     // Collapse multiple dashes
     cleaned = cleaned.replace(/-{2,}/g, "-");
 
-    // Remove leading/trailing dashes
-    cleaned = cleaned.replace(/^-+/, "").replace(/-+$/, "");
+    // Strip leading dots/dashes until stable: "../../x" becomes "..-..-x"
+    // after separator replacement, and a single-pass dot strip would
+    // re-expose a leading dot once the dash in front of it is removed.
+    let previous = "";
+    while (previous !== cleaned) {
+        previous = cleaned;
+        cleaned = cleaned.replace(/^[.-]+/, "");
+    }
+
+    // Remove trailing dashes
+    cleaned = cleaned.replace(/-+$/, "");
 
     if (!cleaned || cleaned === "." || cleaned === "..") return "";
 

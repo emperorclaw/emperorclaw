@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents, projects, tasks, customers, companies } from "@/db/schema";
-import { eq, count } from "drizzle-orm";
+import { and, eq, count, isNull } from "drizzle-orm";
 
 type JsonRpcId = string | number | null;
 
@@ -74,15 +74,39 @@ export async function POST(req: NextRequest) {
                     Array.isArray(params.skillsJson) ? params.skillsJson :
                     [];
 
-                await db.insert(agents).values({
-                    companyId,
-                    name: agentName,
-                    role: params.role || "operator",
-                    skillsJson: agentSkills,
-                    status: "online",
-                    lastSeenAt: new Date(),
-                    currentLoad: 0,
-                }).catch((upsertError) => console.error("Agent Upsert Ignore:", upsertError));
+                // Real upsert keyed on (companyId, name); DB failures surface
+                // as JSON-RPC errors instead of duplicate rows reported as success.
+                try {
+                    const [existingAgent] = await db.select({ id: agents.id }).from(agents).where(
+                        and(eq(agents.companyId, companyId), eq(agents.name, agentName), isNull(agents.deletedAt))
+                    ).limit(1);
+
+                    if (existingAgent) {
+                        await db.update(agents).set({
+                            role: params.role || "operator",
+                            skillsJson: agentSkills,
+                            status: "online",
+                            lastSeenAt: new Date(),
+                        }).where(eq(agents.id, existingAgent.id));
+                    } else {
+                        await db.insert(agents).values({
+                            companyId,
+                            name: agentName,
+                            role: params.role || "operator",
+                            skillsJson: agentSkills,
+                            status: "online",
+                            lastSeenAt: new Date(),
+                            currentLoad: 0,
+                        });
+                    }
+                } catch (upsertError) {
+                    const message = upsertError instanceof Error ? upsertError.message : "Agent upsert failed";
+                    return NextResponse.json({
+                        jsonrpc: "2.0",
+                        id,
+                        error: { code: -32000, message }
+                    });
+                }
 
                 return NextResponse.json({
                     jsonrpc: "2.0",
@@ -99,11 +123,26 @@ export async function POST(req: NextRequest) {
                             ? params.name.trim()
                             : "OpenClaw Project";
 
-                await db.insert(projects).values({
-                    companyId,
-                    goal: projectGoal,
-                    status: "active",
-                }).catch((projectError) => console.error("Project Upsert Ignore:", projectError));
+                try {
+                    const [existingProject] = await db.select({ id: projects.id }).from(projects).where(
+                        and(eq(projects.companyId, companyId), eq(projects.goal, projectGoal), isNull(projects.deletedAt))
+                    ).limit(1);
+
+                    if (!existingProject) {
+                        await db.insert(projects).values({
+                            companyId,
+                            goal: projectGoal,
+                            status: "active",
+                        });
+                    }
+                } catch (projectError) {
+                    const message = projectError instanceof Error ? projectError.message : "Project upsert failed";
+                    return NextResponse.json({
+                        jsonrpc: "2.0",
+                        id,
+                        error: { code: -32000, message }
+                    });
+                }
 
                 return NextResponse.json({
                     jsonrpc: "2.0",

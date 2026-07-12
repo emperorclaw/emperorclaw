@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { db } from "@/db";
 import { chatMessages } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
 import { appendThreadMessage, ensureTeamThread } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { parseJsonBody, optionalString } from "@/lib/validation";
+
+const inboundWebhookSchema = z.object({
+    event: z.string(),
+    message: z.object({
+        id: z.string().min(1),
+        chat_id: z.string().min(1),
+        thread_id: optionalString,
+        from_user_id: optionalString,
+        text: z.string().min(1),
+        timestamp: z.union([z.string(), z.number()]).nullish(),
+    }).loose(),
+}).loose();
 
 export async function POST(req: NextRequest) {
     try {
@@ -15,21 +29,26 @@ export async function POST(req: NextRequest) {
         }
         const companyId = auth.companyToken!.companyId;
 
-        const body = await req.json();
+        const parsed = await parseJsonBody(req, inboundWebhookSchema);
+        if (parsed.error !== undefined) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
+        }
 
-        if (body.event !== "message.created") {
+        if (parsed.data.event !== "message.created") {
             return NextResponse.json({ error: "Unsupported event" }, { status: 400 });
         }
 
-        const { id, chat_id, thread_id, from_user_id, text, timestamp } = body.message;
+        // chat_id is required by the schema but only id/thread routing is used below.
+        const { id, thread_id, from_user_id, text, timestamp } = parsed.data.message;
 
-        if (!id || !chat_id || !text) {
-            return NextResponse.json({ error: "Missing required message fields" }, { status: 400 });
-        }
-
-        // 2. Dedupe by message.id
+        // 2. Dedupe by message.id — scoped to the caller's company, so one
+        // tenant can neither drop another tenant's messages by colliding ids
+        // nor probe whether a given platform message id exists elsewhere.
         const [existingMessage] = await db.select().from(chatMessages)
-            .where(eq(chatMessages.platformMessageId, id))
+            .where(and(
+                eq(chatMessages.companyId, companyId),
+                eq(chatMessages.platformMessageId, id),
+            ))
             .limit(1);
 
         if (existingMessage) {

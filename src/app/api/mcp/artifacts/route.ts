@@ -9,10 +9,39 @@ import {
     resolveAgentId,
 } from "@/lib/mcp";
 import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-orm";
+import { z } from "zod";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { getStorageProviderName } from "@/lib/storage";
+import { parseJsonBody, optionalString } from "@/lib/validation";
+
+const createArtifactSchema = z.object({
+    kind: z.string().min(1, "kind is required"),
+    contentType: z.string().min(1, "contentType is required"),
+    projectId: optionalString,
+    taskId: optionalString,
+    customerId: optionalString,
+    contentText: optionalString,
+    storageUrl: optionalString,
+    storageProvider: optionalString,
+    storageKey: optionalString,
+    originalFilename: optionalString,
+    sourceKind: optionalString,
+    sourceRef: optionalString,
+    sha256: optionalString,
+    sizeBytes: z.number().int().min(0).nullish(),
+    visibility: optionalString,
+    retentionPolicy: optionalString,
+    agentId: optionalString,
+    title: optionalString,
+    artifactClass: optionalString,
+    importance: optionalString,
+    isCanonical: z.boolean().nullish(),
+    metadataJson: z.record(z.string(), z.unknown()).nullish(),
+    folderId: optionalString,
+    path: optionalString,
+}).loose();
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -150,7 +179,10 @@ export async function POST(req: NextRequest) {
 
     try {
         await ensureArtifactStorageSchema();
-        const body = await req.json();
+        const parsed = await parseJsonBody(req, createArtifactSchema);
+        if (parsed.error !== undefined) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
+        }
         const {
             projectId,
             taskId,
@@ -176,7 +208,7 @@ export async function POST(req: NextRequest) {
             metadataJson,
             folderId,
             path,
-        } = body;
+        } = parsed.data;
 
         if (typeof contentText === "string" && contentText.length > 0) {
             return NextResponse.json({

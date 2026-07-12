@@ -63,7 +63,11 @@ export const companyTokens = pgTable("company_tokens", {
     lastUsedAt: timestamp("last_used_at"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    // Auth hot path looks tokens up by hash; uniqueness also guarantees a
+    // presented token can never resolve to more than one company.
+    tokenHashUnique: uniqueIndex("company_tokens_token_hash_unique").on(table.tokenHash),
+}));
 
 export const customers = pgTable("customers", {
     id: uuid("id").primaryKey().defaultRandom(),

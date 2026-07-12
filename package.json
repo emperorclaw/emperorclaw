@@ -20,7 +20,7 @@
     "control-plane:sync": "node scripts/control-plane.js sync",
     "control-plane:repair": "node scripts/control-plane.js repair",
     "control-plane:session-inspect": "node scripts/control-plane.js session-inspect",
-    "test": "node --test tests/architecture-boundary.test.cjs tests/service-layer-smoke.test.cjs tests/company-brain.test.cjs tests/pipeline-context-pack.test.cjs tests/ui-system.test.cjs tests/operator-ux.test.cjs",
+    "test": "node --test tests/architecture-boundary.test.cjs tests/service-layer-smoke.test.cjs tests/company-brain.test.cjs tests/pipeline-context-pack.test.cjs tests/ui-system.test.cjs tests/operator-ux.test.cjs tests/security-boundary.test.cjs && npx tsx --test tests/path-sanitizer.test.ts",
     "db:migrate": "npx tsx src/db/migrate.ts"
   },
   "dependencies": {
