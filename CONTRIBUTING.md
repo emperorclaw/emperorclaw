@@ -66,6 +66,9 @@ Use conventional commits:
 4. Open a PR with a description of what changed and why
 5. Wait for review before merging
 
-## VPS Deployment
-Deployment is handled via `scripts/deploy-vps.py`. Do not deploy to production
-without explicit approval. See `README.md` for deployment prerequisites.
+## Contributor License Agreement
+
+We use a lightweight [CLA](./CLA.md) so the project can guarantee the
+FSL→Apache-2.0 conversion promised in the [LICENSE](./LICENSE) and keep
+licensing options open — it takes one click from the CLA bot on your first PR,
+and you keep full ownership of your contribution.
