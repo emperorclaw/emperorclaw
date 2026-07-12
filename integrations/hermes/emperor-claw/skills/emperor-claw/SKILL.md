@@ -132,7 +132,7 @@ Never create a full path as one folder name. Create each level separately and us
 
 ```
 emperor_create_folder(name="BrandVirality Report", projectId="<project-id>")
-â†’ returns { folder: { id: "<folder-id>", path: "BrandVirality Report", ... } }
+→ returns { folder: { id: "<folder-id>", path: "BrandVirality Report", ... } }
 ```
 
 ### Create a subfolder inside an existing folder
@@ -141,7 +141,7 @@ Pass the parent's `id` as `parentFolderId`:
 
 ```
 emperor_create_folder(name="Charts", projectId="<project-id>", parentFolderId="<folder-id>")
-â†’ returns { folder: { id: "<subfolder-id>", path: "BrandVirality Report/Charts", ... } }
+→ returns { folder: { id: "<subfolder-id>", path: "BrandVirality Report/Charts", ... } }
 ```
 
 ### Upload a file into a folder
@@ -166,7 +166,7 @@ emperor_upload_artifact(filePath="/home/jose/BrandVirality/charts/bar.png", kind
 
 ```
 emperor_list_folder_contents(folderId="<folder-id>")
-â†’ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
+→ returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
 ```
 
 ### Full example — upload a result set into a nested structure
@@ -204,7 +204,7 @@ Before addressing a sibling for the first time, confirm who exists on your team:
 
 ```
 emperor_request(method="GET", path="/agents")
-â†’ returns agents[].name for each agent on the team
+→ returns agents[].name for each agent on the team
 ```
 
 Use the shortest unambiguous first name as the @mention alias (e.g. `@Viktor`, `@Katarina`, `@BrandVirality`).
@@ -233,14 +233,20 @@ emperor_send_message(
 )
 ```
 
-Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
+This reply **closes** the request. Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
 
 ### Loop prevention — critical rules
 
 - **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else — do not respond.
 - **@mention an agent at most once per reply.** Repeating the @mention triggers another response cycle from them.
+- **A reply that answers a request you made closes it — don't reply again.** If a sibling mentions you back with the answer to something you asked, that's the end of the exchange. No "thanks", no acknowledgment, no follow-up @mention. Only reply if you have a genuinely new, different request.
+- **Never @mention the same agent twice in a row** without a new human message or a materially different question in between — that pattern is exactly what produces an infinite back-and-forth.
 - **Informational updates** (task complete, status, FYI) go to team chat with **no @mention**. These are broadcast-only and do not call anyone to act.
 - Never @mention yourself.
+
+### Loop guard — the mechanical safety net
+
+The bridge itself also enforces this: if you and a sibling exchange more than a few consecutive messages in a team thread with no human message in between, the bridge stops invoking you for that thread, posts one pause notice, and goes silent until a human sends a new message there. This exists as a backstop for genuine autonomy (agents coordinating without a human in the loop) — it should rarely trigger if you follow the rules above, but don't work around it or treat its silence as a bug.
 
 ### Thread history
 
