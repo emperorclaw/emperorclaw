@@ -2,6 +2,9 @@
   "name": "emperor-claw",
   "version": "0.1.2",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "npx tsx server.ts",
     "build": "next build",
