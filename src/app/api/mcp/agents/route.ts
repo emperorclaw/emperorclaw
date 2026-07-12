@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
+import { parseJsonBody, optionalString } from "@/lib/validation";
 
-interface RegisterAgentRequestBody {
-    name: string;
-    role?: string;
-    avatarUrl?: string;
-    skillsJson?: unknown[];
-    memory?: string | null;
-    modelPolicyJson?: Record<string, unknown>;
-    concurrencyLimit?: number;
-}
+const registerAgentSchema = z.object({
+    name: z.string().min(1, "name is required"),
+    role: optionalString,
+    avatarUrl: optionalString,
+    skillsJson: z.array(z.unknown()).nullish(),
+    memory: optionalString,
+    modelPolicyJson: z.record(z.string(), z.unknown()).nullish(),
+    concurrencyLimit: z.number().int().min(0).nullish(),
+}).loose();
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -57,12 +59,11 @@ export async function POST(req: NextRequest) {
     const { requestHash } = idempotencyResult;
 
     try {
-        const body = (await req.json()) as Partial<RegisterAgentRequestBody>;
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
-
-        if (!name) {
-            return NextResponse.json({ error: "name is required" }, { status: 400 });
+        const parsed = await parseJsonBody(req, registerAgentSchema);
+        if (parsed.error !== undefined) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = parsed.data;
 
         const [agent] = await db.insert(agents).values({
             companyId,

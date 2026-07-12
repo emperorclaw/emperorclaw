@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { companyTokens, idempotencyKeys, auditLog, agents, agentSessions, projects, tasks } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import * as crypto from "crypto";
+import { consumeRateLimit, getClientIp } from "./rate-limit";
 
 type JsonObject = Record<string, unknown>;
 export type CompanyTokenScope = "mcp_full" | "mcp_danger";
@@ -137,8 +138,37 @@ export async function verifyMcpAuthorizationHeader(
     return verifyStoredCompanyToken(companyToken, options);
 }
 
-export async function verifyMcpToken(req: NextRequest, options: VerifyMcpTokenOptions = {}) {
-    return verifyMcpAuthorizationHeader(req.headers.get("authorization"), options);
+// Generous ceilings: the busiest legitimate fleet (several bridges polling
+// every few seconds plus bursts of status updates) stays far below these,
+// while a leaked or brute-forced token stops being unlimited. The limiter is
+// in-memory per process — fine for the supported single-process deployment.
+const MCP_RATE_LIMIT_PER_MINUTE = 600;
+
+export async function verifyMcpToken(req: NextRequest, options: VerifyMcpTokenOptions = {}): Promise<VerifyMcpTokenResult> {
+    // Pre-auth throttle by client IP blunts token brute-forcing before any DB work.
+    const ipLimit = consumeRateLimit({
+        key: `mcp:ip:${getClientIp(req)}`,
+        limit: MCP_RATE_LIMIT_PER_MINUTE,
+        windowMs: 60_000,
+    });
+    if (!ipLimit.allowed) {
+        return { error: "Rate limit exceeded", status: 429 };
+    }
+
+    const result = await verifyMcpAuthorizationHeader(req.headers.get("authorization"), options);
+
+    if (result.companyToken) {
+        const companyLimit = consumeRateLimit({
+            key: `mcp:company:${result.companyToken.companyId}`,
+            limit: MCP_RATE_LIMIT_PER_MINUTE,
+            windowMs: 60_000,
+        });
+        if (!companyLimit.allowed) {
+            return { error: "Rate limit exceeded", status: 429 };
+        }
+    }
+
+    return result;
 }
 
 export async function checkIdempotency(req: NextRequest, companyId: string, endpoint: string) {

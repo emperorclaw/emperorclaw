@@ -52,7 +52,7 @@ test("Customer and pipeline operator copy avoids runtime-specific or internal ja
   assertContains(customers, "your agents should follow", "customers should use runtime-neutral agent wording");
 
   const pipelines = read("src/app/(app)/pipelines/pipelines-client.tsx");
-  assertContains(pipelines, "documentation and grounding, not hidden reasoning", "pipelines should explain Context Pack in operator language");
+  assertContains(pipelines, "visual map, Context Pack, run evidence", "pipelines should explain Context Pack in operator language");
   assertNotContains(pipelines, "via MCP", "pipelines UI copy should avoid MCP jargon for normal operators");
 });
 
@@ -86,7 +86,9 @@ test("Core workspaces use the standardized Emperor visual system", () => {
   assertContains(globals, ".emperor-main .text-zinc-400", "app secondary text should be lifted on dark OLED surfaces");
   assertContains(globals, ".emperor-main .text-zinc-500", "app muted text contrast should be lifted on dark OLED surfaces");
   assertContains(globals, "font-weight: 550", "medium text should be heavier for readability on dark surfaces");
-  assertContains(projects, "sm:text-3xl", "daily workspace headers should stay compact instead of using oversized hero titles");
+  const pageHeader = read("src/components/page-header.tsx");
+  assertContains(pageHeader, "sm:text-3xl", "the shared page header should stay compact instead of using oversized hero titles");
+  assertContains(projects, "PageHeader", "projects should use the shared page header component");
   assertNotContains(projects, "sm:text-5xl", "projects should not look like a landing-page hero");
 
   [dashboard, projects, messages, messagingHub, teamChat].forEach((source) => {
@@ -133,7 +135,8 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
 
   assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
-  assertContains(agents, "Next actions for", "agent cards should expose useful per-agent actions");
+  assertContains(agents, "Open detail", "agent cards should link to the agent detail page");
+  assertContains(agents, "DeleteAgentDialog", "agent cards should expose a real delete action with confirmation");
   assertNotContains(storage, "window.confirm", "storage destructive actions should use app-native confirmation dialogs");
   assertContains(storage, "Delete folder?", "storage should confirm folder deletion in an app dialog");
   assertContains(storage, "Delete file?", "storage should confirm file deletion in an app dialog");
