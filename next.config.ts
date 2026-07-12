@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+// Google Analytics is opt-in: the GA script and its CSP allowances only ship
+// when NEXT_PUBLIC_GA_ID is set. Self-hosted instances default to zero analytics.
+const gaEnabled = Boolean(process.env.NEXT_PUBLIC_GA_ID);
+
 const securityHeaders = [
   {
     key: "Strict-Transport-Security",
@@ -13,11 +17,15 @@ const securityHeaders = [
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
+      gaEnabled
+        ? "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com"
+        : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' wss: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com",
+      gaEnabled
+        ? "connect-src 'self' wss: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com"
+        : "connect-src 'self' wss:",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "upgrade-insecure-requests",

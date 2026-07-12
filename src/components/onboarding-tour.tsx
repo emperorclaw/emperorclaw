@@ -94,7 +94,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
 
   const agentId = useMemo(() => slugifyAgentName(agentName), [agentName]);
   const activeToken = createdToken?.secret || "paste_token_here";
-  const installCommand = "openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin";
+  const installCommand = "openclaw plugins install clawhub:emperor-claw-os-plugin";
   const addAgentCommand = `openclaw emperor add-agent --agent-name "${agentName.trim() || "Operator One"}" --local-brain-agent-id ${agentId} --token "${activeToken}" --profile operator`;
   const doctorCommand = getShellPrefix("openclaw emperor doctor", activeToken);
   const statusCommand = getShellPrefix("openclaw emperor status", activeToken);

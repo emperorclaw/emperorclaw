@@ -28,12 +28,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const gaTagId = process.env.NEXT_PUBLIC_GA_ID;
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${plusJakarta.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
       >
-        <GoogleAnalytics tagId="G-3LMDQVBDPN" />
+        {gaTagId && <GoogleAnalytics tagId={gaTagId} />}
         <SessionProvider>
           <ThemeProvider
             attribute="class"
