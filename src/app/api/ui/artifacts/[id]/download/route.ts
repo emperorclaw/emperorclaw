@@ -9,7 +9,7 @@ import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/download">) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, userId } = await requireCompanyFromSession();
         await ensureArtifactStorageSchema();
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
@@ -19,6 +19,18 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
         )).limit(1);
 
         if (!artifact) {
+            return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+        }
+
+        // Enforce visibility: "private" human uploads are only downloadable by
+        // their uploader. Agent/system-created artifacts stay company-visible —
+        // the operator must always be able to retrieve agent output.
+        if (
+            artifact.visibility === "private" &&
+            artifact.createdByType === "human" &&
+            artifact.createdById &&
+            artifact.createdById !== userId
+        ) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
