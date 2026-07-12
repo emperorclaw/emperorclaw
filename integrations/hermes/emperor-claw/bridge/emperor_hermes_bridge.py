@@ -30,6 +30,13 @@ HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
 DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
 MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "12000"))
+# Loop guard: the @mention convention (reply once, then go silent) is a prompt
+# convention, not a hard rule — an LLM can still misjudge a "closing" reply as
+# needing another response. This is a mechanical backstop: once this agent has
+# been triggered by this many consecutive agent-authored messages in the same
+# team thread with no human message in between, stop invoking Hermes and post
+# one pause notice instead, until a human message resets the counter.
+LOOP_GUARD_MAX_AGENT_TURNS = int(os.environ.get("EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS", "3"))
 
 
 def log(message: str) -> None:
@@ -307,6 +314,34 @@ def is_for_agent(message: Dict[str, Any], agent_id: str, state: Dict[str, Any]) 
     return mentions_agent(text, AGENT_NAME)
 
 
+def check_loop_guard(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
+    """Mechanical backstop against agent-to-agent reply loops in team chat.
+
+    Direct threads always have a human on the other end, so they're excluded.
+    In team chat, count consecutive agent-authored messages this agent has
+    been triggered by, with no human message in between, per thread. A human
+    message resets the count to zero. Once the count exceeds
+    LOOP_GUARD_MAX_AGENT_TURNS, return False so the caller skips invoking
+    Hermes for this message (and every later one in the thread) until a human
+    message shows up again.
+    """
+    thread_type = str(message.get("threadType") or message.get("thread_type") or "")
+    if thread_type != "team":
+        return True
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
+    if not thread_id:
+        return True
+    sender_type = str(message.get("senderType") or "").lower()
+    guard = state.setdefault("loop_guard", {})
+    entry = guard.setdefault(thread_id, {"count": 0, "notified": False})
+    if sender_type != "agent":
+        entry["count"] = 0
+        entry["notified"] = False
+        return True
+    entry["count"] = entry.get("count", 0) + 1
+    return entry["count"] <= LOOP_GUARD_MAX_AGENT_TURNS
+
+
 def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     query = {"mode": "all"}
     if state.get("lastSeenAt"):
@@ -407,10 +442,12 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
         "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
-        "- To ask a sibling to do something: post in team chat with @SiblingName and a concrete request (use the roster aliases below for the exact @name).\n"
-        "- When a sibling @mentions you with a request, complete the work then @mention them ONCE in your reply so the answer routes back: '@Viktor done, here are the results...'\n"
-        "- After that one @mention, do NOT repeat it — repeating triggers another response cycle.\n"
-        "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n\n"
+        "- To ask a sibling to do something: post in team chat with @SiblingName and one concrete request (use the roster aliases below for the exact @name).\n"
+        "- When a sibling @mentions you with a request, complete the work then reply with the answer and @mention them ONCE so it routes back: '@Viktor done, here are the results...'. That reply CLOSES the request.\n"
+        "- If you receive a reply that answers a request YOU made, do not reply again — no 'thanks', no acknowledgment, no follow-up @mention. A closing reply ends the exchange; only reply if you have a genuinely new, different request.\n"
+        "- Never @mention the same agent twice in a row without a new human message or a materially new question in between — that is what causes infinite back-and-forth.\n"
+        "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n"
+        "- Safety net: if you and a sibling exchange more than a few consecutive messages in team chat with no human input, the bridge will automatically pause your replies in that thread until a human sends a new message. Don't rely on this — follow the rules above so it never triggers.\n\n"
         f"{roster_context}\n\n"
         f"{shared_context}\n\n"
         f"Thread: {thread_id}\n"
@@ -487,6 +524,23 @@ def main() -> int:
                     state.setdefault("direct_threads", {})[m_thread] = m_target
                 ts = message.get("createdAt")
                 if not is_for_agent(message, agent_id, state):
+                    remember_seen(state, message_id)
+                    if ts:
+                        state["lastSeenAt"] = ts
+                    continue
+                if not check_loop_guard(message, state):
+                    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
+                    entry = state.get("loop_guard", {}).get(thread_id, {})
+                    if not entry.get("notified"):
+                        entry["notified"] = True
+                        log(f"loop guard tripped in thread {thread_id}, pausing until a human message arrives")
+                        try:
+                            send_reply(message, (
+                                f"{AGENT_NAME}: pausing replies in this thread — too many consecutive "
+                                "agent turns without a human message. Send a new instruction to resume."
+                            ))
+                        except Exception as exc:
+                            log(f"loop guard notice failed: {exc}")
                     remember_seen(state, message_id)
                     if ts:
                         state["lastSeenAt"] = ts
