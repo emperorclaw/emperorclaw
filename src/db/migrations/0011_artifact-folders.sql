@@ -80,6 +80,4 @@ END $$;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "artifact_folders_company_path_idx" ON "artifact_folders" ("company_id", "path");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "artifacts_company_path_idx" ON "artifacts" ("company_id", "path");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "artifacts_company_folder_created_at_idx" ON "artifacts" ("company_id", "folder_id", "created_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "artifacts_company_customer_idx" ON "artifacts" ("company_id", "customer_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "artifacts_company_project_idx" ON "artifacts" ("company_id", "project_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "artifacts_company_agent_idx" ON "artifacts" ("company_id", "agent_id");--> statement-breakpoint

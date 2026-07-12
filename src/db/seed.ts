@@ -12,7 +12,7 @@ async function main() {
 
     // Check if any company already exists — if so, skip (idempotent).
     const existing = await db.select({ count: sql<number>`count(*)` }).from(companies);
-    if (existing[0]?.count > 0) {
+    if (Number(existing[0]?.count) > 0) {
         console.log(`Database already has ${existing[0].count} company/companies — skipping seed.`);
         console.log("Use db:seed --force to re-seed despite existing data.");
         if (!process.argv.includes("--force")) {
@@ -87,7 +87,7 @@ async function main() {
     // 5. Create Agents (skip if any exist)
     const [existingAgents] = await db.select({ count: sql<number>`count(*)` }).from(agents)
         .where(eq(agents.companyId, acmeCompany.id));
-    if (existingAgents.count === 0) {
+    if (Number(existingAgents.count) === 0) {
         const agentData = [
             { name: "Researcher Bot", role: "analyst", skillsJson: ["web_search", "document_parsing"] },
             { name: "Support AI", role: "support", skillsJson: ["ticket_routing", "customer_reply"] },
@@ -136,7 +136,7 @@ async function main() {
 
     const [existingTask] = await db.select({ count: sql<number>`count(*)` }).from(tasks)
         .where(eq(tasks.companyId, acmeCompany.id));
-    if (existingTask.count === 0) {
+    if (Number(existingTask.count) === 0) {
         const taskData: Array<typeof tasks.$inferInsert> = [
             { companyId: acmeCompany.id, projectId: projectX.id, taskType: "Analyze current network topology", state: "done" },
             { companyId: acmeCompany.id, projectId: projectX.id, taskType: "Provision VPC and Subnets", state: "in_progress" },
@@ -151,7 +151,7 @@ async function main() {
     // 8. Create an Incident
     const [existingIncident] = await db.select({ count: sql<number>`count(*)` }).from(incidents)
         .where(eq(incidents.companyId, acmeCompany.id));
-    if (existingIncident.count === 0) {
+    if (Number(existingIncident.count) === 0) {
         await db.insert(incidents).values({
             companyId: acmeCompany.id,
             projectId: projectX.id,
