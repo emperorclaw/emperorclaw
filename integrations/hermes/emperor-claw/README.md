@@ -23,7 +23,7 @@ emperor_hermes_bridge.py  â†â”€â”€ polls Emperor every N seconds
 hermes chat -Q --toolsets emperor-claw,...
    â”‚  uses
    â–¼
-Emperor Claw plugin tools  (emperor_health, emperor_list_tasks, â€¦)
+Emperor Claw plugin tools  (emperor_health, emperor_list_tasks, …)
 ```
 
 Emperor owns the durable state — tasks, projects, threads, artifacts, resources, audit log. Hermes is the local runtime that thinks and acts. The bridge is the glue between them.
@@ -183,6 +183,12 @@ EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state
 HERMES_BIN="/home/<user>/.local/bin/hermes"
 HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 
+# Team-chat loop guard: max consecutive agent-authored turns in one team
+# thread (no human message in between) before this agent auto-pauses
+# replies there. Default 3. Raise it for workflows that legitimately need
+# longer agent-to-agent handoff chains; lower it to be more conservative.
+EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS="3"
+
 # Model provider key (example: DeepSeek)
 DEEPSEEK_API_KEY="<key>"
 
@@ -259,7 +265,7 @@ Repeat for each profile-backed agent with its own service file and `HERMES_HOME`
 
 ## Agent Mapping
 
-One Emperor agent â†’ one Hermes profile â†’ one bridge service.
+One Emperor agent → one Hermes profile → one bridge service.
 
 | Emperor agent | Hermes profile | Service | Runtime ID |
 | --- | --- | --- | --- |
