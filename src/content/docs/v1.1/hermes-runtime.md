@@ -147,8 +147,8 @@ EMPEROR_CLAW_AGENT_ROLE="Malecu Manager / Operator"
 EMPEROR_CLAW_RUNTIME_ID="hermes-viktor-<hostname>-1"
 EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
 EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="300"
-EMPEROR_CLAW_HERMES_STATE_PATH="/home/jose/.hermes/emperor-bridge/viktor/state.json"
-HERMES_BIN="/home/jose/.local/bin/hermes"
+EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state.json"
+HERMES_BIN="/home/<user>/.local/bin/hermes"
 HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 DEEPSEEK_API_KEY="<deepseek-key>"
 ```
@@ -200,18 +200,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/home/jose/.hermes/emperor-bridge/viktor/.env
-Environment=HOME=/home/jose
-Environment=HERMES_HOME=/home/jose/.hermes/profiles/viktor
+EnvironmentFile=/home/<user>/.hermes/emperor-bridge/viktor/.env
+Environment=HOME=/home/<user>
+Environment=HERMES_HOME=/home/<user>/.hermes/profiles/viktor
 Environment=HERMES_PROFILE=viktor
-Environment=PATH=/home/jose/.local/bin:/home/jose/.hermes/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/python3 /home/jose/.hermes/emperor-bridge/emperor_hermes_bridge.py
-WorkingDirectory=/home/jose
+Environment=PATH=/home/<user>/.local/bin:/home/<user>/.hermes/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /home/<user>/.hermes/emperor-bridge/emperor_hermes_bridge.py
+WorkingDirectory=/home/<user>
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
-StandardOutput=append:/home/jose/.hermes/profiles/viktor/bridge.log
-StandardError=append:/home/jose/.hermes/profiles/viktor/bridge.log
+StandardOutput=append:/home/<user>/.hermes/profiles/viktor/bridge.log
+StandardError=append:/home/<user>/.hermes/profiles/viktor/bridge.log
 
 [Install]
 WantedBy=default.target
@@ -385,8 +385,8 @@ This happens when a setup script creates a new agent record (e.g. "Malecu Builde
 Add file logging to the service:
 
 ```ini
-StandardOutput=append:/home/jose/.hermes/profiles/<name>/bridge.log
-StandardError=append:/home/jose/.hermes/profiles/<name>/bridge.log
+StandardOutput=append:/home/<user>/.hermes/profiles/<name>/bridge.log
+StandardError=append:/home/<user>/.hermes/profiles/<name>/bridge.log
 ```
 
 Reload and restart:
@@ -402,7 +402,7 @@ tail -f ~/.hermes/profiles/<name>/bridge.log
 Each service must set distinct values for all isolation fields:
 
 ```ini
-Environment=HERMES_HOME=/home/jose/.hermes/profiles/<name>
+Environment=HERMES_HOME=/home/<user>/.hermes/profiles/<name>
 Environment=HERMES_PROFILE=<name>
 ```
 
@@ -410,7 +410,7 @@ And in the env file:
 
 ```bash
 EMPEROR_CLAW_RUNTIME_ID="hermes-<name>-<hostname>-1"
-EMPEROR_CLAW_HERMES_STATE_PATH="/home/jose/.hermes/emperor-bridge/<name>/state.json"
+EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/<name>/state.json"
 ```
 
 ### Agent stays offline in Emperor
