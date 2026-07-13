@@ -25,8 +25,8 @@ Located at `~/.openclaw/emperor-control-plane/bridge.config.json`:
   "profile": "operator",
   "mcpToken": "ec_REDACTED_EXAMPLE_TOKEN",
   "emperorUrl": "https://emperorclaw.malecu.eu",
-  "workspacePath": "/home/jose/.openclaw/workspace-viktor",
-  "memoryPath": "/home/jose/.openclaw/emperor-control-plane/state",
+  "workspacePath": "/home/<user>/.openclaw/workspace-viktor",
+  "memoryPath": "/home/<user>/.openclaw/emperor-control-plane/state",
   "model": "openai-codex/gpt-5.4",
   "thinking": false
 }
@@ -60,8 +60,8 @@ Type=simple
 Environment="EMPEROR_CLAW_AUTO_CLAIM=false"
 Environment="EMPEROR_CLAW_USE_EXECUTOR=false"
 Environment="EMPEROR_CLAW_SYNC_LOOP_MS=0"
-WorkingDirectory=/home/jose/.openclaw/emperor-control-plane
-ExecStart=/home/jose/.openclaw/emperor-control-plane/runtime/bridge.js
+WorkingDirectory=/home/<user>/.openclaw/emperor-control-plane
+ExecStart=/home/<user>/.openclaw/emperor-control-plane/runtime/bridge.js
 Restart=on-failure
 RestartSec=10
 

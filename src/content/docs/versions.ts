@@ -11,6 +11,7 @@ export const versions: DocVersion[] = [
       { slug: 'agent-quickstart', title: 'Agent Quick-Start', file: 'agent-quickstart.md' },
       { slug: 'emperor-operating-pipeline', title: 'Emperor Operating Pipeline', file: 'emperor-operating-pipeline.md' },
       { slug: 'why-emperor-vs-openclaw', title: 'Why Emperor Around Local Agents', file: 'why-emperor-vs-openclaw.md' },
+      { slug: 'emperor-vs-agent-frameworks', title: 'Emperor vs. Agent Frameworks', file: 'emperor-vs-agent-frameworks.md' },
       { slug: 'resources-as-wiki-memory', title: 'Resources As Wiki Memory', file: 'resources-as-wiki-memory.md' },
       { slug: 'company-brain', title: 'Company Brain', file: 'company-brain.md' },
       { slug: 'project-architecture', title: 'Project & Runtime Architecture', file: 'project-architecture.md' },
