@@ -3,7 +3,6 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function DELETE(
     req: NextRequest,
@@ -15,7 +14,6 @@ export async function DELETE(
     }
 
     const companyId = auth.companyToken!.companyId;
-    await ensureArtifactStorageSchema();
     const { id: artifactId } = await context.params;
     const endpoint = `/api/mcp/artifacts/${artifactId}`;
 

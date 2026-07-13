@@ -5,12 +5,10 @@ import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
 import { deriveArtifactLogicalPath } from "@/lib/path-utils";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/download">) {
     try {
         const { companyId, userId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),

@@ -3,7 +3,6 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
 import { and, eq, isNull, desc, ilike } from "drizzle-orm";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -12,7 +11,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const companyId = auth.companyToken!.companyId;
-    await ensureArtifactStorageSchema();
     const { id: folderId } = await params;
     const folder = await db.select().from(artifactFolders).where(and(
         eq(artifactFolders.companyId, companyId),
