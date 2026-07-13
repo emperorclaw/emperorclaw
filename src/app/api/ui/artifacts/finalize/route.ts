@@ -8,7 +8,6 @@ import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { buildChildPath } from "@/lib/path-utils";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import {
     ArtifactFileTooLargeError,
@@ -21,7 +20,6 @@ import {
 export async function POST(req: NextRequest) {
     try {
         const { companyId, userId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const body = await req.json();
         const {
             projectId,

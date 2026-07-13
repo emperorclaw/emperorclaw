@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local storage backend data (STORAGE_LOCAL_DIR default)
+.data/
+
 # vercel
 .vercel
 

@@ -45,6 +45,10 @@ export function WorkspaceTour() {
     const [ready, setReady] = useState(false);
 
     useEffect(() => {
+        // Deliberately deferred to an effect: localStorage isn't available
+        // during SSR, so deciding tour visibility in the initial render would
+        // mismatch between server and client hydration output.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setReady(true);
         if (window.localStorage.getItem(TOUR_STORAGE_KEY) !== "seen") {
             setOpen(true);

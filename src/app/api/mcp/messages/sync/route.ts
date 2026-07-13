@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         while (Date.now() - startTime < MAX_POLL_TIME_MS) {
             if (req.signal.aborted) break;
 
-            let conditions: any[] = [
+            const conditions: any[] = [
                 eq(threadMessages.companyId, companyId),
             ];
 

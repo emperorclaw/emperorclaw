@@ -870,9 +870,9 @@ function EmptyColumnHint({ children }: { children: ReactNode }) {
 
 function BoardColumn({ title, count, tone, icon: Icon, children, droppableId }: { title: string; count: number; tone: "zinc" | "cyan" | "amber" | "emerald" | "slate" | "rose"; icon: any; children: ReactNode; droppableId?: string }) {
     const toneClass = { zinc: "border-zinc-800/60 bg-zinc-900/30", cyan: "border-cyan-500/20 bg-cyan-500/5", amber: "border-amber-500/20 bg-amber-500/5", emerald: "border-emerald-500/20 bg-emerald-500/5", slate: "border-zinc-800/60 bg-zinc-900/30", rose: "border-rose-500/20 bg-rose-500/5" }[tone];
-    const droppable = useDroppable({ id: droppableId || `__nodrop-${title}`, disabled: !droppableId });
+    const { setNodeRef, isOver } = useDroppable({ id: droppableId || `__nodrop-${title}`, disabled: !droppableId });
     return (
-        <div ref={droppable.setNodeRef} className={cn("flex h-full w-80 flex-col rounded-xl border p-3 transition-colors", toneClass, droppable.isOver && "border-cyan-400/60 bg-cyan-400/10 ring-1 ring-cyan-400/40")}>
+        <div ref={setNodeRef} className={cn("flex h-full w-80 flex-col rounded-xl border p-3 transition-colors", toneClass, isOver && "border-cyan-400/60 bg-cyan-400/10 ring-1 ring-cyan-400/40")}>
             <div className="mb-4 flex items-center justify-between px-1"><div className="flex items-center space-x-2"><Icon className="h-4 w-4 text-zinc-500" /><h3 className="text-sm font-medium text-zinc-300">{title}</h3></div><span className="rounded bg-zinc-800/50 px-2 py-0.5 font-mono text-xs text-zinc-500">{count}</span></div>
             <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-1 pb-2">{children}</div>
         </div>

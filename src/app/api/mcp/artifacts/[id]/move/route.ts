@@ -6,7 +6,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { deriveArtifactLogicalPath, buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { relocateArtifactBlob } from "@/lib/artifact-storage";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/move">) {
     const auth = await verifyMcpToken(req);
@@ -15,7 +14,6 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
     }
 
     const companyId = auth.companyToken!.companyId;
-    await ensureArtifactStorageSchema();
     const { id: artifactId } = await context.params;
     const [artifact] = await db.select().from(artifacts).where(and(
         eq(artifacts.id, artifactId),

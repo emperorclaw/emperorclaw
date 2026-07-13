@@ -4,13 +4,11 @@ import { db } from "@/db";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
         if (!folder) {
@@ -142,7 +140,6 @@ function mapErrorStatus(error: unknown) {
 export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
         if (!folder) {
