@@ -26,6 +26,26 @@ npm run db:migrate
 npm run dev
 ```
 
+### Upgrading
+
+When a new version is released, the dashboard shows an "update available" banner. To upgrade:
+
+```bash
+./install.sh --upgrade
+```
+
+This runs: `git pull` → `npm ci` → `db:migrate` → `build` → `pm2 reload` (or `docker compose up -d --build` if using Docker).
+
+If you installed manually without the git repo:
+
+```bash
+git pull origin main
+npm ci
+npm run db:migrate
+npm run build
+pm2 reload emperorclaw   # or restart your Docker container
+```
+
 ## What It Is
 
 Emperor Claw is the **system of record** for agent workforces:
