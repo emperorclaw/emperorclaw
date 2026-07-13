@@ -37,11 +37,14 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
-        continue-on-error: true
 
       - name: Type check
         run: npx tsc --noEmit
-        continue-on-error: true
+
+      - name: Migrate from empty database
+        run: npm run db:migrate
+        env:
+          POSTGRES_CONNECTION_STRING: postgres://emperor:emperor@localhost:5432/emperor_test
 
       - name: Run tests
         run: npm test

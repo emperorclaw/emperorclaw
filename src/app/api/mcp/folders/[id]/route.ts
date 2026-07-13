@@ -4,7 +4,6 @@ import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { buildFolderPath, isDescendantPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 import { storageAdapter } from "@/lib/storage";
 
@@ -15,7 +14,6 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/fold
     }
 
     const companyId = auth.companyToken!.companyId;
-    await ensureArtifactStorageSchema();
     const { id: folderId } = await context.params;
     const folder = await findActiveFolder(companyId, folderId);
     if (!folder) {
@@ -32,7 +30,6 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
 
     try {
         const companyId = auth.companyToken!.companyId;
-        await ensureArtifactStorageSchema();
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
         if (!folder) {
@@ -159,7 +156,6 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
     }
 
     const companyId = auth.companyToken!.companyId;
-    await ensureArtifactStorageSchema();
     const { id: folderId } = await context.params;
     const folder = await findActiveFolder(companyId, folderId);
     if (!folder) {

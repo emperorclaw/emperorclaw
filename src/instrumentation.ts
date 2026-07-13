@@ -24,10 +24,9 @@ export async function register() {
         assertEnv();
         const { startWatchdog } = await import('./lib/watchdog');
         const { startLifecycleMonitor } = await import('./lib/lifecycle');
-        const { ensureArtifactStorageSchema } = await import('./lib/artifact-schema');
         startWatchdog();
         startLifecycleMonitor();
-        // Run storage schema setup once at startup instead of on every artifact request.
-        await ensureArtifactStorageSchema();
+        // Schema management lives in Drizzle migrations (npm run db:migrate);
+        // the former runtime DDL was folded into migration 0023.
     }
 }

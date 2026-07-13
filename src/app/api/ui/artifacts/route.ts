@@ -3,12 +3,10 @@ import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
 import { and, desc, eq, gte, ilike, isNull, lte, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function GET(req: NextRequest) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { searchParams } = new URL(req.url);
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
         const projectId = searchParams.get("projectId");

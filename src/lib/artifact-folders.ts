@@ -2,10 +2,8 @@ import { db } from "@/db";
 import { artifactFolders } from "@/db/schema";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { buildChildPath, sanitizePathSegment } from "@/lib/path-utils";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 export async function findActiveFolder(companyId: string, folderId: string): Promise<InferModel<typeof artifactFolders> | null> {
-    await ensureArtifactStorageSchema();
     const [folder] = await db.select().from(artifactFolders).where(and(
         eq(artifactFolders.id, folderId),
         eq(artifactFolders.companyId, companyId),
