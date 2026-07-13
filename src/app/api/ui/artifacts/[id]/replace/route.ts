@@ -7,7 +7,6 @@ import { findActiveFolder } from "@/lib/artifact-folders";
 import { buildChildPath, deriveArtifactLogicalPath, sanitizePathSegment } from "@/lib/path-utils";
 import { storageAdapter } from "@/lib/storage";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import {
     ArtifactFileTooLargeError,
@@ -20,7 +19,6 @@ import {
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/replace">) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),

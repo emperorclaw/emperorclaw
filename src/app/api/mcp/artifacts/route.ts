@@ -12,7 +12,6 @@ import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-or
 import { z } from "zod";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { getStorageProviderName } from "@/lib/storage";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 
@@ -67,7 +66,6 @@ export async function GET(req: NextRequest) {
     const endDateParam = searchParams.get("endDate");
 
     try {
-        await ensureArtifactStorageSchema();
         const conditions: SQL<unknown>[] = [
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
@@ -178,7 +176,6 @@ export async function POST(req: NextRequest) {
     const { requestHash } = idempotencyResult;
 
     try {
-        await ensureArtifactStorageSchema();
         const parsed = await parseJsonBody(req, createArtifactSchema);
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });

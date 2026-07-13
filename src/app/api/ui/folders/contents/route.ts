@@ -4,7 +4,6 @@ import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/sch
 import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { findActiveFolder } from "@/lib/artifact-folders";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 type FolderDto = {
     id: string;
@@ -18,7 +17,6 @@ type FolderDto = {
 export async function GET(req: NextRequest) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { searchParams } = new URL(req.url);
         const folderId = searchParams.get("folderId");
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);

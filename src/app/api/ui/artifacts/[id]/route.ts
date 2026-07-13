@@ -5,7 +5,6 @@ import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 type ArtifactRecord = InferModel<typeof artifacts>;
 
@@ -15,7 +14,6 @@ export async function GET(
 ) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { id: artifactId } = await params;
 
         const [artifact] = await db.select({
@@ -79,7 +77,6 @@ export async function PATCH(
 ) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const { id: artifactId } = await params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),

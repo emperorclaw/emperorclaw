@@ -13,7 +13,6 @@ import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { and, eq, isNull } from "drizzle-orm";
 import { getFormStringValue, parseJsonMetadata } from "@/lib/form-utils";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 import { sanitizeFilenameSegment } from "@/lib/storage/path-sanitizer";
 import {
     ArtifactFileTooLargeError,
@@ -39,7 +38,6 @@ export async function POST(req: NextRequest) {
     const { requestHash } = idempotency;
 
     try {
-        await ensureArtifactStorageSchema();
         const form = await req.formData();
         const fileEntry = form.get("file");
         if (!(fileEntry instanceof File)) {

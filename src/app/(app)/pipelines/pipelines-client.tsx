@@ -516,7 +516,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
     setPipelines((current) => current.filter((item) => item.id !== pipeline.id));
     setSelectedId((current) => (current === pipeline.id ? "" : current));
     toast.success("Pipeline deleted");
-  }, []);
+  }, [confirmingDelete]);
 
   const activeCount = pipelines.filter((pipeline) => pipeline.status === "active").length;
   const runCount = pipelines.reduce((sum, pipeline) => sum + (pipeline.runCount || 0), 0);

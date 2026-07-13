@@ -4,14 +4,12 @@ import { db } from "@/db";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
-import { ensureArtifactStorageSchema } from "@/lib/artifact-schema";
 
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
 export async function POST(req: NextRequest) {
     try {
         const { companyId } = await requireCompanyFromSession();
-        await ensureArtifactStorageSchema();
         const body = await req.json();
         const name = sanitizeFolderName(body.name);
         if (!name) {
