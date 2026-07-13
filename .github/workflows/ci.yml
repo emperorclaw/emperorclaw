@@ -38,6 +38,11 @@ jobs:
 
       - run: npm run lint
 
+      - name: Generate Next.js route types
+        # RouteContext and friends are Next-generated globals (.next/types);
+        # a clean checkout doesn't have them until typegen runs.
+        run: npx next typegen
+
       - name: Type check
         run: npx tsc --noEmit
 

@@ -149,7 +149,7 @@ emperor_create_folder(name="Charts", projectId="<project-id>", parentFolderId="<
 Pass `folderId` when calling `emperor_upload_artifact`. Without `folderId` the file lands in the root of Storage with no grouping.
 
 ```
-emperor_upload_artifact(filePath="/home/jose/BrandVirality/report.pdf", kind="report", projectId="<project-id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/<user>/BrandVirality/report.pdf", kind="report", projectId="<project-id>", folderId="<folder-id>")
 ```
 
 ### Upload multiple files into the same folder
@@ -157,9 +157,9 @@ emperor_upload_artifact(filePath="/home/jose/BrandVirality/report.pdf", kind="re
 Repeat `emperor_upload_artifact` with the same `folderId` for each file:
 
 ```
-emperor_upload_artifact(filePath="/home/jose/BrandVirality/summary.pdf",   kind="report",   projectId="<id>", folderId="<folder-id>")
-emperor_upload_artifact(filePath="/home/jose/BrandVirality/raw_data.csv",   kind="export",   projectId="<id>", folderId="<folder-id>")
-emperor_upload_artifact(filePath="/home/jose/BrandVirality/charts/bar.png", kind="evidence", projectId="<id>", folderId="<subfolder-id>")
+emperor_upload_artifact(filePath="/home/<user>/BrandVirality/summary.pdf",   kind="report",   projectId="<id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/<user>/BrandVirality/raw_data.csv",   kind="export",   projectId="<id>", folderId="<folder-id>")
+emperor_upload_artifact(filePath="/home/<user>/BrandVirality/charts/bar.png", kind="evidence", projectId="<id>", folderId="<subfolder-id>")
 ```
 
 ### Verify what was uploaded
@@ -181,11 +181,11 @@ result = emperor_create_folder(name="Raw Data", projectId="<id>", parentFolderId
 raw_id = result.folder.id
 
 # 3. Upload the report into the root folder
-emperor_upload_artifact(filePath="/home/jose/.../report.pdf", kind="report", projectId="<id>", folderId=root_id)
+emperor_upload_artifact(filePath="/home/<user>/.../report.pdf", kind="report", projectId="<id>", folderId=root_id)
 
 # 4. Upload CSVs into the subfolder
-emperor_upload_artifact(filePath="/home/jose/.../impressions.csv", kind="export", projectId="<id>", folderId=raw_id)
-emperor_upload_artifact(filePath="/home/jose/.../clicks.csv",      kind="export", projectId="<id>", folderId=raw_id)
+emperor_upload_artifact(filePath="/home/<user>/.../impressions.csv", kind="export", projectId="<id>", folderId=raw_id)
+emperor_upload_artifact(filePath="/home/<user>/.../clicks.csv",      kind="export", projectId="<id>", folderId=raw_id)
 
 # 5. Confirm
 emperor_list_folder_contents(folderId=root_id)
