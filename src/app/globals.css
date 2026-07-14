@@ -278,6 +278,29 @@
   }
 }
 
+/* --- Responsive helpers --- */
+
+@media (max-width: 639px) {
+  .emperor-panel {
+    border-radius: 1rem;
+  }
+
+  .emperor-main h1 {
+    font-size: 1.5rem;
+  }
+
+  .emperor-main .text-3xl {
+    font-size: 1.5rem;
+  }
+}
+
+/* Ensure tables and wide content don't break mobile layouts */
+.emperor-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Knowledge base live editor (MDXEditor) — match the app's markdown typography */
 .emperor-mdx-editor {
   --font-size: 0.9375rem;

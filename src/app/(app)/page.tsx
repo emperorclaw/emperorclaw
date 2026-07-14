@@ -207,15 +207,15 @@ export default async function DashboardPage() {
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
         <KpiCard title="To do" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
         <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
         <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-        <div className="col-span-2 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
+        <div className="lg:col-span-2 space-y-4">
           <h2 className="text-lg font-medium text-zinc-200">Recent Activity</h2>
           <div className="emperor-panel overflow-hidden rounded-2xl">
             <div className="divide-y divide-zinc-800/50">
@@ -241,7 +241,7 @@ export default async function DashboardPage() {
 
         <div className="space-y-4">
           <h2 className="text-lg font-medium text-zinc-200">Agent status</h2>
-          <div className="emperor-panel max-h-[400px] space-y-5 overflow-y-auto rounded-2xl p-5">
+          <div className="emperor-panel max-h-72 sm:max-h-[400px] space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5">
             {agentWorkload.length === 0 ? (
               <div className="text-sm text-zinc-500 text-center">No agents registered.</div>
             ) : (
@@ -261,7 +261,7 @@ export default async function DashboardPage() {
           </div>
 
           <h2 className="text-lg font-medium text-zinc-200">Automations</h2>
-          <div className="emperor-panel space-y-3 rounded-2xl p-5">
+          <div className="emperor-panel space-y-3 rounded-2xl p-4 sm:p-5">
             {activePipelines.length === 0 ? (
               <div className="text-sm text-zinc-500">
                 No automations yet. Agents set these up from their own runtimes.
@@ -295,7 +295,7 @@ export default async function DashboardPage() {
               Open full channel →
             </Link>
           </div>
-          <div className="emperor-panel h-[480px] overflow-hidden rounded-2xl">
+          <div className="emperor-panel h-[360px] sm:h-[480px] overflow-hidden rounded-2xl">
             <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} teamThreadId={teamThread.id} />
           </div>
         </div>
@@ -306,15 +306,15 @@ export default async function DashboardPage() {
 
 function KpiCard({ title, value, trend, trendLabel, alert, good }: { title: string, value: string, trend: string, trendLabel: string, alert?: boolean, good?: boolean }) {
   return (
-    <div className="emperor-panel group relative flex h-36 flex-col justify-between overflow-hidden rounded-2xl p-5 transition-colors hover:border-zinc-700/80">
+    <div className="emperor-panel group relative flex h-28 sm:h-36 flex-col justify-between overflow-hidden rounded-2xl p-3.5 sm:p-5 transition-colors hover:border-zinc-700/80">
       {alert && <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-bl-full blur-xl" />}
       {good && <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-500/10 rounded-bl-full blur-xl" />}
-      <div className="text-sm font-medium text-zinc-500">{title}</div>
+      <div className="text-xs sm:text-sm font-medium text-zinc-500 truncate">{title}</div>
       <div>
-        <div className="text-3xl font-semibold text-zinc-100 mt-2">{value}</div>
-        <div className="text-xs mt-2 flex items-center space-x-1">
+        <div className="text-2xl sm:text-3xl font-semibold text-zinc-100 mt-1 sm:mt-2">{value}</div>
+        <div className="text-[10px] sm:text-xs mt-1.5 sm:mt-2 flex items-center space-x-1">
           <span className={alert ? "text-red-400" : good ? "text-cyan-400" : "text-zinc-300"}>{trend}</span>
-          <span className="text-zinc-600">{trendLabel}</span>
+          <span className="text-zinc-600 truncate">{trendLabel}</span>
         </div>
       </div>
     </div>
@@ -337,18 +337,18 @@ function ActivityRow({ kind, actorLabel, actor, title, detail, time, tone }: { k
   }[tone];
 
   return (
-    <div className="p-4 flex items-start justify-between gap-4 hover:bg-zinc-800/30 transition-colors group">
-      <div className="min-w-0 flex items-start space-x-4">
-        <div className={`shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${colors}`}>
+    <div className="p-3 sm:p-4 flex items-start justify-between gap-3 sm:gap-4 hover:bg-zinc-800/30 transition-colors group">
+      <div className="min-w-0 flex items-start space-x-3 sm:space-x-4">
+        <div className={`shrink-0 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 sm:px-2 py-0.5 rounded border ${colors}`}>
           {kind}
         </div>
         <div className="min-w-0">
           <div className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100 transition-colors truncate">{title}</div>
-          <div className="text-xs text-zinc-500 mt-1 truncate">{actorLabel}: {actor}</div>
-          {detail && <div className="text-xs text-zinc-500 mt-1 line-clamp-2">{detail}</div>}
+          <div className="text-xs text-zinc-500 mt-0.5 sm:mt-1 truncate">{actorLabel}: {actor}</div>
+          {detail && <div className="text-xs text-zinc-500 mt-0.5 sm:mt-1 line-clamp-2">{detail}</div>}
         </div>
       </div>
-      <div className="shrink-0 text-xs text-zinc-500">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+      <div className="shrink-0 text-[10px] sm:text-xs text-zinc-500 whitespace-nowrap pt-0.5">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
     </div>
   );
 }

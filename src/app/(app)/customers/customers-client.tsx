@@ -126,7 +126,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                 }
             />
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
                 <SummaryCard label="Customers" value={customerData.length} hint="Portfolio records" />
                 <SummaryCard label="Projects" value={totals.projects} hint="Projects across customers" accent="cyan" />
                 <SummaryCard label="Tasks" value={totals.tasks} hint="Open and closed work" accent="emerald" />
@@ -141,8 +141,8 @@ export default function CustomersClient({ initialData: customerData }: { initial
                     <p className="text-sm text-zinc-500">Add a customer to define the portfolio and execution context your agents should follow.</p>
                 </div>
             ) : (
-                <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-                    <aside className="emperor-panel rounded-2xl p-4">
+                <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <Search className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
@@ -164,14 +164,14 @@ export default function CustomersClient({ initialData: customerData }: { initial
                     </aside>
 
                     {selectedCustomer ? (
-                        <main className="emperor-panel rounded-2xl p-5">
-                            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-800/80 pb-5">
+                        <main className="emperor-panel rounded-2xl p-4 sm:p-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4 border-b border-zinc-800/80 pb-4 sm:pb-5">
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <h2 className="text-2xl font-semibold text-zinc-100">{selectedCustomer.name}</h2>
+                                        <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100">{selectedCustomer.name}</h2>
                                         <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">ID: {selectedCustomer.id.substring(0, 8)}</span>
                                     </div>
-                                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
+                                    <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
                                         <Tag label={`${selectedCustomer.projectCount || 0} projects`} />
                                         <Tag label={`${selectedCustomer.taskCount || 0} tasks`} />
                                         <Tag label={`${selectedCustomer.reviewCount || 0} in review`} />
@@ -183,7 +183,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 </div>
                                 <Sparkles className="mt-1 h-5 w-5 text-cyan-300/70" />
                             </div>
-                            <div className="pt-5">
+                            <div className="pt-4 sm:pt-5">
                                 <div className="mb-2 flex items-center justify-between">
                                     <label className="text-sm font-medium text-zinc-300">Customer context markdown</label>
                                     <button onClick={() => void handleSaveNotes(selectedCustomer.id)} disabled={sending || localNotes[selectedCustomer.id] === undefined} className="flex items-center text-xs font-semibold text-cyan-300 transition-colors hover:text-cyan-200 disabled:opacity-50">
@@ -192,7 +192,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     </button>
                                 </div>
                                 <textarea
-                                    className="h-[420px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950/80 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
+                                    className="h-[280px] sm:h-[420px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4 font-mono text-sm leading-6 text-zinc-100 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
                                     placeholder={"# Target Audience\nDescribe who the team should optimize for..."}
                                     value={localNotes[selectedCustomer.id] ?? selectedCustomer.notes ?? ""}
                                     onChange={(event) => setLocalNotes((prev) => ({ ...prev, [selectedCustomer.id]: event.target.value }))}
@@ -217,10 +217,10 @@ function SummaryCard({ label, value, hint, accent = "slate" }: { label: string; 
     }[accent];
 
     return (
-        <div className={`rounded-xl border p-4 ${tone}`}>
+        <div className={`rounded-xl border p-3 sm:p-4 ${tone}`}>
             <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
-            <div className="mt-2 text-2xl font-semibold text-zinc-100">{value}</div>
-            <div className="mt-1 text-xs text-zinc-500">{hint}</div>
+            <div className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-semibold text-zinc-100">{value}</div>
+            <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-zinc-500">{hint}</div>
         </div>
     );
 }

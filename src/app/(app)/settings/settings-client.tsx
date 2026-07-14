@@ -135,20 +135,20 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                 title="Workspace & Access"
                 description="Connect agent runtimes, manage access tokens, and keep dangerous setup details behind an advanced section."
                 actions={
-                    <div className="grid grid-cols-2 gap-3 sm:min-w-80">
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                            <div className="text-xs uppercase tracking-wider text-zinc-500">Active tokens</div>
-                            <div className="mt-1 text-2xl font-semibold text-white">{tokens.length}</div>
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full sm:min-w-80">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:p-4">
+                            <div className="text-[10px] sm:text-xs uppercase tracking-wider text-zinc-500">Active tokens</div>
+                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-white">{tokens.length}</div>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                            <div className="text-xs uppercase tracking-wider text-zinc-500">Runtimes</div>
-                            <div className="mt-1 text-2xl font-semibold text-white">2</div>
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:p-4">
+                            <div className="text-[10px] sm:text-xs uppercase tracking-wider text-zinc-500">Runtimes</div>
+                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-white">2</div>
                         </div>
                     </div>
                 }
             />
 
-            <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 p-2">
+            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950/60 p-1.5 sm:p-2">
                 {([
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
@@ -169,9 +169,9 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
             </div>
 
             {activeTab === "connections" && (
-                <section className="grid gap-4 lg:grid-cols-2">
+                <section className="grid gap-3 sm:gap-4 lg:grid-cols-2">
                     {runtimeCards.map((runtime) => (
-                        <article key={runtime.title} className="emperor-panel rounded-3xl p-6">
+                        <article key={runtime.title} className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                             <div className="flex items-center gap-3">
                                 <div className="grid h-11 w-11 place-items-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10">
                                     <Cable className="h-5 w-5 text-cyan-300" />
@@ -184,7 +184,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                             </a>
                         </article>
                     ))}
-                    <article className="rounded-3xl border border-amber-500/20 bg-amber-500/[0.06] p-6 lg:col-span-2">
+                    <article className="rounded-2xl sm:rounded-3xl border border-amber-500/20 bg-amber-500/[0.06] p-4 sm:p-6 lg:col-span-2">
                         <h2 className="text-sm font-semibold text-amber-100">Operator rule</h2>
                         <p className="mt-2 text-sm leading-6 text-amber-100/75">
                             Create the agent profile in Emperor first, then connect exactly one local runtime profile or workspace to that agent. The runtime can be Hermes or OpenClaw; Emperor should stay runtime-neutral.
@@ -194,8 +194,8 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
             )}
 
             {activeTab === "tokens" && (
-                <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,1.2fr)]">
-                    <div className="emperor-panel rounded-3xl p-6">
+                <section className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.2fr)]">
+                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                         <h2 className="mb-4 flex items-center text-lg font-semibold text-zinc-100">
                             <KeyRound className="mr-2 h-5 w-5 text-cyan-300" /> Create access token
                         </h2>
@@ -245,8 +245,8 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                         )}
                     </div>
 
-                    <div className="overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/70">
-                        <div className="border-b border-white/10 p-5">
+                    <div className="overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-zinc-950/70">
+                        <div className="border-b border-white/10 p-4 sm:p-5">
                             <h2 className="text-lg font-semibold text-zinc-100">Active tokens</h2>
                             <p className="mt-1 text-sm text-zinc-500">Revoke anything that is no longer attached to a real runtime.</p>
                         </div>
@@ -255,7 +255,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                                 <div className="p-8 text-center text-sm text-zinc-500">No access tokens active. Create one to connect an agent runtime.</div>
                             ) : (
                                 tokens.map((token) => (
-                                    <div key={token.id} className="flex flex-col gap-4 p-5 transition-colors hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
+                                    <div key={token.id} className="flex flex-col gap-3 sm:gap-4 p-4 sm:p-5 transition-colors hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <h3 className="font-medium text-zinc-100">{token.name}</h3>
@@ -281,7 +281,7 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
 
             {activeTab === "advanced" && (
                 <section className="space-y-4">
-                    <div className="emperor-panel rounded-3xl p-6">
+                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                         <h2 className="flex items-center text-lg font-semibold text-zinc-100">
                             <Cable className="mr-2 h-5 w-5 text-cyan-300" /> Advanced runtime setup
                         </h2>

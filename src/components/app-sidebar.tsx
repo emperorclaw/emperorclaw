@@ -89,10 +89,10 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
 
     return (
         <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-200", collapsed ? "w-20" : "w-20 md:w-72")}>
-            <div className="border-b border-white/10 p-5">
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20">
-                        <CustomLogo className="h-5 w-5 text-cyan-300" />
+            <div className="border-b border-white/10 p-3.5 sm:p-5">
+                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 sm:p-3">
+                    <div className="grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20">
+                        <CustomLogo className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-300" />
                     </div>
                     <div className={cn("hidden min-w-0 flex-1", collapsed ? "" : "md:block")}>
                         <div className="truncate text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
@@ -102,14 +102,14 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         type="button"
                         onClick={toggleCollapsed}
                         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
+                        className="hidden md:flex shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
                     >
                         {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
                     </button>
                 </div>
             </div>
 
-            <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
+            <nav className="flex-1 space-y-0.5 sm:space-y-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5">
                 {links.map((link) => {
                     const Icon = link.icon;
                     const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
@@ -144,7 +144,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
             </nav>
 
             {!isDocsPage && (
-                <div className="space-y-3 border-t border-white/10 p-4">
+                <div className="space-y-2 sm:space-y-3 border-t border-white/10 p-3 sm:p-4">
                     <WorkspaceTour />
                     <Link
                         href="/docs"
@@ -161,8 +161,8 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <button className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]">
-                                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
+                            <button className="flex w-full cursor-pointer items-center gap-2.5 sm:gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-2.5 py-2.5 sm:px-3 sm:py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]">
+                                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
                                     {userInitial}
                                 </div>
                                 <div className={cn("hidden min-w-0 flex-1 flex-col", collapsed ? "" : "md:flex")}>

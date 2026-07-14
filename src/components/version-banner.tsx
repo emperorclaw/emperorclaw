@@ -92,7 +92,7 @@ export function VersionBanner() {
                     Update available: v{banner.latest}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                    You're running v{banner.current}. Run{" "}
+                    You&apos;re running v{banner.current}. Run{" "}
                     <code className="bg-muted px-1 rounded text-[11px]">
                         ./install.sh --upgrade
                     </code>{" "}

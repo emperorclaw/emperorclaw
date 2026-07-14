@@ -462,9 +462,9 @@ async function copyPipelineMarkdown(markdown: string) {
 
 function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: typeof Workflow }) {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-zinc-500"><Icon className="h-4 w-4" />{label}</div>
-      <div className="mt-2 text-2xl font-semibold text-zinc-100">{value}</div>
+    <div className="rounded-xl sm:rounded-2xl border border-zinc-800 bg-zinc-950/70 p-2.5 sm:p-4">
+      <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-zinc-500"><Icon className="h-3 w-3 sm:h-4 sm:w-4" />{label}</div>
+      <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-semibold text-zinc-100">{value}</div>
     </div>
   );
 }
@@ -523,14 +523,13 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
   const documentedCount = pipelines.filter((pipeline) => parseSteps(pipeline.stepsJson).length > 0 || pipeline.docMarkdown).length;
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-100 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-[1800px] flex-col gap-6">
+    <div className="mx-auto flex max-w-[1800px] flex-col gap-6 animate-in fade-in duration-500">
         <PageHeader
           eyebrow="Automations"
           title="Pipelines"
           description="A simple workspace to understand what agents do: visual map, Context Pack, run evidence, and copy-ready docs. Emperor documents and audits; agents execute in their own runtime."
           actions={
-            <div className="grid grid-cols-3 gap-3 sm:min-w-[420px]">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full sm:w-auto">
               <Metric label="Active" value={activeCount} icon={Play} />
               <Metric label="Runs" value={runCount} icon={Repeat} />
               <Metric label="Documented" value={documentedCount} icon={FileText} />
@@ -539,8 +538,8 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
         />
 
         {pipelines.length === 0 ? <EmptyPipelineState /> : (
-          <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)_430px]">
-            <aside className="rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_380px]">
+            <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-100">Pipeline Explorer</h2>
                 <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-500">{filteredPipelines.length}</span>
@@ -578,7 +577,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
             <main className="min-w-0 space-y-4">
               {selectedPipeline && (
                 <>
-                  <div className="flex flex-col gap-3 rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-5 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-col gap-3 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <div className="text-xs font-bold uppercase tracking-[0.22em] text-zinc-500">Visual Map</div>
                       <h2 className="mt-1 text-2xl font-semibold text-white">{selectedPipeline.name}</h2>
@@ -598,7 +597,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
               )}
             </main>
 
-            <aside className="rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-5">
+            <aside className="rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5">
               {selectedPipeline && (
                 <div className="space-y-6">
                   <section>
@@ -665,7 +664,6 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
             </aside>
           </div>
         )}
-      </div>
     </div>
   );
 }

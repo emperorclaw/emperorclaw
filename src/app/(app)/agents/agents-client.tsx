@@ -51,8 +51,8 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                     <p className="text-sm text-zinc-500">Add an agent profile, then connect a Hermes/OpenClaw runtime when it is ready to work.</p>
                 </div>
             ) : (
-                <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-                    <aside className="emperor-panel rounded-2xl p-4">
+                <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <Search className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
@@ -88,30 +88,30 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
 
 function AgentDetail({ agent }: { agent: AgentDirectoryItem }) {
     return (
-        <main className="emperor-panel rounded-2xl p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-800/80 pb-5">
-                <div className="flex items-center gap-4">
+        <main className="emperor-panel rounded-2xl p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4 border-b border-zinc-800/80 pb-4 sm:pb-5">
+                <div className="flex items-center gap-3 sm:gap-4">
                     <AgentAvatar agent={agent} />
                     <div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="text-2xl font-semibold text-zinc-100">{agent.name}</h2>
+                            <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100">{agent.name}</h2>
                             <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">{agent.role}</span>
                         </div>
-                        <div className="mt-2 flex items-center gap-2 text-sm text-zinc-400">
+                        <div className="mt-1.5 sm:mt-2 flex items-center gap-2 text-sm text-zinc-400">
                             <StatusDot status={agent.status} />
                             <span className="capitalize">{agent.status}</span>
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    <Link href={`/agents/${agent.id}`} className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:bg-cyan-400/15">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <Link href={`/agents/${agent.id}`} className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 py-1.5 sm:py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:bg-cyan-400/15">
                         Open detail
                     </Link>
                     <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
                 </div>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 sm:mt-5 grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3">
                 <Metric label="Current Load" value={`${agent.currentLoad}%`} />
                 <Metric label="Tasks Done" value={agent.tasksCompleted.toLocaleString()} />
                 <Metric label="Uptime" value={agent.uptime} />
@@ -143,9 +143,9 @@ function StatusDot({ status }: { status: string }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
     return (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 sm:p-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
-            <div className="mt-2 font-mono text-lg text-zinc-100">{value}</div>
+            <div className="mt-1.5 sm:mt-2 font-mono text-base sm:text-lg text-zinc-100">{value}</div>
         </div>
     );
 }
