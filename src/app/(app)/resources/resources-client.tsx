@@ -369,14 +369,14 @@ export default function ResourcesClient({
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500">
+    <div className="mx-auto flex h-[calc(100vh-6rem)] sm:h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500">
       <PageHeader
         eyebrow="Knowledge base"
         title="Knowledge & Rules"
         description="Durable notes, SOPs, and instructions your agents read before they act."
       />
       <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
-      <div className="flex h-full min-h-[500px] flex-col">
+      <div className="flex h-full min-h-[360px] sm:min-h-[500px] flex-col">
         <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">

@@ -515,13 +515,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 description="Track work from to-do to done across all your projects."
                 actions={
                     <>
-                        <button onClick={openCreateProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-4 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-4 w-4" />Project</button>
-                        <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-4 w-4" />Task</button>
-                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-4 w-4" />Notes</button>}
+                        <button onClick={openCreateProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Project</button>
+                        <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Task</button>
+                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Notes</button>}
                     </>
                 }
             />
-            <div className="emperor-panel rounded-2xl p-4">
+            <div className="emperor-panel rounded-2xl p-3 sm:p-4">
                 <div className="grid gap-3">
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="relative min-w-[260px] flex-1">
@@ -591,7 +591,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             </div>
             {mutationError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
                 <MetricCard label="To do" value={byState.inbox.length} hint="Queued work" />
                 <MetricCard label="In progress" value={byState.inProgress.length} hint="Active execution" accent="cyan" />
                 <MetricCard label="Needs review" value={byState.review.length} hint="Needs your review" accent="amber" />
@@ -607,7 +607,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             )}
 
             <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                <div className="flex min-h-0 flex-1 overflow-hidden -mx-8 px-8">
+                <div className="flex min-h-0 flex-1 overflow-hidden -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8">
                     <div className="flex-1 overflow-x-auto pb-4">
                         <div className="flex h-full min-w-max gap-6">
                             <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={Inbox}>
@@ -644,7 +644,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             </DndContext>
 
             {selectedTask && (
-                <div className="absolute right-0 top-0 z-50 flex h-full w-[42%] flex-col rounded-xl border-l border-zinc-800 bg-zinc-900/95 p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-8 duration-300">
+                <div className="absolute right-0 top-0 z-50 flex h-full w-full sm:w-[60%] lg:w-[42%] flex-col rounded-xl border-l border-zinc-800 bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-8 duration-300">
                     <div className="mb-8 flex items-center justify-between">
                         <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-500">TASK-{selectedTask.id.substring(0, 8).toUpperCase()}</div>
                         <button onClick={() => setSelectedTask(null)} className="cursor-pointer rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-5 w-5" /></button>

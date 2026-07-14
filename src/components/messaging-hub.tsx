@@ -77,9 +77,9 @@ export function MessagingHub({
     }, [agents, selectedAgentId]);
 
     return (
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col sm:flex-row overflow-hidden">
             {/* Sidebar */}
-            <div className="flex w-80 flex-col border-r border-zinc-800/80 bg-zinc-950/70">
+            <div className="flex w-full sm:w-72 lg:w-80 shrink-0 flex-col border-b sm:border-b-0 sm:border-r border-zinc-800/80 bg-zinc-950/70 max-h-[40vh] sm:max-h-none">
                 <div className="p-4 border-b border-zinc-800">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
