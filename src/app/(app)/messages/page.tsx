@@ -130,7 +130,7 @@ export default async function MessagesPage() {
     const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
 
     return (
-        <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="mx-auto flex h-[calc(100vh-6rem)] sm:h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <PageHeader
                 eyebrow="Messages"
                 title="Team & Direct Messages"

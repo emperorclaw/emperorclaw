@@ -125,7 +125,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 actions={
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search approvals..." className="w-80 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40" />
+                        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search approvals..." className="w-full sm:w-80 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40" />
                     </div>
                 }
             />
@@ -148,7 +148,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                         const isApproved = state === "approved";
                         const isRejected = state === "rejected";
                         return (
-                            <div key={`${item.task.id}-${item.approval?.id || "implicit"}`} className="emperor-panel rounded-2xl p-5">
+                            <div key={`${item.task.id}-${item.approval?.id || "implicit"}`} className="emperor-panel rounded-2xl p-3 sm:p-5">
                                 <div className="flex flex-wrap items-start justify-between gap-4">
                                     <div className="space-y-3">
                                         <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
@@ -234,10 +234,10 @@ function SummaryCard({ label, value, hint, accent = "slate" }: { label: string; 
     }[accent];
 
     return (
-        <div className={`rounded-2xl border p-4 ${tone}`}>
+        <div className={`rounded-2xl border p-3 sm:p-4 ${tone}`}>
             <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
-            <div className="mt-2 text-2xl font-semibold text-zinc-100">{value}</div>
-            <div className="mt-1 text-xs text-zinc-500">{hint}</div>
+            <div className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-semibold text-zinc-100">{value}</div>
+            <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-zinc-500">{hint}</div>
         </div>
     );
 }
