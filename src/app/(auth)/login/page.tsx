@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { IconLoader2, IconArrowRight, IconShield, IconCpu, IconSparkles } from "@tabler/icons-react";
+import { IconLoader2, IconArrowRight, IconShield, IconCpu } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
 
@@ -165,7 +165,6 @@ export default function LoginPage() {
                                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                                         {loading ? <IconLoader2 className="w-5 h-5 animate-spin" /> : (
                                             <>
-                                                <IconSparkles className="w-4 h-4 opacity-80" />
                                                 <span className="tracking-wide">Access Command Center</span>
                                                 <IconArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
                                             </>
