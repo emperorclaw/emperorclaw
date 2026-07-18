@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -6,6 +6,7 @@ export const users = pgTable("users", {
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     emailVerifiedAt: timestamp("email_verified_at"),
+    instanceRole: text("instance_role").notNull().default("member"), // 'instance_admin' | 'member'
     onboardingCompletedAt: timestamp("onboarding_completed_at"),
     onboardingDismissedAt: timestamp("onboarding_dismissed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -50,7 +51,7 @@ export const companyMembers = pgTable("company_members", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-    role: text("role").notNull().default("owner"), // Only "owner" for V1
+    role: text("role").notNull().default("member"), // 'owner' | 'admin' | 'member' | 'viewer'
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -742,4 +743,32 @@ export const credentialAccessLogs = pgTable("credential_access_logs", {
     reason: text("reason"),
     metadataJson: jsonb("metadata_json").default('{}').notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// --- Team RBAC Tables ---
+
+export const invitations = pgTable("invitations", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull()
+        .references(() => companies.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").notNull()
+        .references(() => users.id),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    role: text("role").notNull(), // 'admin' | 'member' | 'viewer'
+    maxUses: integer("max_uses").default(1).notNull(),
+    useCount: integer("use_count").default(0).notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+}, (table) => ({
+    tokenHashIdx: uniqueIndex("invitations_token_hash_idx").on(table.tokenHash),
+    emailCompanyIdx: index("invitations_email_company_idx")
+        .on(table.email, table.companyId),
+}));
+
+export const instanceSettings = pgTable("instance_settings", {
+    key: text("key").primaryKey(),
+    value: jsonb("value").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -15,7 +15,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { WorkspaceTour } from "./workspace-tour";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -26,7 +25,6 @@ const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
     const pathname = usePathname();
     const { data: session } = useSession();
-    const isDocsPage = pathname?.startsWith('/docs') ?? false;
     const [collapsed, setCollapsed] = useState(false);
     const [unreadMessages, setUnreadMessages] = useState(0);
 
@@ -89,27 +87,37 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
 
     return (
         <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-200", collapsed ? "w-20" : "w-20 md:w-72")}>
-            <div className="border-b border-white/10 p-3.5 sm:p-5">
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 sm:p-3">
-                    <div className="grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20">
-                        <CustomLogo className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-300" />
+            <div className={cn("border-b border-white/10", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
+                <div className={cn(
+                    "flex items-center",
+                    collapsed
+                        ? "justify-center"
+                        : "gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 sm:p-3"
+                )}>
+                    <div className={cn(
+                        "grid shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20",
+                        collapsed ? "h-10 w-10" : "h-9 w-9 sm:h-10 sm:w-10"
+                    )}>
+                        <CustomLogo className={cn(collapsed ? "h-6 w-6" : "h-5 w-5 sm:h-5 sm:w-5")} />
                     </div>
                     <div className={cn("hidden min-w-0 flex-1", collapsed ? "" : "md:block")}>
                         <div className="truncate text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
-                        <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">Overview</div>
                     </div>
                     <button
                         type="button"
                         onClick={toggleCollapsed}
                         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                        className="hidden md:flex shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
+                        className={cn(
+                            "shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200",
+                            collapsed ? "hidden md:flex" : "hidden md:flex"
+                        )}
                     >
                         {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
                     </button>
                 </div>
             </div>
 
-            <nav className="flex-1 space-y-0.5 sm:space-y-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5">
+            <nav className="flex-1 space-y-0.5 sm:space-y-1 overflow-y-auto px-2 py-4 sm:px-4 sm:py-5">
                 {links.map((link) => {
                     const Icon = link.icon;
                     const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
@@ -120,7 +128,8 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                             href={link.href}
                             title={collapsed ? (showUnread ? `${link.name} (${unreadMessages} unread)` : link.name) : undefined}
                             className={cn(
-                                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                                "group relative flex items-center rounded-xl px-2.5 py-2.5 text-sm font-medium transition-all duration-200",
+                                collapsed ? "justify-center gap-0" : "gap-3",
                                 isActive
                                     ? "border border-cyan-400/20 bg-cyan-400/10 text-white shadow-sm shadow-cyan-950/20"
                                     : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
@@ -143,14 +152,13 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                 })}
             </nav>
 
-            {!isDocsPage && (
-                <div className="space-y-2 sm:space-y-3 border-t border-white/10 p-3 sm:p-4">
-                    <WorkspaceTour />
+            <div className={cn("border-t border-white/10", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
                     <Link
                         href="/docs"
                         title={collapsed ? "Documentation" : undefined}
                         className={cn(
-                            "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                            "group flex items-center rounded-xl text-sm font-medium transition-all duration-200",
+                            collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
                             pathname?.startsWith("/docs")
                                 ? "border border-cyan-400/20 bg-cyan-400/10 text-white"
                                 : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
@@ -161,7 +169,10 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <button className="flex w-full cursor-pointer items-center gap-2.5 sm:gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-2.5 py-2.5 sm:px-3 sm:py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]">
+                            <button className={cn(
+                                "flex w-full cursor-pointer items-center rounded-2xl border border-white/10 bg-white/[0.035] text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]",
+                                collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 sm:gap-3 px-2.5 py-2.5 sm:px-3 sm:py-3"
+                            )}>
                                 <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
                                     {userInitial}
                                 </div>
@@ -188,7 +199,6 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
-            )}
         </aside>
     );
 }

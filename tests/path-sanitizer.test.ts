@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sanitizeLogicalPath, sanitizeFilenameSegment } from "../src/lib/storage/path-sanitizer";
+import { sanitizeLogicalPath, sanitizeFilenameSegment } from "../src/lib/storage/path-sanitizer.ts";
 
 test("sanitizeLogicalPath accepts normal nested paths", () => {
     assert.equal(sanitizeLogicalPath("reports/q2/summary.pdf"), "reports/q2/summary.pdf");

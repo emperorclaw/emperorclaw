@@ -13,8 +13,8 @@ Set these in your systemd service file or shell before starting the bridge.
 | `EMPEROR_CLAW_MANAGER_REVIEW_MS` | `3600000` (1h) | How often Manager performs periodic reviews. Set to `0` to disable. |
 | `EMPEROR_CLAW_SYNC_LOOP_MS` | `0` | Sync loop interval; set to `0` to disable periodic sync (event-driven only). |
 | `EMPEROR_CLAW_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error`. |
-| `BUNNY_STORAGE_ZONE` | *(required)* | The Bunny storage zone that holds artifact blobs (e.g., `eu-zone`). |
-| `BUNNY_STORAGE_ACCESS_KEY` | *(required)* | API access key for the Bunny storage zone. |
+| `BUNNY_STORAGE_ZONE` | *(none)* | Bunny storage zone for CDN-backed storage. Only needed when `STORAGE_BACKEND=bunny`. |
+| `BUNNY_STORAGE_ACCESS_KEY` | *(none)* | API access key for the Bunny storage zone. Only needed when `STORAGE_BACKEND=bunny`. |
 | `BUNNY_STORAGE_HOST` | `storage.bunnycdn.com` | Optional host/region override for Bunny (or set `BUNNY_STORAGE_REGION`). |
 | `BUNNY_STORAGE_PULL_ZONE_URL` | *none* | Optional public pull zone base URL (e.g., `https://storage.example.b-cdn.net`) used when generating download URLs. |
 

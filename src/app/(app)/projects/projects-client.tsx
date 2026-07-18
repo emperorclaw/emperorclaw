@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, Search, Send, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, Archive, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, RotateCcw, Search, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PageHeader } from "@/components/page-header";
@@ -26,6 +26,7 @@ type Props = {
     taskEvents?: any[];
     initialMessages?: any[];
     initialProjectMemory?: any[];
+    companyRole?: string;
 };
 
 const isRecurring = (task: any) => task?.taskKind === "recurring" || task?.taskKind === "recurrent";
@@ -109,7 +110,7 @@ function getWorkTypeLabel(value: unknown) {
     return option?.label || humanizeKey(value) || "Standard task";
 }
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [] }: Props) {
+export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], companyRole = "member" }: Props) {
     const router = useRouter();
     const [tasks, setTasks] = useState<any[]>(initialTasks);
     const [projectItems, setProjectItems] = useState<any[]>(projects);
@@ -132,6 +133,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [isMutating, setIsMutating] = useState(false);
     const [mutationError, setMutationError] = useState<string | null>(null);
     const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
+    const [hideCompletedProjects, setHideCompletedProjects] = useState(() => {
+        try { return localStorage.getItem("projects-board-hide-completed") === "1"; } catch { return true; }
+    });
+    const [completingProject, setCompletingProject] = useState<string | null>(null);
     const [draggingTask, setDraggingTask] = useState<any | null>(null);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -156,9 +161,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         localStorage.setItem("projects-board-search-query", searchQuery);
     }, [projectFilter, agentFilter, customerFilter, searchQuery]);
 
-    useEffect(() => setEvents(taskEvents), [taskEvents]);
-    useEffect(() => setTasks(initialTasks), [initialTasks]);
-    useEffect(() => setProjectItems(projects), [projects]);
+    // Persist hide-completed preference
+    useEffect(() => {
+        localStorage.setItem("projects-board-hide-completed", hideCompletedProjects ? "1" : "0");
+    }, [hideCompletedProjects]);
+
+    // Filtered project list (exclude completed when toggled)
+    const visibleProjects = useMemo(() => {
+        if (!hideCompletedProjects) return projectItems;
+        return projectItems.filter((p) => p.status !== "completed" && p.status !== "killed");
+    }, [projectItems, hideCompletedProjects]);
 
     const filteredTasks = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
@@ -266,8 +278,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         ...customers.map((customer) => ({ value: customer.id, label: customer.name, description: `${projectItems.filter((project) => project.customerId === customer.id).length} projects` })),
     ];
     const projectOptions = [
-        { value: "All Projects", label: "All Projects", description: `${projectItems.length} projects` },
-        ...projectItems
+        { value: "All Projects", label: "All Projects", description: `${visibleProjects.length} active projects` },
+        ...visibleProjects
             .filter((project) => customerFilter === "All Customers" ? true : project.customerId === customerFilter)
             .map((project) => {
                 const customerName = customers.find((customer) => customer.id === project.customerId)?.name || "No customer";
@@ -355,6 +367,51 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             router.refresh();
         } catch (error) {
             setMutationError(error instanceof Error ? error.message : "Project archive failed");
+        } finally {
+            setIsMutating(false);
+        }
+    };
+
+    const completeProject = async (project: any) => {
+        setIsMutating(true);
+        setMutationError(null);
+        setCompletingProject(project.id);
+        try {
+            const res = await fetch(`/api/projects/${project.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "completed" }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to complete project");
+            setProjectItems((prev) => prev.map((p) => p.id === project.id ? { ...p, status: "completed" } : p));
+            toast.success(`Project "${project.name || project.goal}" completed.`);
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Failed to complete project");
+            toast.error("Failed to complete project.");
+        } finally {
+            setIsMutating(false);
+            setCompletingProject(null);
+        }
+    };
+
+    const reopenProject = async (project: any) => {
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const res = await fetch(`/api/projects/${project.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "active" }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to reopen project");
+            setProjectItems((prev) => prev.map((p) => p.id === project.id ? { ...p, status: "active" } : p));
+            toast.success(`Project "${project.name || project.goal}" reopened.`);
+            router.refresh();
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Failed to reopen project");
         } finally {
             setIsMutating(false);
         }
@@ -515,8 +572,21 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 description="Track work from to-do to done across all your projects."
                 actions={
                     <>
-                        <button onClick={openCreateProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Project</button>
+                        {companyRole !== "viewer" && <button onClick={openCreateProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Project</button>}
                         <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Task</button>
+                        <button
+                            onClick={() => setHideCompletedProjects((v) => !v)}
+                            className={cn(
+                                "flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border px-3 sm:px-4 text-xs sm:text-sm font-semibold transition-colors",
+                                hideCompletedProjects
+                                    ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/15"
+                                    : "border-zinc-700 bg-zinc-900/80 text-zinc-100 hover:border-zinc-600 hover:bg-zinc-800"
+                            )}
+                            title={hideCompletedProjects ? "Showing only active projects" : "Showing all projects"}
+                        >
+                            <Archive className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                            {hideCompletedProjects ? "Active" : "All"}
+                        </button>
                         {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Notes</button>}
                     </>
                 }
@@ -581,6 +651,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
                                         <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
+                                        {selectedProject.status !== "completed" && selectedProject.status !== "killed" && (
+                                            <DropdownMenuItem onClick={() => void completeProject(selectedProject)} disabled={completingProject === selectedProject.id}>
+                                                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-400" />
+                                                {completingProject === selectedProject.id ? "Completing..." : "Complete project"}
+                                            </DropdownMenuItem>
+                                        )}
+                                        {(selectedProject.status === "completed" || selectedProject.status === "killed") && (
+                                            <DropdownMenuItem onClick={() => void reopenProject(selectedProject)}>
+                                                <RotateCcw className="mr-2 h-4 w-4 text-amber-400" />Reopen project
+                                            </DropdownMenuItem>
+                                        )}
                                         <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />{confirmingArchive === selectedProject ? "Click again to confirm" : "Archive project"}</DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>

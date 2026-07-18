@@ -24,7 +24,7 @@ Located at `~/.openclaw/emperor-control-plane/bridge.config.json`:
   "agentName": "Viktor",
   "profile": "operator",
   "mcpToken": "ec_REDACTED_EXAMPLE_TOKEN",
-  "emperorUrl": "https://emperorclaw.malecu.eu",
+  "emperorUrl": "https://emperorclaw.example.com",
   "workspacePath": "/home/<user>/.openclaw/workspace-viktor",
   "memoryPath": "/home/<user>/.openclaw/emperor-control-plane/state",
   "model": "openai-codex/gpt-5.4",
