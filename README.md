@@ -1,7 +1,4 @@
-<!-- TODO: Add a 1600×900 screenshot showing the dashboard with agent stats, team chat, and recent activity. Save as docs/assets/emperorclaw-dashboard.png -->
-<!-- TODO: Add a 1600×900 screenshot showing the expanded knowledge graph with 14+ interconnected nodes. Save as docs/assets/emperorclaw-knowledge-graph.png -->
-<!-- TODO: Add a 1600×900 screenshot showing the pipeline visual map with connected steps. Save as docs/assets/emperorclaw-pipeline.png -->
-<!-- TODO: Add a 1600×900 screenshot showing the agent directory with status indicators. Save as docs/assets/emperorclaw-agents.png -->
+<!-- Screenshots in docs/assets/ — dashboard, projects, resources, customers, pipelines, login -->
 
 # Emperor Claw
 
