@@ -228,7 +228,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                     </DropdownMenu>
                     {appVersion && (
                         <p className={cn("text-center text-[10px] text-zinc-600 transition-opacity duration-200", collapsed ? "opacity-0" : "md:opacity-100")}>
-                            v{appVersion}
+                            v{appVersion} · emperorclaw.com
                         </p>
                     )}
                 </div>
