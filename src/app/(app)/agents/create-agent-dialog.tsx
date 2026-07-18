@@ -88,7 +88,7 @@ export function CreateAgentDialog() {
                         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Role</label>
                         <input
                             className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-zinc-100 outline-none"
-                            placeholder="e.g. SEO and AI Visibility Specialist"
+                            placeholder="e.g. SEO Specialist"
                             value={role}
                             onChange={(e) => setRole(e.target.value)}
                         />

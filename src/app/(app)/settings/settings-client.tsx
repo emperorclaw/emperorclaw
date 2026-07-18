@@ -303,7 +303,7 @@ Walk me through step by step.`}</pre>
                             </div>
                         </div>
                         <p className="mt-3 text-xs text-emerald-100/60">
-                            Replace <code className="bg-emerald-500/15 px-1 rounded text-emerald-200">[DESCRIBE YOUR ROLE HERE]</code> with your agent&apos;s actual role — e.g. &quot;SEO and AI Visibility Specialist&quot;, &quot;Lead Generation Agent&quot;, &quot;Technical Implementation Agent&quot;. The more specific you are, the better the result.
+                            Replace <code className="bg-emerald-500/15 px-1 rounded text-emerald-200">[DESCRIBE YOUR ROLE HERE]</code> with your agent&apos;s actual role — e.g. &quot;SEO Specialist&quot;, &quot;Lead Generation Agent&quot;, &quot;Technical Implementation Agent&quot;. The more specific you are, the better the result.
                         </p>
                     </article>
                 </section>

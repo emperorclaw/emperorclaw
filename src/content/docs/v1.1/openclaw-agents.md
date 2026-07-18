@@ -374,7 +374,7 @@ Repository & docs: https://github.com/emperorclaw/emperorclaw
 OpenClaw agent docs: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/openclaw-agents.md
 Operating pipeline: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/emperor-operating-pipeline.md
 
-My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO and AI Visibility Specialist"]
+My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 
 Please read the relevant documentation and create the bootstrap files for this agent role: [SAME ROLE]
 

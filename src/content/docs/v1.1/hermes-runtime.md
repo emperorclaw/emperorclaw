@@ -469,7 +469,7 @@ Repository & docs: https://github.com/emperorclaw/emperorclaw
 Bridge installer: https://emperorclaw.malecu.eu/install.sh (Linux/Mac) or https://emperorclaw.malecu.eu/install.ps1 (Windows)
 Hermes runtime docs: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/hermes-runtime.md
 
-My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO and AI Visibility Specialist"]
+My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 
 Please read the relevant documentation and guide me through:
 1. Installing Hermes if I don't have it
