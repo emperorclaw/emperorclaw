@@ -428,7 +428,7 @@ export function AgentTeamChat({
 
             {sendable ? (
                 <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-3">
-                    <div className="flex items-end gap-2">
+                    <div className="flex items-center gap-2">
                         <button
                             type="button"
                             onClick={() => {
@@ -449,8 +449,7 @@ export function AgentTeamChat({
                             onSubmit={sendMessage}
                             placeholder="Message the team… (@ to mention)"
                             rows={1}
-                            className="w-full resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-32 overflow-y-auto"
-                            style={{ minHeight: "2.5rem" }}
+                            className="w-full resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-32 overflow-y-auto"
                         />
                         <button
                             type="submit"
@@ -533,7 +532,7 @@ function ChatMarkdown({
     return (
         <MarkdownRenderer
             content={content}
-            className={`break-words [&_.prose]:max-w-none [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 ${sizing} ${accentText}`}
+            className={`break-words [&_.prose]:max-w-prose [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 ${sizing} ${accentText}`}
         />
     );
 }

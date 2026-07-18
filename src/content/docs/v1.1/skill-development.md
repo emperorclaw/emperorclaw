@@ -21,7 +21,7 @@ Older Emperor materials may still mention a separate skill-based package. That s
 For current users, the supported surface is:
 
 ```bash
-openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
+openclaw plugins install clawhub:emperor-claw-os-plugin
 ```
 
 ## What The Plugin Owns

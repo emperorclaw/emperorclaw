@@ -32,7 +32,7 @@ const syncopate = Syncopate({ subsets: ["latin"], weight: ["400", "700"], variab
 const heroStats = [
   { label: "Runtime mesh", value: "Hermes + OpenClaw", detail: "local execution stays local" },
   { label: "Durable layer", value: "Tasks · KB · Storage", detail: "truth survives every chat" },
-  { label: "Beta status", value: "Free for now", detail: "operator-grade control plane" },
+  { label: "Open source", value: "FSL-1.1-Apache-2.0", detail: "self-host freely, no paywall" },
 ];
 
 const pillars = [
@@ -162,11 +162,15 @@ export function PublicHomePage() {
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <a href="https://github.com/emperorclaw/emperorclaw" target="_blank" rel="noopener noreferrer" className="hidden rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors duration-200 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 sm:inline-flex items-center gap-1.5" title="View on GitHub">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              GitHub
+            </a>
             <Link href="/login" className="hidden rounded-xl px-3 py-2 text-sm font-medium text-slate-300 transition-colors duration-200 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 sm:inline-flex">
               Login
             </Link>
             <Link href="/signup" className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-cyan-200/30 bg-cyan-200 px-3 py-2.5 text-xs font-bold text-slate-950 shadow-[0_0_34px_rgba(103,232,249,0.34)] transition duration-200 hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 sm:px-4 sm:text-sm">
-              Start Free
+              Self-Host
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -389,13 +393,13 @@ export function PublicHomePage() {
                   Beautiful, powerful, and still beta.
                 </h2>
                 <p className="max-w-4xl text-base leading-8 text-slate-300 sm:text-lg">
-                  Emperor Claw is free for now while in beta. Current beta storage is enforced at 1 GB per company member.
-                  Do not store critical or irreplaceable data until you have validated safety, retention, and recovery for your use case.
+                  Emperor Claw is open source under the Functional Source License (FSL-1.1-Apache-2.0).
+                  Self-host it, modify it, use it commercially — just don't sell it as a competing cloud service.
                 </p>
               </div>
               <div className="grid gap-3 sm:min-w-72">
                 <Link href="/signup" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-sm font-black text-slate-950 transition duration-200 hover:-translate-y-1 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">
-                  Start Free Now
+                  Deploy Locally
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link href="/login" className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04] px-6 py-4 text-sm font-bold text-white transition duration-200 hover:-translate-y-1 hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">
@@ -411,9 +415,10 @@ export function PublicHomePage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
             <div className="font-[var(--font-space-grotesk)] text-lg font-semibold tracking-tight text-white">Emperor Claw</div>
-            <div className="font-[var(--font-syncopate)] text-[10px] uppercase tracking-[0.22em] text-slate-600">Runtime control plane. Free for now in beta.</div>
+            <div className="font-[var(--font-syncopate)] text-[10px] uppercase tracking-[0.22em] text-slate-600">Open source control plane for AI agent workforces</div>
           </div>
           <div className="flex flex-wrap gap-6 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+            <a href="https://github.com/emperorclaw/emperorclaw" target="_blank" rel="noopener noreferrer" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">GitHub</a>
             <Link href="/docs" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Documentation</Link>
             <Link href="/login" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Login</Link>
             <Link href="/signup" className="transition-colors duration-200 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Create Workspace</Link>

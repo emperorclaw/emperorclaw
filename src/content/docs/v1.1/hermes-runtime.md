@@ -139,7 +139,7 @@ Each bridge service needs its own env file with connection details and the model
 Example `~/.hermes/emperor-bridge/viktor/.env`:
 
 ```bash
-EMPEROR_CLAW_API_URL="https://emperorclaw.malecu.eu"
+EMPEROR_CLAW_API_URL="https://emperorclaw.example.com"
 EMPEROR_CLAW_API_TOKEN="<company-token>"
 EMPEROR_CLAW_AGENT_NAME="Viktor"
 EMPEROR_CLAW_AGENT_ID="<emperor-agent-id>"
