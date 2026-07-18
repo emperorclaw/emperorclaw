@@ -96,7 +96,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
 
     return (
         <>
-        <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-200 overflow-visible", collapsed ? "w-20" : "w-20 md:w-64")}>
+        <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-300 ease-in-out overflow-hidden", collapsed ? "w-20" : "w-20 md:w-64")}>
             <div className={cn("border-b border-white/10", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
                 <div className={cn(
                     "flex items-center",
@@ -105,27 +105,16 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         : "gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 sm:p-3"
                 )}>
                     {collapsed ? (
-                        /* Collapsed: show only the penguin emblem */
-                        <div className="grid h-14 w-14 shrink-0 place-items-center">
-                            <CustomLogo className="h-7 w-7" />
+                        /* Collapsed: show only the emblem, centered */
+                        <div className="grid h-10 w-10 shrink-0 place-items-center">
+                            <CustomLogo className="h-10 w-10" />
                         </div>
                     ) : (
                         /* Expanded: show only the text */
-                        <div className="hidden min-w-0 flex-1 md:block">
+                        <div className={cn("min-w-0 flex-1 transition-opacity duration-200", collapsed ? "opacity-0" : "hidden md:block")}>
                             <div className="truncate text-base font-semibold tracking-tight text-white">Emperor Claw</div>
                         </div>
                     )}
-                    <button
-                        type="button"
-                        onClick={toggleCollapsed}
-                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                        className={cn(
-                            "shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200",
-                            collapsed ? "hidden md:flex" : "hidden md:flex"
-                        )}
-                    >
-                        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                    </button>
                 </div>
             </div>
 
@@ -171,6 +160,19 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
             </nav>
 
             <div className={cn("border-t border-white/10", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
+                    {/* Collapse / Expand toggle */}
+                    <button
+                        type="button"
+                        onClick={toggleCollapsed}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className={cn(
+                            "flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-zinc-400 transition-all duration-200 hover:bg-white/[0.045] hover:text-zinc-100",
+                            collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
+                        )}
+                    >
+                        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                        <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>{collapsed ? "" : "Collapse"}</span>
+                    </button>
                     <Link
                         href="/docs"
                         onMouseEnter={(e) => {
@@ -189,7 +191,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         )}
                     >
                         <BookOpen className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500")} />
-                        <span className={cn("hidden", collapsed ? "" : "md:inline")}>Documentation</span>
+                        <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>Documentation</span>
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -202,7 +204,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                                 <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
                                     {userInitial}
                                 </div>
-                                <div className={cn("hidden min-w-0 flex-1 flex-col", collapsed ? "" : "md:flex")}>
+                                <div className={cn("min-w-0 flex-1 flex-col transition-opacity duration-200", collapsed ? "hidden" : "md:flex")}>
                                     <span className="truncate text-sm font-medium text-zinc-100">{userName}</span>
                                     <span className="text-xs text-zinc-500">{userEmail}</span>
                                 </div>
