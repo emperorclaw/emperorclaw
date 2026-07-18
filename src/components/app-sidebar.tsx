@@ -23,7 +23,7 @@ function cn(...inputs: ClassValue[]) {
 
 const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 
-export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
+export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatformAdmin?: boolean; appVersion?: string }) {
     const pathname = usePathname();
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
@@ -226,6 +226,11 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    {appVersion && (
+                        <p className={cn("text-center text-[10px] text-zinc-600 transition-opacity duration-200", collapsed ? "opacity-0" : "md:opacity-100")}>
+                            v{appVersion}
+                        </p>
+                    )}
                 </div>
         </aside>
         {hoveredNav && tooltipPos && typeof document !== "undefined" && createPortal(
