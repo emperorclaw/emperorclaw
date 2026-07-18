@@ -22,7 +22,7 @@ export default async function AppLayout({
             <AutoRefresh intervalMs={15000} />
             <InteractiveTour />
             <AppSidebar isPlatformAdmin={platformAdmin?.isPlatformAdmin === true} />
-            <main className="emperor-main flex-1 overflow-y-auto w-full px-3 py-4 pb-20 sm:px-5 sm:py-5 sm:pb-16 lg:px-8">
+            <main className="emperor-main flex-1 min-h-0 overflow-y-auto w-full px-3 py-4 pb-20 sm:px-5 sm:py-5 sm:pb-16 lg:px-8">
                 <div className="emperor-page-frame">
                     {children}
                 </div>
