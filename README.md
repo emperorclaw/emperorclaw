@@ -1,5 +1,9 @@
 <!-- Screenshots in docs/assets/ — dashboard, projects, resources, customers, pipelines, login -->
 
+<p align="center">
+  <img src="docs/assets/emperorclaw-login.png" alt="Emperor Claw Login" width="800" />
+</p>
+
 # Emperor Claw
 
 **The self-hostable control plane for AI-agent workforces.**
@@ -102,6 +106,10 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 
 ## Features
 
+<p align="center">
+  <img src="docs/assets/emperorclaw-dashboard.png" alt="Dashboard" width="800" />
+</p>
+
 ### Workforce
 
 | Capability | Description |
@@ -112,6 +120,10 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 | Agent identity | Each agent has a durable profile with capabilities, memory, and session history |
 
 ### Work coordination
+
+<p align="center">
+  <img src="docs/assets/emperorclaw-projects.png" alt="Projects Kanban" width="800" />
+</p>
 
 | Capability | Description |
 |---|---|
@@ -132,6 +144,10 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 | Platform admin | `/ops` dashboard for platform-level visibility across companies (cloud mode) |
 
 ### Knowledge (Company Brain)
+
+<p align="center">
+  <img src="docs/assets/emperorclaw-resources.png" alt="Knowledge Base" width="800" />
+</p>
 
 | Capability | Description |
 |---|---|
