@@ -231,43 +231,39 @@ Any runtime that speaks MCP can integrate. Agents register, heartbeat, claim tas
 
 ## Quick start
 
-### Docker (recommended)
+### One-command install (Docker)
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
+
+# With a custom domain
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash -s -- --domain claw.mycompany.com
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
+```
+
+The installer clones the repo, generates secrets, creates `.env`, and runs `docker compose up -d --build`. Open `http://localhost:3000` and create your admin account.
+
+### Manual Docker setup
 
 ```bash
 git clone https://github.com/emperorclaw/emperorclaw.git
 cd emperorclaw
 cp .env.example .env
-```
-
-Edit `.env` and set at minimum:
-
-```bash
-NEXTAUTH_SECRET=$(openssl rand -base64 32)
-EMPEROR_CLAW_MASTER_KEY=$(openssl rand -hex 32)
-```
-
-Then:
-
-```bash
+# Generate secrets and set them in .env:
+# NEXTAUTH_SECRET=$(openssl rand -base64 32)
+# EMPEROR_CLAW_MASTER_KEY=$(openssl rand -hex 32)
 docker compose up -d
 ```
 
-Open `http://localhost:3000`. On first visit you'll be redirected to `/signup` — create your account and company. The first user becomes the instance admin.
+Open `http://localhost:3000`. First visit → `/signup` → create your account. First user = instance admin.
 
-To stop:
+To stop: `docker compose down`
+To upgrade: `git pull && docker compose up -d --build`
 
-```bash
-docker compose down
-```
-
-To upgrade:
-
-```bash
-git pull
-docker compose up -d --build
-```
-
-### Manual installation
+### Manual installation (without Docker)
 
 ```bash
 git clone https://github.com/emperorclaw/emperorclaw.git
@@ -275,7 +271,6 @@ cd emperorclaw
 cp .env.example .env
 # Edit .env — set NEXTAUTH_SECRET, EMPEROR_CLAW_MASTER_KEY, and POSTGRES_CONNECTION_STRING
 npm install
-npm run db:generate
 npm run db:migrate
 npm run build
 npm start
