@@ -207,10 +207,103 @@ export default function SettingsClient({
                             <h2 className="text-lg font-semibold text-emerald-100">Quick Setup — Let your own LLM configure it</h2>
                         </div>
                         <p className="mt-2 text-sm leading-6 text-emerald-100/75">
-                            Don&apos;t want to configure everything manually? Copy a prompt, paste it into <strong>Claude, ChatGPT, Codex, or any LLM</strong>, and it will walk you through the entire setup — installing the runtime, configuring the bridge, writing bootstrap files, and tailoring the agent to your role.
+                            Don&apos;t want to configure everything manually? Copy a prompt below, paste it into <strong>Claude, ChatGPT, Codex, or any LLM</strong>, and it will walk you through the entire setup — installing the runtime, configuring the bridge, writing bootstrap files, and tailoring the agent to your role.
                         </p>
-                        <p className="mt-3 text-sm leading-6 text-emerald-100/75">
-                            Open the <strong>Hermes</strong> or <strong>OpenClaw</strong> guide above and scroll to <em>&quot;Quick Setup via LLM&quot;</em> for the copy-paste prompt. Replace the role placeholder with your agent&apos;s job, and you&apos;re done.
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                            {/* Hermes prompt */}
+                            <div className="rounded-xl border border-emerald-500/30 bg-black/30 overflow-hidden">
+                                <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">Hermes agent</span>
+                                    <CopyPromptButton text={`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
+
+Repo & docs: https://github.com/emperorclaw/emperorclaw
+Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install.sh
+Bridge installer (Windows): https://emperorclaw.malecu.eu/install.ps1
+
+My agent role is: [DESCRIBE YOUR ROLE HERE]
+
+Please read the relevant docs and guide me step by step through:
+1. Installing Hermes runtime if I don't have it
+2. Setting up the Emperor Hermes bridge and plugin
+3. Creating the agent profile, SOUL, toolsets, and operating doctrine for this role: [ROLE]
+4. Creating a systemd service (or equivalent) to keep it running
+5. Connecting to my Emperor Claw instance (I'll give you the URL and token)
+
+Ask me for any info you need along the way.`} />
+                                </div>
+                                <pre className="p-4 text-xs text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
+
+Repo & docs: https://github.com/emperorclaw/emperorclaw
+Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install.sh
+Bridge installer (Windows): https://emperorclaw.malecu.eu/install.ps1
+
+My agent role is: [DESCRIBE YOUR ROLE HERE]
+
+Please read the relevant docs and guide me step by step through:
+1. Installing Hermes runtime if I don't have it
+2. Setting up the Emperor Hermes bridge and plugin
+3. Creating the agent profile, SOUL, toolsets, and operating doctrine for this role: [ROLE]
+4. Creating a systemd service (or equivalent) to keep it running
+5. Connecting to my Emperor Claw instance (I'll give you the URL and token)
+
+Ask me for any info you need along the way.`}</pre>
+                            </div>
+
+                            {/* OpenClaw prompt */}
+                            <div className="rounded-xl border border-emerald-500/30 bg-black/30 overflow-hidden">
+                                <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">OpenClaw agent</span>
+                                    <CopyPromptButton text={`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
+
+Repo & docs: https://github.com/emperorclaw/emperorclaw
+OpenClaw agent docs: see docs/v1.1/openclaw-agents.md in the repo
+Operating pipeline: see docs/v1.1/emperor-operating-pipeline.md in the repo
+
+My agent role is: [DESCRIBE YOUR ROLE HERE]
+
+Please read the relevant docs and create the bootstrap files for this role: [ROLE]
+Generate these files with content tailored to the role:
+- AGENTS.md (stable operating rules, session startup, red lines)
+- SOUL.md (persona, tone, voice)
+- BOOTSTRAP.md (startup reading order)
+- IDENTITY.md (name, role, emoji)
+- USER.md (operator preferences, timezone defaults)
+- TOOLS.md (local machine knowledge)
+- HEARTBEAT.md (periodic review checklist)
+
+Follow the Emperor doctrine: keep files short, put durable rules under "## Session Startup" and "## Red Lines", keep persona in SOUL.md, never mix volatile state with permanent doctrine.
+
+Also give me the plugin install command and bridge config needed to connect to my Emperor Claw instance (I'll give you the URL and token).
+
+Walk me through step by step.`} />
+                                </div>
+                                <pre className="p-4 text-xs text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
+
+Repo & docs: https://github.com/emperorclaw/emperorclaw
+OpenClaw agent docs: see docs/v1.1/openclaw-agents.md in the repo
+Operating pipeline: see docs/v1.1/emperor-operating-pipeline.md in the repo
+
+My agent role is: [DESCRIBE YOUR ROLE HERE]
+
+Please read the relevant docs and create the bootstrap files for this role: [ROLE]
+Generate these files with content tailored to the role:
+- AGENTS.md (stable operating rules, session startup, red lines)
+- SOUL.md (persona, tone, voice)
+- BOOTSTRAP.md (startup reading order)
+- IDENTITY.md (name, role, emoji)
+- USER.md (operator preferences, timezone defaults)
+- TOOLS.md (local machine knowledge)
+- HEARTBEAT.md (periodic review checklist)
+
+Follow the Emperor doctrine: keep files short, put durable rules under "## Session Startup" and "## Red Lines", keep persona in SOUL.md, never mix volatile state with permanent doctrine.
+
+Also give me the plugin install command and bridge config needed to connect to my Emperor Claw instance (I'll give you the URL and token).
+
+Walk me through step by step.`}</pre>
+                            </div>
+                        </div>
+                        <p className="mt-3 text-xs text-emerald-100/60">
+                            Replace <code className="bg-emerald-500/15 px-1 rounded text-emerald-200">[DESCRIBE YOUR ROLE HERE]</code> with your agent&apos;s actual role — e.g. &quot;SEO and AI Visibility Specialist&quot;, &quot;Lead Generation Agent&quot;, &quot;Technical Implementation Agent&quot;. The more specific you are, the better the result.
                         </p>
                     </article>
                 </section>
@@ -482,5 +575,27 @@ function InstanceSettingsTab() {
                 </div>
             </div>
         </section>
+    );
+}
+
+function CopyPromptButton({ text }: { text: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        toast.success("Prompt copied to clipboard");
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCopy}
+            className="cursor-pointer rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors flex items-center gap-1.5"
+        >
+            {copied ? <IconCircleCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+            {copied ? "Copied!" : "Copy prompt"}
+        </button>
     );
 }
