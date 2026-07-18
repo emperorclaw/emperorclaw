@@ -473,14 +473,14 @@ The full implementation plan is at [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLA
 
 ## Project leadership
 
-Emperor Claw was created and is maintained by **[Jose Zuma](https://github.com/malecu)**, who serves as the project's BDFL and lead maintainer.
+EmperorClaw was created by [Jose Zuma](https://josezuma.com) and is maintained through a founder-led governance model.
 
-The project is legally maintained by **Malecu s.r.o.**, which holds the copyright, operates the trademark, and may offer commercial services around Emperor Claw in the future.
+The project is legally owned and maintained by [Malecu s.r.o.](https://malecu.eu), which holds the copyright and trademark and may offer commercial services around EmperorClaw.
 
-- **Creator, founder, lead maintainer:** [Jose Zuma](https://josezuma.com)
-- **Legal maintainer:** [Malecu s.r.o.](https://malecu.eu)
-- **Visibility Contributor:** [brandvirality.com](https://brandvirality.com)
-- **Governance:** [BDFL model](./GOVERNANCE.md) — final decisions on roadmap, releases, licensing, and merges rest with the maintainer. Contributions are governed by the [CLA](./CLA.md).
+- **Creator and lead maintainer:** [Jose Zuma](https://josezuma.com)
+- **Legal owner and maintainer:** [Malecu s.r.o.](https://malecu.eu)
+- **Launch and visibility support:** [BrandVirality](https://brandvirality.com)
+- **Governance:** Founder-led — final decisions on roadmap, releases, licensing, and merges rest with the lead maintainer. Contributions are governed by the [CLA](./CLA.md).
 
 ---
 
