@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { ArrowUpCircle, ExternalLink } from "lucide-react";
+import { IconArrowUpCircle, IconExternalLink } from "@tabler/icons-react";
 
 interface VersionInfo {
     version: string;
@@ -102,11 +102,11 @@ export function VersionBanner() {
             {
                 duration: Infinity,
                 dismissible: true,
-                icon: <ArrowUpCircle className="h-4 w-4 text-emerald-500" />,
+                icon: <IconArrowUpCircle className="h-4 w-4 text-emerald-500" />,
                 action: {
                     label: (
                         <span className="flex items-center gap-1">
-                            Release notes <ExternalLink className="h-3 w-3" />
+                            Release notes <IconExternalLink className="h-3 w-3" />
                         </span>
                     ),
                     onClick: () => window.open(banner.url, "_blank"),

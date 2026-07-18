@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Target, Sparkles, ArrowRight, Loader2, CheckCircle2, ListTodo, Bot, User, BrainCircuit } from "lucide-react";
+import { IconTarget, IconSparkles, IconArrowRight, IconLoader2, IconCircleCheck, IconListCheck, IconRobot, IconUser, IconBrain } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
 type TaskSuggestion = {
@@ -81,7 +81,7 @@ export function GoalHub() {
             <div className="relative bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
                 <div className="p-1 px-4 bg-zinc-900/50 border-b border-zinc-800 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
+                        <IconSparkles className="w-3 h-3 text-amber-500 animate-pulse" />
                         <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Autonomous Mission Control</span>
                     </div>
                 </div>
@@ -110,13 +110,13 @@ export function GoalHub() {
                                     >
                                         {isThinking ? (
                                             <>
-                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <IconLoader2 className="w-4 h-4 animate-spin" />
                                                 Thinking
                                             </>
                                         ) : (
                                             <>
                                                 Break Down
-                                                <ArrowRight className="w-4 h-4" />
+                                                <IconArrowRight className="w-4 h-4" />
                                             </>
                                         )}
                                     </button>
@@ -128,7 +128,7 @@ export function GoalHub() {
                             <div className="flex items-center justify-between mb-8">
                                 <div className="flex items-center gap-4">
                                     <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                                        <BrainCircuit className="w-6 h-6 text-indigo-400" />
+                                        <IconBrain className="w-6 h-6 text-indigo-400" />
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-bold text-white uppercase tracking-tight">{suggestion.projectName}</h3>
@@ -153,7 +153,7 @@ export function GoalHub() {
                                             <div className="flex items-center justify-between">
                                                 <h4 className="text-sm font-semibold text-zinc-200">{task.title}</h4>
                                                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20">
-                                                    <Bot className="w-3 h-3 text-indigo-400" />
+                                                    <IconRobot className="w-3 h-3 text-indigo-400" />
                                                     <span className="text-[10px] font-bold text-indigo-300 uppercase leading-none">{task.agentRole}</span>
                                                 </div>
                                             </div>
@@ -171,17 +171,17 @@ export function GoalHub() {
                                 >
                                     {isExecuting ? (
                                         <>
-                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                            <IconLoader2 className="w-5 h-5 animate-spin" />
                                             Provisioning Infrastructure...
                                         </>
                                     ) : isDone ? (
                                         <>
-                                            <CheckCircle2 className="w-5 h-5" />
+                                            <IconCircleCheck className="w-5 h-5" />
                                             Mission Initiated
                                         </>
                                     ) : (
                                         <>
-                                            <Sparkles className="w-5 h-5" />
+                                            <IconSparkles className="w-5 h-5" />
                                             Execute Mission Plan
                                         </>
                                     )}

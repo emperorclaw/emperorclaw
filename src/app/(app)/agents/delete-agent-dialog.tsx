@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { IconTrash } from "@tabler/icons-react";
 import {
     Dialog,
     DialogContent,
@@ -68,7 +68,7 @@ export function DeleteAgentDialog({
         }}>
             <DialogTrigger asChild>
                 <Button type="button" variant="destructive" size="sm" className="bg-rose-600/90 hover:bg-rose-500">
-                    <Trash2 className="w-4 h-4" />
+                    <IconTrash className="w-4 h-4" />
                     Delete Agent
                 </Button>
             </DialogTrigger>

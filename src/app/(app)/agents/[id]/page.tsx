@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { ArrowLeft, Bot, Cable, Clock3, MemoryStick, ScrollText, type LucideIcon } from "lucide-react";
+import { IconArrowLeft, IconRobot, IconPlugConnected, IconClock, IconDeviceSdCard, IconFileText, type Icon } from "@tabler/icons-react";
 import { db } from "@/db";
 import {
     actionRuns,
@@ -97,7 +97,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
             <div className="flex items-start justify-between gap-6">
                 <div className="space-y-3">
                     <Link href="/agents" className="inline-flex items-center text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
-                        <ArrowLeft className="w-4 h-4 mr-2" />
+                        <IconArrowLeft className="w-4 h-4 mr-2" />
                         Back to Agent Fleet
                     </Link>
                     <div className="flex items-center gap-4">
@@ -124,9 +124,9 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
                 <div className="space-y-3 min-w-[280px]">
                     <div className="grid grid-cols-2 gap-3">
-                        <MetricCard icon={Clock3} label="Last Session" value={sessions[0] ? sessions[0].status : "none"} />
-                        <MetricCard icon={Cable} label="Threads" value={threads.length.toString()} />
-                        <MetricCard icon={MemoryStick} label="Memory Entries" value={memoryEntries.length.toString()} />
+                        <MetricCard icon={IconClock} label="Last Session" value={sessions[0] ? sessions[0].status : "none"} />
+                        <MetricCard icon={IconPlugConnected} label="Threads" value={threads.length.toString()} />
+                        <MetricCard icon={IconDeviceSdCard} label="Memory Entries" value={memoryEntries.length.toString()} />
                     </div>
                     <div className="flex justify-end">
                         <DeleteAgentDialog agentId={id} agentName={agent.name} redirectToAgents />
@@ -146,7 +146,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                     <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-6">
                         <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
                             <div className="flex items-center gap-2 mb-4">
-                                <MemoryStick className="w-5 h-5 text-indigo-400" />
+                                <IconDeviceSdCard className="w-5 h-5 text-indigo-400" />
                                 <h2 className="text-lg font-medium text-zinc-200">Latest Snapshot</h2>
                             </div>
                             <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 font-mono text-sm text-zinc-300 whitespace-pre-wrap min-h-[220px]">
@@ -156,7 +156,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
                         <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
                             <div className="flex items-center gap-2 mb-4">
-                                <ScrollText className="w-5 h-5 text-indigo-400" />
+                                <IconFileText className="w-5 h-5 text-indigo-400" />
                                 <h2 className="text-lg font-medium text-zinc-200">Memory Timeline</h2>
                             </div>
                             <div className="space-y-3 max-h-[520px] overflow-y-auto pr-2">
@@ -184,7 +184,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                 <TabsContent value="threads">
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
                         <div className="flex items-center gap-2 mb-4">
-                            <Cable className="w-5 h-5 text-indigo-400" />
+                            <IconPlugConnected className="w-5 h-5 text-indigo-400" />
                             <h2 className="text-lg font-medium text-zinc-200">Message Threads</h2>
                         </div>
                         <div className="space-y-3">
@@ -214,7 +214,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
                 <TabsContent value="runs">
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
                         <div className="flex items-center gap-2 mb-4">
-                            <Bot className="w-5 h-5 text-indigo-400" />
+                            <IconRobot className="w-5 h-5 text-indigo-400" />
                             <h2 className="text-lg font-medium text-zinc-200">Execution Runs</h2>
                         </div>
                         <div className="space-y-3">
@@ -253,7 +253,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
     );
 }
 
-function MetricCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+function MetricCard({ icon: Icon, label, value }: { icon: Icon; label: string; value: string }) {
     return (
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
             <div className="flex items-center gap-2 text-zinc-500 text-xs uppercase tracking-wider font-bold mb-2">

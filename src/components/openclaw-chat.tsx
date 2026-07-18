@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { MessageSquare, Send, AtSign } from "lucide-react";
+import { IconMessage, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { cn } from "@/lib/utils";
@@ -280,7 +280,7 @@ export function OpenClawChat() {
                     isOpen && "opacity-0 pointer-events-none scale-90"
                 )}
             >
-                <MessageSquare className="w-6 h-6" />
+                <IconMessage className="w-6 h-6" />
                 {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-[10px] text-white flex items-center justify-center font-semibold shadow">
                         {unreadCount > 9 ? "9+" : unreadCount}
@@ -423,7 +423,7 @@ export function OpenClawChat() {
                             title="Mention an agent"
                             className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-indigo-500/50 hover:text-indigo-400 text-zinc-500 transition-colors"
                         >
-                            <AtSign className="w-4 h-4" />
+                            <IconAt className="w-4 h-4" />
                         </button>
 
                         <MentionTextarea
@@ -443,7 +443,7 @@ export function OpenClawChat() {
                             disabled={!message.trim()}
                             className="w-9 h-9 flex items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
                         >
-                            <Send className="w-4 h-4" />
+                            <IconSend className="w-4 h-4" />
                         </button>
                     </form>
                 </div>

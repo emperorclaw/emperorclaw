@@ -1,28 +1,6 @@
 import Link from "next/link";
 import { DM_Sans, Space_Grotesk, Syncopate } from "next/font/google";
-import {
-  ArrowRight,
-  Bot,
-  Boxes,
-  BrainCircuit,
-  Check,
-  ChevronRight,
-  CircleDotDashed,
-  Command,
-  Database,
-  FileBox,
-  Gem,
-  GitBranch,
-  LockKeyhole,
-  MessageSquare,
-  Network,
-  Orbit,
-  Radar,
-  ShieldAlert,
-  Sparkles,
-  Workflow,
-  Zap,
-} from "lucide-react";
+import { IconArrowRight, IconRobot, IconBoxMultiple, IconBrain, IconCheck, IconChevronRight, IconCircleDotted, IconCommand, IconDatabase, IconPackage, IconDiamond, IconGitBranch, IconLock, IconMessage, IconNetwork, IconWorld, IconRadar, IconShieldX, IconSparkles, IconArrowsSplit, IconBolt } from "@tabler/icons-react";
 import { CustomLogo } from "@/components/custom-logo";
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
@@ -37,19 +15,19 @@ const heroStats = [
 
 const pillars = [
   {
-    icon: Bot,
+    icon: IconRobot,
     kicker: "Bootstrap",
     title: "Agents arrive with doctrine, not amnesia.",
     body: "New runtimes receive the company operating model, scoped rules, inboxes, and shared context before they start guessing.",
   },
   {
-    icon: Database,
+    icon: IconDatabase,
     kicker: "Memory",
     title: "The durable record lives outside the chat.",
     body: "Tasks, knowledge, files, threads, customers, projects, notes, and decisions become queryable company state.",
   },
   {
-    icon: MessageSquare,
+    icon: IconMessage,
     kicker: "Coordination",
     title: "Human operators can see the whole swarm.",
     body: "Direct messages, team rooms, handoffs, approvals, and incidents become visible operations instead of hidden local side effects.",
@@ -57,10 +35,10 @@ const pillars = [
 ];
 
 const primitives = [
-  { icon: Workflow, title: "Task rails", body: "Ownership, status, review notes, and durable results for work that must actually land." },
-  { icon: Boxes, title: "Knowledge & rules", body: "Shared doctrine, SOPs, client context, and project rules routed to the right runtime." },
-  { icon: FileBox, title: "Storage discipline", body: "Folder-first artifacts, evidence, reports, and deliverables behind one Emperor abstraction." },
-  { icon: Network, title: "Runtime mesh", body: "Hermes and OpenClaw keep their strengths while Emperor standardizes the operating layer." },
+  { icon: IconArrowsSplit, title: "Task rails", body: "Ownership, status, review notes, and durable results for work that must actually land." },
+  { icon: IconBoxMultiple, title: "Knowledge & rules", body: "Shared doctrine, SOPs, client context, and project rules routed to the right runtime." },
+  { icon: IconPackage, title: "Storage discipline", body: "Folder-first artifacts, evidence, reports, and deliverables behind one Emperor abstraction." },
+  { icon: IconNetwork, title: "Runtime mesh", body: "Hermes and OpenClaw keep their strengths while Emperor standardizes the operating layer." },
 ];
 
 const signalSteps = [
@@ -171,7 +149,7 @@ export function PublicHomePage() {
             </Link>
             <Link href="/signup" className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-cyan-200/30 bg-cyan-200 px-3 py-2.5 text-xs font-bold text-slate-950 shadow-[0_0_34px_rgba(103,232,249,0.34)] transition duration-200 hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 sm:px-4 sm:text-sm">
               Self-Host
-              <ArrowRight className="h-4 w-4" />
+              <IconArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>
@@ -202,11 +180,11 @@ export function PublicHomePage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link href="/signup" className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-sm font-bold text-slate-950 shadow-[0_18px_70px_rgba(255,255,255,0.16)] transition duration-200 hover:-translate-y-1 hover:bg-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">
                   Create Workspace
-                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                  <IconArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                 </Link>
                 <Link href="/docs" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] px-6 py-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl transition duration-200 hover:-translate-y-1 hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">
                   Read the doctrine
-                  <ChevronRight className="h-4 w-4" />
+                  <IconChevronRight className="h-4 w-4" />
                 </Link>
               </div>
 
@@ -276,7 +254,7 @@ export function PublicHomePage() {
               <div className="absolute bottom-[-14rem] left-[-10rem] h-96 w-96 rounded-full bg-cyan-300/15 blur-3xl" />
               <div className="relative space-y-6">
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-cyan-100 backdrop-blur-xl">
-                  <BrainCircuit className="h-4 w-4" />
+                  <IconBrain className="h-4 w-4" />
                   Centralized knowledge and rules
                 </div>
                 <h2 className="max-w-2xl font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
@@ -289,7 +267,7 @@ export function PublicHomePage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   {["Shared company KB", "Project-scoped rules", "Client folder conventions", "Storage abstraction discipline"].map((item) => (
                     <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/35 p-4 text-sm font-semibold text-white backdrop-blur-xl">
-                      <Check className="h-4 w-4 text-cyan-200" />
+                      <IconCheck className="h-4 w-4 text-cyan-200" />
                       {item}
                     </div>
                   ))}
@@ -321,7 +299,7 @@ export function PublicHomePage() {
             <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
               <div className="space-y-6">
                 <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-xs font-bold text-cyan-100">
-                  <Orbit className="h-4 w-4" />
+                  <IconWorld className="h-4 w-4" />
                   Runtime mesh
                 </div>
                 <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
@@ -386,7 +364,7 @@ export function PublicHomePage() {
             <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/25 bg-amber-200/10 px-3 py-1.5 text-sm font-bold text-amber-100">
-                  <ShieldAlert className="h-4 w-4" />
+                  <IconShieldX className="h-4 w-4" />
                   Beta notice
                 </div>
                 <h2 className="font-[var(--font-space-grotesk)] text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-6xl">
@@ -400,7 +378,7 @@ export function PublicHomePage() {
               <div className="grid gap-3 sm:min-w-72">
                 <Link href="/signup" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-sm font-black text-slate-950 transition duration-200 hover:-translate-y-1 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">
                   Deploy Locally
-                  <ArrowRight className="h-4 w-4" />
+                  <IconArrowRight className="h-4 w-4" />
                 </Link>
                 <Link href="/login" className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04] px-6 py-4 text-sm font-bold text-white transition duration-200 hover:-translate-y-1 hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">
                   Return To Workspace
@@ -440,7 +418,7 @@ function HeroCommandCore() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-200/10">
-                <Command className="h-5 w-5 text-cyan-100" />
+                <IconCommand className="h-5 w-5 text-cyan-100" />
               </div>
               <div>
                 <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Emperor Command</div>
@@ -453,9 +431,9 @@ function HeroCommandCore() {
 
         <div className="relative grid gap-4 p-5 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-3">
-            <MiniPanel icon={Radar} label="Signals" value="1,284" tone="cyan" />
-            <MiniPanel icon={GitBranch} label="Handoffs" value="42" tone="violet" />
-            <MiniPanel icon={LockKeyhole} label="Policy" value="live" tone="amber" />
+            <MiniPanel icon={IconRadar} label="Signals" value="1,284" tone="cyan" />
+            <MiniPanel icon={IconGitBranch} label="Handoffs" value="42" tone="violet" />
+            <MiniPanel icon={IconLock} label="Policy" value="live" tone="amber" />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
@@ -483,7 +461,7 @@ function HeroCommandCore() {
               <div className="relative overflow-hidden rounded-[1.7rem] border border-cyan-200/15 bg-cyan-200/10 p-5">
                 <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-200/20 blur-2xl" />
                 <div className="relative flex items-center gap-3">
-                  <CircleDotDashed className="h-5 w-5 text-cyan-100" />
+                  <IconCircleDotted className="h-5 w-5 text-cyan-100" />
                   <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Bridge doctrine</div>
                 </div>
                 <p className="relative mt-3 text-sm leading-7 text-cyan-50/80">Shared KB loaded from Emperor. Runtime prompt is thin; doctrine stays centralized.</p>
@@ -492,7 +470,7 @@ function HeroCommandCore() {
               <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.035] p-5">
                 <div className="mb-5 flex items-center justify-between">
                   <div className="font-[var(--font-space-grotesk)] text-lg font-semibold text-white">Swarm load</div>
-                  <Zap className="h-5 w-5 text-amber-200" />
+                  <IconBolt className="h-5 w-5 text-amber-200" />
                 </div>
                 {[
                   ["Growth", "88%", "w-[88%]"],
@@ -517,7 +495,7 @@ function HeroCommandCore() {
 
       <div className="absolute -bottom-6 left-4 hidden rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:block lg:left-0">
         <div className="flex items-center gap-3">
-          <Gem className="h-5 w-5 text-fuchsia-200" />
+          <IconDiamond className="h-5 w-5 text-fuchsia-200" />
           <div>
             <div className="text-sm font-bold text-white">Storage abstraction</div>
             <div className="text-xs text-slate-500">agents never talk blob-provider keys</div>
@@ -534,7 +512,7 @@ function MiniPanel({
   value,
   tone,
 }: {
-  icon: typeof Radar;
+  icon: typeof IconRadar;
   label: string;
   value: string;
   tone: "cyan" | "violet" | "amber";
@@ -551,7 +529,7 @@ function MiniPanel({
       <div className={`absolute -right-8 -top-8 h-20 w-20 rounded-full bg-gradient-to-br ${toneClass} opacity-20 blur-2xl`} />
       <div className="relative flex items-center justify-between">
         <Icon className="h-5 w-5 text-white/80" />
-        <Sparkles className="h-4 w-4 text-white/30" />
+        <IconSparkles className="h-4 w-4 text-white/30" />
       </div>
       <div className="relative mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</div>
       <div className="relative mt-1 font-[var(--font-space-grotesk)] text-2xl font-semibold text-white">{value}</div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, ArrowRight, Cable, CheckCircle2, Copy, KeyRound, Plus, Settings2, Trash2, Users } from "lucide-react";
+import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
@@ -185,7 +185,7 @@ export default function SettingsClient({
                         <article key={runtime.title} className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                             <div className="flex items-center gap-3">
                                 <div className="grid h-11 w-11 place-items-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10">
-                                    <Cable className="h-5 w-5 text-cyan-300" />
+                                    <IconPlugConnected className="h-5 w-5 text-cyan-300" />
                                 </div>
                                 <h2 className="text-xl font-semibold text-white">{runtime.title}</h2>
                             </div>
@@ -208,7 +208,7 @@ export default function SettingsClient({
                 <section className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.2fr)]">
                     <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                         <h2 className="mb-4 flex items-center text-lg font-semibold text-zinc-100">
-                            <KeyRound className="mr-2 h-5 w-5 text-cyan-300" /> Create access token
+                            <IconKey className="mr-2 h-5 w-5 text-cyan-300" /> Create access token
                         </h2>
                         <div className="space-y-4">
                             <label className="block space-y-2">
@@ -233,14 +233,14 @@ export default function SettingsClient({
                                 <p className="text-xs leading-5 text-zinc-500">{tokenScopeHelp(newTokenScope)}</p>
                             </label>
                             <Button onClick={handleGenerate} disabled={!newTokenName.trim() || generating} className="w-full">
-                                <Plus className="h-4 w-4" /> {generating ? "Creating..." : "Create token"}
+                                <IconPlus className="h-4 w-4" /> {generating ? "Creating..." : "Create token"}
                             </Button>
                         </div>
 
                         {activeSecret && (
                             <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
                                 <div className="flex items-start gap-3">
-                                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+                                    <IconAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
                                     <div>
                                         <h3 className="font-medium text-emerald-200">Token created</h3>
                                         <p className="mt-1 text-sm text-emerald-100/75">Copy it now. Emperor will not show this secret again.</p>
@@ -249,7 +249,7 @@ export default function SettingsClient({
                                 <div className="mt-4 flex overflow-hidden rounded-xl border border-white/10 bg-black/35">
                                     <code className="flex-1 overflow-x-auto px-4 py-3 font-mono text-sm text-zinc-300">{activeSecret.secret}</code>
                                     <button onClick={copyToClipboard} className="cursor-pointer border-l border-white/10 px-4 text-zinc-400 transition-colors hover:bg-white/[0.045] hover:text-white">
-                                        {copied ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+                                        {copied ? <IconCircleCheck className="h-4 w-4 text-emerald-300" /> : <IconCopy className="h-4 w-4" />}
                                     </button>
                                 </div>
                             </div>
@@ -280,7 +280,7 @@ export default function SettingsClient({
                                             <p className="mt-1 text-xs text-zinc-500">Last used: {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</p>
                                         </div>
                                         <Button variant="destructive" size="sm" onClick={() => handleRevokeToken(token.id)} disabled={revokingTokenId === token.id}>
-                                            <Trash2 className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}
+                                            <IconTrash className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}
                                         </Button>
                                     </div>
                                 ))
@@ -294,7 +294,7 @@ export default function SettingsClient({
                 <section className="space-y-4">
                     <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                         <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                            <Cable className="mr-2 h-5 w-5 text-cyan-300" /> Advanced runtime setup
+                            <IconPlugConnected className="mr-2 h-5 w-5 text-cyan-300" /> Advanced runtime setup
                         </h2>
                         <p className="mt-2 text-sm leading-6 text-zinc-400">
                             Use this when manually validating a local companion, bridge, heartbeats, checkpoints, or token permissions. Most operators only need the runtime guides above.
@@ -326,7 +326,7 @@ export default function SettingsClient({
                 <section className="space-y-4">
                     <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                         <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                            <Users className="mr-2 h-5 w-5 text-cyan-300" /> Team members
+                            <IconUsers className="mr-2 h-5 w-5 text-cyan-300" /> Team members
                         </h2>
                         <p className="mt-2 text-sm leading-6 text-zinc-400">
                             Invite colleagues, manage roles and permissions, and control who can access your workspace.
@@ -336,9 +336,9 @@ export default function SettingsClient({
                                 href="/settings/members"
                                 className="inline-flex items-center gap-2 rounded-xl bg-cyan-400/10 border border-cyan-400/25 px-4 py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 transition-colors"
                             >
-                                <Users className="h-4 w-4" />
+                                <IconUsers className="h-4 w-4" />
                                 Open Members
-                                <ArrowRight className="h-3.5 w-3.5" />
+                                <IconArrowRight className="h-3.5 w-3.5" />
                             </Link>
                         </div>
                     </div>
@@ -415,7 +415,7 @@ function InstanceSettingsTab() {
         <section className="space-y-4">
             <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                 <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                    <Settings2 className="mr-2 h-5 w-5 text-cyan-300" /> Instance configuration
+                    <IconSettings className="mr-2 h-5 w-5 text-cyan-300" /> Instance configuration
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-zinc-400">
                     These settings apply to the entire self-hosted instance. Only the instance administrator can change them.

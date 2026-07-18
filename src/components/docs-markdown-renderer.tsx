@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { type Components } from 'react-markdown';
-import { Copy, Check, Info, AlertTriangle, Lightbulb } from 'lucide-react';
+import { IconCopy, IconCheck, IconInfoCircle, IconAlertTriangle, IconBulb } from "@tabler/icons-react";
 import { useState } from 'react';
 
 interface DocsMarkdownRendererProps {
@@ -30,7 +30,7 @@ const CodeBlock = ({ children, className }: { children: any; className?: string 
               onClick={onCopy}
               className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-zinc-100 hover:border-zinc-700 transition-all active:scale-95"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <IconCheck className="w-3.5 h-3.5 text-emerald-400" /> : <IconCopy className="w-3.5 h-3.5" />}
             </button>
             <div className="flex gap-1.5 pr-1">
               <div className="w-2 h-2 rounded-full bg-zinc-800" />
@@ -71,20 +71,20 @@ export function DocsMarkdownRenderer({ content }: DocsMarkdownRendererProps) {
             const isTip = text.includes('[!TIP]');
             const isWarning = text.includes('[!WARNING]');
             
-            let icon = <Info className="w-5 h-5" />;
+            let icon = <IconInfoCircle className="w-5 h-5" />;
             let borderColor = 'border-indigo-500/50';
             let bgColor = 'bg-indigo-500/5';
             let textColor = 'text-indigo-300';
             let label = 'Note';
 
             if (isTip) {
-              icon = <Lightbulb className="w-5 h-5" />;
+              icon = <IconBulb className="w-5 h-5" />;
               borderColor = 'border-emerald-500/50';
               bgColor = 'bg-emerald-500/5';
               textColor = 'text-emerald-300';
               label = 'Tip';
             } else if (isWarning) {
-              icon = <AlertTriangle className="w-5 h-5" />;
+              icon = <IconAlertTriangle className="w-5 h-5" />;
               borderColor = 'border-rose-500/50';
               bgColor = 'bg-rose-500/5';
               textColor = 'text-rose-300';

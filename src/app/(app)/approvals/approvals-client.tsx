@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Search, ThumbsDown, ThumbsUp } from "lucide-react";
+import { IconRosetteDiscountCheck, IconSearch, IconThumbDown, IconThumbUp } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
@@ -124,7 +124,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 description="Tasks that need your approval before agents can continue."
                 actions={
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                        <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search approvals..." className="w-full sm:w-80 rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40" />
                     </div>
                 }
@@ -139,7 +139,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
             <div className="space-y-3">
                 {filteredItems.length === 0 ? (
                     <div className="emperor-panel rounded-2xl p-10 text-center text-zinc-400">
-                        <BadgeCheck className="mx-auto mb-3 h-10 w-10 text-zinc-700" />
+                        <IconRosetteDiscountCheck className="mx-auto mb-3 h-10 w-10 text-zinc-700" />
                         No approval items found.
                     </div>
                 ) : (
@@ -181,7 +181,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                                                     : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20",
                                             )}
                                         >
-                                            <ThumbsUp className="mr-2 h-4 w-4" />
+                                            <IconThumbUp className="mr-2 h-4 w-4" />
                                             {isApproved ? "Approved" : "Approve"}
                                         </button>
                                         <button
@@ -196,7 +196,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                                                         : "border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20",
                                             )}
                                         >
-                                            <ThumbsDown className="mr-2 h-4 w-4" />
+                                            <IconThumbDown className="mr-2 h-4 w-4" />
                                             {isRejected ? "Rejected" : confirmRejectId === item.task.id ? "Confirm reject?" : "Reject"}
                                         </button>
                                     </div>

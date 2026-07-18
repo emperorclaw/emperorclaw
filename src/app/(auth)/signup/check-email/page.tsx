@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Loader2, Mail, RefreshCcw } from "lucide-react";
+import { IconCircleCheck, IconLoader2, IconMail, IconRefresh } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
 
@@ -48,7 +48,7 @@ function CheckEmailContent() {
         <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)]">
             <div className="text-center mb-8">
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
-                    <CheckCircle2 className="h-7 w-7" />
+                    <IconCircleCheck className="h-7 w-7" />
                 </div>
                 <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Check your inbox</h1>
                 <p className="text-zinc-500 text-sm mt-2">
@@ -89,7 +89,7 @@ function CheckEmailContent() {
                     disabled={isResending}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
                 >
-                    {isResending ? <Loader2 className="h-5 w-5 animate-spin" /> : <><RefreshCcw className="mr-2 h-4 w-4" />Resend Activation Email</>}
+                    {isResending ? <IconLoader2 className="h-5 w-5 animate-spin" /> : <><IconRefresh className="mr-2 h-4 w-4" />Resend Activation Email</>}
                 </button>
 
                 <div className="flex items-center justify-between text-xs text-zinc-500">
@@ -119,7 +119,7 @@ export default function SignupCheckEmailPage() {
 
                 <Suspense fallback={
                     <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)] text-center text-zinc-400">
-                        <Mail className="mx-auto mb-4 h-8 w-8 text-indigo-400" />
+                        <IconMail className="mx-auto mb-4 h-8 w-8 text-indigo-400" />
                         Loading activation details...
                     </div>
                 }>

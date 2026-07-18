@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { versions, type DocVersion, type DocPage } from '@/content/docs/versions';
 import { DocsMarkdownRenderer } from './docs-markdown-renderer';
-import { ChevronRight, FileText, Menu, X, ArrowLeft } from 'lucide-react';
+import { IconChevronRight, IconFileText, IconMenu2, IconX, IconArrowLeft } from "@tabler/icons-react";
 import { CustomLogo } from './custom-logo';
 
 interface DocsViewerProps {
@@ -77,7 +77,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
           : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-transparent'
       }`}
     >
-      <FileText className={`w-4 h-4 ${currentPage.slug === page.slug ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
+      <IconFileText className={`w-4 h-4 ${currentPage.slug === page.slug ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
       {page.title}
     </Link>
   );
@@ -102,14 +102,14 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               href="/"
               className="hidden md:flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-900 border border-transparent hover:border-zinc-800"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <IconArrowLeft className="w-4 h-4" />
               Back to Dashboard
             </Link>
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="lg:hidden p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900 rounded-lg border border-zinc-800"
             >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {mobileMenuOpen ? <IconX className="w-5 h-5" /> : <IconMenu2 className="w-5 h-5" />}
             </button>
           </div>
         </div>
@@ -138,14 +138,14 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                       ))}
                     </select>
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                      <ChevronRight className="w-4 h-4 rotate-90" />
+                      <IconChevronRight className="w-4 h-4 rotate-90" />
                     </div>
                   </div>
                 </div>
 
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
-                    <Menu className="w-4 h-4" />
+                    <IconMenu2 className="w-4 h-4" />
                   </div>
                   <input
                     type="text"
@@ -216,9 +216,9 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
           <main className="flex-1 min-w-0">
             <div className="mb-8 flex items-center gap-2 text-xs text-zinc-500 font-medium uppercase tracking-wider">
               <Link href="/docs" className="hover:text-indigo-400 transition-colors">Documentation</Link>
-              <ChevronRight className="w-3 h-3" />
+              <IconChevronRight className="w-3 h-3" />
               <span>{selectedVersion.label}</span>
-              <ChevronRight className="w-3 h-3" />
+              <IconChevronRight className="w-3 h-3" />
               <span className="text-zinc-300">{currentPage.title}</span>
             </div>
 

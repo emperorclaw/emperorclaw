@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { IconMail, IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 
 export default function ForgotPasswordPage() {
@@ -42,7 +42,7 @@ export default function ForgotPasswordPage() {
             <div className="relative z-10 w-full max-w-md animate-in fade-in zoom-in-95 duration-500 mx-4">
                 <div className="flex flex-col items-center mb-8">
                     <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 mb-4 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-                        <Mail className="w-6 h-6 text-indigo-400" />
+                        <IconMail className="w-6 h-6 text-indigo-400" />
                     </div>
                     <h2 className="text-3xl font-bold tracking-tight text-white mb-2">Reset Password</h2>
                     <p className="text-zinc-400 text-center">
@@ -57,14 +57,14 @@ export default function ForgotPasswordPage() {
                     {isSuccess ? (
                         <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
                             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center border border-emerald-500/30 mb-2 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                                <IconCircleCheck className="w-8 h-8 text-emerald-400" />
                             </div>
                             <h3 className="text-xl font-semibold text-zinc-100">Check your inbox</h3>
                             <p className="text-zinc-400 text-sm">
                                 We&apos;ve sent a password reset link to <strong>{email}</strong>.
                             </p>
                             <Link href="/login" className="w-full mt-6 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center">
-                                <ArrowLeft className="w-4 h-4 mr-2" />
+                                <IconArrowLeft className="w-4 h-4 mr-2" />
                                 Back to Login
                             </Link>
                         </div>
@@ -74,7 +74,7 @@ export default function ForgotPasswordPage() {
                                 <label className="text-sm font-medium text-zinc-300 ml-1">Account Email</label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Mail className="h-5 w-5 text-zinc-500" />
+                                        <IconMail className="h-5 w-5 text-zinc-500" />
                                     </div>
                                     <input
                                         type="email"
@@ -103,7 +103,7 @@ export default function ForgotPasswordPage() {
 
                             <div className="text-center pt-2">
                                 <Link href="/login" className="text-sm text-zinc-400 hover:text-indigo-400 transition-colors inline-flex items-center">
-                                    <ArrowLeft className="w-4 h-4 mr-1" />
+                                    <IconArrowLeft className="w-4 h-4 mr-1" />
                                     Back to login
                                 </Link>
                             </div>

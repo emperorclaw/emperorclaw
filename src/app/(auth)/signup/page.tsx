@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, Loader2, ShieldAlert, Mail, CheckCircle2 } from "lucide-react";
+import { IconAlertTriangle, IconLoader2, IconShieldX, IconMail, IconCircleCheck } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
 
@@ -179,7 +179,7 @@ function SignupForm() {
             <div className="min-h-screen flex flex-col justify-center items-center relative overflow-hidden">
                 <AuthBackground />
                 <div className="relative z-10 w-full max-w-xl px-6 py-10 text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
+                    <IconLoader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
                     <p className="text-zinc-400 mt-4">Loading...</p>
                 </div>
             </div>
@@ -198,7 +198,7 @@ function SignupForm() {
                         </div>
                     </div>
                     <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)] text-center">
-                        <ShieldAlert className="w-12 h-12 text-amber-400 mx-auto mb-4" />
+                        <IconShieldX className="w-12 h-12 text-amber-400 mx-auto mb-4" />
                         <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight mb-3">Invite-Only Instance</h1>
                         <p className="text-zinc-400 text-sm mb-6">
                             {error || "This instance is invite-only. Contact your administrator for an invitation."}
@@ -252,7 +252,7 @@ function SignupForm() {
                     {showInviteBanner && (
                         <div className="mb-4 rounded-xl border border-indigo-500/20 bg-indigo-500/8 p-4 text-sm text-zinc-300">
                             <div className="flex items-start gap-3">
-                                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-indigo-400" />
+                                <IconCircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-indigo-400" />
                                 <div>
                                     <p className="font-medium text-indigo-200">
                                         Invited to join {inviteInfo?.companyName}
@@ -343,7 +343,7 @@ function SignupForm() {
                             <>
                                 <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm text-zinc-300">
                                     <div className="flex items-start gap-3">
-                                        <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                                        <IconShieldX className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
                                         <div className="space-y-2">
                                             <p className="font-medium text-amber-200">Beta notice</p>
                                             <p className="text-zinc-300/90">
@@ -377,7 +377,7 @@ function SignupForm() {
 
                         <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3 text-xs text-zinc-500">
                             <div className="flex items-start gap-2">
-                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+                                <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
                                 <p>
                                     We will send a verification link to this email before the workspace can be used.
                                     {showCompanyName && " Create only one workspace per company unless you intentionally want separate isolated datasets and agent state."}
@@ -395,7 +395,7 @@ function SignupForm() {
                             disabled={loading || Boolean(validateClientInput())}
                             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 mt-6"
                         >
-                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : regMode === "bootstrap" ? "Create Workspace" : regMode === "invited" ? "Accept Invitation" : "Create Account"}
+                            {loading ? <IconLoader2 className="w-5 h-5 animate-spin" /> : regMode === "bootstrap" ? "Create Workspace" : regMode === "invited" ? "Accept Invitation" : "Create Account"}
                         </button>
                     </form>
 
@@ -417,7 +417,7 @@ export default function SignupPage() {
             <div className="min-h-screen flex flex-col justify-center items-center relative overflow-hidden">
                 <AuthBackground />
                 <div className="relative z-10 w-full max-w-xl px-6 py-10 text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
+                    <IconLoader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
                     <p className="text-zinc-400 mt-4">Loading...</p>
                 </div>
             </div>

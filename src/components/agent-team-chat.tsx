@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { User, Send, AtSign } from "lucide-react";
+import { IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { cn } from "@/lib/utils";
@@ -347,7 +347,7 @@ export function AgentTeamChat({
                                             {!isContinuation && (
                                                 isHuman ? (
                                                     <div className="h-8 w-8 flex items-center justify-center overflow-hidden rounded-full border border-zinc-700 bg-zinc-800/80">
-                                                        <User className="h-4 w-4 text-zinc-400" />
+                                                        <IconUser className="h-4 w-4 text-zinc-400" />
                                                     </div>
                                                 ) : (
                                                     <div className="h-8 w-8 overflow-hidden rounded-full border border-cyan-500/20 bg-cyan-500/10">
@@ -438,7 +438,7 @@ export function AgentTeamChat({
                             title="Mention an agent"
                             className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
                         >
-                            <AtSign className="h-4 w-4" />
+                            <IconAt className="h-4 w-4" />
                         </button>
 
                         <MentionTextarea
@@ -456,7 +456,7 @@ export function AgentTeamChat({
                             disabled={!draft.trim() || isSending}
                             className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
-                            <Send className="h-4 w-4 text-white" />
+                            <IconSend className="h-4 w-4 text-white" />
                         </button>
                     </div>
                 </form>
