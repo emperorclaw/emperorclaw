@@ -133,9 +133,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [isMutating, setIsMutating] = useState(false);
     const [mutationError, setMutationError] = useState<string | null>(null);
     const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
-    const [hideCompletedProjects, setHideCompletedProjects] = useState(() => {
-        try { return localStorage.getItem("projects-board-hide-completed") === "1"; } catch { return true; }
-    });
+    const [hideCompletedProjects, setHideCompletedProjects] = useState(true); // default: hide completed; localStorage overrides in useEffect
     const [completingProject, setCompletingProject] = useState<string | null>(null);
     const [draggingTask, setDraggingTask] = useState<any | null>(null);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -146,11 +144,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         const savedAgent = localStorage.getItem("projects-board-agent-filter");
         const savedCustomer = localStorage.getItem("projects-board-customer-filter");
         const savedSearch = localStorage.getItem("projects-board-search-query");
+        const savedHideCompleted = localStorage.getItem("projects-board-hide-completed");
 
         if (savedProject) setProjectFilter(savedProject);
         if (savedAgent) setAgentFilter(savedAgent);
         if (savedCustomer) setCustomerFilter(savedCustomer);
         if (savedSearch) setSearchQuery(savedSearch);
+        // Only override the default (true) if user explicitly chose to show all
+        if (savedHideCompleted === "0") setHideCompletedProjects(false);
     }, []);
 
     // Save to localStorage when filters change

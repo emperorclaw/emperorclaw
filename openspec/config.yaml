@@ -1,0 +1,57 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Next.js 16.2 (App Router), React 19.2, TypeScript 5 (strict), Tailwind CSS 4 + shadcn/ui (Radix)
+  Backend: PostgreSQL + Drizzle ORM 0.45, NextAuth v4 (CredentialsProvider + Argon2), custom server.ts with WebSocket (ws)
+  Runtime: Node.js >= 20
+  Architecture: App Router with route groups ((app) for authenticated routes), middleware-based auth, MCP API routes, OpenClaw control plane integration
+
+strict_tdd: true
+
+testing:
+  runner: node --test (built-in Node.js test runner)
+  framework: node:test + node:assert/strict
+  layers:
+    unit:
+      available: true
+      tool: "node:test (CommonJS .test.cjs) + npx tsx --test (TypeScript .test.ts)"
+    integration:
+      available: false
+      tool: —
+    e2e:
+      available: false
+      tool: —
+  coverage:
+    available: false
+    command: —
+  quality:
+    linter:
+      available: true
+      command: "npx eslint"
+    type_checker:
+      available: true
+      command: "npx tsc --noEmit"
+    formatter:
+      available: false
+      command: —
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Run tests before marking task complete
+    - TypeScript strict: no new `any` without documented justification
+  verify:
+    - Compare implementation against spec scenarios
+    - Flag missing test coverage for new logic
+  archive:
+    - Merge delta specs into main specs under openspec/specs/

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { createPortal } from "react-dom";
 import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -27,6 +28,8 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
     const [unreadMessages, setUnreadMessages] = useState(0);
+    const [hoveredNav, setHoveredNav] = useState<string | null>(null);
+    const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
     useEffect(() => {
         // Deliberately deferred to an effect: localStorage isn't available
@@ -64,8 +67,14 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
         });
     }
 
-    const userEmail = session?.user?.email || "";
-    const userName = session?.user?.name || userEmail.split("@")[0] || "User";
+    // Persist last known user identity across SPA navigations to prevent
+    // the sidebar flashing "U User" while the session rehydrates.
+    const lastUserRef = useRef<{ email: string; name: string }>({ email: "", name: "" });
+    if (session?.user?.email) {
+        lastUserRef.current = { email: session.user.email, name: session.user.name || "" };
+    }
+    const userEmail = session?.user?.email || lastUserRef.current.email || "";
+    const userName = session?.user?.name || lastUserRef.current.name || userEmail.split("@")[0] || "User";
     const userInitial = (userName[0] || "U").toUpperCase();
 
     const links = [
@@ -86,7 +95,8 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     }
 
     return (
-        <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-200", collapsed ? "w-20" : "w-20 md:w-72")}>
+        <>
+        <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-200 overflow-visible", collapsed ? "w-20" : "w-20 md:w-64")}>
             <div className={cn("border-b border-white/10", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
                 <div className={cn(
                     "flex items-center",
@@ -94,15 +104,17 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         ? "justify-center"
                         : "gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 sm:p-3"
                 )}>
-                    <div className={cn(
-                        "grid shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-950/20",
-                        collapsed ? "h-10 w-10" : "h-9 w-9 sm:h-10 sm:w-10"
-                    )}>
-                        <CustomLogo className={cn(collapsed ? "h-6 w-6" : "h-5 w-5 sm:h-5 sm:w-5")} />
-                    </div>
-                    <div className={cn("hidden min-w-0 flex-1", collapsed ? "" : "md:block")}>
-                        <div className="truncate text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
-                    </div>
+                    {collapsed ? (
+                        /* Collapsed: show only the penguin emblem */
+                        <div className="grid h-14 w-14 shrink-0 place-items-center">
+                            <CustomLogo className="h-7 w-7" />
+                        </div>
+                    ) : (
+                        /* Expanded: show only the text */
+                        <div className="hidden min-w-0 flex-1 md:block">
+                            <div className="truncate text-base font-semibold tracking-tight text-white">Emperor Claw</div>
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={toggleCollapsed}
@@ -117,7 +129,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                 </div>
             </div>
 
-            <nav className="flex-1 space-y-0.5 sm:space-y-1 overflow-y-auto px-2 py-4 sm:px-4 sm:py-5">
+            <nav className="flex-1 space-y-0.5 sm:space-y-1 overflow-y-auto overflow-x-visible px-2 py-4 sm:px-4 sm:py-5">
                 {links.map((link) => {
                     const Icon = link.icon;
                     const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
@@ -126,9 +138,15 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         <Link
                             key={link.name}
                             href={link.href}
-                            title={collapsed ? (showUnread ? `${link.name} (${unreadMessages} unread)` : link.name) : undefined}
+                            onMouseEnter={(e) => {
+                                if (!collapsed) return;
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setTooltipPos({ top: rect.top + rect.height / 2, left: rect.right + 12 });
+                                setHoveredNav(link.name);
+                            }}
+                            onMouseLeave={() => { setHoveredNav(null); setTooltipPos(null); }}
                             className={cn(
-                                "group relative flex items-center rounded-xl px-2.5 py-2.5 text-sm font-medium transition-all duration-200",
+                                "relative flex items-center rounded-xl px-2.5 py-2.5 text-sm font-medium transition-all duration-200",
                                 collapsed ? "justify-center gap-0" : "gap-3",
                                 isActive
                                     ? "border border-cyan-400/20 bg-cyan-400/10 text-white shadow-sm shadow-cyan-950/20"
@@ -155,24 +173,32 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
             <div className={cn("border-t border-white/10", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
                     <Link
                         href="/docs"
-                        title={collapsed ? "Documentation" : undefined}
+                        onMouseEnter={(e) => {
+                            if (!collapsed) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setTooltipPos({ top: rect.top + rect.height / 2, left: rect.right + 12 });
+                            setHoveredNav("Documentation");
+                        }}
+                        onMouseLeave={() => { setHoveredNav(null); setTooltipPos(null); }}
                         className={cn(
-                            "group flex items-center rounded-xl text-sm font-medium transition-all duration-200",
+                            "relative flex items-center rounded-xl text-sm font-medium transition-all duration-200",
                             collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
                             pathname?.startsWith("/docs")
                                 ? "border border-cyan-400/20 bg-cyan-400/10 text-white"
                                 : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
                         )}
                     >
-                        <BookOpen className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
+                        <BookOpen className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500")} />
                         <span className={cn("hidden", collapsed ? "" : "md:inline")}>Documentation</span>
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className={cn(
-                                "flex w-full cursor-pointer items-center rounded-2xl border border-white/10 bg-white/[0.035] text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]",
+                                "group relative flex w-full cursor-pointer items-center rounded-2xl border border-white/10 bg-white/[0.035] text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]",
                                 collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 sm:gap-3 px-2.5 py-2.5 sm:px-3 sm:py-3"
-                            )}>
+                            )}
+                                title={collapsed ? `${userName}\n${userEmail}` : undefined}
+                            >
                                 <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
                                     {userInitial}
                                 </div>
@@ -200,5 +226,19 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                     </DropdownMenu>
                 </div>
         </aside>
+        {hoveredNav && tooltipPos && typeof document !== "undefined" && createPortal(
+            <div
+                className="pointer-events-none fixed whitespace-nowrap rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-100 shadow-lg ring-1 ring-white/10 z-[9999]"
+                style={{
+                    top: tooltipPos.top,
+                    left: tooltipPos.left,
+                    transform: "translateY(-50%)",
+                }}
+            >
+                {hoveredNav}
+            </div>,
+            document.body
+        )}
+    </>
     );
 }
