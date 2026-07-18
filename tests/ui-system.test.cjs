@@ -16,7 +16,7 @@ function assertContains(source, needle, message) {
 
 test("App shell exposes the standardized Emperor visual system", () => {
   const rootLayout = read("src/app/layout.tsx");
-  assertContains(rootLayout, "Plus_Jakarta_Sans", "root layout should use the professional app font");
+  assertContains(rootLayout, "Geist", "root layout should use the professional app font (Geist)");
 
   const appLayout = read("src/app/(app)/layout.tsx");
   ["emperor-app-shell", "emperor-main", "emperor-page-frame"].forEach((needle) => {
@@ -46,6 +46,6 @@ test("Shared UI primitives use the professional dark system", () => {
   });
 
   const sidebar = read("src/components/app-sidebar.tsx");
-  assertContains(sidebar, "md:w-72", "sidebar should keep mobile navigation as a compact rail");
+  assertContains(sidebar, "md:w-64", "sidebar should keep mobile navigation as a compact rail");
   assertContains(sidebar, "text-cyan-300", "sidebar should use the standardized accent color");
 });

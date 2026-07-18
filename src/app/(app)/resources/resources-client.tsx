@@ -508,7 +508,7 @@ export default function ResourcesClient({
                     expandedClassName="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/60"
                     label="Expand graph"
                   >
-                    {(expanded) => <div className="h-full"><LocalGraph key={expanded ? "expanded" : "collapsed"} graph={insights.graph} selectedId={selectedResource.id} /></div>}
+                    {(expanded) => <div className="h-full"><LocalGraph key={expanded ? "expanded" : "collapsed"} graph={insights.graph} selectedId={selectedResource.id} showLabels={expanded} /></div>}
                   </ExpandablePanel>
                 </div>
 
@@ -633,7 +633,7 @@ function useContainerSize<T extends HTMLElement>() {
   return { ref, size };
 }
 
-function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string }) {
+function LocalGraph({ graph, selectedId, showLabels = false }: { graph: { nodes: GraphNode[]; edges: GraphEdge[] }; selectedId: string; showLabels?: boolean }) {
   const { ref: containerRef, size } = useContainerSize<HTMLDivElement>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null);
@@ -707,7 +707,7 @@ function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges:
           graphData={graphData}
           backgroundColor="rgba(0,0,0,0)"
           nodeRelSize={3}
-          nodeLabel={(raw: unknown) => (raw as ForceNode).label}
+          nodeLabel={showLabels ? (raw: unknown) => (raw as ForceNode).label : ""}
           onNodeHover={(raw: unknown) => setHoveredNodeId((raw as ForceNode | null)?.id || null)}
           linkColor={(raw: unknown) => {
             const link = raw as ForceLink;
@@ -740,12 +740,14 @@ function LocalGraph({ graph, selectedId }: { graph: { nodes: GraphNode[]; edges:
             ctx.fillStyle = color;
             ctx.fill();
             ctx.shadowBlur = 0;
-            const fontSize = Math.max(10 / globalScale, 3.2);
-            ctx.font = `${node.selected ? "700" : "500"} ${fontSize}px Inter, sans-serif`;
-            ctx.textAlign = "left";
-            ctx.textBaseline = "middle";
-            ctx.fillStyle = node.selected ? "#e9d5ff" : node.unresolved ? "#fde68a" : "#d4d4d8";
-            ctx.fillText(node.label.slice(0, 30), (node.x || 0) + radius + 3, node.y || 0);
+            if (showLabels || hoveredNodeId === node.id) {
+              const fontSize = Math.max(10 / globalScale, 3.2);
+              ctx.font = `${node.selected ? "700" : "500"} ${fontSize}px Inter, sans-serif`;
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = node.selected ? "#e9d5ff" : node.unresolved ? "#fde68a" : "#d4d4d8";
+              ctx.fillText(node.label.slice(0, 30), (node.x || 0) + radius + 3, node.y || 0);
+            }
             ctx.restore();
           }}
         />

@@ -15,6 +15,14 @@ interface MarkdownRendererProps {
  * ```diff block so they render as one preformatted block instead. Skips
  * spans already inside an existing code fence.
  */
+/**
+ * Ensure fenced code blocks have blank line before them to prevent
+ * react-markdown from nesting <pre> inside <p> (invalid HTML / hydration error).
+ */
+function ensureBlankBeforeFences(content: string): string {
+  return content.replace(/([^\n])\n```/g, '$1\n\n```');
+}
+
 function wrapUnifiedDiffHunks(content: string): string {
   if (!content.includes("@@ ")) return content;
   const lines = content.split("\n");
@@ -47,7 +55,7 @@ function wrapUnifiedDiffHunks(content: string): string {
 }
 
 export function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
-  const normalizedContent = wrapUnifiedDiffHunks(content);
+  const normalizedContent = ensureBlankBeforeFences(wrapUnifiedDiffHunks(content));
   return (
     <div className={`markdown-content prose prose-zinc prose-invert max-w-none ${className}`}>
       <ReactMarkdown
@@ -56,16 +64,18 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
           h1: ({ ...props }) => <h1 className="text-2xl font-bold mb-4 mt-6 text-zinc-100 border-b border-zinc-800 pb-2" {...props} />,
           h2: ({ ...props }) => <h2 className="text-xl font-bold mb-3 mt-5 text-zinc-100" {...props} />,
           h3: ({ ...props }) => <h3 className="text-lg font-bold mb-2 mt-4 text-zinc-100" {...props} />,
-          p: ({ ...props }) => <p className="mb-4 leading-relaxed text-zinc-300" {...props} />,
+          p: ({ ...props }) => <div className="mb-4 leading-relaxed text-zinc-300" {...props} />,
           ul: ({ ...props }) => <ul className="list-disc pl-6 mb-4 text-zinc-300 space-y-1" {...props} />,
           ol: ({ ...props }) => <ol className="list-decimal pl-6 mb-4 text-zinc-300 space-y-1" {...props} />,
           li: ({ ...props }) => <li className="mb-1" {...props} />,
-          code: ({ inline, ...props }: any) =>
-            inline ? (
-              <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-300" {...props} />
-            ) : (
-              <pre className="bg-zinc-900/80 p-4 rounded-lg border border-zinc-800 overflow-x-auto mb-4 font-mono text-sm text-zinc-300" {...props} />
-            ),
+          code: ({ inline, ...props }: any) => {
+            // react-markdown sometimes passes inline=undefined for edge cases;
+            // default to inline to avoid <pre> nesting inside <p>/<div>
+            if (inline === false) {
+              return <pre className="bg-zinc-900/80 p-4 rounded-lg border border-zinc-800 overflow-x-auto mb-4 font-mono text-sm text-zinc-300"><code {...props} /></pre>;
+            }
+            return <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-300" {...props} />;
+          },
           blockquote: ({ ...props }) => <blockquote className="border-l-4 border-indigo-500/50 pl-4 italic mb-4 text-zinc-400 bg-indigo-500/5 py-1" {...props} />,
           table: ({ ...props }) => (
             <div className="overflow-x-auto mb-6">
