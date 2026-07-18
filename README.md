@@ -25,6 +25,33 @@ Coordinate agents, customers, projects, knowledge, artifacts, approvals, and inc
 
 ---
 
+## Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
+```
+
+Open `http://localhost:3000` and create your admin account. That's it — Docker, PostgreSQL, secrets, and migrations are handled automatically.
+
+<details>
+<summary>Other platforms & options</summary>
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
+```
+
+**With a custom domain:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash -s -- --domain claw.mycompany.com
+```
+
+**Manual Docker or bare-metal setup:** see the [full quick start ↓](#quick-start).
+
+</details>
+
+---
+
 ## The problem
 
 Agent runtimes execute work. OpenClaw agents reason, call tools, and produce output. Hermes agents browse, scrape, and act. Each runtime is excellent at *doing* — but none of them are designed to answer the questions that appear the moment you have more than one agent:
