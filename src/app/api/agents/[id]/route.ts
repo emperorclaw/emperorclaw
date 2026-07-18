@@ -1,8 +1,97 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { deleteAgentAndData } from "@/lib/agent-deletion";
+import { db } from "@/db";
+import {
+    actionRuns,
+    agentMemoryEntries,
+    agentMemorySnapshots,
+    agentSessions,
+    agents,
+    messageThreads,
+    threadMessages,
+    threadParticipants,
+} from "@/db/schema";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { isMissingSchemaError } from "@/lib/schema-compat";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(
+    _req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const companyId = await getCompanyId();
+    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await params;
+    const [agent] = await db.select().from(agents).where(
+        and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))
+    ).limit(1);
+
+    if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+
+    let latestSnapshot = null;
+    let memoryEntries: typeof agentMemoryEntries.$inferSelect[] = [];
+    let sessions: typeof agentSessions.$inferSelect[] = [];
+    let runs: typeof actionRuns.$inferSelect[] = [];
+    let threads: typeof messageThreads.$inferSelect[] = [];
+    let lastMessages: typeof threadMessages.$inferSelect[] = [];
+
+    try {
+        [latestSnapshot] = await db.select().from(agentMemorySnapshots).where(
+            and(eq(agentMemorySnapshots.companyId, companyId), eq(agentMemorySnapshots.agentId, id))
+        ).orderBy(desc(agentMemorySnapshots.createdAt)).limit(1);
+
+        memoryEntries = await db.select().from(agentMemoryEntries).where(
+            and(eq(agentMemoryEntries.companyId, companyId), eq(agentMemoryEntries.agentId, id))
+        ).orderBy(desc(agentMemoryEntries.createdAt)).limit(30);
+
+        sessions = await db.select().from(agentSessions).where(
+            and(eq(agentSessions.companyId, companyId), eq(agentSessions.agentId, id))
+        ).orderBy(desc(agentSessions.startedAt)).limit(20);
+
+        runs = await db.select().from(actionRuns).where(
+            and(eq(actionRuns.companyId, companyId), eq(actionRuns.agentId, id))
+        ).orderBy(desc(actionRuns.startedAt)).limit(20);
+
+        const participants = await db.select().from(threadParticipants).where(
+            and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), eq(threadParticipants.participantId, id))
+        );
+
+        const threadIds = participants.map(p => p.threadId);
+        threads = threadIds.length > 0
+            ? await db.select().from(messageThreads).where(
+                and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, threadIds), isNull(messageThreads.archivedAt))
+            ).orderBy(desc(messageThreads.createdAt)).limit(20)
+            : [];
+
+        lastMessages = threadIds.length > 0
+            ? await db.select().from(threadMessages).where(
+                and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, threadIds))
+            ).orderBy(desc(threadMessages.createdAt)).limit(100)
+            : [];
+    } catch (error) {
+        if (!isMissingSchemaError(error)) throw error;
+    }
+
+    const latestMessageByThread: Record<string, typeof threadMessages.$inferSelect> = {};
+    for (const msg of lastMessages) {
+        if (!latestMessageByThread[msg.threadId]) latestMessageByThread[msg.threadId] = msg;
+    }
+
+    return NextResponse.json({
+        agent,
+        latestSnapshot,
+        memoryEntries,
+        sessions,
+        runs,
+        threads: threads.map(t => ({
+            ...t,
+            lastMessage: latestMessageByThread[t.id]?.text ?? null,
+        })),
+    });
+}
 
 export async function DELETE(
     req: NextRequest,

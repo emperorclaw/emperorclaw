@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconRobot, IconSearch } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
+import { AgentDetailPanel } from "./agent-detail-panel";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
@@ -79,55 +80,16 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                         </div>
                     </aside>
 
-                    {selectedAgent ? <AgentDetail agent={selectedAgent} /> : null}
+                    {selectedAgent ? <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} /> : (
+                        <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
+                            <div className="text-center text-zinc-500">
+                                <IconRobot className="mx-auto h-12 w-12 mb-3 text-zinc-600" />
+                                <p className="text-sm">Select an agent from the list to view details.</p>
+                            </div>
+                        </main>
+                    )}
                 </div>
             )}
-        </div>
-    );
-}
-
-function AgentDetail({ agent }: { agent: AgentDirectoryItem }) {
-    return (
-        <main className="emperor-panel rounded-2xl p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4 border-b border-zinc-800/80 pb-4 sm:pb-5">
-                <div className="flex items-center gap-3 sm:gap-4">
-                    <AgentAvatar agent={agent} />
-                    <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100">{agent.name}</h2>
-                            <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">{agent.role}</span>
-                        </div>
-                        <div className="mt-1.5 sm:mt-2 flex items-center gap-2 text-sm text-zinc-400">
-                            <StatusDot status={agent.status} />
-                            <span className="capitalize">{agent.status}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    <Link href={`/agents/${agent.id}`} className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 py-1.5 sm:py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100 transition-colors hover:bg-cyan-400/15">
-                        Open detail
-                    </Link>
-                    <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
-                </div>
-            </div>
-
-            <div className="mt-4 sm:mt-5 grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3">
-                <Metric label="Current Load" value={`${agent.currentLoad}%`} />
-                <Metric label="Tasks Done" value={agent.tasksCompleted.toLocaleString()} />
-                <Metric label="Uptime" value={agent.uptime} />
-            </div>
-        </main>
-    );
-}
-
-function AgentAvatar({ agent, size = "lg" }: { agent: AgentDirectoryItem; size?: "sm" | "lg" }) {
-    return (
-        <div className={cn("shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900", size === "sm" ? "h-10 w-10" : "h-14 w-14")}>
-            <img
-                src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id || agent.name)}`}
-                className="h-full w-full object-cover"
-                alt=""
-            />
         </div>
     );
 }
@@ -141,11 +103,14 @@ function StatusDot({ status }: { status: string }) {
     return <span className={cn("h-2 w-2 rounded-full", statusColor)} />;
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function AgentAvatar({ agent, size = "lg" }: { agent: AgentDirectoryItem; size?: "sm" | "lg" }) {
     return (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 sm:p-4">
-            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
-            <div className="mt-1.5 sm:mt-2 font-mono text-base sm:text-lg text-zinc-100">{value}</div>
+        <div className={cn("shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900", size === "sm" ? "h-10 w-10" : "h-14 w-14")}>
+            <img
+                src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id || agent.name)}`}
+                className="h-full w-full object-cover"
+                alt=""
+            />
         </div>
     );
 }
