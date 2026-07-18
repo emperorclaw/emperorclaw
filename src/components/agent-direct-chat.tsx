@@ -669,7 +669,7 @@ function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
         return (
             <MarkdownRenderer
                 content={text}
-                className="break-words [&_.prose]:max-w-none [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
+                className="break-words [&_.prose]:max-w-prose [&_.prose]:text-sm [&_.prose]:leading-relaxed [&_.prose_p:first-child]:mt-0 [&_.prose_p:last-child]:mb-0 [&_.prose_p]:mb-3 [&_.prose_ul]:mb-3 [&_.prose_ol]:mb-3 [&_.prose_pre]:mb-3 [&_.prose_pre]:bg-zinc-950/70 [&_.prose_pre]:border-zinc-800/80 [&_.prose_code]:text-emerald-200 [&_.prose_a]:text-emerald-300"
             />
         );
     }

@@ -5,7 +5,7 @@ This is the practical activation path for a plugin-based Emperor agent.
 ## 1. Install The Plugin
 
 ```bash
-openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
+openclaw plugins install clawhub:emperor-claw-os-plugin
 ```
 
 ## 2. Set The Company Token

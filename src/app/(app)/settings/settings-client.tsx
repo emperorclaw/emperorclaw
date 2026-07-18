@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Cable, CheckCircle2, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Cable, CheckCircle2, Copy, KeyRound, Plus, Settings2, Trash2, Users } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ type SettingsToken = {
     expiresAt: string;
 };
 
-type SettingsTab = "connections" | "tokens" | "advanced";
+type SettingsTab = "connections" | "tokens" | "advanced" | "instance" | "members";
 type TokenScope = "mcp_full" | "mcp_danger";
 
 const runtimeCards = [
@@ -45,7 +46,15 @@ function tokenScopeHelp(scope: TokenScope) {
         : "Default token for connected agents, bridges, and normal runtime access.";
 }
 
-export default function SettingsClient({ initialTokens }: { initialTokens: SettingsToken[] }) {
+export default function SettingsClient({
+    initialTokens,
+    companyRole,
+    instanceRole,
+}: {
+    initialTokens: SettingsToken[];
+    companyRole: string;
+    instanceRole: string;
+}) {
     const [tokens, setTokens] = useState(initialTokens);
     const [newTokenName, setNewTokenName] = useState("");
     const [newTokenScope, setNewTokenScope] = useState<TokenScope>("mcp_full");
@@ -153,6 +162,8 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
                     ["advanced", "Advanced"],
+                    ...(instanceRole === "instance_admin" ? [["instance", "Instance"] as const] : []),
+                    ...(instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin" ? [["members", "Members"] as const] : []),
                 ] as const).map(([id, label]) => (
                     <button
                         key={id}
@@ -306,6 +317,157 @@ export default function SettingsClient({ initialTokens }: { initialTokens: Setti
                     </div>
                 </section>
             )}
+
+            {activeTab === "instance" && instanceRole === "instance_admin" && (
+                <InstanceSettingsTab />
+            )}
+
+            {activeTab === "members" && (
+                <section className="space-y-4">
+                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
+                        <h2 className="flex items-center text-lg font-semibold text-zinc-100">
+                            <Users className="mr-2 h-5 w-5 text-cyan-300" /> Team members
+                        </h2>
+                        <p className="mt-2 text-sm leading-6 text-zinc-400">
+                            Invite colleagues, manage roles and permissions, and control who can access your workspace.
+                        </p>
+                        <div className="mt-5">
+                            <Link
+                                href="/settings/members"
+                                className="inline-flex items-center gap-2 rounded-xl bg-cyan-400/10 border border-cyan-400/25 px-4 py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 transition-colors"
+                            >
+                                <Users className="h-4 w-4" />
+                                Open Members
+                                <ArrowRight className="h-3.5 w-3.5" />
+                            </Link>
+                        </div>
+                    </div>
+                </section>
+            )}
         </div>
+    );
+}
+
+function InstanceSettingsTab() {
+    const [registrationMode, setRegistrationMode] = useState<string | null>(null);
+    const [instanceName, setInstanceName] = useState("");
+    const [loaded, setLoaded] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [savingName, setSavingName] = useState(false);
+
+    // Load current settings
+    if (!loaded) {
+        setLoaded(true);
+        fetch("/api/instance/settings")
+            .then((r) => r.json())
+            .then((data) => {
+                setRegistrationMode(data.settings?.registration_mode ?? "invite-only");
+                setInstanceName(data.settings?.instance_name ?? "");
+            })
+            .catch(() => setRegistrationMode("invite-only"));
+    }
+
+    const handleToggle = async () => {
+        if (saving || !registrationMode) return;
+        const newMode = registrationMode === "invite-only" ? "open" : "invite-only";
+        setSaving(true);
+        try {
+            const res = await fetch("/api/instance/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ settings: { registration_mode: newMode } }),
+            });
+            if (res.ok) {
+                setRegistrationMode(newMode);
+                toast.success(`Registration is now ${newMode === "open" ? "open" : "invite-only"}.`);
+            } else {
+                toast.error("Failed to update registration mode.");
+            }
+        } catch {
+            toast.error("Failed to update registration mode.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveName = async () => {
+        if (savingName) return;
+        setSavingName(true);
+        try {
+            const res = await fetch("/api/instance/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ settings: { instance_name: instanceName } }),
+            });
+            if (res.ok) {
+                toast.success("Instance name updated.");
+            } else {
+                toast.error("Failed to update instance name.");
+            }
+        } catch {
+            toast.error("Failed to update instance name.");
+        } finally {
+            setSavingName(false);
+        }
+    };
+
+    return (
+        <section className="space-y-4">
+            <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
+                <h2 className="flex items-center text-lg font-semibold text-zinc-100">
+                    <Settings2 className="mr-2 h-5 w-5 text-cyan-300" /> Instance configuration
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                    These settings apply to the entire self-hosted instance. Only the instance administrator can change them.
+                </p>
+
+                <div className="mt-6 space-y-4">
+                    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 p-4">
+                        <div>
+                            <h3 className="font-medium text-zinc-100">Registration mode</h3>
+                            <p className="mt-1 text-sm text-zinc-400">
+                                {registrationMode === "open"
+                                    ? "Anyone can sign up and join this instance as a member."
+                                    : "Only invited users can create an account."}
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleToggle}
+                            disabled={saving || !registrationMode}
+                            className={cn(
+                                "min-w-[100px]",
+                                registrationMode === "open" && "border-emerald-500/30 text-emerald-300"
+                            )}
+                        >
+                            {saving ? "Saving..." : registrationMode === "open" ? "Open" : "Invite-only"}
+                        </Button>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                        <h3 className="font-medium text-zinc-100">Instance name</h3>
+                        <p className="mt-1 text-sm text-zinc-400">Display name shown in emails and page titles.</p>
+                        <div className="mt-3 flex gap-2">
+                            <Input
+                                type="text"
+                                placeholder="My Emperor Claw Instance"
+                                value={instanceName}
+                                onChange={(e) => setInstanceName(e.target.value)}
+                                className="flex-1"
+                            />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleSaveName}
+                                disabled={savingName}
+                            >
+                                {savingName ? "Saving..." : "Save"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
     );
 }

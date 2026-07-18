@@ -103,7 +103,7 @@ If no steps are registered, the UI shows **No steps registered** and the agent s
 
 ## Endpoints
 
-Base: `https://emperorclaw.malecu.eu/api/mcp`
+Base: `https://emperorclaw.example.com/api/mcp`
 
 | Endpoint | Method | Description |
 |---|---|---|

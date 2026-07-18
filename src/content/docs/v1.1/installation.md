@@ -17,13 +17,13 @@ The plugin is designed to give you an operational Emperor-connected OpenClaw age
 Install the published Emperor plugin from ClawHub:
 
 ```bash
-openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin
+openclaw plugins install clawhub:emperor-claw-os-plugin
 ```
 
 If you want to pin a version explicitly, replace `<version>` with the release you want:
 
 ```bash
-openclaw plugins install clawhub:@malecu/emperor-claw-os-plugin@<version>
+openclaw plugins install clawhub:emperor-claw-os-plugin@<version>
 ```
 
 ## 2. Configure Access

@@ -25,14 +25,11 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
 
     getDownloadUrl(params: StorageDownloadParams): string {
-        // Local storage has no public CDN — downloads stream through the
-        // authenticated app route, which is more secure than a public URL.
         const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
-        const storageRoot = getStorageRoot();
-        const fullPath = path.join(storageRoot, storageKey);
+        const storageRoot = path.resolve(getStorageRoot());
+        const fullPath = path.resolve(storageRoot, storageKey);
 
-        // Ensure the resolved path stays within the storage root
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!fullPath.startsWith(storageRoot + path.sep) && fullPath !== storageRoot) {
             throw new Error("Path traversal detected in download URL resolution");
         }
         return `/api/ui/artifacts/${encodeURIComponent(storageKey)}/download`;

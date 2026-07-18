@@ -1,3 +1,11 @@
+/**
+ * Deployment mode — architecturally constant, read once at process startup (NFR-4).
+ * "self-hosted" is the default for the open-source release.
+ * "cloud" must be explicitly opted into.
+ */
+export const DEPLOYMENT_MODE: "self-hosted" | "cloud" =
+    process.env.DEPLOYMENT_MODE === "cloud" ? "cloud" : "self-hosted";
+
 export function requireEnv(name: string): string {
     const value = process.env[name];
     if (value === undefined || value === null || value === "") {
