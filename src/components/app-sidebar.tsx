@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, FolderKanban, Bot, ShieldCheck, KeyRound, Terminal, LogOut, User, HardDrive, MessageSquare, BadgeCheck, BookOpen, ScrollText, GitBranch, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconTerminal2, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -78,20 +78,20 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
     const userInitial = (userName[0] || "U").toUpperCase();
 
     const links = [
-        { name: "Dashboard", href: "/", icon: LayoutDashboard },
-        { name: "Projects", href: "/projects", icon: FolderKanban },
-        { name: "Automations", href: "/pipelines", icon: GitBranch },
-        { name: "Knowledge base", href: "/resources", icon: ScrollText },
-        { name: "Messages", href: "/messages", icon: MessageSquare },
-        { name: "Approvals", href: "/approvals", icon: BadgeCheck },
-        { name: "Agents", href: "/agents", icon: Bot },
-        { name: "Customers", href: "/customers", icon: ShieldCheck },
-        { name: "Files", href: "/artifacts", icon: HardDrive },
-        { name: "Settings", href: "/settings", icon: KeyRound },
+        { name: "Dashboard", href: "/", icon: IconLayoutDashboard },
+        { name: "Projects", href: "/projects", icon: IconFolder },
+        { name: "Automations", href: "/pipelines", icon: IconGitBranch },
+        { name: "Knowledge base", href: "/resources", icon: IconFileText },
+        { name: "Messages", href: "/messages", icon: IconMessage },
+        { name: "Approvals", href: "/approvals", icon: IconRosetteDiscountCheck },
+        { name: "Agents", href: "/agents", icon: IconRobot },
+        { name: "Customers", href: "/customers", icon: IconShieldCheck },
+        { name: "Files", href: "/artifacts", icon: IconDeviceSdCard },
+        { name: "Settings", href: "/settings", icon: IconKey },
     ];
 
     if (isPlatformAdmin) {
-        links.push({ name: "Ops", href: "/ops", icon: Terminal });
+        links.push({ name: "Ops", href: "/ops", icon: IconTerminal2 });
     }
 
     return (
@@ -170,7 +170,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                             collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
                         )}
                     >
-                        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                        {collapsed ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
                         <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>{collapsed ? "" : "Collapse"}</span>
                     </button>
                     <Link
@@ -190,7 +190,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                                 : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
                         )}
                     >
-                        <BookOpen className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500")} />
+                        <IconBook className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500")} />
                         <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>Documentation</span>
                     </Link>
                     <DropdownMenu>
@@ -213,7 +213,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                         <DropdownMenuContent align="start" className="w-56 border-zinc-800 bg-zinc-950 text-zinc-200 shadow-2xl shadow-black/40">
                             <DropdownMenuItem asChild className="gap-2 text-zinc-200 focus:bg-zinc-900">
                                 <Link href="/settings">
-                                    <User className="h-4 w-4 text-zinc-400" />
+                                    <IconUser className="h-4 w-4 text-zinc-400" />
                                     <span>Workspace Settings</span>
                                 </Link>
                             </DropdownMenuItem>
@@ -221,7 +221,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                                 className="gap-2 text-zinc-200 focus:bg-zinc-900"
                                 onClick={() => signOut({ callbackUrl: "/login" })}
                             >
-                                <LogOut className="h-4 w-4 text-zinc-400" />
+                                <IconLogout className="h-4 w-4 text-zinc-400" />
                                 <span>Logout</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>

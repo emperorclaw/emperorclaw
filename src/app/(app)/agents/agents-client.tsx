@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Bot, Search } from "lucide-react";
+import { IconRobot, IconSearch } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { PageHeader } from "@/components/page-header";
@@ -46,7 +46,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
 
             {agents.length === 0 ? (
                 <div className="emperor-panel rounded-2xl py-12 text-center">
-                    <Bot className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
+                    <IconRobot className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
                     <h3 className="mb-1 font-medium text-zinc-200">No agents yet</h3>
                     <p className="text-sm text-zinc-500">Add an agent profile, then connect a Hermes/OpenClaw runtime when it is ready to work.</p>
                 </div>
@@ -54,7 +54,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
-                            <Search className="h-4 w-4" />
+                            <IconSearch className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
                         </label>
                         <div className="mt-3 flex gap-2">

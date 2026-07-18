@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Trash2, UserCog, Users, Shield, Clock, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { IconMail, IconTrash, IconUserCog, IconUsers, IconShield, IconClock, IconLoader2, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -192,7 +192,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {canInvite && (
                 <div className="emperor-panel rounded-2xl border border-white/10 bg-zinc-950/70 p-6">
                     <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
-                        <Mail className="w-5 h-5 text-indigo-400" />
+                        <IconMail className="w-5 h-5 text-indigo-400" />
                         Invite Member
                     </h3>
                     <form onSubmit={handleInvite} className="flex gap-3 flex-wrap">
@@ -216,7 +216,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                             ))}
                         </select>
                         <Button type="submit" disabled={sending}>
-                            {sending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                            {sending ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
                             Send Invitation
                         </Button>
                     </form>
@@ -226,7 +226,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {/* ── Members List ─────────────────────────────────────────── */}
             <div className="emperor-panel rounded-2xl border border-white/10 bg-zinc-950/70 p-6">
                 <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
-                    <Users className="w-5 h-5 text-indigo-400" />
+                    <IconUsers className="w-5 h-5 text-indigo-400" />
                     Team Members ({members.length})
                 </h3>
 
@@ -259,7 +259,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                         className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200 transition-colors"
                                                         title="Change role"
                                                     >
-                                                        <UserCog className="w-4 h-4" />
+                                                        <IconUserCog className="w-4 h-4" />
                                                     </button>
                                                 )}
                                                 {canInvite && (
@@ -268,7 +268,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                         className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-colors"
                                                         title="Remove member"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <IconTrash className="w-4 h-4" />
                                                     </button>
                                                 )}
                                             </div>
@@ -292,7 +292,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {canInvite && invitations.length > 0 && (
                 <div className="emperor-panel rounded-2xl border border-white/10 bg-zinc-950/70 p-6">
                     <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-indigo-400" />
+                        <IconClock className="w-5 h-5 text-indigo-400" />
                         Pending Invitations ({invitations.length})
                     </h3>
                     <div className="overflow-x-auto">
@@ -338,14 +338,14 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                         className="p-1.5 rounded-lg hover:bg-blue-500/10 text-zinc-400 hover:text-blue-400 transition-colors"
                                                         title="Resend"
                                                     >
-                                                        <Mail className="w-4 h-4" />
+                                                        <IconMail className="w-4 h-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleRevokeInvitation(inv.id)}
                                                         className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-colors"
                                                         title="Revoke"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <IconTrash className="w-4 h-4" />
                                                     </button>
                                                 </div>
                                             )}
@@ -391,7 +391,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                         <div className="flex items-start gap-3 mb-4">
-                            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                            <IconAlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                             <div>
                                 <h3 className="text-lg font-semibold text-zinc-100">Remove Member</h3>
                                 <p className="text-sm text-zinc-400 mt-1">

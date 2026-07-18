@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Loader2, MailCheck } from "lucide-react";
+import { IconAlertTriangle, IconCircleCheck, IconLoader2, IconMailCheck } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
 
@@ -62,7 +62,7 @@ function VerifyEmailContent() {
     if (status === "loading") {
         return (
             <div className="text-center space-y-4">
-                <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-400" />
+                <IconLoader2 className="mx-auto h-8 w-8 animate-spin text-indigo-400" />
                 <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Verifying your email</h1>
                 <p className="text-sm text-zinc-500">{message}</p>
             </div>
@@ -73,7 +73,7 @@ function VerifyEmailContent() {
         return (
             <div className="text-center space-y-4">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
-                    <CheckCircle2 className="h-7 w-7" />
+                    <IconCircleCheck className="h-7 w-7" />
                 </div>
                 <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Workspace activated</h1>
                 <p className="text-sm text-zinc-400">{message}</p>
@@ -93,7 +93,7 @@ function VerifyEmailContent() {
     return (
         <div className="text-center space-y-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-300">
-                <AlertTriangle className="h-7 w-7" />
+                <IconAlertTriangle className="h-7 w-7" />
             </div>
             <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">Verification failed</h1>
             <p className="text-sm text-zinc-400">{message}</p>
@@ -124,7 +124,7 @@ export default function SignupVerifyPage() {
                 <div className="bg-zinc-900/60 backdrop-blur-2xl border border-zinc-800/80 p-8 rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.4)]">
                     <Suspense fallback={
                         <div className="text-center space-y-4">
-                            <MailCheck className="mx-auto h-8 w-8 text-indigo-400" />
+                            <IconMailCheck className="mx-auto h-8 w-8 text-indigo-400" />
                             <p className="text-sm text-zinc-500">Loading verification link...</p>
                         </div>
                     }>

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, ArrowRight, Shield, Cpu, Sparkles } from "lucide-react";
+import { IconLoader2, IconArrowRight, IconShield, IconCpu, IconSparkles } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
 
@@ -163,11 +163,11 @@ export default function LoginPage() {
                                         }}
                                     >
                                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                        {loading ? <IconLoader2 className="w-5 h-5 animate-spin" /> : (
                                             <>
-                                                <Sparkles className="w-4 h-4 opacity-80" />
+                                                <IconSparkles className="w-4 h-4 opacity-80" />
                                                 <span className="tracking-wide">Access Command Center</span>
-                                                <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+                                                <IconArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
                                             </>
                                         )}
                                     </button>
@@ -185,11 +185,11 @@ export default function LoginPage() {
                                     </p>
                                     <div className="flex items-center justify-center gap-6 text-xs">
                                         <Link href="/signup" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
-                                            <Shield className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Create account
+                                            <IconShield className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Create account
                                         </Link>
                                         <span className="text-zinc-600 select-none">|</span>
                                         <a href="/docs" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
-                                            <Cpu className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Documentation
+                                            <IconCpu className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Documentation
                                         </a>
                                     </div>
                                 </div>

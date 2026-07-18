@@ -3,18 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import {
-  Archive,
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ChevronDown,
-  FileText,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-} from "lucide-react";
+import { IconArchive, IconArrowLeft, IconArrowRight, IconCheck, IconChevronDown, IconFileText, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { PageHeader } from "@/components/page-header";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -380,19 +369,19 @@ export default function ResourcesClient({
         <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note" aria-label="New note" onClick={createResource}><FileText className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><Plus className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><RefreshCw className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note" aria-label="New note" onClick={createResource}><IconFileText className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><IconPlus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><IconRefresh className="h-4 w-4" /></button>
             </div>
             <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300")}>
-              <Trash2 className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}
+              <IconTrash className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}
             </button>
           </div>
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex items-center gap-1 text-zinc-600">
-                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Previous note" aria-label="Previous note"><ArrowLeft className="h-4 w-4" /></button>
-                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Next note" aria-label="Next note"><ArrowRight className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Previous note" aria-label="Previous note"><IconArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Next note" aria-label="Next note"><IconArrowRight className="h-4 w-4" /></button>
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
                 <span>Knowledge & Rules</span>
@@ -402,12 +391,12 @@ export default function ResourcesClient({
             </div>
             <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
               <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
-                <Check className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
+                <IconCheck className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
               </button>
               <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
-                <Check className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
+                <IconCheck className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
-              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? "Click again to confirm delete" : "Delete note"} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><Trash2 className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? "Click again to confirm delete" : "Delete note"} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><IconTrash className="h-4 w-4" /></button>
             </div>
           </div>
           <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
@@ -424,7 +413,7 @@ export default function ResourcesClient({
             <div className="border-b border-zinc-800 p-3">
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
               <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
+                <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/60" />
               </div>
               <div className="mt-3 flex items-center gap-2">
@@ -440,7 +429,7 @@ export default function ResourcesClient({
                 {resourceTree.map((group) => (
                   <div key={group.key}>
                     <div className="mb-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                      <ChevronDown className="h-3.5 w-3.5" />
+                      <IconChevronDown className="h-3.5 w-3.5" />
                       <span className="truncate">{group.label}</span>
                       <span className="ml-auto text-zinc-700">{group.items.length}</span>
                     </div>
@@ -449,7 +438,7 @@ export default function ResourcesClient({
                         <ContextMenu key={resource.id}>
                           <ContextMenuTrigger asChild>
                             <button onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
-                              <FileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
+                              <IconFileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
                               <span className="min-w-0 flex-1 truncate">{resource.displayName || resource.name}</span>
                               {noteStatus(resource.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
                               {resource.isShared && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Shared with agents" />}
@@ -457,10 +446,10 @@ export default function ResourcesClient({
                           </ContextMenuTrigger>
                           <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
                             <ContextMenuItem onClick={() => setSelectedResourceId(resource.id)}>
-                              <FileText className="h-3.5 w-3.5" /> Open
+                              <IconFileText className="h-3.5 w-3.5" /> Open
                             </ContextMenuItem>
                             <ContextMenuItem variant="destructive" onClick={() => setDeleteDialogTarget(resource)}>
-                              <Trash2 className="h-3.5 w-3.5" /> Delete note
+                              <IconTrash className="h-3.5 w-3.5" /> Delete note
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -478,7 +467,7 @@ export default function ResourcesClient({
               <>
                 <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
+                    <IconFileText className="h-4 w-4 shrink-0 text-zinc-500" />
                     <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
                     {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
                     {draftShared && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">shared</span>}
@@ -527,7 +516,7 @@ export default function ResourcesClient({
                         <option value="active">Published</option>
                       </select>
                       <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={isSaving} className={cn("mt-2 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
-                        <Check className="h-3.5 w-3.5" />
+                        <IconCheck className="h-3.5 w-3.5" />
                         {publicationStatus === "draft" ? "Publish note" : "Move back to draft"}
                       </button>
                       <p className="mt-1 text-[11px] leading-4 text-zinc-500">Published means this note is trusted doctrine. Shared is separate: it controls agent context injection.</p>
@@ -551,7 +540,7 @@ export default function ResourcesClient({
                       </button>
                       <p className="mt-1 text-[11px] leading-4 text-zinc-600">shared means context injection for matching agents. Keep it off unless agents should receive it during work.</p>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
-                      <button onClick={archiveSelectedResource} className={cn("mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-600 hover:text-red-300")}><Archive className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}</button>
+                      <button onClick={archiveSelectedResource} className={cn("mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-600 hover:text-red-300")}><IconArchive className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}</button>
                     </div>
                   </details>
                   <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">

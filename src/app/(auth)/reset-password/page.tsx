@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { KeyRound, CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
+import { IconKey, IconCircleCheck, IconAlertTriangle, IconArrowRight } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import Link from "next/link";
 
@@ -60,7 +60,7 @@ function ResetPasswordForm() {
     if (!token || !email) {
         return (
             <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <AlertTriangle className="w-12 h-12 text-rose-500 mb-2" />
+                <IconAlertTriangle className="w-12 h-12 text-rose-500 mb-2" />
                 <h3 className="text-xl font-semibold text-zinc-100">Invalid Reset Link</h3>
                 <p className="text-zinc-400 text-sm">
                     This password reset link is invalid or malformed. Please request a new one.
@@ -76,14 +76,14 @@ function ResetPasswordForm() {
         return (
             <div className="flex flex-col items-center justify-center py-6 text-center space-y-4 relative z-10">
                 <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center border border-emerald-500/30 mb-2 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                    <IconCircleCheck className="w-8 h-8 text-emerald-400" />
                 </div>
                 <h3 className="text-xl font-semibold text-zinc-100">Password Reset Successful</h3>
                 <p className="text-zinc-400 text-sm">
                     Your password has been securely updated. Redirecting you to login...
                 </p>
                 <Link href="/login" className="w-full mt-6 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center">
-                    Proceed to Login <ArrowRight className="w-4 h-4 ml-2" />
+                    Proceed to Login <IconArrowRight className="w-4 h-4 ml-2" />
                 </Link>
             </div>
         );
@@ -102,7 +102,7 @@ function ResetPasswordForm() {
                 <label className="text-sm font-medium text-zinc-300 ml-1">New Password</label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <KeyRound className="h-5 w-5 text-zinc-500" />
+                        <IconKey className="h-5 w-5 text-zinc-500" />
                     </div>
                     <input
                         type="password"
@@ -119,7 +119,7 @@ function ResetPasswordForm() {
                 <label className="text-sm font-medium text-zinc-300 ml-1">Confirm New Password</label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <KeyRound className="h-5 w-5 text-zinc-500" />
+                        <IconKey className="h-5 w-5 text-zinc-500" />
                     </div>
                     <input
                         type="password"
@@ -156,7 +156,7 @@ export default function ResetPasswordPage() {
             <div className="relative z-10 w-full max-w-md animate-in fade-in zoom-in-95 duration-500 mx-4">
                 <div className="flex flex-col items-center mb-8">
                     <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 mb-4 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-                        <KeyRound className="w-6 h-6 text-indigo-400" />
+                        <IconKey className="w-6 h-6 text-indigo-400" />
                     </div>
                     <h2 className="text-3xl font-bold tracking-tight text-white mb-2">Create New Password</h2>
                     <p className="text-zinc-400 text-center">

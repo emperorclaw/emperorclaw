@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, Archive, Brain, CheckCircle2, ChevronRight, Edit3, Filter, History, Inbox, MoreHorizontal, Plus, Repeat, RotateCcw, Search, Send, Trash2, XCircle } from "lucide-react";
+import { IconAlertTriangle, IconArchive, IconBrain, IconCircleCheck, IconChevronRight, IconPencil, IconFilter, IconHistory, IconInbox, IconDots, IconPlus, IconRepeat, IconRotate, IconSearch, IconSend, IconTrash, IconCircleX } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PageHeader } from "@/components/page-header";
@@ -573,8 +573,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 description="Track work from to-do to done across all your projects."
                 actions={
                     <>
-                        {companyRole !== "viewer" && <button onClick={openCreateProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Project</button>}
-                        <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Task</button>
+                        {companyRole !== "viewer" && <button onClick={openCreateProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><IconPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Project</button>}
+                        <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><IconPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Task</button>
                         <button
                             onClick={() => setHideCompletedProjects((v) => !v)}
                             className={cn(
@@ -585,10 +585,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             )}
                             title={hideCompletedProjects ? "Showing only active projects" : "Showing all projects"}
                         >
-                            <Archive className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                            <IconArchive className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             {hideCompletedProjects ? "Active" : "All"}
                         </button>
-                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><Brain className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Notes</button>}
+                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><IconBrain className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Notes</button>}
                     </>
                 }
             />
@@ -596,7 +596,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <div className="grid gap-3">
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="relative min-w-[260px] flex-1">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                        <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                             <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
                         </div>
                         <SearchableSelect
@@ -637,7 +637,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 onChange={setAgentFilter}
                             />
                             <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
-                                <Filter className="h-4 w-4" />
+                                <IconFilter className="h-4 w-4" />
                                 Filter by agent
                             </div>
                             {selectedProject && (
@@ -648,22 +648,22 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             {selectedProject && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <button className="cursor-pointer rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><MoreHorizontal className="h-4 w-4" /></button>
+                                        <button className="cursor-pointer rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><IconDots className="h-4 w-4" /></button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                        <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><Edit3 className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><IconPencil className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
                                         {selectedProject.status !== "completed" && selectedProject.status !== "killed" && (
                                             <DropdownMenuItem onClick={() => void completeProject(selectedProject)} disabled={completingProject === selectedProject.id}>
-                                                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-400" />
+                                                <IconCircleCheck className="mr-2 h-4 w-4 text-emerald-400" />
                                                 {completingProject === selectedProject.id ? "Completing..." : "Complete project"}
                                             </DropdownMenuItem>
                                         )}
                                         {(selectedProject.status === "completed" || selectedProject.status === "killed") && (
                                             <DropdownMenuItem onClick={() => void reopenProject(selectedProject)}>
-                                                <RotateCcw className="mr-2 h-4 w-4 text-amber-400" />Reopen project
+                                                <IconRotate className="mr-2 h-4 w-4 text-amber-400" />Reopen project
                                             </DropdownMenuItem>
                                         )}
-                                        <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><Trash2 className="mr-2 h-4 w-4" />{confirmingArchive === selectedProject ? "Click again to confirm" : "Archive project"}</DropdownMenuItem>
+                                        <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><IconTrash className="mr-2 h-4 w-4" />{confirmingArchive === selectedProject ? "Click again to confirm" : "Archive project"}</DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
@@ -683,7 +683,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
             {(blockedCount > 0 || exceptionTasks.length > 0) && (
                 <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-sm">
-                    {blockedCount > 0 && <span className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-rose-300"><AlertTriangle className="mr-1 inline h-4 w-4" />{blockedCount} blocked tasks</span>}
+                    {blockedCount > 0 && <span className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-rose-300"><IconAlertTriangle className="mr-1 inline h-4 w-4" />{blockedCount} blocked tasks</span>}
                     {exceptionTasks.length > 0 && <span className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-300">{exceptionTasks.length} failed tasks</span>}
                 </div>
             )}
@@ -692,13 +692,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <div className="flex min-h-0 flex-1 overflow-hidden -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8">
                     <div className="flex-1 overflow-x-auto pb-4">
                         <div className="flex h-full min-w-max gap-6">
-                            <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={Inbox}>
+                            <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={IconInbox}>
                                 {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="in_progress" title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
                                 {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>
-                            <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={CheckCircle2}>
+                            <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={IconCircleCheck}>
                                 <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
                                     <BucketBadge label="Approval needed" count={reviewCounts.approval_needed} />
                                     <BucketBadge label="Waiting review" count={reviewCounts.waiting_review} />
@@ -707,13 +707,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 </div>
                                 {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>
-                            <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={CheckCircle2}>
+                            <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={IconCircleCheck}>
                                 {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>
-                            <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={XCircle}>
+                            <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={IconCircleX}>
                                 {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>
-                            {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={Repeat}>
+                            {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={IconRepeat}>
                                 {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
                                 {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>}
@@ -729,7 +729,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <div className="absolute right-0 top-0 z-50 flex h-full w-full sm:w-[60%] lg:w-[42%] flex-col rounded-xl border-l border-zinc-800 bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-8 duration-300">
                     <div className="mb-8 flex items-center justify-between">
                         <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-500">TASK-{selectedTask.id.substring(0, 8).toUpperCase()}</div>
-                        <button onClick={() => setSelectedTask(null)} className="cursor-pointer rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-5 w-5" /></button>
+                        <button onClick={() => setSelectedTask(null)} className="cursor-pointer rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><IconChevronRight className="h-5 w-5" /></button>
                     </div>
                     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">
                         <div>
@@ -763,8 +763,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 <input type="number" value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400" />
                             </label>
                             <div className="flex items-end gap-2">
-                                <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><Edit3 className="h-4 w-4" />Edit</button>
-                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><Trash2 className="h-4 w-4" />{confirmingArchive === selectedTask?.id ? "Click again to confirm" : "Archive"}</button>
+                                <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><IconPencil className="h-4 w-4" />Edit</button>
+                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><IconTrash className="h-4 w-4" />{confirmingArchive === selectedTask?.id ? "Click again to confirm" : "Archive"}</button>
                             </div>
                         </div>
                         {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}
@@ -776,7 +776,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <div className="flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 focus-within:ring-1 focus-within:ring-cyan-500">
                             <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Agent instructions or private notes..." className="h-20 flex-1 resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none" />
                             <div className="flex flex-col justify-end border-l border-zinc-800 bg-zinc-950/70 p-2">
-                                <button onClick={handleSendComment} disabled={!comment.trim()} className="cursor-pointer rounded-md bg-cyan-400/10 p-2 text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" /></button>
+                                <button onClick={handleSendComment} disabled={!comment.trim()} className="cursor-pointer rounded-md bg-cyan-400/10 p-2 text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"><IconSend className="h-4 w-4" /></button>
                             </div>
                         </div>
                     </div>
@@ -787,22 +787,22 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 <div className="absolute right-0 top-0 z-50 flex h-full w-[45%] flex-col rounded-l-2xl border-l border-zinc-800 bg-zinc-900/98 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-10 duration-300">
                     <div className="flex items-center justify-between rounded-tl-2xl border-b border-zinc-800 bg-zinc-950/50 p-6">
                         <div className="flex items-center space-x-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10 text-cyan-500 shadow-inner"><Brain className="h-6 w-6" /></div>
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10 text-cyan-500 shadow-inner"><IconBrain className="h-6 w-6" /></div>
                             <div><h2 className="text-lg font-semibold uppercase tracking-tight text-zinc-100">Project notes</h2><p className="text-xs font-medium text-zinc-500">Notes and context for this project</p></div>
                         </div>
-                        <button onClick={() => setIsContextOpen(false)} className="cursor-pointer rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><ChevronRight className="h-6 w-6" /></button>
+                        <button onClick={() => setIsContextOpen(false)} className="cursor-pointer rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><IconChevronRight className="h-6 w-6" /></button>
                     </div>
                     <div className="custom-scrollbar flex-1 space-y-8 overflow-y-auto p-6">
                         <div className="space-y-3">
                             <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Add a note</label>
                             <div className="relative">
                                 <textarea value={newContext} onChange={(event) => setNewContext(event.target.value)} placeholder="Enter new goals, findings, or critical context for the agents..." className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-200 outline-none shadow-inner focus:ring-1 focus:ring-cyan-400" />
-                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex cursor-pointer items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-3 w-3" />}<span>Save</span></button>
+                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex cursor-pointer items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <IconPlus className="h-3 w-3" />}<span>Save</span></button>
                             </div>
                         </div>
                         <div className="space-y-4">
-                            <h3 className="flex items-center space-x-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500"><History className="h-3 w-3" /><span>Notes</span></h3>
-                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><Brain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">No notes yet for this project.</p><p className="text-xs text-zinc-600">Add notes to share context across tasks.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.45)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-cyan-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
+                            <h3 className="flex items-center space-x-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500"><IconHistory className="h-3 w-3" /><span>Notes</span></h3>
+                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><IconBrain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">No notes yet for this project.</p><p className="text-xs text-zinc-600">Add notes to share context across tasks.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.45)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-cyan-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
                         </div>
                     </div>
                 </div>

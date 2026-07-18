@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { BookOpen, Bot, FolderKanban, HardDrive, MessageSquare, PlayCircle, ShieldCheck, X } from "lucide-react";
+import { IconBook, IconRobot, IconFolder, IconDeviceSdCard, IconMessage, IconPlayerPlay, IconShieldCheck, IconX } from "@tabler/icons-react";
 
 const TOUR_STORAGE_KEY = "emperor:workspace-tour:v1";
 
@@ -12,31 +12,31 @@ const tourSteps = [
         title: "Start with Projects",
         body: "Projects hold the business goal. Tasks inside the project are the concrete work agents can claim, finish, and send for review.",
         href: "/projects",
-        icon: FolderKanban,
+        icon: IconFolder,
     },
     {
         title: "Put reusable context in Knowledge & Rules",
         body: "This is where agents find durable instructions: SOPs, customer rules, inbox details, templates, identities, and operating doctrine.",
         href: "/resources",
-        icon: ShieldCheck,
+        icon: IconShieldCheck,
     },
     {
         title: "Keep files in Storage",
         body: "Storage is for deliverables, proofs, exported reports, working files, and uploads that should survive beyond the chat.",
         href: "/artifacts",
-        icon: HardDrive,
+        icon: IconDeviceSdCard,
     },
     {
         title: "Use Messages for coordination",
         body: "Messages show the live control-plane conversations between you, managers, and worker agents.",
         href: "/messages",
-        icon: MessageSquare,
+        icon: IconMessage,
     },
     {
         title: "Agents are runtimes",
         body: "Agents are the connected OpenClaw workers. Keep shared business context out of agent-local settings unless it truly belongs to one machine.",
         href: "/agents",
-        icon: Bot,
+        icon: IconRobot,
     },
 ];
 
@@ -69,7 +69,7 @@ export function WorkspaceTour() {
                 onClick={() => setOpen(true)}
                 className="flex w-full cursor-pointer items-center space-x-3 rounded-md px-3 py-2 text-left text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             >
-                <PlayCircle className="h-4 w-4 text-zinc-500" />
+                <IconPlayerPlay className="h-4 w-4 text-zinc-500" />
                 <span>Start Tour</span>
             </button>
 
@@ -79,7 +79,7 @@ export function WorkspaceTour() {
                         <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-6 py-5">
                             <div className="flex gap-3">
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
-                                    <BookOpen className="h-5 w-5" />
+                                    <IconBook className="h-5 w-5" />
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-semibold tracking-tight">Emperor Claw workspace tour</h2>
@@ -94,7 +94,7 @@ export function WorkspaceTour() {
                                 className="cursor-pointer rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                                 aria-label="Close workspace tour"
                             >
-                                <X className="h-4 w-4" />
+                                <IconX className="h-4 w-4" />
                             </button>
                         </div>
                         <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:p-6 md:grid-cols-2">
