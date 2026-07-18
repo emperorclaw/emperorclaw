@@ -146,6 +146,19 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 | Status & availability | Live status tracking: online, degraded, offline |
 | Agent identity | Each agent has a durable profile with capabilities, memory, and session history |
 
+### Customers & CRM
+
+<p align="center">
+  <img src="docs/assets/emperorclaw-customers.png" alt="Customers Directory" width="800" />
+</p>
+
+| Capability | Description |
+|---|---|
+| Customer directory | Organise agents, projects, knowledge, and artifacts by customer |
+| Scoped context | Each customer has isolated knowledge, resources, and project context |
+| Customer notes | Durable markdown notes per customer for account context and history |
+| Pipeline association | Track which customers trigger which pipelines and workflows |
+
 ### Work coordination
 
 <p align="center">
