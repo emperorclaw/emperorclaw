@@ -479,6 +479,7 @@ The project is legally maintained by **Malecu s.r.o.**, which holds the copyrigh
 
 - **Creator, founder, lead maintainer:** Jose Zuma
 - **Legal maintainer:** Malecu s.r.o.
+- **Visibility Contributor:** [brandvirality.com](https://brandvirality.com)
 - **Governance:** [BDFL model](./GOVERNANCE.md) — final decisions on roadmap, releases, licensing, and merges rest with the maintainer. Contributions are governed by the [CLA](./CLA.md).
 
 ---
