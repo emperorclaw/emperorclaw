@@ -46,7 +46,7 @@ curl -X POST https://emperorclaw.example.com/api/mcp/resources \
     "provider": "your-org",
     "scopeType": "agent",
     "scopeId": "<agent-uuid>",
-    "configText": "# Email: agent@example.com\\n# Password: (from your credential store)",
+    "configText": "# Email: agent@example.com\\n# Credential: (from your credential store)",
     "isShared": true
   }'
 
@@ -81,7 +81,7 @@ Force‑shared resources (isShared=true):
 
 ### Resource: Agent Email Credentials [scope: agent]
 # Email: agent@example.com
-# Password: (from your credential store)
+# Credential: (from your credential store)
 ```
 
 ## 2. Agent‑to‑Agent Communication
