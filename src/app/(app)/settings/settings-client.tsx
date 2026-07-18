@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -368,7 +368,8 @@ function InstanceSettingsTab() {
     const [savingName, setSavingName] = useState(false);
 
     // Load current settings
-    if (!loaded) {
+    useEffect(() => {
+        if (loaded) return;
         setLoaded(true);
         fetch("/api/instance/settings")
             .then((r) => r.json())
@@ -377,7 +378,7 @@ function InstanceSettingsTab() {
                 setInstanceName(data.settings?.instance_name ?? "");
             })
             .catch(() => setRegistrationMode("invite-only"));
-    }
+    }, [loaded]);
 
     const handleToggle = async () => {
         if (saving || !registrationMode) return;
