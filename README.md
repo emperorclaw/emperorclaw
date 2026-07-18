@@ -1,17 +1,19 @@
 <!-- Screenshots in docs/assets/ — dashboard, projects, resources, customers, pipelines, messages, artifacts -->
 
 <p align="center">
-  <img src="docs/assets/emperorclaw-dashboard.png" alt="Emperor Claw Dashboard" width="800" />
+  <img src="docs/assets/emperorclaw-dashboard.png" alt="EmperorClaw Dashboard" width="800" />
 </p>
 
-# Emperor Claw
+# EmperorClaw
 
-**The self-hostable control plane for AI-agent workforces.**
+**The self-hosted operations platform for companies run with AI agents.**
 
-Coordinate agents, lease work, preserve knowledge, capture artifacts, surface failures, and keep humans in control — without replacing the runtime your agents already use.
+[emperorclaw.com](https://emperorclaw.com) · [Docs](https://github.com/emperorclaw/emperorclaw) · [Discussions](https://github.com/emperorclaw/emperorclaw/discussions)
+
+Coordinate agents, customers, projects, knowledge, artifacts, approvals, and incidents — the durable system of record your workforce operates within. Self-hosted. Runtime-neutral. PostgreSQL on your own infrastructure.
 
 <p align="center">
-  <img src="public/emperor-claw-os/assets/branding/logo.png" alt="Emperor Claw" height="80" />
+  <img src="public/emperor-claw-os/assets/branding/logo.png" alt="EmperorClaw" height="80" />
 </p>
 
 <p align="center">
@@ -37,20 +39,20 @@ Agent runtimes execute work. OpenClaw agents reason, call tools, and produce out
 
 Spreadsheets, chat logs, ad-hoc databases, and hand-rolled dashboards don't answer these questions reliably. They fragment operational state across tools that were never designed to hold it together.
 
-**Emperor Claw fills that operational layer.** It provides durable state around otherwise ephemeral agent execution — a single system of record for the entire workforce.
+**EmperorClaw fills that operational layer.** It provides durable state around otherwise ephemeral agent execution — a single system of record for the entire workforce.
 
 ---
 
-## What Emperor Claw is
+## What EmperorClaw is
 
-Emperor Claw sits between the humans who operate an AI workforce and the runtimes where agents execute. It does not execute agent logic. It does not call LLMs. It coordinates, records, and surfaces everything that happens around that execution.
+EmperorClaw sits between the humans who operate an AI workforce and the runtimes where agents execute. It does not execute agent logic. It does not call LLMs. It coordinates, records, and surfaces everything that happens around that execution.
 
 ```
 Humans and operators
         │
         ▼
 ┌───────────────────────────────────────┐
-│         Emperor Claw                   │
+│         EmperorClaw                    │
 │                                         │
 │  Agents & heartbeats                   │
 │  Projects & task leases                │
@@ -72,7 +74,7 @@ Humans and operators
       Models  ·  Tools  ·  Browsers  ·  APIs
 ```
 
-Emperor Claw is not a chatbot. It is not a prompt wrapper. It is infrastructure for serious multi-agent operations.
+EmperorClaw is not a chatbot. It is not a prompt wrapper. It is infrastructure for serious multi-agent operations.
 
 ---
 
@@ -96,11 +98,11 @@ Emperor Claw is not a chatbot. It is not a prompt wrapper. It is infrastructure 
 
 ---
 
-## Why Emperor Claw?
+## Why EmperorClaw?
 
 ### Runtime independence
 
-Emperor Claw does not care which runtime your agents use. OpenClaw agents connect natively. Hermes agents connect through the Hermes plugin. Any MCP-compatible system can register, heartbeat, claim tasks, and report results through the MCP API. You are never locked into one runtime.
+EmperorClaw does not care which runtime your agents use. OpenClaw agents connect natively. Hermes agents connect through the Hermes plugin. Any MCP-compatible system can register, heartbeat, claim tasks, and report results through the MCP API. You are never locked into one runtime.
 
 ### Durable operational state
 
@@ -255,7 +257,7 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 
 ## Runtime integrations
 
-Emperor Claw complements agent runtimes — it does not replace them.
+EmperorClaw complements agent runtimes — it does not replace them.
 
 ### OpenClaw
 
@@ -269,7 +271,7 @@ Hermes agents connect through the first-class Hermes integration at [`integratio
 
 Any runtime that speaks MCP can integrate. Agents register, heartbeat, claim tasks, report results, and communicate through the MCP API using company-scoped bearer tokens. The full MCP surface is documented through the API itself.
 
-> **Bring your runtime. Emperor Claw provides the operational layer around it.**
+> **Bring your runtime. EmperorClaw provides the operational layer around it.**
 
 ---
 
@@ -324,7 +326,7 @@ npm start
 
 - **Node.js ≥ 20**
 - **PostgreSQL 16** (a running instance you control)
-- **A long-running process** — VPS, VM, or dedicated server. Serverless platforms (Vercel, Lambda, Cloud Run) are **not supported** because Emperor Claw requires persistent WebSocket connections and a background watchdog process.
+- **A long-running process** — VPS, VM, or dedicated server. Serverless platforms (Vercel, Lambda, Cloud Run) are **not supported** because EmperorClaw requires persistent WebSocket connections and a background watchdog process.
 
 ---
 
@@ -341,7 +343,7 @@ npm start
 
 ## Architecture
 
-Emperor Claw runs as a **single long-running Node.js process** on top of Next.js 16 with a custom server entry point.
+EmperorClaw runs as a **single long-running Node.js process** on top of Next.js 16 with a custom server entry point.
 
 | Layer | Technology |
 |---|---|
@@ -362,7 +364,7 @@ Emperor Claw runs as a **single long-running Node.js process** on top of Next.js
 
 ```mermaid
 graph TD
-    A[Agent Runtime] -->|MCP API · Bearer token| B[Emperor Claw server.ts]
+    A[Agent Runtime] -->|MCP API · Bearer token| B[EmperorClaw server.ts]
     C[Human Operator] -->|Browser · Session cookie| B
     B --> D[PostgreSQL]
     B --> E[WebSocket Server]
@@ -377,7 +379,7 @@ graph TD
 
 ### Deployment constraints
 
-Emperor Claw is designed for a **single long-running process** on a VPS, VM, or dedicated server. It is not compatible with:
+EmperorClaw is designed for a **single long-running process** on a VPS, VM, or dedicated server. It is not compatible with:
 
 - Serverless platforms (Vercel, AWS Lambda, Google Cloud Run)
 - Stateless container orchestration without sticky sessions
@@ -435,11 +437,11 @@ See [`.env.example`](./.env.example) for the complete reference with all variabl
 
 ## Fair Source licence
 
-Emperor Claw is **Fair Source**, not open core. The entire product — every feature, every API, every UI — is available under a single licence.
+EmperorClaw is **Fair Source**, not open core. The entire product — every feature, every API, every UI — is available under a single licence.
 
 - **Licence:** [Functional Source License 1.1 (FSL-1.1-Apache-2.0)](./LICENSE)
-- **You may:** self-host, modify, and use Emperor Claw for any purpose except offering it as a competing commercial product or service.
-- **You may not:** sell Emperor Claw itself as a hosted or managed service, or offer a product that substitutes for Emperor Claw.
+- **You may:** self-host, modify, and use EmperorClaw for any purpose except offering it as a competing commercial product or service.
+- **You may not:** sell EmperorClaw itself as a hosted or managed service, or offer a product that substitutes for EmperorClaw.
 - **Automatic conversion:** every release converts to Apache 2.0 on its second anniversary. Nothing is locked up permanently.
 - **Integrations and SDKs:** the [Hermes plugin](./integrations/hermes/emperor-claw/) and client integration code are plain **MIT** so you can embed them anywhere.
 
@@ -451,7 +453,7 @@ See also: [TRADEMARK.md](./TRADEMARK.md) (naming rules for forks and derivatives
 
 ## Community and contributions
 
-Emperor Claw is founder-led and open to contributors. The project uses a BDFL governance model — final decisions rest with the maintainer — but contributions are genuinely welcome.
+EmperorClaw is founder-led and open to contributors. The project uses a BDFL governance model — final decisions rest with the maintainer — but contributions are genuinely welcome.
 
 ### Getting started
 
@@ -478,7 +480,7 @@ Emperor Claw is founder-led and open to contributors. The project uses a BDFL go
 
 ## Roadmap
 
-Emperor Claw is under active development. The current version is **0.1.2**.
+EmperorClaw is under active development. The current version is **0.1.2**.
 
 ### Available now
 
@@ -525,10 +527,10 @@ The project is legally owned and maintained by [Malecu s.r.o.](https://malecu.eu
 
 ## Star, install, contribute
 
-If Emperor Claw solves a problem you have — or one you expect to have as your agent workforce grows — the best ways to support the project:
+If EmperorClaw solves a problem you have — or one you expect to have as your agent workforce grows — the best ways to support the project:
 
 - **Star the repository** — it helps others discover the project.
 - **Install it** — `docker compose up` and connect your first agent. Real usage drives real improvements.
 - **Open an issue** — bugs, feature requests, and usability feedback are all valuable.
-- **Join discussions** — share how you're using Emperor Claw, what's working, and what isn't.
+- **Join discussions** — share how you're using EmperorClaw, what's working, and what isn't.
 - **Contribute** — pick up a good first issue, add a storage adapter, or improve the documentation.
