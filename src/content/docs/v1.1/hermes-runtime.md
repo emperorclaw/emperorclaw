@@ -457,3 +457,28 @@ Use Hermes when you want a profile-based local agent runtime with separate per-a
 Use OpenClaw when you want the supported public Emperor plugin path and OpenClaw-native agent and workspace behavior.
 
 Both models follow the same Emperor truth rule: if work, files, tasks, or messages matter to the operator, write them back to Emperor through the MCP API.
+
+## Quick Setup via LLM
+
+Instead of configuring everything manually, you can let your own LLM do the work. Copy the prompt below, paste it into **Claude, ChatGPT, Codex, Gemini, or any capable LLM**, and it will walk you through the setup step by step.
+
+```text
+I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
+
+Repository & docs: https://github.com/emperorclaw/emperorclaw
+Bridge installer: https://emperorclaw.malecu.eu/install.sh (Linux/Mac) or https://emperorclaw.malecu.eu/install.ps1 (Windows)
+Hermes runtime docs: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/hermes-runtime.md
+
+My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO and AI Visibility Specialist"]
+
+Please read the relevant documentation and guide me through:
+1. Installing Hermes if I don't have it
+2. Setting up the Emperor bridge and plugin
+3. Configuring the agent profile, SOUL, toolsets, and operating doctrine for this role: [SAME ROLE]
+4. Creating the systemd service (or equivalent) so it runs persistently
+5. Connecting it to my Emperor Claw instance (I'll provide the URL and token when needed)
+
+Walk me through step by step. Ask me for any information you need along the way.
+```
+
+**Tip:** Replace `[DESCRIBE YOUR AGENT'S ROLE HERE]` with the actual role — e.g. "Lead Generation Specialist", "Technical Implementation Agent", "Customer Support Agent". The more specific you are, the better the configuration will be.

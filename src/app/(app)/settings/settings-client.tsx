@@ -201,6 +201,18 @@ export default function SettingsClient({
                             Create the agent profile in Emperor first, then connect exactly one local runtime profile or workspace to that agent. The runtime can be Hermes or OpenClaw; Emperor should stay runtime-neutral.
                         </p>
                     </article>
+                    <article className="rounded-2xl sm:rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 sm:p-6 lg:col-span-2">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">🤖</span>
+                            <h2 className="text-lg font-semibold text-emerald-100">Quick Setup — Let your own LLM configure it</h2>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-emerald-100/75">
+                            Don&apos;t want to configure everything manually? Copy a prompt, paste it into <strong>Claude, ChatGPT, Codex, or any LLM</strong>, and it will walk you through the entire setup — installing the runtime, configuring the bridge, writing bootstrap files, and tailoring the agent to your role.
+                        </p>
+                        <p className="mt-3 text-sm leading-6 text-emerald-100/75">
+                            Open the <strong>Hermes</strong> or <strong>OpenClaw</strong> guide above and scroll to <em>&quot;Quick Setup via LLM&quot;</em> for the copy-paste prompt. Replace the role placeholder with your agent&apos;s job, and you&apos;re done.
+                        </p>
+                    </article>
                 </section>
             )}
 

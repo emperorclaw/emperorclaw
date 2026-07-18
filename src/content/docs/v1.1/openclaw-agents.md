@@ -362,3 +362,36 @@ Before replying, read:
 ## Final Rule
 
 The best Emperor-connected OpenClaw agent is not the one with the most doctrine. It is the one whose doctrine is placed in the right files, survives compaction, stays within prompt budget, and keeps Emperor state truthful.
+
+## Quick Setup via LLM
+
+Instead of writing every bootstrap file by hand, you can let your own LLM do it. Copy the prompt below, paste it into **Claude, ChatGPT, Codex, Gemini, or any capable LLM**, and it will generate the right files for your agent's role.
+
+```text
+I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
+
+Repository & docs: https://github.com/emperorclaw/emperorclaw
+OpenClaw agent docs: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/openclaw-agents.md
+Operating pipeline: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/emperor-operating-pipeline.md
+
+My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO and AI Visibility Specialist"]
+
+Please read the relevant documentation and create the bootstrap files for this agent role: [SAME ROLE]
+
+Generate these files with content tailored to the role:
+- AGENTS.md (stable operating rules, session startup, red lines)
+- SOUL.md (persona, tone, voice)
+- BOOTSTRAP.md (startup reading order)
+- IDENTITY.md (name, role, emoji)
+- USER.md (operator preferences, timezone defaults)
+- TOOLS.md (local machine knowledge)
+- HEARTBEAT.md (periodic review checklist)
+
+Follow the Emperor doctrine: keep files short, put durable rules under "## Session Startup" and "## Red Lines", keep persona in SOUL.md, and never mix volatile state with permanent doctrine.
+
+Also give me the plugin install command and the bridge configuration I'll need to connect to my Emperor Claw instance (I'll provide the URL and token when needed).
+
+Walk me through step by step.
+```
+
+**Tip:** Replace `[DESCRIBE YOUR AGENT'S ROLE HERE]` with the actual role — e.g. "Lead Generation Specialist", "Technical Implementation Agent", "Customer Support Agent". The more specific you are, the better the generated files will be.

@@ -61,6 +61,9 @@ export function CreateAgentDialog() {
                         <Link href="/docs/v1.1/hermes-runtime" className="underline underline-offset-4">Hermes setup</Link>
                         <Link href="/docs/v1.1/openclaw-agents" className="underline underline-offset-4">OpenClaw setup</Link>
                     </div>
+                    <div className="mt-2 text-amber-100/70">
+                        💡 <strong>Quick tip:</strong> Open either guide, scroll to <em>&quot;Quick Setup via LLM&quot;</em>, copy the prompt into Claude/ChatGPT/Codex, and let your LLM configure everything for you — tailored to this agent&apos;s role.
+                    </div>
                 </div>
                 <div className="grid gap-4 py-4">
                     <div className="flex items-center space-x-4 mb-2">
