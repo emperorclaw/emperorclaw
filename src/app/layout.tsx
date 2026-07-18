@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Silkscreen } from "next/font/google";
 import "./globals.css";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -19,8 +19,15 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+const silkscreen = Silkscreen({
+  weight: "400",
+  variable: "--font-silkscreen",
+  subsets: ["latin"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Emperor Claw",
+  title: "EmperorClaw",
   description: "AI Workforce Control Plane",
   icons: {
     icon: "/icon.png",
@@ -37,7 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans min-h-screen bg-background text-foreground antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${silkscreen.variable} font-sans min-h-screen bg-background text-foreground antialiased`}
       >
         {gaTagId && <GoogleAnalytics tagId={gaTagId} />}
         <SessionProvider>

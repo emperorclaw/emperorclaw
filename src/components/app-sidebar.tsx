@@ -112,7 +112,7 @@ export function AppSidebar({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
                     ) : (
                         /* Expanded: show only the text */
                         <div className={cn("min-w-0 flex-1 transition-opacity duration-200", collapsed ? "opacity-0" : "hidden md:block")}>
-                            <div className="truncate text-base font-semibold tracking-tight text-white">Emperor Claw</div>
+                            <div className="truncate text-base tracking-[0.15em] text-white" style={{ fontFamily: "var(--font-silkscreen)" }}>EMPERORCLAW</div>
                         </div>
                     )}
                 </div>
