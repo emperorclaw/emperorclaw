@@ -65,7 +65,7 @@ function ResetPasswordForm() {
                 <p className="text-zinc-400 text-sm">
                     This password reset link is invalid or malformed. Please request a new one.
                 </p>
-                <Link href="/forgot-password" className="mt-4 text-indigo-400 hover:text-indigo-300 underline underline-offset-4">
+                <Link href="/forgot-password" className="mt-4 text-cyan-400 hover:text-cyan-300 underline underline-offset-4">
                     Request New Link
                 </Link>
             </div>
@@ -109,7 +109,7 @@ function ResetPasswordForm() {
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white placeholder-zinc-500 transition-all outline-none"
+                        className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white placeholder-zinc-500 transition-all outline-none"
                         placeholder="••••••••"
                     />
                 </div>
@@ -126,7 +126,7 @@ function ResetPasswordForm() {
                         required
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white placeholder-zinc-500 transition-all outline-none"
+                        className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white placeholder-zinc-500 transition-all outline-none"
                         placeholder="••••••••"
                     />
                 </div>
@@ -141,7 +141,7 @@ function ResetPasswordForm() {
             <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)]"
+                className="w-full mt-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.5)]"
             >
                 {isLoading ? "Updating..." : "Set New Password"}
             </button>
@@ -155,8 +155,8 @@ export default function ResetPasswordPage() {
             <AuthBackground />
             <div className="relative z-10 w-full max-w-md animate-in fade-in zoom-in-95 duration-500 mx-4">
                 <div className="flex flex-col items-center mb-8">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 mb-4 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-                        <IconKey className="w-6 h-6 text-indigo-400" />
+                    <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30 mb-4 shadow-[0_0_30px_rgba(6,182,212,0.2)]">
+                        <IconKey className="w-6 h-6 text-cyan-400" />
                     </div>
                     <h2 className="text-3xl font-bold tracking-tight text-white mb-2">Create New Password</h2>
                     <p className="text-zinc-400 text-center">
@@ -165,7 +165,7 @@ export default function ResetPasswordPage() {
                 </div>
 
                 <div className="bg-zinc-950/80 backdrop-blur-xl border border-zinc-800/80 p-8 rounded-2xl shadow-2xl relative overflow-hidden">
-                    <div className="absolute -top-32 -left-32 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute -top-32 -left-32 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
                     <Suspense fallback={<div className="p-8 text-center text-zinc-500">Loading secure tunnel...</div>}>
                         <ResetPasswordForm />
                     </Suspense>
