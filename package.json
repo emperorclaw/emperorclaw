@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npx tsx server.ts",
     "build": "next build",
-    "start": "NODE_ENV=production npx tsx server.ts",
+    "start": "npx tsx server.ts",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",

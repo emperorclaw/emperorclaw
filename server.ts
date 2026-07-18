@@ -7,7 +7,7 @@ import { Pool, PoolClient } from 'pg';
 import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
 import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
 
-const dev = process.env.NODE_ENV !== 'production';
+const dev = process.env.NODE_ENV === 'development';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
 const port = parseInt(process.env.PORT || '3000', 10);
 const app = next({ dev, hostname, port });

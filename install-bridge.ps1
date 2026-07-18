@@ -1,5 +1,14 @@
 $ErrorActionPreference = "Stop"
 
+Write-Host @"
+╔══════════════════════════════════════════════════════════════╗
+║  Emperor Claw — Agent Bridge Installer                       ║
+║                                                              ║
+║  This installs the AGENT BRIDGE companion, NOT the app.      ║
+║  To install Emperor Claw itself, see the README quick start. ║
+╚══════════════════════════════════════════════════════════════╝
+"@
+
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 function Require-Command {

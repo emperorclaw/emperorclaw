@@ -73,6 +73,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   serverExternalPackages: ["argon2", "drizzle-orm"],
   async headers() {

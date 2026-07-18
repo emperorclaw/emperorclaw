@@ -3,6 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  Emperor Claw — Agent Bridge Installer                       ║"
+echo "║                                                              ║"
+echo "║  This installs the AGENT BRIDGE companion, NOT the app.      ║"
+echo "║  To install Emperor Claw itself, see the README quick start. ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
 # ─────────────────────────────────────────────────────────────
 # Upgrade mode: --upgrade
 #   git pull → npm ci → db:migrate → build → pm2 reload
@@ -19,7 +27,7 @@ if [[ "${1:-}" == "--upgrade" ]]; then
     cd "$ROOT_DIR"
     git pull --ff-only origin main || {
       echo "  ⚠️  git pull failed. If you have local changes, stash them first:"
-      echo "     git stash && ./install.sh --upgrade"
+      echo "     git stash && ./install-bridge.sh --upgrade"
       exit 1
     }
   else
@@ -87,7 +95,7 @@ echo ""
 
 # Check if we're in a git repository and suggest updates
 if command -v git >/dev/null 2>&1 && [ -d "$ROOT_DIR/.git" ]; then
-  echo "✓ Git repository detected — use ./install.sh --upgrade to update later"
+  echo "✓ Git repository detected — use ./install-bridge.sh --upgrade to update later"
   echo
 fi
 
@@ -166,4 +174,4 @@ echo "Agent-scoped resources only inject to that specific agent."
 echo "Company-scoped resources inject to all agents."
 echo
 echo "=== To upgrade later ==="
-echo "  ./install.sh --upgrade"
+echo "  ./install-bridge.sh --upgrade"

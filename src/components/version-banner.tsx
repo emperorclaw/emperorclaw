@@ -94,7 +94,7 @@ export function VersionBanner() {
                 <span className="text-xs text-muted-foreground">
                     You&apos;re running v{banner.current}. Run{" "}
                     <code className="bg-muted px-1 rounded text-[11px]">
-                        ./install.sh --upgrade
+                        ./install-bridge.sh --upgrade
                     </code>{" "}
                     to update.
                 </span>
