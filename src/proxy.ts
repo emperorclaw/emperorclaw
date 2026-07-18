@@ -36,5 +36,5 @@ export const config = {
     //   /setup, /install.*   — setup scripts
     //   /downloads/*         — public downloads
     //   /_next/*, favicon    — Next.js internals
-    matcher: ["/((?!$|api/auth|api/mcp|api/webhook|api/skills|api/docs|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads).*)"],
+    matcher: ["/((?!$|api/auth|api/mcp|api/webhook|api/skills|api/docs|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|emperor-claw-os|icon\\.png).*)"],
 };
