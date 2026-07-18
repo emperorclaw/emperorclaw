@@ -113,7 +113,7 @@ export default function SignupCheckEmailPage() {
             <div className="relative z-10 w-full max-w-xl px-6 py-10">
                 <div className="flex justify-center mb-8">
                     <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 backdrop-blur-md shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-                        <CustomLogo className="w-8 h-8 text-indigo-400" />
+                        <CustomLogo className="w-12 h-12 text-indigo-400" />
                     </div>
                 </div>
 

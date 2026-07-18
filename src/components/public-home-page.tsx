@@ -134,7 +134,7 @@ export function PublicHomePage() {
           <Link href="/" className="group flex items-center gap-3 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">
             <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 shadow-[0_0_40px_rgba(34,211,238,0.22)] transition-transform duration-300 group-hover:-translate-y-0.5">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan-300/20 via-violet-400/20 to-fuchsia-300/20" />
-              <CustomLogo className="relative h-5 w-5 text-cyan-200" />
+              <CustomLogo className="relative h-[30px] w-[30px] text-cyan-200" />
             </div>
             <div>
               <div className="font-[var(--font-space-grotesk)] text-sm font-semibold tracking-tight text-white">Emperor Claw</div>
