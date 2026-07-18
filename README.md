@@ -1,7 +1,7 @@
-<!-- Screenshots in docs/assets/ — dashboard, projects, resources, customers, pipelines, login -->
+<!-- Screenshots in docs/assets/ — dashboard, projects, resources, customers, pipelines, messages, artifacts -->
 
 <p align="center">
-  <img src="docs/assets/emperorclaw-login.png" alt="Emperor Claw Login" width="800" />
+  <img src="docs/assets/emperorclaw-dashboard.png" alt="Emperor Claw Dashboard" width="800" />
 </p>
 
 # Emperor Claw
@@ -106,10 +106,6 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 
 ## Features
 
-<p align="center">
-  <img src="docs/assets/emperorclaw-dashboard.png" alt="Dashboard" width="800" />
-</p>
-
 ### Workforce
 
 | Capability | Description |
@@ -160,6 +156,10 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 
 ### Artifacts
 
+<p align="center">
+  <img src="docs/assets/emperorclaw-artifacts.png" alt="Storage & Artifacts" width="800" />
+</p>
+
 | Capability | Description |
 |---|---|
 | Durable storage | Reports, proofs, deliverables, and files stored with folder organisation |
@@ -170,6 +170,10 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 
 ### Pipelines
 
+<p align="center">
+  <img src="docs/assets/emperorclaw-pipelines.png" alt="Pipelines" width="800" />
+</p>
+
 | Capability | Description |
 |---|---|
 | Agent-registered | Agents register their pipelines through the MCP API — upsert by name so re-registration on boot is safe |
@@ -179,6 +183,10 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 | Gates | Human approval gates between pipeline steps |
 
 ### Communication
+
+<p align="center">
+  <img src="docs/assets/emperorclaw-messages.png" alt="Team Chat" width="800" />
+</p>
 
 | Capability | Description |
 |---|---|
