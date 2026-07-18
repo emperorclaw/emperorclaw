@@ -76,6 +76,26 @@ Emperor Claw is not a chatbot. It is not a prompt wrapper. It is infrastructure 
 
 ---
 
+## Who is this for
+
+**Digital agencies** (marketing, SEO, content, dev, design, PR) — many clients with separate context, repeated delivery workflows, templates and SOPs, agent-generated deliverables, approval gates, and reusable company knowledge.
+
+**Accounting and bookkeeping firms** — document collection, invoice classification, reconciliation, anomaly detection, client reminders, reporting, with client-separated knowledge and audit history.
+
+**Consultancies** — customer research, diagnostic workflows, report drafting, analysis, deliverables, and structured approval and review.
+
+**Ecommerce companies** — product-content updates, supplier monitoring, customer support, inventory analysis, review monitoring, campaign reporting, and refund triage.
+
+**Recruiting companies** — candidate research, profile enrichment, outreach preparation, interview scheduling, customer-specific requirements, and report production.
+
+**Software companies** — issue triage, documentation, testing, release preparation, customer support, incident review, research, and competitive monitoring.
+
+**Legal and compliance operations** — document collection, matter-specific context, checklists, review queues, evidence, approvals, and deadline tracking. (EmperorClaw is not a substitute for legal judgment.)
+
+**Small businesses building an AI back office** — accounting support, lead research, customer communication, project management, content, reporting, and operations monitoring — all agents sharing structured company context in one private place.
+
+---
+
 ## Why Emperor Claw?
 
 ### Runtime independence
@@ -101,6 +121,17 @@ One `docker compose up`. PostgreSQL on your own metal. Artifacts on your own dis
 ### Fair Source, not open core
 
 The entire product is source-available under FSL-1.1-Apache-2.0. You can self-host, modify, and use it commercially. Every release converts to Apache 2.0 after two years. There is no proprietary "enterprise" tier with hidden features.
+
+### What you get
+
+- **One operational system** instead of disconnected tools — agents, knowledge, projects, files, chat, incidents, and approvals in one place.
+- **Agents operate with the right context** — company, customer, project, and agent-scoped knowledge reduces forgotten instructions, incorrect assumptions, and repeated prompting.
+- **Work does not silently disappear** — leases, retries, dead letters, and incidents give every task a recovery lifecycle.
+- **Humans remain accountable** — approvals, roles, and audit history maintain organizational control.
+- **Your infrastructure, your data** — self-hosted on PostgreSQL. No data leaves your network.
+- **Runtime independence** — connect OpenClaw, Hermes, or any MCP-compatible system. Never locked into one framework.
+- **Better institutional memory** — Company Brain and durable artifacts preserve operational knowledge beyond individual employees or model sessions.
+- **Grows with you** — start with a few agents, add more team members, clients, runtimes, pipelines, and storage as you scale.
 
 ---
 
