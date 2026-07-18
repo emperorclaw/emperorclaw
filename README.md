@@ -477,8 +477,8 @@ Emperor Claw was created and is maintained by **[Jose Zuma](https://github.com/m
 
 The project is legally maintained by **Malecu s.r.o.**, which holds the copyright, operates the trademark, and may offer commercial services around Emperor Claw in the future.
 
-- **Creator, founder, lead maintainer:** Jose Zuma
-- **Legal maintainer:** Malecu s.r.o.
+- **Creator, founder, lead maintainer:** [Jose Zuma](https://josezuma.com)
+- **Legal maintainer:** [Malecu s.r.o.](https://malecu.eu)
 - **Visibility Contributor:** [brandvirality.com](https://brandvirality.com)
 - **Governance:** [BDFL model](./GOVERNANCE.md) — final decisions on roadmap, releases, licensing, and merges rest with the maintainer. Contributions are governed by the [CLA](./CLA.md).
 
