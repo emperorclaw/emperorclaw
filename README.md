@@ -15,10 +15,10 @@ Coordinate agents, lease work, preserve knowledge, capture artifacts, surface fa
 </p>
 
 <p align="center">
-  <a href="https://github.com/malecu/emperorclaw/releases"><img src="https://img.shields.io/github/v/release/malecu/emperorclaw?color=06b6d4" alt="Release" /></a>
+  <a href="https://github.com/emperorclaw/emperorclaw/releases"><img src="https://img.shields.io/github/v/release/emperorclaw/emperorclaw?color=06b6d4" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-blue" alt="License: FSL-1.1-Apache-2.0" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen" alt="Node ≥20" /></a>
-  <a href="https://github.com/malecu/emperorclaw/discussions"><img src="https://img.shields.io/badge/discussions-welcome-06b6d4" alt="Discussions" /></a>
+  <a href="https://github.com/emperorclaw/emperorclaw/discussions"><img src="https://img.shields.io/badge/discussions-welcome-06b6d4" alt="Discussions" /></a>
 </p>
 
 ---
@@ -234,7 +234,7 @@ Any runtime that speaks MCP can integrate. Agents register, heartbeat, claim tas
 ### Docker (recommended)
 
 ```bash
-git clone https://github.com/malecu/emperorclaw.git
+git clone https://github.com/emperorclaw/emperorclaw.git
 cd emperorclaw
 cp .env.example .env
 ```
@@ -270,7 +270,7 @@ docker compose up -d --build
 ### Manual installation
 
 ```bash
-git clone https://github.com/malecu/emperorclaw.git
+git clone https://github.com/emperorclaw/emperorclaw.git
 cd emperorclaw
 cp .env.example .env
 # Edit .env — set NEXTAUTH_SECRET, EMPEROR_CLAW_MASTER_KEY, and POSTGRES_CONNECTION_STRING
@@ -417,8 +417,8 @@ Emperor Claw is founder-led and open to contributors. The project uses a BDFL go
 ### Getting started
 
 1. Read [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, conventions, and good first issues.
-2. Join [GitHub Discussions](https://github.com/malecu/emperorclaw/discussions) for questions, ideas, and community support.
-3. Browse [open issues](https://github.com/malecu/emperorclaw/issues) — issues tagged `good first issue` are explicitly scoped for new contributors.
+2. Join [GitHub Discussions](https://github.com/emperorclaw/emperorclaw/discussions) for questions, ideas, and community support.
+3. Browse [open issues](https://github.com/emperorclaw/emperorclaw/issues) — issues tagged `good first issue` are explicitly scoped for new contributors.
 
 ### Contribution workflow
 
