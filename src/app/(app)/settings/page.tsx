@@ -1,6 +1,6 @@
 import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
-import { companyMembers, companyTokens } from "@/db/schema";
+import { companyMembers, companyTokens, users } from "@/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import SettingsClient from "./settings-client";
@@ -23,6 +23,13 @@ export default async function SettingsPage() {
         return <div className="p-8 text-zinc-400">Company not found.</div>;
     }
 
+    // Get instance role
+    const [userRecord] = await db
+        .select({ instanceRole: users.instanceRole })
+        .from(users)
+        .where(eq(users.id, sessionUserId))
+        .limit(1);
+
     const tokens = await db.select().from(companyTokens)
         .where(and(
             eq(companyTokens.companyId, membership.companyId),
@@ -30,5 +37,11 @@ export default async function SettingsPage() {
         ))
         .orderBy(desc(companyTokens.createdAt));
 
-    return <SettingsClient initialTokens={tokens.map(serializeCompanyToken)} />;
+    return (
+        <SettingsClient
+            initialTokens={tokens.map(serializeCompanyToken)}
+            companyRole={membership.role}
+            instanceRole={userRecord?.instanceRole ?? "member"}
+        />
+    );
 }

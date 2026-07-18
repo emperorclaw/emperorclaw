@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { agents, tasks, incidents, companyTokens, users, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
 import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
@@ -6,7 +7,6 @@ import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
-import { PublicHomePage } from "@/components/public-home-page";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
 
@@ -32,7 +32,7 @@ export default async function DashboardPage() {
   const session = await getValidatedServerSession();
   const companyId = await getCompanyId();
   if (!companyId) {
-    return <PublicHomePage />;
+    redirect("/login");
   }
 
   const [currentUser] = session?.user?.id

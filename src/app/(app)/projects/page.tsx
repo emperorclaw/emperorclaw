@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { getCompanyId } from "@/lib/auth";
+import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import ProjectsClient from "./projects-client";
 
@@ -10,6 +10,9 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage() {
     const companyId = await getCompanyId();
     if (!companyId) redirect("/login");
+
+    const session = await getValidatedServerSession();
+    const companyRole = (session?.user as any)?.companyRole ?? "member";
 
     const allTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
     const allProjects = await db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
@@ -30,6 +33,7 @@ export default async function ProjectsPage() {
             taskEvents={allEvents}
             initialProjectMemory={allProjectMemory}
             recurringDefinitions={allRecurringTaskDefinitions}
+            companyRole={companyRole}
         />
     );
 }

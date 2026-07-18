@@ -19,8 +19,8 @@ Do not treat chat visibility as proof that work happened. For Emperor-connected 
 
 ## Base URLs
 
-- REST base: `https://emperorclaw.malecu.eu/api/mcp`
-- WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`
+- REST base: `https://emperorclaw.example.com/api/mcp`
+- WebSocket: `wss://emperorclaw.example.com/api/mcp/ws`
 
 ## How Emperor-Connected Runtimes Should Use This API
 
@@ -59,7 +59,7 @@ Recommended rule:
 Example:
 
 ```bash
-curl -X GET "https://emperorclaw.malecu.eu/api/mcp/runtime/health" \
+curl -X GET "https://emperorclaw.example.com/api/mcp/runtime/health" \
   -H "Authorization: Bearer <company-token>"
 ```
 
@@ -80,8 +80,8 @@ Example response shape:
   "ok": true,
   "companyId": "<company-id>",
   "serverTime": "2026-04-20T10:00:00.000Z",
-  "apiBaseUrl": "https://emperorclaw.malecu.eu",
-  "wsUrl": "wss://emperorclaw.malecu.eu/api/mcp/ws",
+  "apiBaseUrl": "https://emperorclaw.example.com",
+  "wsUrl": "wss://emperorclaw.example.com/api/mcp/ws",
   "capabilities": {
     "runtimeRegister": true,
     "sessions": true,
@@ -670,7 +670,7 @@ Important constraints:
 Example:
 
 ```bash
-curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
+curl -X POST "https://emperorclaw.example.com/api/mcp/artifacts/upload" \
   -H "Authorization: Bearer <company-token>" \
   -H "Idempotency-Key: <uuid>" \
   -F "file=@Invoice-2026-0001.pdf" \
@@ -682,27 +682,27 @@ curl -X POST "https://emperorclaw.malecu.eu/api/mcp/artifacts/upload" \
   -F "importance=record"
 ```
 
-### Example: Build `/malecu/invoices/2026` And Upload There
+### Example: Build `/your-company/invoices/2026` And Upload There
 
 Do not send the full path as one folder name.
 
-1. Create `malecu`
+1. Create `your-company`
 
 ```json
 POST /folders
 {
   "customerId": "<customer-id>",
-  "name": "malecu"
+  "name": "your-company"
 }
 ```
 
-2. Create `invoices` under `malecu`
+2. Create `invoices` under `your-company`
 
 ```json
 POST /folders
 {
   "customerId": "<customer-id>",
-  "parentFolderId": "<malecu-folder-id>",
+  "parentFolderId": "<your-company-folder-id>",
   "name": "invoices"
 }
 ```

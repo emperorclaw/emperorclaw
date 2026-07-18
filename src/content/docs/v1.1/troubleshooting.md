@@ -10,7 +10,7 @@ Common issues and solutions when orchestrating local runtimes with Emperor Claw.
 **Symptom**: Messages in the web UI don't trigger runtime responses.
 **Solutions**:
 - **Check Logs**: Look for `401 Unauthorized` errors. Verify `EMPEROR_CLAW_API_TOKEN`.
-- **Verify URLs**: Ensure base URL is `https://emperorclaw.malecu.eu` and WebSocket is `wss://emperorclaw.malecu.eu/api/mcp/ws`.
+- **Verify URLs**: Ensure base URL is `https://emperorclaw.example.com` and WebSocket is `wss://emperorclaw.example.com/api/mcp/ws`.
 - **Sync Fallback**: If WebSocket is blocked, ensure your runtime calls `GET /api/mcp/messages/sync` periodically.
 
 ### 1.2 Bridge Reconnects or Repeats Messages

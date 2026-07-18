@@ -3,18 +3,25 @@ import type { JWT } from "next-auth/jwt";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/db";
-import { users, sessions } from "@/db/schema";
+import { users, sessions, companyMembers } from "@/db/schema";
 import { and, eq, gt } from "drizzle-orm";
 import * as argon2 from "argon2";
 import { consumeRateLimit } from "@/lib/rate-limit";
+import { isSelfHosted, getInstanceCompany } from "@/lib/instance";
 
 type AuthToken = JWT & {
     id?: string;
     sessionId?: string;
+    instanceRole?: string;
+    companyRole?: string;
 };
 
-type SessionWithUserId = Session & {
-    user: Session["user"] & { id?: string };
+export type SessionWithUserId = Session & {
+    user: Session["user"] & {
+        id?: string;
+        instanceRole?: string;
+        companyRole?: string;
+    };
     sessionId?: string;
 };
 
@@ -102,6 +109,21 @@ export const authOptions: NextAuthOptions = {
             if (user) {
                 authToken.id = user.id;
 
+                // Fetch instance_role and company_role for JWT claims (FR-19, FR-20)
+                const [userRecord] = await db
+                    .select({ instanceRole: users.instanceRole })
+                    .from(users)
+                    .where(eq(users.id, user.id))
+                    .limit(1);
+                authToken.instanceRole = userRecord?.instanceRole ?? "member";
+
+                const [membership] = await db
+                    .select({ role: companyMembers.role })
+                    .from(companyMembers)
+                    .where(eq(companyMembers.userId, user.id))
+                    .limit(1);
+                authToken.companyRole = membership?.role ?? null;
+
                 // Create a DB-backed session record when they log in
                 const expiresAt = new Date();
                 expiresAt.setDate(expiresAt.getDate() + 30);
@@ -132,6 +154,8 @@ export const authOptions: NextAuthOptions = {
 
             authSession.user.id = authToken.id;
             authSession.sessionId = authToken.sessionId;
+            authSession.user.instanceRole = authToken.instanceRole;
+            authSession.user.companyRole = authToken.companyRole;
             return authSession;
         }
     }
@@ -159,12 +183,32 @@ export async function getCompanyId() {
         return null;
     }
 
-    const { companyMembers } = await import("@/db/schema");
+    // Self-hosted: use the cached single-company lookup (NFR-8)
+    if (isSelfHosted()) {
+        const company = await getInstanceCompany();
+        return company?.id ?? null;
+    }
+
+    // Cloud: preserve existing behavior — query company_members by userId
     const [membership] = await db.select().from(companyMembers)
         .where(eq(companyMembers.userId, typedSession.user.id))
         .limit(1);
 
     return membership ? membership.companyId : null;
+}
+
+export async function getCompanyRole(userId: string, companyId: string): Promise<string | null> {
+    const [membership] = await db
+        .select({ role: companyMembers.role })
+        .from(companyMembers)
+        .where(
+            and(
+                eq(companyMembers.userId, userId),
+                eq(companyMembers.companyId, companyId)
+            )
+        )
+        .limit(1);
+    return membership?.role ?? null;
 }
 
 export async function getUserId() {
