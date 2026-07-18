@@ -12,32 +12,7 @@ import {
     type SetStateAction,
     type ChangeEvent,
 } from "react";
-import {
-    ArrowDownToLine,
-    ChevronDown,
-    ChevronRight,
-    File,
-    FileArchive,
-    FileCode2,
-    FileImage,
-    FileJson2,
-    FileSpreadsheet,
-    FileText,
-    Folder,
-    FolderOpen,
-    FolderPlus,
-    Loader2,
-    Maximize2,
-    MoreHorizontal,
-    PencilLine,
-    Plus,
-    RefreshCcw,
-    Save,
-    Search,
-    Settings2,
-    Trash2,
-    Upload,
-} from "lucide-react";
+import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -1143,15 +1118,15 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     actions={
                         <>
                             <Button variant="outline" onClick={() => void reloadWorkspace()} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
-                                <RefreshCcw className="size-4" />
+                                <IconRefresh className="size-4" />
                                 Refresh
                             </Button>
                             <Button variant="outline" onClick={beginCreateFolder} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
-                                <FolderPlus className="size-4" />
+                                <IconFolderPlus className="size-4" />
                                 New Folder
                             </Button>
                             <Button onClick={beginUpload} className="bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
-                                <Upload className="size-4" />
+                                <IconUpload className="size-4" />
                                 Upload
                             </Button>
                         </>
@@ -1159,7 +1134,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 />
                 <div className="grid gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
                     <div className="relative min-w-[240px] flex-1">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
+                        <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
                         <Input
                             value={searchValue}
                             onChange={(event) => setSearchValue(event.target.value)}
@@ -1302,7 +1277,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                             >
                                                 {item.name}
                                             </button>
-                                            {index < breadcrumbItems.length - 1 && <ChevronRight className="size-3 text-zinc-600" />}
+                                            {index < breadcrumbItems.length - 1 && <IconChevronRight className="size-3 text-zinc-600" />}
                                         </div>
                                     ))}
                                 </div>
@@ -1333,7 +1308,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 {!isSearchMode && visibleFolders.map((folder) => (
                                     <BrowserRow
                                         key={folder.id}
-                                        icon={<Folder className="size-4 text-amber-300" />}
+                                        icon={<IconFolder className="size-4 text-amber-300" />}
                                         title={folder.name}
                                         subtitle={folder.path || "Root"}
                                         context={folder.projectId ? projects.find((project) => project.id === folder.projectId)?.name || "Scoped folder" : "Folder"}
@@ -1349,7 +1324,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon-sm" className="text-zinc-400 hover:text-zinc-100">
-                                                        <MoreHorizontal className="size-4" />
+                                                        <IconDots className="size-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
@@ -1384,7 +1359,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon-sm" className="text-zinc-400 hover:text-zinc-100">
-                                                        <MoreHorizontal className="size-4" />
+                                                        <IconDots className="size-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
@@ -1399,20 +1374,20 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 ))}
                                 {loadingFolderId === currentFolderId && !isSearchMode && (
                                     <div className="flex items-center gap-2 px-4 py-6 text-sm text-zinc-400">
-                                        <Loader2 className="size-4 animate-spin" />
+                                        <IconLoader2 className="size-4 animate-spin" />
                                         Loading folder contents...
                                     </div>
                                 )}
                                 {isSearchLoading && isSearchMode && (
                                     <div className="flex items-center gap-2 px-4 py-6 text-sm text-zinc-400">
-                                        <Loader2 className="size-4 animate-spin" />
+                                        <IconLoader2 className="size-4 animate-spin" />
                                         Searching storage...
                                     </div>
                                 )}
                                 {!loadingFolderId && !isSearchLoading && visibleFolders.length === 0 && visibleArtifacts.length === 0 && (
                                     <div className="mx-2 mt-2 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/80 px-6 py-14 text-center">
                                         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
-                                            <FolderOpen className="size-6 text-zinc-500" />
+                                            <IconFolderOpen className="size-6 text-zinc-500" />
                                         </div>
                                         <h3 className="text-lg font-medium text-zinc-100">Nothing here yet</h3>
                                         <p className="mt-2 text-sm text-zinc-400">
@@ -1502,7 +1477,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             <DialogTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Inspector</DialogTitle>
                             {selectedEntry?.type === "artifact" && (
                                 <Button variant="ghost" size="icon-sm" onClick={() => setInspectorTab(inspectorTab === "preview" ? "properties" : "preview")} className="text-zinc-400 hover:text-zinc-100 mt-0!">
-                                    <Settings2 className="size-4" />
+                                    <IconSettings className="size-4" />
                                 </Button>
                             )}
                         </DialogHeader>
@@ -1665,9 +1640,9 @@ function TreeFolderRow(props: {
                 }}
                 className="flex size-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800"
             >
-                {props.isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                {props.isExpanded ? <IconChevronDown className="size-3.5" /> : <IconChevronRight className="size-3.5" />}
             </span>
-            <Folder className="size-4 shrink-0 text-amber-300" />
+            <IconFolder className="size-4 shrink-0 text-amber-300" />
             <span className="truncate flex-1 min-w-0">{props.folder.name}</span>
         </button>
     );
@@ -1724,7 +1699,7 @@ function BrowserRow(props: {
             <div className="flex items-center justify-end">
                 {props.onInspect && (
                     <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); props.onInspect?.(); }} className="text-zinc-400 hover:text-zinc-100">
-                        <Maximize2 className="size-4" />
+                        <IconArrowsMaximize className="size-4" />
                     </Button>
                 )}
                 {props.actions}
@@ -1763,7 +1738,7 @@ function FolderInspector(props: {
             <div className="space-y-4">
                 <div className="flex items-start gap-3">
                     <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
-                        <Folder className="size-6 text-amber-300" />
+                        <IconFolder className="size-6 text-amber-300" />
                     </div>
                     <div>
                         <h2 className="text-lg font-semibold text-zinc-100">Root</h2>
@@ -1781,7 +1756,7 @@ function FolderInspector(props: {
         <div className="space-y-5">
             <div className="flex items-start gap-3">
                 <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
-                    <Folder className="size-6 text-amber-300" />
+                    <IconFolder className="size-6 text-amber-300" />
                 </div>
                 <div>
                     <h2 className="text-lg font-semibold text-zinc-100">{props.folder.name}</h2>
@@ -1846,11 +1821,11 @@ function FolderInspector(props: {
                 </details>
                 <div className="flex flex-wrap gap-2">
                     <Button onClick={props.onSave} disabled={props.isSaving || !props.hasChanges}>
-                        {props.isSaving && <Loader2 className="size-4 animate-spin" />}
+                        {props.isSaving && <IconLoader2 className="size-4 animate-spin" />}
                         Save Folder
                     </Button>
                     <Button variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20" onClick={props.onDelete}>
-                        <Trash2 className="size-4" />
+                        <IconTrash className="size-4" />
                         Delete
                     </Button>
                 </div>
@@ -1912,15 +1887,15 @@ function ArtifactInspector(props: {
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onDownload}>
-                            <ArrowDownToLine className="size-4" />
+                            <IconArrowDown className="size-4" />
                             Download
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onOpenLargePreview}>
-                            <Maximize2 className="size-4" />
+                            <IconArrowsMaximize className="size-4" />
                             {props.preview.state === "csv" ? "Open CSV Workspace" : "Open Large View"}
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onReplace}>
-                            <PencilLine className="size-4" />
+                            <IconPencil className="size-4" />
                             Replace Content
                         </Button>
                     </div>
@@ -2085,18 +2060,18 @@ function ArtifactInspector(props: {
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={props.onSaveProperties} disabled={props.isSavingArtifact || !props.hasPropertyChanges}>
-                            {props.isSavingArtifact && <Loader2 className="size-4 animate-spin" />}
+                            {props.isSavingArtifact && <IconLoader2 className="size-4 animate-spin" />}
                             Save Properties
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onSaveLocation} disabled={props.isSavingLocation || !props.hasLocationChanges}>
-                            {props.isSavingLocation && <Loader2 className="size-4 animate-spin" />}
+                            {props.isSavingLocation && <IconLoader2 className="size-4 animate-spin" />}
                             Save Location
                         </Button>
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onReplace}>
                             Replace Content
                         </Button>
                         <Button variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20" onClick={props.onDelete}>
-                            <Trash2 className="size-4" />
+                            <IconTrash className="size-4" />
                             Delete
                         </Button>
                     </div>
@@ -2176,7 +2151,7 @@ function FolderDialog(props: {
                         Cancel
                     </Button>
                     <Button onClick={props.onSubmit} disabled={props.isSaving}>
-                        {props.isSaving && <Loader2 className="size-4 animate-spin" />}
+                        {props.isSaving && <IconLoader2 className="size-4 animate-spin" />}
                         Create
                     </Button>
                 </DialogFooter>
@@ -2288,7 +2263,7 @@ function UploadDialog(props: {
                         Cancel
                     </Button>
                     <Button onClick={props.onSubmit} disabled={props.isUploading}>
-                        {props.isUploading && <Loader2 className="size-4 animate-spin" />}
+                        {props.isUploading && <IconLoader2 className="size-4 animate-spin" />}
                         Upload
                     </Button>
                 </DialogFooter>
@@ -2407,11 +2382,11 @@ function PreviewDialog(props: {
                                         onClick={props.onResetCsvDraft}
                                         disabled={props.isSavingCsv || !props.isCsvDirty}
                                     >
-                                        <RefreshCcw className="size-4" />
+                                        <IconRefresh className="size-4" />
                                         Reset
                                     </Button>
                                     <Button onClick={props.onSaveCsvDraft} disabled={props.isSavingCsv || !props.isCsvDirty}>
-                                        {props.isSavingCsv ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                        {props.isSavingCsv ? <IconLoader2 className="size-4 animate-spin" /> : <IconDeviceFloppy className="size-4" />}
                                         Save CSV
                                     </Button>
                                 </>
@@ -2449,11 +2424,11 @@ function CsvGridEditor(props: {
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onAddColumn}>
-                        <Plus className="size-4" />
+                        <IconPlus className="size-4" />
                         Add Column
                     </Button>
                     <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onAddRow}>
-                        <Plus className="size-4" />
+                        <IconPlus className="size-4" />
                         Add Row
                     </Button>
                 </div>
@@ -2477,7 +2452,7 @@ function CsvGridEditor(props: {
                                             className="text-zinc-500 hover:text-zinc-100"
                                             onClick={() => props.onDeleteColumn(columnIndex)}
                                         >
-                                            <Trash2 className="size-4" />
+                                            <IconTrash className="size-4" />
                                         </Button>
                                     </div>
                                 </th>
@@ -2498,7 +2473,7 @@ function CsvGridEditor(props: {
                                             className="text-zinc-500 hover:text-zinc-100"
                                             onClick={() => props.onDeleteRow(rowIndex)}
                                         >
-                                            <Trash2 className="size-4" />
+                                            <IconTrash className="size-4" />
                                         </Button>
                                     </div>
                                 </td>
@@ -2524,7 +2499,7 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
     if (preview.state === "idle" || preview.state === "loading") {
         return (
             <div className="flex min-h-80 items-center justify-center text-sm text-zinc-400">
-                {preview.state === "loading" ? <><Loader2 className="mr-2 size-4 animate-spin" />Loading preview...</> : "Select a file to preview it."}
+                {preview.state === "loading" ? <><IconLoader2 className="mr-2 size-4 animate-spin" />Loading preview...</> : "Select a file to preview it."}
             </div>
         );
     }
@@ -2592,7 +2567,7 @@ function InfoPill(props: { label: string; value: string; mono?: boolean }) {
 function EmptyInspector() {
     return (
         <div className="flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/80 px-6 text-center">
-            <Settings2 className="mb-4 size-8 text-zinc-600" />
+            <IconSettings className="mb-4 size-8 text-zinc-600" />
             <h3 className="text-lg font-medium text-zinc-100">Select a file or folder</h3>
             <p className="mt-2 text-sm text-zinc-400">
                 Preview file contents, edit metadata, rename items, and manage folder structure from this inspector.
@@ -2605,14 +2580,14 @@ function renderArtifactIcon(artifact: Pick<ArtifactSummary, "contentType" | "ori
     const name = artifact.originalFilename?.toLowerCase() || "";
     const contentType = artifact.contentType.toLowerCase();
 
-    if (contentType.includes("json") || name.endsWith(".json")) return <FileJson2 className="size-4 text-sky-300" />;
-    if (contentType.includes("csv") || name.endsWith(".csv") || name.endsWith(".xlsx") || name.endsWith(".xls")) return <FileSpreadsheet className="size-4 text-emerald-300" />;
-    if (contentType.includes("markdown") || name.endsWith(".md")) return <FileCode2 className="size-4 text-cyan-300" />;
-    if (contentType.includes("image/")) return <FileImage className="size-4 text-rose-300" />;
-    if (contentType.includes("pdf") || name.endsWith(".pdf")) return <FileText className="size-4 text-red-300" />;
-    if (name.endsWith(".zip") || name.endsWith(".tar") || name.endsWith(".gz")) return <FileArchive className="size-4 text-amber-300" />;
-    if (contentType.startsWith("text/")) return <FileText className="size-4 text-zinc-300" />;
-    return <File className="size-4 text-zinc-300" />;
+    if (contentType.includes("json") || name.endsWith(".json")) return <IconFileTypeJs className="size-4 text-sky-300" />;
+    if (contentType.includes("csv") || name.endsWith(".csv") || name.endsWith(".xlsx") || name.endsWith(".xls")) return <IconFileSpreadsheet className="size-4 text-emerald-300" />;
+    if (contentType.includes("markdown") || name.endsWith(".md")) return <IconFileCode className="size-4 text-cyan-300" />;
+    if (contentType.includes("image/")) return <IconPhoto className="size-4 text-rose-300" />;
+    if (contentType.includes("pdf") || name.endsWith(".pdf")) return <IconFileText className="size-4 text-red-300" />;
+    if (name.endsWith(".zip") || name.endsWith(".tar") || name.endsWith(".gz")) return <IconFileZip className="size-4 text-amber-300" />;
+    if (contentType.startsWith("text/")) return <IconFileText className="size-4 text-zinc-300" />;
+    return <IconFile className="size-4 text-zinc-300" />;
 }
 
 function buildArtifactContextLabel(artifact: ArtifactSummary) {

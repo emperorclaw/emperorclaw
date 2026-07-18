@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Users, Search } from "lucide-react";
+import { IconUsers, IconSearch } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
@@ -82,7 +82,7 @@ export function MessagingHub({
             <div className="flex w-full sm:w-72 lg:w-80 shrink-0 flex-col border-b sm:border-b-0 sm:border-r border-zinc-800/80 bg-zinc-950/70 max-h-[40vh] sm:max-h-none">
                 <div className="p-4 border-b border-zinc-800">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <input
                             type="text"
                             placeholder="Filter agents..."
@@ -111,7 +111,7 @@ export function MessagingHub({
                                     ? "bg-cyan-400/15 border-cyan-400/35 text-cyan-300"
                                     : "bg-zinc-800 border-zinc-700 text-zinc-500 group-hover:text-zinc-300"
                             )}>
-                                <Users className="w-5 h-5" />
+                                <IconUsers className="w-5 h-5" />
                             </div>
                             <div className="flex flex-col">
                                 <span className={cn(
@@ -197,7 +197,7 @@ export function MessagingHub({
                         <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/70 p-5">
                             <div>
                                 <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
-                                    <Users className="w-5 h-5 text-cyan-400" />
+                                    <IconUsers className="w-5 h-5 text-cyan-400" />
                                     Team Channel
                                 </h1>
                                 <p className="mt-0.5 text-xs font-medium text-zinc-500">Shared channel — everyone on the team sees and can reply here.</p>

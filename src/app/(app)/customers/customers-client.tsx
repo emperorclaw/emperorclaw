@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Save, Search, Sparkles } from "lucide-react";
+import { IconBuilding, IconDeviceFloppy, IconSearch, IconSparkles } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
@@ -136,7 +136,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
 
             {customerData.length === 0 ? (
                 <div className="emperor-panel rounded-2xl py-12 text-center">
-                    <Building2 className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
+                    <IconBuilding className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
                     <h3 className="mb-1 font-medium text-zinc-200">No customers yet</h3>
                     <p className="text-sm text-zinc-500">Add a customer to define the portfolio and execution context your agents should follow.</p>
                 </div>
@@ -144,7 +144,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                 <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
-                            <Search className="h-4 w-4" />
+                            <IconSearch className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
                         </label>
                         <div className="mt-4 space-y-2">
@@ -181,13 +181,13 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                         <Tag label={`${selectedCustomer.pipelineCount || 0} pipelines`} tone="cyan" />
                                     </div>
                                 </div>
-                                <Sparkles className="mt-1 h-5 w-5 text-cyan-300/70" />
+                                <IconSparkles className="mt-1 h-5 w-5 text-cyan-300/70" />
                             </div>
                             <div className="pt-4 sm:pt-5">
                                 <div className="mb-2 flex items-center justify-between">
                                     <label className="text-sm font-medium text-zinc-300">Customer context markdown</label>
                                     <button onClick={() => void handleSaveNotes(selectedCustomer.id)} disabled={sending || localNotes[selectedCustomer.id] === undefined} className="flex items-center text-xs font-semibold text-cyan-300 transition-colors hover:text-cyan-200 disabled:opacity-50">
-                                        <Save className="mr-1 h-3 w-3" />
+                                        <IconDeviceFloppy className="mr-1 h-3 w-3" />
                                         Save context
                                     </button>
                                 </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { IconCheck, IconChevronDown, IconSearch } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
 export type SearchableSelectOption = {
@@ -65,12 +65,12 @@ export function SearchableSelect({
                 className="flex h-10 w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-left text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
             >
                 <span className={cn("truncate", !selected && "text-zinc-400")}>{selected?.label || placeholder}</span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
+                <IconChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
             </button>
             {open && (
                 <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
                     <label className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm text-zinc-400">
-                        <Search className="h-4 w-4" />
+                        <IconSearch className="h-4 w-4" />
                         <input
                             autoFocus
                             value={query}
@@ -98,7 +98,7 @@ export function SearchableSelect({
                                         option.value === value ? "text-cyan-100" : "text-zinc-200",
                                     )}
                                 >
-                                    <Check className={cn("mt-0.5 h-4 w-4 shrink-0", option.value === value ? "text-cyan-300" : "text-transparent")} />
+                                    <IconCheck className={cn("mt-0.5 h-4 w-4 shrink-0", option.value === value ? "text-cyan-300" : "text-transparent")} />
                                     <span className="min-w-0">
                                         <span className="block truncate font-medium">{option.label}</span>
                                         {option.description ? <span className="mt-0.5 block truncate text-xs text-zinc-500">{option.description}</span> : null}

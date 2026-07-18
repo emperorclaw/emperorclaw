@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Bot, Mic, Send, Square, Trash2, User } from "lucide-react";
+import { IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
@@ -430,7 +430,7 @@ export function AgentDirectChat({
                     <div>
                         <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                                <Bot className="w-4 h-4 text-emerald-400" />
+                                <IconRobot className="w-4 h-4 text-emerald-400" />
                             </div>
                             <div>
                                 <h2 className="text-lg font-medium text-zinc-100">Direct Chat</h2>
@@ -525,7 +525,7 @@ export function AgentDirectChat({
                                                 {!isContinuation && (
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <div className={cn("w-5 h-5 rounded-full flex items-center justify-center", isHuman ? "bg-emerald-950/15" : "bg-zinc-800")}>
-                                                            {isHuman ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3 text-emerald-400" />}
+                                                            {isHuman ? <IconUser className="w-3 h-3" /> : <IconRobot className="w-3 h-3 text-emerald-400" />}
                                                         </div>
                                                         <span className={cn("text-[10px] uppercase tracking-wider font-bold", isHuman ? "text-emerald-950/70" : "text-zinc-500")}>
                                                             {isHuman ? "You" : agentName}
@@ -575,7 +575,7 @@ export function AgentDirectChat({
             <div className="border-t border-zinc-800 bg-zinc-950/80 p-4 space-y-2">
                 {micError && (
                     <div className="flex items-start gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
-                        <Mic className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
+                        <IconMicrophone className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
                         <span>
                             {micError === "blocked"
                                 ? <>Microphone is blocked. Click the <strong>lock icon</strong> in your browser&apos;s address bar → <strong>Site settings</strong> → set Microphone to <strong>Allow</strong>, then reload the page.</>
@@ -598,7 +598,7 @@ export function AgentDirectChat({
                             onClick={stopRecording}
                             className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-400 transition-colors"
                         >
-                            <Square className="w-3.5 h-3.5 fill-white" />
+                            <IconSquare className="w-3.5 h-3.5 fill-white" />
                             Stop
                         </button>
                     </div>
@@ -614,7 +614,7 @@ export function AgentDirectChat({
                             className="p-2 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
                             title="Discard"
                         >
-                            <Trash2 className="w-4 h-4" />
+                            <IconTrash className="w-4 h-4" />
                         </button>
                         <button
                             type="button"
@@ -622,7 +622,7 @@ export function AgentDirectChat({
                             disabled={isSending}
                             className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            <Send className="w-4 h-4" />
+                            <IconSend className="w-4 h-4" />
                             Send
                         </button>
                     </div>
@@ -645,14 +645,14 @@ export function AgentDirectChat({
                         title="Record voice message"
                         className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 hover:border-emerald-500/50 hover:text-emerald-400 text-zinc-400 transition-colors shrink-0"
                     >
-                        <Mic className="w-4 h-4" />
+                        <IconMicrophone className="w-4 h-4" />
                     </button>
                     <button
                         type="submit"
                         disabled={!draft.trim() || isSending}
                         className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <Send className="w-4 h-4" />
+                        <IconSend className="w-4 h-4" />
                         {isSending ? "Sending" : "Send"}
                     </button>
                 </div>

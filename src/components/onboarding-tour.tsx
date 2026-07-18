@@ -1,17 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Bot,
-  CheckCircle2,
-  Clipboard,
-  KeyRound,
-  Loader2,
-  PlugZap,
-  Terminal,
-  X,
-} from "lucide-react";
+import { IconAlertTriangle, IconRobot, IconCircleCheck, IconClipboard, IconKey, IconLoader2, IconPlugConnected, IconTerminal2, IconX } from "@tabler/icons-react";
 
 type OnboardingTourProps = {
   companyId: string;
@@ -47,7 +37,7 @@ function CommandBlock({ command, onCopy }: { command: string; onCopy: () => void
     <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 overflow-hidden">
       <div className="flex items-center justify-between border-b border-zinc-800/70 px-3 py-2">
         <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-          <Terminal className="h-3.5 w-3.5" />
+          <IconTerminal2 className="h-3.5 w-3.5" />
           Terminal
         </div>
         <button
@@ -55,7 +45,7 @@ function CommandBlock({ command, onCopy }: { command: string; onCopy: () => void
           onClick={onCopy}
           className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-zinc-800 px-2 py-1 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
         >
-          <Clipboard className="h-3.5 w-3.5" />
+          <IconClipboard className="h-3.5 w-3.5" />
           Copy
         </button>
       </div>
@@ -75,7 +65,7 @@ function StepBadge({ done, index }: { done: boolean; index: number }) {
           : "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-semibold text-zinc-400"
       }
     >
-      {done ? <CheckCircle2 className="h-4 w-4" /> : index}
+      {done ? <IconCircleCheck className="h-4 w-4" /> : index}
     </div>
   );
 }
@@ -199,7 +189,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
       <div className="flex flex-col gap-4 border-b border-zinc-800/70 p-5 md:flex-row md:items-start md:justify-between">
         <div className="flex gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
-            <PlugZap className="h-5 w-5" />
+            <IconPlugConnected className="h-5 w-5" />
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -225,7 +215,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
           className="inline-flex cursor-pointer items-center gap-2 self-start rounded-md border border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
           aria-label="Dismiss onboarding"
         >
-          <X className="h-4 w-4" />
+          <IconX className="h-4 w-4" />
           Dismiss
         </button>
       </div>
@@ -254,14 +244,14 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
                   disabled={!tokenName.trim() || isCreatingToken}
                   className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-default disabled:opacity-50"
                 >
-                  {isCreatingToken ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                  {isCreatingToken ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconKey className="h-4 w-4" />}
                   Create Token
                 </button>
               </div>
               {createdToken && (
                 <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
                   <div className="flex items-start gap-2 text-sm text-emerald-200">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                     <p>Copy this token now. Emperor will not show it again after this tour is closed.</p>
                   </div>
                   <div className="mt-3 flex overflow-hidden rounded-md border border-emerald-500/20 bg-zinc-950">
@@ -272,7 +262,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
                       className="inline-flex cursor-pointer items-center border-l border-emerald-500/20 px-3 text-emerald-200 transition-colors hover:bg-emerald-500/10"
                       aria-label="Copy token"
                     >
-                      {copiedLabel === "token" ? <CheckCircle2 className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
+                      {copiedLabel === "token" ? <IconCircleCheck className="h-4 w-4" /> : <IconClipboard className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -332,7 +322,7 @@ export function OnboardingTour({ companyId, initialAgentCount, initialTokenCount
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300">
-                <Bot className="h-4 w-4" />
+                <IconRobot className="h-4 w-4" />
               </div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">Connection check</p>

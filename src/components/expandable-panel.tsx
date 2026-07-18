@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { IconArrowsMaximize, IconArrowsMinimize } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,7 +41,7 @@ export function ExpandablePanel({
                     onClick={() => setExpanded((value) => !value)}
                     className="absolute right-3 top-3 z-10 inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/90 px-3 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
                 >
-                    {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    {expanded ? <IconArrowsMinimize className="h-3.5 w-3.5" /> : <IconArrowsMaximize className="h-3.5 w-3.5" />}
                     {expanded ? "Collapse" : label}
                 </button>
                 {children(expanded)}
