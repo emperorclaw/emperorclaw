@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 // when NEXT_PUBLIC_GA_ID is set. Self-hosted instances default to zero analytics.
 const gaEnabled = Boolean(process.env.NEXT_PUBLIC_GA_ID);
 
+const isDev = process.env.NODE_ENV === "development";
+
 const securityHeaders = [
   {
     key: "Strict-Transport-Security",
@@ -18,14 +20,14 @@ const securityHeaders = [
       "frame-ancestors 'none'",
       "form-action 'self'",
       gaEnabled
-        ? "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com"
-        : "script-src 'self' 'unsafe-inline'",
+        ? `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://www.googletagmanager.com`
+        : `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       gaEnabled
-        ? "connect-src 'self' wss: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com"
-        : "connect-src 'self' wss:",
+        ? "connect-src 'self' wss: https://api.github.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com"
+        : "connect-src 'self' wss: https://api.github.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "upgrade-insecure-requests",
