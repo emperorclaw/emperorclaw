@@ -41,7 +41,7 @@ export async function POST(
     const provider = getProvider(agent.provider || "mcp");
     if (!provider) return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
 
-    const projectRoot = path.resolve(process.cwd());
+    const projectRoot = path.resolve(/* turbopackIgnore: true */ process.cwd());
     const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
     const role = agent.role || "operator";
     const homeDir = os.homedir();
