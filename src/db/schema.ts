@@ -178,6 +178,9 @@ export const agents = pgTable("agents", {
     provider: text("provider").notNull().default("mcp"),
     deploymentMode: text("deployment_mode").notNull().default("remote"),
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
+    monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
+    monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
+    budgetStatus: text("budget_status").default("active").notNull(), // active | warning | paused
     status: text("status").notNull().default('offline'),
     lastSeenAt: timestamp("last_seen_at"),
     currentLoad: integer("current_load").default(0).notNull(),

@@ -34,6 +34,9 @@ type AgentDetailData = {
         provider?: string;
         deploymentMode?: string;
         doctrineJson?: Record<string, string>;
+        monthlyBudgetCents?: number;
+        monthlyTokenUsage?: number;
+        budgetStatus?: string;
     };
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
@@ -156,6 +159,31 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 </span>
                             )}
                         </div>
+                        {/* Budget bar — only shown when budget is set */}
+                        {(agent.monthlyBudgetCents ?? 0) > 0 && (
+                            <div className="mt-2 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] text-zinc-500">Monthly budget</span>
+                                    <span className={cn(
+                                        "text-[10px] font-medium",
+                                        agent.budgetStatus === "paused" ? "text-rose-400" :
+                                        agent.budgetStatus === "warning" ? "text-amber-400" : "text-zinc-400"
+                                    )}>
+                                        ${((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2)} / ${((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0)}
+                                        {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
+                                    </span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                                    <div className={cn(
+                                        "h-full rounded-full transition-all",
+                                        agent.budgetStatus === "paused" ? "bg-rose-500" :
+                                        agent.budgetStatus === "warning" ? "bg-amber-500" : "bg-emerald-500"
+                                    )} style={{
+                                        width: `${Math.min(100, ((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 100) / Math.max(1, (agent.monthlyBudgetCents ?? 1) / 100) * 10)}%`
+                                    }} />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">

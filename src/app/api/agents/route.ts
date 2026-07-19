@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
         const doctrineJson = body.doctrineJson && typeof body.doctrineJson === "object"
             ? body.doctrineJson
             : {};
+        const monthlyBudgetCents = typeof body.monthlyBudgetCents === "number" && body.monthlyBudgetCents >= 0
+            ? Math.round(body.monthlyBudgetCents)
+            : 0;
 
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -61,6 +64,9 @@ export async function POST(req: NextRequest) {
             provider,
             deploymentMode,
             doctrineJson,
+            monthlyBudgetCents,
+            monthlyTokenUsage: 0,
+            budgetStatus: "active",
             status: "offline",
             currentLoad: 0,
         }).returning();

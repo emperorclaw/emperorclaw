@@ -20,6 +20,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
     const [selectedProvider, setSelectedProvider] = useState<AgentProvider>(providers[0]);
     const [name, setName] = useState("");
     const [deploymentMode, setDeploymentMode] = useState<"remote" | "local">("remote");
+    const [monthlyBudget, setMonthlyBudget] = useState(""); // dollars, empty = unlimited
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                     role: selectedRole?.title || name.trim() || "Custom",
                     provider: selectedProvider.id,
                     deploymentMode,
+                    monthlyBudgetCents: monthlyBudget ? Math.round(parseFloat(monthlyBudget) * 100) : 0,
                     doctrineJson: doctrine,
                     avatarUrl: `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name.trim() || selectedRole?.title || "agent")}`,
                 }),
@@ -261,6 +263,24 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                             </div>
                         </div>
 
+                        {/* Monthly budget */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Monthly Budget (USD)</label>
+                            <div className="flex items-center gap-2">
+                                <span className="text-zinc-500 text-sm">$</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    className="w-24 bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-cyan-500 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none"
+                                    placeholder="∞"
+                                    value={monthlyBudget}
+                                    onChange={(e) => setMonthlyBudget(e.target.value)}
+                                />
+                                <span className="text-[10px] text-zinc-600">Leave empty for unlimited</span>
+                            </div>
+                        </div>
+
                         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
                             <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Configuration</span>
                             <div className="grid gap-1.5 text-[11px]">
@@ -282,6 +302,10 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                         <span className="text-emerald-300">SOUL.md, AGENTS.md, BOOTSTRAP.md, IDENTITY.md</span>
                                     </div>
                                 )}
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500">Budget</span>
+                                    <span className="text-zinc-300">{monthlyBudget ? `$${monthlyBudget}/mo` : "Unlimited"}</span>
+                                </div>
                             </div>
                         </div>
 
