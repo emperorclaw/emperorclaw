@@ -302,6 +302,14 @@ Any runtime that speaks MCP can integrate. Agents register, heartbeat, claim tas
 
 ---
 
+## Safe migrations — always
+
+EmperorClaw uses **Drizzle incremental migrations** (`npm run db:migrate`). These are additive-only SQL files under `src/db/migrations/` that use `CREATE TABLE IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS`. They never drop data.
+
+**Do NOT use `drizzle-kit push` in production.** It syncs the database to match the TypeScript schema directly and can drop columns, tables, or data that exist in the database but not in the current schema. The `db:push` script is deliberately blocked with an error — use `db:push-dev` only for local development against throwaway databases.
+
+The Docker image and `docker-compose.yml` run `npm run db:migrate` automatically on startup — production-safe by default.
+
 ## Quick start
 
 ### One-command install (Docker)
