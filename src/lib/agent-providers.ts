@@ -202,23 +202,25 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
         doctrinePath: null,
         configFiles: [],
         installCommands: [
-            "codex mcp-server --name emperor-claw-{name} --description \"{role}\"",
+            "codex --version",
+            "codex doctor",
         ],
         heartbeatModel: "none",
         setupPromptPrefix: `Codex runs on-demand via the CLI. No bridge, no daemon — EmperorClaw spawns \`codex exec\` when tasks are assigned.
 
-Register Codex as an MCP server so EmperorClaw can discover it:
-  codex mcp-server --name emperor-claw-{name} --description "{role}"
-
 Verify the installation:
+  codex --version
   codex doctor
+
+Optionally register as an MCP server for persistent discovery:
+  codex mcp-server --name emperor-claw-{name} --description "{role}"
 
 Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with workspace context per task.`,
         postInstallChecklist: [
             "Ensure Codex CLI is installed: codex --version",
             "Authenticate: codex login",
-            "Register MCP server: codex mcp-server --name emperor-claw-{name}",
             "Verify: codex doctor shows all checks passing",
+            "Optionally register MCP server for persistent discovery",
             "EmperorClaw will spawn codex exec for on-demand tasks",
         ],
         invokeCommand: "codex exec --workspace {workspace} \"{prompt}\"",

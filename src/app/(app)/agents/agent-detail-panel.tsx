@@ -11,6 +11,9 @@ import {
     IconFileText,
     IconCopy,
     IconCircleCheck,
+    IconPlayerPlay,
+    IconLoader,
+    IconAlertTriangle,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
@@ -164,6 +167,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
             {/* Setup banner — shown when agent is offline / not yet connected */}
             {agent.status === "offline" && (
                 <SetupBanner
+                    agentId={agent.id}
                     agentName={agent.name}
                     agentRole={agent.role}
                     providerId={agent.provider || "mcp"}
@@ -315,9 +319,11 @@ function EmptyState({ text }: { text: string }) {
     );
 }
 
-function SetupBanner({ agentName, agentRole, providerId, deploymentMode }: { agentName: string; agentRole: string; providerId: string; deploymentMode: "local" | "remote" }) {
+function SetupBanner({ agentId, agentName, agentRole, providerId, deploymentMode }: { agentId: string; agentName: string; agentRole: string; providerId: string; deploymentMode: "local" | "remote" }) {
     const [copied, setCopied] = useState(false);
     const [copiedCmd, setCopiedCmd] = useState(false);
+    const [setupRunning, setSetupRunning] = useState(false);
+    const [setupResult, setSetupResult] = useState<{ success: boolean; message: string; outputs?: { command: string; stdout: string; stderr: string; exitCode: number | null }[] } | null>(null);
     const provider = getProvider(providerId) || getProvider("mcp")!;
     const isLocal = deploymentMode === "local";
     const template = getAgentTemplate(
@@ -366,6 +372,76 @@ function SetupBanner({ agentName, agentRole, providerId, deploymentMode }: { age
                     </p>
                 </div>
             </div>
+
+            {/* Auto-setup button — local mode only */}
+            {isLocal && provider.installCommands.length > 0 && (
+                <div className="space-y-3">
+                    <button
+                        type="button"
+                        disabled={setupRunning}
+                        onClick={async () => {
+                            setSetupRunning(true);
+                            setSetupResult(null);
+                            try {
+                                const res = await fetch(`/api/agents/${agentId}/setup-local`, { method: "POST" });
+                                const data = await res.json();
+                                setSetupResult(data);
+                            } catch (e) {
+                                setSetupResult({ success: false, message: e instanceof Error ? e.message : "Network error" });
+                            } finally {
+                                setSetupRunning(false);
+                            }
+                        }}
+                        className={cn(
+                            "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
+                            setupRunning
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 cursor-wait"
+                                : "border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                        )}
+                    >
+                        {setupRunning ? (
+                            <IconLoader className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <IconPlayerPlay className="h-4 w-4" />
+                        )}
+                        {setupRunning ? "Running setup..." : "Run Setup Automatically"}
+                    </button>
+
+                    {setupResult && (
+                        <div className={cn(
+                            "rounded-lg border p-3 text-xs space-y-2",
+                            setupResult.success
+                                ? "border-emerald-500/20 bg-emerald-500/[0.06]"
+                                : "border-rose-500/20 bg-rose-500/[0.06]"
+                        )}>
+                            <div className="flex items-center gap-2">
+                                {setupResult.success ? (
+                                    <IconCircleCheck className="h-4 w-4 text-emerald-400" />
+                                ) : (
+                                    <IconAlertTriangle className="h-4 w-4 text-rose-400" />
+                                )}
+                                <span className={setupResult.success ? "text-emerald-200" : "text-rose-200"}>
+                                    {setupResult.message}
+                                </span>
+                            </div>
+                            {setupResult.outputs && setupResult.outputs.length > 0 && (
+                                <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+                                    {setupResult.outputs.map((o, i) => (
+                                        <div key={i} className={cn(
+                                            "rounded px-2 py-1 font-mono text-[10px]",
+                                            o.exitCode === 0 ? "bg-black/30 text-emerald-100/60" : "bg-black/30 text-rose-100/60"
+                                        )}>
+                                            <div className="text-zinc-500 mb-0.5">$ {o.command}</div>
+                                            {o.stdout && <div className="text-zinc-300">{o.stdout}</div>}
+                                            {o.stderr && <div className="text-rose-300/70">{o.stderr}</div>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Direct install commands — for providers that have them */}
             {provider.installCommands.length > 0 && (
