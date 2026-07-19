@@ -79,7 +79,6 @@ After installation, the plugin manages:
 
 The plugin injects recognized bootstrap files into the agent's prompt context automatically.`,
         postInstallChecklist: [
-            "Install OpenClaw CLI",
             "Run: openclaw plugins install clawhub:emperor-claw-os-plugin",
             "Run: openclaw emperor add-agent --agent-name \"{name}\" --token \"{token}\"",
             "Verify: openclaw emperor status shows agent online",
@@ -115,15 +114,13 @@ DEEPSEEK_API_KEY="<your-key>"`,
             },
         ],
         installCommands: [
-            "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup",
-            "# Then create profile: hermes profile create {name} --clone",
-            "# Install Emperor plugin: cp -R emperor-claw ~/.hermes/profiles/{name}/plugins/ && hermes -p {name} plugins enable emperor-claw",
+            "hermes profile create {name} --clone --description \"{role}\"",
+            "mkdir -p ~/.hermes/profiles/{name}/plugins/emperor-claw",
+            "cp -R emperor-claw/* ~/.hermes/profiles/{name}/plugins/emperor-claw/",
+            "hermes -p {name} plugins enable emperor-claw",
         ],
         heartbeatModel: "push",
-        setupPromptPrefix: `Use the Hermes bridge service. Each agent needs one Hermes profile and one bridge service.
-
-Install Hermes:
-  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup
+        setupPromptPrefix: `Use the Hermes bridge service (assumes Hermes CLI is already installed). Each agent needs one Hermes profile and one bridge service.
 
 Create a profile per agent:
   hermes profile create {name} --clone --description "{role}"
@@ -135,8 +132,7 @@ Install the Emperor Hermes plugin into the profile:
 
 Create a systemd service at ~/.config/systemd/user/emperor-hermes-bridge-{name}.service`,
         postInstallChecklist: [
-            "Install Hermes CLI",
-            "Create profile: hermes profile create {name} --clone",
+            "Create profile: hermes profile create {name} --clone --description \"{role}\"",
             "Install Emperor plugin into the profile",
             "Create bridge .env at ~/.hermes/emperor-bridge/{name}/.env",
             "Create systemd service for the bridge",

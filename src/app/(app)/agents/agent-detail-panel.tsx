@@ -352,7 +352,7 @@ function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; 
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
-                            ⚡ Quick Install Commands
+                            ⚡ Quick Connect Commands
                         </span>
                         <button
                             type="button"
@@ -378,7 +378,7 @@ function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; 
                             </div>
                         ))}
                         <p className="text-[10px] text-emerald-100/50 mt-1">
-                            Run these on the machine where the agent will run. Then paste the LLM prompt below into Claude/ChatGPT to configure the doctrine and systemd service.
+                            Assumes {provider.name} CLI is already installed. Run these on the agent's machine (or this server). Then paste the LLM prompt for doctrine + systemd configuration.
                         </p>
                     </div>
                 </div>
