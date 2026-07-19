@@ -173,7 +173,7 @@ export async function POST(
                     EMPEROR_CLAW_AGENT_ID: agent.id,
                     EMPEROR_CLAW_AGENT_ROLE: role,
                     EMPEROR_CLAW_POLL_SECONDS: "5",
-                    EMPEROR_CLAW_CODEX_TIMEOUT: "300",
+                    EMPEROR_CLAW_CODEX_TIMEOUT: "120",
                 },
                 detached: true, stdio: "ignore",
                 cwd: projectRoot,
