@@ -19,6 +19,7 @@ export function CreateAgentDialog() {
     const [selectedRole, setSelectedRole] = useState<AgentRoleTemplate | null>(null);
     const [selectedProvider, setSelectedProvider] = useState<AgentProvider>(providers[0]);
     const [name, setName] = useState("");
+    const [deploymentMode, setDeploymentMode] = useState<"remote" | "local">("remote");
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +66,7 @@ export function CreateAgentDialog() {
                     name: name.trim() || (selectedRole?.title || "Agent"),
                     role: selectedRole?.title || name.trim() || "Custom",
                     provider: selectedProvider.id,
+                    deploymentMode,
                     doctrineJson: doctrine,
                     avatarUrl: `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name.trim() || selectedRole?.title || "agent")}`,
                 }),
@@ -178,7 +180,7 @@ export function CreateAgentDialog() {
                                 )}
                             >
                                 <span className="text-xl shrink-0 mt-0.5">
-                                    {provider.id === "openclaw" ? "👑" : provider.id === "hermes" ? "🦀" : "🔌"}
+                                    {provider.id === "openclaw" ? "👑" : provider.id === "hermes" ? "🦀" : provider.id === "codex" ? "🧠" : "🔌"}
                                 </span>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
@@ -217,6 +219,44 @@ export function CreateAgentDialog() {
                             </div>
                         </div>
 
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Where will this agent run?</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setDeploymentMode("remote")}
+                                    className={cn(
+                                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
+                                        deploymentMode === "remote"
+                                            ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
+                                            : "border-zinc-800 bg-zinc-900/70 text-zinc-500 hover:border-zinc-600"
+                                    )}
+                                >
+                                    <span className="text-sm">🌐</span>
+                                    <div>
+                                        <span className="block font-medium">Another machine</span>
+                                        <span className="text-[10px] opacity-70">VPS, Raspberry Pi, dedicated worker</span>
+                                    </div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setDeploymentMode("local")}
+                                    className={cn(
+                                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
+                                        deploymentMode === "local"
+                                            ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
+                                            : "border-zinc-800 bg-zinc-900/70 text-zinc-500 hover:border-zinc-600"
+                                    )}
+                                >
+                                    <span className="text-sm">🖥️</span>
+                                    <div>
+                                        <span className="block font-medium">This server</span>
+                                        <span className="text-[10px] opacity-70">Same machine as EmperorClaw</span>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
                             <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Configuration</span>
                             <div className="grid gap-1.5 text-[11px]">
@@ -227,6 +267,10 @@ export function CreateAgentDialog() {
                                 <div className="flex justify-between">
                                     <span className="text-zinc-500">Provider</span>
                                     <span className="text-zinc-300">{selectedProvider.name}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-500">Deployment</span>
+                                    <span className="text-zinc-300">{deploymentMode === "local" ? "🖥️ This server" : "🌐 Remote"}</span>
                                 </div>
                                 {selectedRole && (
                                     <div className="flex justify-between">

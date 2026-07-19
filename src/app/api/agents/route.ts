@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
         const avatarUrl = typeof body.avatarUrl === "string" ? body.avatarUrl.trim() : "";
         const concurrencyLimit = Math.max(1, Number(body.concurrencyLimit) || 1);
         const provider = typeof body.provider === "string" ? body.provider : "mcp";
+        const deploymentMode = typeof body.deploymentMode === "string" && body.deploymentMode === "local"
+            ? "local"
+            : "remote";
         const doctrineJson = body.doctrineJson && typeof body.doctrineJson === "object"
             ? body.doctrineJson
             : {};
@@ -56,6 +59,7 @@ export async function POST(req: NextRequest) {
             modelPolicyJson: body.modelPolicyJson && typeof body.modelPolicyJson === "object" ? body.modelPolicyJson : {},
             concurrencyLimit,
             provider,
+            deploymentMode,
             doctrineJson,
             status: "offline",
             currentLoad: 0,

@@ -195,18 +195,34 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
         name: "OpenAI Codex",
         icon: "IconCode",
         description:
-            "Codex CLI agent. API-driven with workspace resolution and tool integration. Coming soon.",
+            "OpenAI Codex CLI as an on-demand agent. EmperorClaw spawns codex with workspace context per task. No bridge or daemon needed.",
         executionModel: "on-demand",
-        status: "planned",
+        status: "available",
         prerequisites: ["Codex CLI", "OpenAI API key"],
         doctrinePath: null,
         configFiles: [],
-        installCommands: [],
+        installCommands: [
+            "codex mcp-server --name emperor-claw-{name} --description \"{role}\"",
+        ],
         heartbeatModel: "none",
-        setupPromptPrefix: "",
-        postInstallChecklist: [],
-        invokeCommand: "codex run --workspace {workspace} --task \"{task}\"",
-        resultCapture: "api",
+        setupPromptPrefix: `Codex runs on-demand via the CLI. No bridge, no daemon — EmperorClaw spawns \`codex exec\` when tasks are assigned.
+
+Register Codex as an MCP server so EmperorClaw can discover it:
+  codex mcp-server --name emperor-claw-{name} --description "{role}"
+
+Verify the installation:
+  codex doctor
+
+Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with workspace context per task.`,
+        postInstallChecklist: [
+            "Ensure Codex CLI is installed: codex --version",
+            "Authenticate: codex login",
+            "Register MCP server: codex mcp-server --name emperor-claw-{name}",
+            "Verify: codex doctor shows all checks passing",
+            "EmperorClaw will spawn codex exec for on-demand tasks",
+        ],
+        invokeCommand: "codex exec --workspace {workspace} \"{prompt}\"",
+        resultCapture: "stdout",
     },
     {
         id: "bash",
