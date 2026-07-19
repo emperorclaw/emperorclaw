@@ -37,6 +37,10 @@ export async function POST(req: NextRequest) {
         const memory = typeof body.memory === "string" ? body.memory.trim() : "";
         const avatarUrl = typeof body.avatarUrl === "string" ? body.avatarUrl.trim() : "";
         const concurrencyLimit = Math.max(1, Number(body.concurrencyLimit) || 1);
+        const provider = typeof body.provider === "string" ? body.provider : "mcp";
+        const doctrineJson = body.doctrineJson && typeof body.doctrineJson === "object"
+            ? body.doctrineJson
+            : {};
 
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -51,6 +55,8 @@ export async function POST(req: NextRequest) {
             memory: memory || null,
             modelPolicyJson: body.modelPolicyJson && typeof body.modelPolicyJson === "object" ? body.modelPolicyJson : {},
             concurrencyLimit,
+            provider,
+            doctrineJson,
             status: "offline",
             currentLoad: 0,
         }).returning();

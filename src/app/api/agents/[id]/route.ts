@@ -17,6 +17,36 @@ import { isMissingSchemaError } from "@/lib/schema-compat";
 
 export const dynamic = "force-dynamic";
 
+export async function PATCH(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const companyId = await getCompanyId();
+    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await params;
+    const body = await req.json().catch(() => ({}));
+
+    // Support updating doctrine_json and other fields
+    const updates: Record<string, unknown> = {};
+    if (body.doctrineJson && typeof body.doctrineJson === "object") {
+        updates.doctrineJson = body.doctrineJson;
+    }
+
+    if (Object.keys(updates).length === 0) {
+        return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const [updated] = await db.update(agents)
+        .set(updates)
+        .where(and(eq(agents.id, id), eq(agents.companyId, companyId)))
+        .returning();
+
+    if (!updated) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+
+    return NextResponse.json({ agent: updated });
+}
+
 export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }

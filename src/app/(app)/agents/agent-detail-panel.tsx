@@ -12,6 +12,7 @@ import {
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
+import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,8 @@ type AgentDetailData = {
         role: string;
         status: string;
         memory: string | null;
+        provider?: string;
+        doctrineJson?: Record<string, string>;
     };
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
@@ -151,6 +154,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
             <Tabs defaultValue="memory" className="p-4 sm:p-5">
                 <TabsList className="bg-zinc-900 border border-zinc-800">
                     <TabsTrigger value="memory">Memory</TabsTrigger>
+                    <TabsTrigger value="instructions">Instructions</TabsTrigger>
                     <TabsTrigger value="chat">Direct Chat</TabsTrigger>
                     <TabsTrigger value="threads">Threads</TabsTrigger>
                     <TabsTrigger value="runs">Runs</TabsTrigger>
@@ -189,6 +193,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                             </div>
                         </section>
                     </div>
+                </TabsContent>
+
+                <TabsContent value="instructions" className="mt-4">
+                    <AgentInstructionsTab
+                        agentId={agent.id}
+                        initialDoctrine={agent.doctrineJson || {}}
+                    />
                 </TabsContent>
 
                 <TabsContent value="chat" className="mt-4">
