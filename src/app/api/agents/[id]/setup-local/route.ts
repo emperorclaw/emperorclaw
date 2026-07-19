@@ -157,11 +157,9 @@ export async function POST(
             if (result.exitCode !== 0) return fail(outputs, `Verification failed: ${command}`, agent.id);
         }
 
-        // Spawn Codex bridge
+        // Spawn Codex bridge — path is dynamic, skip static existence check
+        // to avoid Turbopack tracing. spawn() will fail with ENOENT if missing.
         const bridgeScript = path.join(projectRoot, "integrations", "codex", "emperor-codex-bridge.js");
-        if (!fs.existsSync(bridgeScript)) {
-            return fail(outputs, `Codex bridge script not found at ${bridgeScript}`, agent.id);
-        }
 
         try {
             const bridgeProc = spawn("node", [bridgeScript], {
@@ -182,6 +180,9 @@ export async function POST(
             outputs.push({ command: `Start Codex bridge PID ${bridgeProc.pid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : "Unknown";
+            if (msg.includes("ENOENT")) {
+                return fail(outputs, `Codex bridge script not found at ${bridgeScript}`, agent.id);
+            }
             return fail(outputs, `Codex bridge start failed: ${msg}`, agent.id);
         }
 
