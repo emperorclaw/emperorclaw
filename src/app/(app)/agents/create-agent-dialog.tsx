@@ -180,7 +180,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                 )}
                             >
                                 <span className="text-xl shrink-0 mt-0.5">
-                                    {provider.id === "openclaw" ? "👑" : provider.id === "hermes" ? "🦀" : provider.id === "codex" ? "🧠" : "🔌"}
+                                    {provider.id === "openclaw" ? "🦀" : provider.id === "hermes" ? "👑" : provider.id === "codex" ? "🧠" : "🔌"}
                                 </span>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">

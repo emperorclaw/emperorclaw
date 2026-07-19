@@ -152,7 +152,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                             )}
                             {provider && (
                                 <span className="rounded bg-zinc-800/50 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                                    {provider.id === "hermes" ? "🦀" : provider.id === "openclaw" ? "👑" : provider.id === "codex" ? "🧠" : "🔌"} {provider.name}
+                                    {provider.id === "hermes" ? "👑" : provider.id === "openclaw" ? "🦀" : provider.id === "codex" ? "🧠" : "🔌"} {provider.name}
                                 </span>
                             )}
                         </div>

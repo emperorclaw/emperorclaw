@@ -368,6 +368,13 @@ export function AgentDirectChat({
             if (data.message) {
                 setMessages(prev => prev.some(m => m.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
+                // Immediately poll for agent response
+                setTimeout(() => {
+                    void loadMessages({ since: data.message!.createdAt }).catch(() => {});
+                }, 1500);
+                setTimeout(() => {
+                    void loadMessages({ since: lastSeenAtRef.current }).catch(() => {});
+                }, 4000);
             }
             discardVoice();
         } catch (err) {
@@ -406,6 +413,13 @@ export function AgentDirectChat({
             if (data.message) {
                 setMessages((prev) => prev.some((message) => message.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
+                // Immediately poll for agent response
+                setTimeout(() => {
+                    void loadMessages({ since: data.message!.createdAt }).catch(() => {});
+                }, 1500);
+                setTimeout(() => {
+                    void loadMessages({ since: lastSeenAtRef.current }).catch(() => {});
+                }, 4000);
             }
         } catch (error) {
             console.error("Failed to send direct message", error);
