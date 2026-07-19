@@ -32,6 +32,7 @@ if (!API_TOKEN || !AGENT_ID) {
 }
 
 const seen = new Set();
+const loopCounts = new Map(); // threadId → consecutive agent message count
 let lastSeenAt = null;
 
 function log(msg) {
@@ -121,8 +122,45 @@ async function main() {
                 const msgId = msg.id;
                 if (!msgId || seen.has(msgId)) continue;
 
-                // Skip own messages
-                if (msg.senderType === "agent" && (msg.senderId === AGENT_ID || msg.fromUserId === AGENT_ID)) {
+                // ── SAFETY CHECKS ──────────────────────────────────
+                const senderType = (msg.senderType || "").toLowerCase();
+                const senderId = msg.senderId || msg.fromUserId || "";
+                const targetId = msg.targetAgentId || msg.target_agent_id || "";
+                const threadType = (msg.threadType || msg.thread_type || "");
+                const threadId = msg.threadId || msg.thread_id || "";
+
+                // Reset loop guard on human message
+                if (senderType === "human") {
+                    loopCounts.set(threadId, 0);
+                }
+
+                // 1. NEVER respond to agent messages (prevents loops)
+                if (senderType === "agent") {
+                    seen.add(msgId);
+                    if (msg.createdAt) lastSeenAt = msg.createdAt;
+                    continue;
+                }
+
+                // 2. Only respond to messages explicitly FOR this agent
+                //    Skip team chat unless @mentioned (safety: only respond in direct threads for now)
+                if (targetId && targetId !== AGENT_ID) {
+                    seen.add(msgId);
+                    if (msg.createdAt) lastSeenAt = msg.createdAt;
+                    continue;
+                }
+
+                // 3. Safety: only respond in direct threads (not team chat)
+                if (threadType !== "direct" && !targetId) {
+                    seen.add(msgId);
+                    if (msg.createdAt) lastSeenAt = msg.createdAt;
+                    continue;
+                }
+
+                // 4. Loop guard: max 3 consecutive agent replies in same thread
+                const loopCount = (loopCounts.get(threadId) || 0) + 1;
+                loopCounts.set(threadId, loopCount);
+                if (loopCount > 3) {
+                    log(`loop guard tripped in thread ${threadId}, pausing`);
                     seen.add(msgId);
                     if (msg.createdAt) lastSeenAt = msg.createdAt;
                     continue;
@@ -191,12 +229,18 @@ async function main() {
                 seen.add(msgId);
                 if (msg.createdAt) lastSeenAt = msg.createdAt;
 
-                // Keep seen set bounded
+                // Keep seen set and loop counts bounded
                 if (seen.size > 500) {
                     const arr = [...seen];
                     arr.splice(0, 250);
                     seen.clear();
                     arr.forEach((id) => seen.add(id));
+                }
+                if (loopCounts.size > 100) {
+                    const entries = [...loopCounts.entries()];
+                    entries.splice(0, 50);
+                    loopCounts.clear();
+                    entries.forEach(([k, v]) => loopCounts.set(k, v));
                 }
             }
         } catch (e) {
