@@ -498,6 +498,31 @@ def send_reply(message: Dict[str, Any], text: str) -> None:
     })
 
 
+_last_token_report = 0
+
+def report_token_usage(input_chars: int, output_chars: int) -> None:
+    """Estimate tokens (4 chars ≈ 1 token) and report usage to EmperorClaw.
+    Throttled to at most once per 60 seconds to avoid API spam."""
+    global _last_token_report
+    now = time.time()
+    if now - _last_token_report < 60:
+        return
+    _last_token_report = now
+    try:
+        estimated = (input_chars + output_chars) // 4
+        if estimated <= 0:
+            return
+        # Fetch current usage and add our estimate
+        payload = api("GET", f"/agents/{AGENT_ID}")
+        agent_data = payload.get("agent") if isinstance(payload, dict) else payload
+        current = int(agent_data.get("monthlyTokenUsage") or 0) if isinstance(agent_data, dict) else 0
+        api("PATCH", f"/agents/{AGENT_ID}", body={
+            "monthlyTokenUsage": current + estimated,
+        })
+    except Exception:
+        pass  # Non-critical — silently ignore
+
+
 def main() -> int:
     ensure_runtime()
     agent_id = ensure_agent()
@@ -552,6 +577,7 @@ def main() -> int:
                 try:
                     reply = run_hermes(message, state)
                     send_reply(message, reply)
+                    report_token_usage(len(text), len(reply))
                     update_chat_status(message, typing=False, execution_state="resolved")
                 except Exception:
                     update_chat_status(message, typing=False, execution_state="seen")

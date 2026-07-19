@@ -84,10 +84,10 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
         { name: "Knowledge base", href: "/resources", icon: IconFileText },
         { name: "Messages", href: "/messages", icon: IconMessage },
         { name: "Approvals", href: "/approvals", icon: IconRosetteDiscountCheck },
-        { name: "Budgets", href: "/budgets", icon: IconWallet },
         { name: "Agents", href: "/agents", icon: IconRobot },
         { name: "Customers", href: "/customers", icon: IconShieldCheck },
         { name: "Files", href: "/artifacts", icon: IconDeviceSdCard },
+        { name: "Budgets", href: "/budgets", icon: IconWallet },
         { name: "Settings", href: "/settings", icon: IconKey },
     ];
 
