@@ -1,7 +1,7 @@
 import { DEPLOYMENT_MODE } from "@/lib/env";
 import { db } from "@/db";
 import { companies, instanceSettings } from "@/db/schema";
-import { eq, isNull, sql } from "drizzle-orm";
+import { asc, eq, isNull, sql } from "drizzle-orm";
 
 // ── Deployment mode convenience helpers ──────────────────────────────────
 
@@ -36,6 +36,7 @@ export async function getInstanceCompany(): Promise<{ id: string; name: string }
                 .select()
                 .from(companies)
                 .where(isNull(companies.deletedAt))
+                .orderBy(asc(companies.createdAt))
                 .limit(1);
             if (company) {
                 cachedCompanyId = company.id;

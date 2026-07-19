@@ -183,18 +183,22 @@ export async function getCompanyId() {
         return null;
     }
 
-    // Self-hosted: use the cached single-company lookup (NFR-8)
+    // Always check the user's company membership first
+    const [membership] = await db.select().from(companyMembers)
+        .where(eq(companyMembers.userId, typedSession.user.id))
+        .limit(1);
+
+    if (membership) {
+        return membership.companyId;
+    }
+
+    // Self-hosted: fall back to instance company if user has no membership yet (NFR-8)
     if (isSelfHosted()) {
         const company = await getInstanceCompany();
         return company?.id ?? null;
     }
 
-    // Cloud: preserve existing behavior — query company_members by userId
-    const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, typedSession.user.id))
-        .limit(1);
-
-    return membership ? membership.companyId : null;
+    return null;
 }
 
 export async function getCompanyRole(userId: string, companyId: string): Promise<string | null> {
