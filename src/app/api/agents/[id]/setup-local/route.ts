@@ -159,31 +159,42 @@ export async function POST(
             if (result.exitCode !== 0) return fail(outputs, `Verification failed: ${command}`, agent.id);
         }
 
-        // Spawn Codex bridge — path is dynamic, skip static existence check
-        // to avoid Turbopack tracing. spawn() will fail with ENOENT if missing.
-        const bridgeScript = path.join(projectRoot, "integrations", "codex", "emperor-codex-bridge.js");
-
+        // Spawn Codex bridge via dynamic require to avoid Turbopack static tracing.
+        // Turbopack tries to resolve any .js path passed to spawn() as a module;
+        // wrapping in new Function() makes the path opaque at build time.
         try {
-            const bridgeProc = spawn("node", [bridgeScript], {
-                env: {
-                    ...process.env,
-                    EMPEROR_CLAW_API_URL: emperorUrl,
-                    EMPEROR_CLAW_API_TOKEN: rawToken,
-                    EMPEROR_CLAW_AGENT_NAME: safeName,
-                    EMPEROR_CLAW_AGENT_ID: agent.id,
-                    EMPEROR_CLAW_AGENT_ROLE: role,
-                    EMPEROR_CLAW_POLL_SECONDS: "5",
-                    EMPEROR_CLAW_CODEX_TIMEOUT: "120",
-                },
-                detached: true, stdio: "ignore",
-                cwd: projectRoot,
-            });
-            bridgeProc.unref();
-            outputs.push({ command: `Start Codex bridge PID ${bridgeProc.pid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
+            const bridgePid: number = new Function(
+                "projectRoot",
+                "apiUrl",
+                "apiToken",
+                "agentName",
+                "agentId",
+                "agentRole",
+                `const { spawn } = require("child_process");
+const path = require("path");
+const script = path.join(projectRoot, "integrations", "codex", "emperor-codex-bridge.js");
+const p = spawn("node", [script], {
+  env: {
+    ...process.env,
+    EMPEROR_CLAW_API_URL: apiUrl,
+    EMPEROR_CLAW_API_TOKEN: apiToken,
+    EMPEROR_CLAW_AGENT_NAME: agentName,
+    EMPEROR_CLAW_AGENT_ID: agentId,
+    EMPEROR_CLAW_AGENT_ROLE: agentRole,
+    EMPEROR_CLAW_POLL_SECONDS: "5",
+    EMPEROR_CLAW_CODEX_TIMEOUT: "120",
+  },
+  detached: true, stdio: "ignore",
+  cwd: projectRoot,
+});
+p.unref();
+return p.pid;`
+            )(projectRoot, emperorUrl, rawToken, safeName, agent.id, role);
+            outputs.push({ command: `Start Codex bridge PID ${bridgePid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : "Unknown";
             if (msg.includes("ENOENT")) {
-                return fail(outputs, `Codex bridge script not found at ${bridgeScript}`, agent.id);
+                return fail(outputs, `Codex bridge script not found in integrations/codex/`, agent.id);
             }
             return fail(outputs, `Codex bridge start failed: ${msg}`, agent.id);
         }
