@@ -217,7 +217,7 @@ export function MessagingHub({
                     </div>
                 ) : (
                     <div className="h-full flex flex-col flex-1 overflow-hidden">
-                        <AgentDirectChat agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} />
+                        <AgentDirectChat key={selectedAgentId} agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} />
                     </div>
                 )}
             </div>

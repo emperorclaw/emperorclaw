@@ -232,7 +232,7 @@ export function AgentDirectChat({
                     console.error("Failed to poll direct chat", error);
                 }
             });
-        }, 5000);
+        }, 3000);
 
         return () => {
             active = false;
