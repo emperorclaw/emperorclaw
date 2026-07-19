@@ -170,12 +170,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 </div>
             </div>
 
-            {/* Setup banner — always visible for local agents, shown when offline for remote */}
+            {/* Setup banner — shows for offline agents and local agents */}
             {(agent.deploymentMode === "local" || agent.status === "offline") && (
                 <SetupBanner
                     agentId={agent.id}
                     agentName={agent.name}
                     agentRole={agent.role}
+                    agentStatus={agent.status}
                     providerId={agent.provider || "mcp"}
                     deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
                 />
@@ -325,13 +326,14 @@ function EmptyState({ text }: { text: string }) {
     );
 }
 
-function SetupBanner({ agentId, agentName, agentRole, providerId, deploymentMode }: { agentId: string; agentName: string; agentRole: string; providerId: string; deploymentMode: "local" | "remote" }) {
+function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, deploymentMode }: { agentId: string; agentName: string; agentRole: string; agentStatus: string; providerId: string; deploymentMode: "local" | "remote" }) {
     const [copied, setCopied] = useState(false);
     const [copiedCmd, setCopiedCmd] = useState(false);
     const [setupRunning, setSetupRunning] = useState(false);
     const [setupResult, setSetupResult] = useState<{ success: boolean; message: string; outputs?: { command: string; stdout: string; stderr: string; exitCode: number | null }[] } | null>(null);
     const provider = getProvider(providerId) || getProvider("mcp")!;
     const isLocal = deploymentMode === "local";
+    const isOnline = agentStatus === "online";
     const template = getAgentTemplate(
         Object.entries({
             "SEO Specialist": "seo",
@@ -366,14 +368,19 @@ function SetupBanner({ agentId, agentName, agentRole, providerId, deploymentMode
                 <span className="text-xl mt-0.5">{isLocal ? "🖥️" : "🚀"}</span>
                 <div className="flex-1">
                     <h3 className={cn("text-sm font-semibold", isLocal ? "text-emerald-100" : "text-amber-100")}>
-                        {isLocal ? "Agent created — connect on this server" : "Agent created — now connect it"}
+                        {isOnline
+                            ? `${agentName} is running`
+                            : isLocal ? "Agent created — connect on this server" : "Agent created — now connect it"
+                        }
                     </h3>
                     <p className={cn("text-xs mt-1", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
-                        {agentName} is configured as a <strong>{agentRole}</strong> running on{" "}
-                        <strong>{provider.name}</strong>{" "}
-                        {isLocal
-                            ? "on this machine. Run the commands below directly — no SSH needed."
-                            : "on a remote machine. Copy the prompt below into Claude, ChatGPT, or Codex and it will walk you through the setup."
+                        {isOnline
+                            ? `${agentName} is online and processing tasks on ${provider.name}. Bridge is active.`
+                            : agentName + " is configured as a " + agentRole + " running on " + provider.name + " " +
+                                (isLocal
+                                    ? "on this machine. Run the commands below directly — no SSH needed."
+                                    : "on a remote machine. Copy the prompt below into Claude, ChatGPT, or Codex and it will walk you through the setup."
+                                )
                         }
                     </p>
                 </div>
@@ -410,7 +417,7 @@ function SetupBanner({ agentId, agentName, agentRole, providerId, deploymentMode
                         ) : (
                             <IconPlayerPlay className="h-4 w-4" />
                         )}
-                        {setupRunning ? "Running setup..." : "Run Setup Automatically"}
+                        {setupRunning ? "Running setup..." : isOnline ? "🔄 Restart Bridge" : "▶ Run Setup Automatically"}
                     </button>
 
                     {setupResult && (

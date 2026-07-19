@@ -144,6 +144,51 @@ export async function POST(
         return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Hermes profile created, plugin installed, bridge running. Agent is ONLINE.`, token: rawToken, outputs });
     }
 
+    // ── Codex: run verification, then spawn bridge ──────────────────
+    if (provider.id === "codex") {
+        // Run verification commands first
+        const commands = provider.installCommands.map((cmd) =>
+            cmd.replace(/\{name\}/g, safeName).replace(/\{role\}/g, role.replace(/"/g, '\\"')).replace(/\{token\}/g, rawToken).replace(/\{projectRoot\}/g, projectRoot)
+        );
+        for (const command of commands) {
+            if (command.trim().startsWith("#")) { outputs.push({ command, stdout: "", stderr: "", exitCode: 0 }); continue; }
+            const result = await runCmd(command, 15_000);
+            outputs.push({ command, ...result });
+            if (result.exitCode !== 0) return fail(outputs, `Verification failed: ${command}`, agent.id);
+        }
+
+        // Spawn Codex bridge
+        const bridgeScript = path.join(projectRoot, "integrations", "codex", "emperor-codex-bridge.js");
+        if (!fs.existsSync(bridgeScript)) {
+            return fail(outputs, `Codex bridge script not found at ${bridgeScript}`, agent.id);
+        }
+
+        try {
+            const bridgeProc = spawn("node", [bridgeScript], {
+                env: {
+                    ...process.env,
+                    EMPEROR_CLAW_API_URL: emperorUrl,
+                    EMPEROR_CLAW_API_TOKEN: rawToken,
+                    EMPEROR_CLAW_AGENT_NAME: safeName,
+                    EMPEROR_CLAW_AGENT_ID: agent.id,
+                    EMPEROR_CLAW_AGENT_ROLE: role,
+                    EMPEROR_CLAW_POLL_SECONDS: "5",
+                    EMPEROR_CLAW_CODEX_TIMEOUT: "300",
+                },
+                detached: true, stdio: "ignore",
+                cwd: projectRoot,
+            });
+            bridgeProc.unref();
+            outputs.push({ command: `Start Codex bridge PID ${bridgeProc.pid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Unknown";
+            return fail(outputs, `Codex bridge start failed: ${msg}`, agent.id);
+        }
+
+        await db.update(agents).set({ status: "online", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
+        return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Codex verified, bridge running. Agent is ONLINE and ready to respond.`, token: rawToken, outputs });
+    }
+
     // ── Generic: run installCommands ────────────────────────────────
     if (provider.installCommands.length === 0) {
         return NextResponse.json({ success: true, message: "No setup commands needed.", outputs: [] });
