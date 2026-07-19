@@ -16,7 +16,10 @@ services:
       - "5432:5432"
 
   app:
-    build: .
+    # Use the pre-built GHCR image for instant startup.
+    # Switch to `build: .` if you want to build from source instead.
+    image: ghcr.io/emperorclaw/emperorclaw:latest
+    # build: .
     ports:
       - "3000:3000"
     env_file:
@@ -32,9 +35,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Run migrations on first start, then start the server
-    command: >
-      sh -c "npx tsx src/db/migrate.ts && npx tsx server.ts"
+
+  # ---- Auto-update via Watchtower (uncomment to enable) ----
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 3600 --cleanup emperorclaw-app-1
+  #   restart: unless-stopped
 
 volumes:
   pgdata:

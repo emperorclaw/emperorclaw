@@ -23,14 +23,14 @@ ENV PORT=3000
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
+# Copy standalone build output (Next.js output: "standalone")
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/server.ts ./
-COPY --from=builder /app/src ./src
+
+# Copy migrations for startup
+COPY --from=builder /app/src/db/migrations ./src/db/migrations
 COPY --from=builder /app/drizzle.config.ts ./
-COPY --from=builder /app/tsconfig.json ./
 
 # Storage directory for local backend
 RUN mkdir -p .data/storage && chown -R nextjs:nodejs .data
@@ -39,5 +39,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Use the custom server (required for WebSocket + advisory lock)
-CMD ["npx", "tsx", "server.ts"]
+# Run migrations then start server
+CMD ["sh", "-c", "npx tsx src/db/migrate.ts && node server.js"]
