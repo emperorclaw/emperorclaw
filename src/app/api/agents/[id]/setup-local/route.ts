@@ -66,11 +66,12 @@ export async function POST(
 
     // ── Hermes: full local setup ────────────────────────────────────
     if (provider.id === "hermes") {
-        // 1. Create profile
+        // 1. Create profile (skip if exists — idempotent)
         const createCmd = `hermes profile create ${safeName} --clone --description "${role.replace(/"/g, '\\"')}" --no-alias`;
         const r1 = await runCmd(createCmd, 30_000);
         outputs.push({ command: createCmd, ...r1 });
-        if (r1.exitCode !== 0) return fail(outputs, "Hermes profile creation failed", agent.id);
+        // Profile already exists is OK — continue
+        const alreadyExists = r1.stderr.includes("already exists") || r1.stdout.includes("already exists");
 
         // 2. Update plugin files (Hermes plugins are global, not per-profile)
         const pluginSrc = path.join(projectRoot, "integrations", "hermes", "emperor-claw");
