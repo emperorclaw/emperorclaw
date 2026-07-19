@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
-import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconTerminal2, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
+import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconTerminal2, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconWallet } from "@tabler/icons-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -84,6 +84,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
         { name: "Knowledge base", href: "/resources", icon: IconFileText },
         { name: "Messages", href: "/messages", icon: IconMessage },
         { name: "Approvals", href: "/approvals", icon: IconRosetteDiscountCheck },
+        { name: "Budgets", href: "/budgets", icon: IconWallet },
         { name: "Agents", href: "/agents", icon: IconRobot },
         { name: "Customers", href: "/customers", icon: IconShieldCheck },
         { name: "Files", href: "/artifacts", icon: IconDeviceSdCard },

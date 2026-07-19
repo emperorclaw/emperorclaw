@@ -33,6 +33,7 @@ type AgentDetailData = {
         memory: string | null;
         provider?: string;
         deploymentMode?: string;
+        lastSeenAt?: string;
         doctrineJson?: Record<string, string>;
         monthlyBudgetCents?: number;
         monthlyTokenUsage?: number;
@@ -159,31 +160,6 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 </span>
                             )}
                         </div>
-                        {/* Budget bar — only shown when budget is set */}
-                        {(agent.monthlyBudgetCents ?? 0) > 0 && (
-                            <div className="mt-2 space-y-1">
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] text-zinc-500">Monthly budget</span>
-                                    <span className={cn(
-                                        "text-[10px] font-medium",
-                                        agent.budgetStatus === "paused" ? "text-rose-400" :
-                                        agent.budgetStatus === "warning" ? "text-amber-400" : "text-zinc-400"
-                                    )}>
-                                        ${((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2)} / ${((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0)}
-                                        {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
-                                    </span>
-                                </div>
-                                <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                                    <div className={cn(
-                                        "h-full rounded-full transition-all",
-                                        agent.budgetStatus === "paused" ? "bg-rose-500" :
-                                        agent.budgetStatus === "warning" ? "bg-amber-500" : "bg-emerald-500"
-                                    )} style={{
-                                        width: `${Math.min(100, ((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 100) / Math.max(1, (agent.monthlyBudgetCents ?? 1) / 100) * 10)}%`
-                                    }} />
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -198,8 +174,8 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 </div>
             </div>
 
-            {/* Setup banner — shows for offline agents and local agents */}
-            {(agent.deploymentMode === "local" || agent.status === "offline") && (
+            {/* Setup banner — only for offline agents that need configuration */}
+            {agent.status === "offline" && (
                 <SetupBanner
                     agentId={agent.id}
                     agentName={agent.name}
@@ -208,6 +184,33 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     providerId={agent.provider || "mcp"}
                     deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
                 />
+            )}
+
+            {/* Operational status bar — for online/active agents */}
+            {agent.status !== "offline" && (
+                <div className="border-b border-emerald-500/10 bg-emerald-500/[0.03] px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs">
+                    <span className="text-zinc-500">
+                        Provider: <span className="text-zinc-300 font-medium">{provider?.name || "Unknown"}</span>
+                    </span>
+                    <span className="text-zinc-500">
+                        Deployment: <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? "🖥️ Local" : "🌐 Remote"}</span>
+                    </span>
+                    {agent.lastSeenAt && (
+                        <span className="text-zinc-500">
+                            Last seen: <span className="text-zinc-300 font-medium">{new Date(agent.lastSeenAt).toLocaleTimeString()}</span>
+                        </span>
+                    )}
+                    {(agent.monthlyBudgetCents ?? 0) > 0 && (
+                        <span className={cn(
+                            "font-medium",
+                            agent.budgetStatus === "paused" ? "text-rose-400" :
+                            agent.budgetStatus === "warning" ? "text-amber-400" : "text-emerald-400"
+                        )}>
+                            Budget: ${((agent.monthlyTokenUsage ?? 0) / 1_000_000 * 1).toFixed(2)} / ${((agent.monthlyBudgetCents ?? 0) / 100).toFixed(0)}
+                            {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
+                        </span>
+                    )}
+                </div>
             )}
 
             {/* Tabs */}
