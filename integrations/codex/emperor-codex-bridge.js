@@ -24,7 +24,7 @@ const AGENT_ID = process.env.EMPEROR_CLAW_AGENT_ID || "";
 const AGENT_NAME = process.env.EMPEROR_CLAW_AGENT_NAME || "Codex Agent";
 const AGENT_ROLE = process.env.EMPEROR_CLAW_AGENT_ROLE || "operator";
 const POLL_SECONDS = Math.max(2, parseInt(process.env.EMPEROR_CLAW_POLL_SECONDS || "5", 10));
-const TIMEOUT_SECONDS = parseInt(process.env.EMPEROR_CLAW_CODEX_TIMEOUT || "300", 10);
+const TIMEOUT_SECONDS = parseInt(process.env.EMPEROR_CLAW_CODEX_TIMEOUT || "120", 10);
 
 if (!API_TOKEN || !AGENT_ID) {
     console.error("[emperor-codex] EMPEROR_CLAW_API_TOKEN and EMPEROR_CLAW_AGENT_ID are required");
@@ -135,31 +135,44 @@ async function main() {
                 await updateStatus(msg, { markRead: true, executionState: "seen" });
                 await updateStatus(msg, { typing: true, executionState: "acting" });
 
-                // Build prompt for Codex
+                // Paperclip-inspired concise prompt — execution contract, not rambling
                 const prompt = [
-                    `You are an AI agent named "${AGENT_NAME}" with role "${AGENT_ROLE}".`,
-                    `You are connected to EmperorClaw, an open-source AI operations platform.`,
+                    `You are agent ${AGENT_ID.slice(0, 8)} (${AGENT_NAME}), role: ${AGENT_ROLE}.`,
+                    `Reply to this message. Be direct, concise, and helpful.`,
+                    `Do not introduce yourself — just answer the request.`,
+                    `End with a single clear response, not a wall of text.`,
                     ``,
-                    `Reply to the following message. Be concise and helpful.`,
-                    `Do not mention that you are Codex or an AI unless asked.`,
-                    ``,
-                    `Message: ${text}`,
+                    `--- MESSAGE ---`,
+                    text,
+                    `--- END ---`,
                 ].join("\n");
 
-                // Run codex exec
+                // Pipe prompt via stdin (Paperclip pattern)
                 try {
                     const result = await new Promise((resolve, reject) => {
-                        const child = spawn("codex", ["exec", prompt], {
+                        const child = spawn("codex", ["exec", "-"], {
                             timeout: TIMEOUT_SECONDS * 1000,
-                            stdio: ["ignore", "pipe", "pipe"],
-                            shell: true,
+                            stdio: ["pipe", "pipe", "pipe"],
+                            env: { ...process.env },
                         });
+
                         let stdout = "";
                         let stderr = "";
-                        child.stdout.on("data", (d) => { stdout += d.toString(); });
-                        child.stderr.on("data", (d) => { stderr += d.toString(); });
+                        child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+                        child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+
+                        // Write prompt to stdin and close it
+                        child.stdin.write(prompt);
+                        child.stdin.end();
+
                         child.on("close", (code) => {
-                            const output = stdout.trim() || stderr.trim();
+                            // Strip Codex rollout noise (Paperclip pattern)
+                            const clean = stdout
+                                .split(/\r?\n/)
+                                .filter((l) => !/codex_core::rollout/i.test(l))
+                                .join("\n")
+                                .trim();
+                            const output = clean || stderr.trim();
                             resolve({ output, code });
                         });
                         child.on("error", reject);
