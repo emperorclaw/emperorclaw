@@ -124,10 +124,10 @@ async function main() {
 
                 // ── SAFETY CHECKS ──────────────────────────────────
                 const senderType = (msg.senderType || "").toLowerCase();
-                const senderId = msg.senderId || msg.fromUserId || "";
                 const targetId = msg.targetAgentId || msg.target_agent_id || "";
                 const threadType = (msg.threadType || msg.thread_type || "");
                 const threadId = msg.threadId || msg.thread_id || "";
+                const text = (msg.text || "").trim();
 
                 // Reset loop guard on human message
                 if (senderType === "human") {
@@ -141,22 +141,25 @@ async function main() {
                     continue;
                 }
 
+                if (!text) { seen.add(msgId); continue; }
+
                 // 2. Only respond to messages explicitly FOR this agent
-                //    Skip team chat unless @mentioned (safety: only respond in direct threads for now)
                 if (targetId && targetId !== AGENT_ID) {
                     seen.add(msgId);
                     if (msg.createdAt) lastSeenAt = msg.createdAt;
                     continue;
                 }
 
-                // 3. Safety: only respond in direct threads (not team chat)
-                if (threadType !== "direct" && !targetId) {
+                // 3. Team chat: only respond when @mentioned
+                const isTeamChat = threadType === "team" || (!threadType && !targetId);
+                const mentioned = text.includes(`@${AGENT_NAME}`);
+                if (isTeamChat && !targetId && !mentioned) {
                     seen.add(msgId);
                     if (msg.createdAt) lastSeenAt = msg.createdAt;
                     continue;
                 }
 
-                // 4. Loop guard: max 3 consecutive agent replies in same thread
+                // 4. Loop guard: max 3 replies per thread
                 const loopCount = (loopCounts.get(threadId) || 0) + 1;
                 loopCounts.set(threadId, loopCount);
                 if (loopCount > 3) {
@@ -166,23 +169,24 @@ async function main() {
                     continue;
                 }
 
-                const text = (msg.text || "").trim();
-                if (!text) { seen.add(msgId); continue; }
-
                 log(`dispatching message ${msgId}: "${text.slice(0, 80)}..."`);
                 await updateStatus(msg, { markRead: true, executionState: "seen" });
                 await updateStatus(msg, { typing: true, executionState: "acting" });
 
-                // Paperclip-inspired concise prompt — execution contract, not rambling
+                // Operating manual + message prompt
                 const prompt = [
-                    `You are agent ${AGENT_ID.slice(0, 8)} (${AGENT_NAME}), role: ${AGENT_ROLE}.`,
-                    `Reply to this message. Be direct, concise, and helpful.`,
-                    `Do not introduce yourself — just answer the request.`,
-                    `End with a single clear response, not a wall of text.`,
+                    `You are an AI agent running on EmperorClaw, an open-source AI operations platform (github.com/emperorclaw/emperorclaw).`,
+                    `Agent: ${AGENT_NAME} | Role: ${AGENT_ROLE} | Runtime: Codex CLI (on-demand)`,
                     ``,
-                    `--- MESSAGE ---`,
+                    `## EmperorClaw Context`,
+                    `- You reply to messages via chat. You do NOT have direct access to EmperorClaw tools (projects, tasks, storage).`,
+                    `- For operations requiring EmperorClaw API access (listing projects, creating tasks, uploading files), direct the user to a Hermes agent.`,
+                    `- Direct chat: private 1-on-1 thread. Reply normally.`,
+                    `- Team chat: only respond when explicitly @mentioned by name. Stay silent otherwise.`,
+                    `- Be concise. One clear answer per response. No walls of text.`,
+                    ``,
+                    `## Message to answer`,
                     text,
-                    `--- END ---`,
                 ].join("\n");
 
                 // Pipe prompt via stdin (Paperclip pattern)
