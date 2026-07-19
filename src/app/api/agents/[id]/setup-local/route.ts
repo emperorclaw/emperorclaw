@@ -41,7 +41,9 @@ export async function POST(
     const provider = getProvider(agent.provider || "mcp");
     if (!provider) return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
 
-    const projectRoot = path.resolve(/* turbopackIgnore: true */ process.cwd());
+    // Project root: this route file is at src/app/api/agents/[id]/setup-local/route.ts
+    // 6 levels up from this dir: src → project root
+    const projectRoot = path.resolve(__dirname, "..", "..", "..", "..", "..", "..");
     const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
     const role = agent.role || "operator";
     const homeDir = os.homedir();
