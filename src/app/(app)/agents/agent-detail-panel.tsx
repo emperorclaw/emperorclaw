@@ -9,11 +9,15 @@ import {
     IconClock,
     IconDeviceSdCard,
     IconFileText,
+    IconCopy,
+    IconCircleCheck,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
 import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
+import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
+import { getAgentTemplate } from "@/lib/agent-templates";
 import { cn } from "@/lib/utils";
 
 type AgentDetailData = {
@@ -149,6 +153,15 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
                 </div>
             </div>
+
+            {/* Setup banner — shown when agent is offline / not yet connected */}
+            {agent.status === "offline" && (
+                <SetupBanner
+                    agentName={agent.name}
+                    agentRole={agent.role}
+                    providerId={agent.provider || "mcp"}
+                />
+            )}
 
             {/* Tabs */}
             <Tabs defaultValue="memory" className="p-4 sm:p-5">
@@ -290,6 +303,89 @@ function EmptyState({ text }: { text: string }) {
     return (
         <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-center">
             <p className="text-xs text-zinc-500">{text}</p>
+        </div>
+    );
+}
+
+function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; agentRole: string; providerId: string }) {
+    const [copied, setCopied] = useState(false);
+    const provider = getProvider(providerId) || getProvider("mcp")!;
+    const template = getAgentTemplate(
+        Object.entries({
+            "SEO Specialist": "seo",
+            "Technical Developer": "developer",
+            "QA & Testing Agent": "qa",
+            "Growth & Lead Gen": "growth",
+            "Content & Copywriter": "content",
+            "Accountant & Bookkeeper": "accountant",
+            "Customer Support": "support",
+            "Data Analyst": "analyst",
+        }).find(([title]) => agentRole?.includes(title))?.[1] || ""
+    );
+
+    const setupPrompt = template
+        ? buildAgentSetupPrompt(template, provider, typeof window !== "undefined" ? window.location.origin : "http://localhost:3000")
+        : `Set up a ${agentRole} agent using ${provider.name}. See the Instructions tab for doctrine files.`;
+
+    const handleCopy = async () => {
+        await navigator.clipboard.writeText(setupPrompt);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="border-b border-amber-500/20 bg-amber-500/[0.06] p-4 sm:p-5 space-y-4">
+            <div className="flex items-start gap-3">
+                <span className="text-xl mt-0.5">🚀</span>
+                <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-amber-100">Agent created — now connect it</h3>
+                    <p className="text-xs text-amber-100/70 mt-1">
+                        {agentName} is configured as a <strong>{agentRole}</strong> running on{" "}
+                        <strong>{provider.name}</strong>. Copy the prompt below into Claude, ChatGPT, or Codex and it will walk you through the setup.
+                    </p>
+                </div>
+            </div>
+
+            {/* Setup prompt */}
+            <div className="rounded-xl border border-amber-500/20 bg-black/30 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-200">
+                        🤖 LLM Setup Prompt
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 px-3 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/15 transition-colors"
+                    >
+                        {copied ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
+                        {copied ? "Copied!" : "Copy prompt"}
+                    </button>
+                </div>
+                <pre className="p-4 text-[11px] text-amber-100/80 whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono leading-relaxed select-all">
+                    {setupPrompt}
+                </pre>
+            </div>
+
+            {/* Checklist */}
+            <div className="space-y-2">
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Post-Install Checklist</span>
+                <div className="grid gap-1.5">
+                    {provider.postInstallChecklist.map((step, i) => (
+                        <div key={i} className="flex items-center gap-2 text-[11px] text-amber-100/70">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-amber-500/30 text-[10px] text-amber-300">
+                                {i + 1}
+                            </span>
+                            <span>{step.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole).replace(/\{token\}/g, "your-token")}</span>
+                        </div>
+                    ))}
+                    <div className="flex items-center gap-2 text-[11px] text-amber-100/70">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-amber-500/30 text-[10px] text-amber-300">
+                            ✓
+                        </span>
+                        <span>Check Emperor dashboard — {agentName} should appear as <strong>online</strong></span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
