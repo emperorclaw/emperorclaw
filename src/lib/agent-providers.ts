@@ -33,6 +33,8 @@ export type AgentProvider = {
     setupPromptPrefix: string;
     /** Post-install checklist items */
     postInstallChecklist: string[];
+    /** Whether this provider supports local (same-server) deployment with auto-setup */
+    supportsLocal: boolean;
     /** Future: how Emperor invokes on-demand agents */
     invokeCommand?: string;
     /** Future: how results come back */
@@ -84,6 +86,7 @@ The plugin injects recognized bootstrap files into the agent's prompt context au
             "Verify: openclaw emperor status shows agent online",
             "Check Emperor dashboard — agent should appear as online",
         ],
+        supportsLocal: false,
     },
     {
         id: "hermes",
@@ -139,6 +142,7 @@ Create a systemd service at ~/.config/systemd/user/emperor-hermes-bridge-{name}.
             "Start: systemctl --user start emperor-hermes-bridge-{name}",
             "Check Emperor dashboard — agent should appear as online",
         ],
+        supportsLocal: true,
     },
     {
         id: "mcp",
@@ -171,6 +175,7 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
             "Start sending heartbeats to POST /api/mcp/agents/heartbeat",
             "Check Emperor dashboard — agent should appear as online",
         ],
+        supportsLocal: true,
     },
     {
         id: "claude",
@@ -189,6 +194,7 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
         postInstallChecklist: [],
         invokeCommand: "claude --project-dir {workspace} --prompt \"{prompt}\"",
         resultCapture: "stdout",
+        supportsLocal: false,
     },
     {
         id: "codex",
@@ -225,6 +231,7 @@ Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with work
         ],
         invokeCommand: "codex exec --workspace {workspace} \"{prompt}\"",
         resultCapture: "stdout",
+        supportsLocal: true,
     },
     {
         id: "bash",
@@ -243,6 +250,7 @@ Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with work
         postInstallChecklist: [],
         invokeCommand: "bash {script}",
         resultCapture: "stdout",
+        supportsLocal: false,
     },
 ];
 

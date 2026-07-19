@@ -241,11 +241,15 @@ export function CreateAgentDialog() {
                                 <button
                                     type="button"
                                     onClick={() => setDeploymentMode("local")}
+                                    disabled={!selectedProvider.supportsLocal}
+                                    title={selectedProvider.supportsLocal ? undefined : `${selectedProvider.name} does not support same-server deployment yet`}
                                     className={cn(
                                         "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
-                                        deploymentMode === "local"
-                                            ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
-                                            : "border-zinc-800 bg-zinc-900/70 text-zinc-500 hover:border-zinc-600"
+                                        !selectedProvider.supportsLocal
+                                            ? "border-zinc-800/50 bg-zinc-900/30 text-zinc-600 cursor-not-allowed"
+                                            : deploymentMode === "local"
+                                                ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
+                                                : "border-zinc-800 bg-zinc-900/70 text-zinc-500 hover:border-zinc-600"
                                     )}
                                 >
                                     <span className="text-sm">🖥️</span>
