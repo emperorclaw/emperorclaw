@@ -49,6 +49,9 @@ openclaw-mission-control/
 tmp-openclaw-*
 payload.json
 
+# Competitor research
+/research/
+
 # Graphify knowledge graph output
 graphify-out/
 
