@@ -309,6 +309,7 @@ function EmptyState({ text }: { text: string }) {
 
 function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; agentRole: string; providerId: string }) {
     const [copied, setCopied] = useState(false);
+    const [copiedCmd, setCopiedCmd] = useState(false);
     const provider = getProvider(providerId) || getProvider("mcp")!;
     const template = getAgentTemplate(
         Object.entries({
@@ -345,6 +346,43 @@ function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; 
                     </p>
                 </div>
             </div>
+
+            {/* Direct install commands — for providers that have them */}
+            {provider.installCommands.length > 0 && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
+                            ⚡ Quick Install Commands
+                        </span>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const cmds = provider.installCommands.map(c => c.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole)).join("\n");
+                                await navigator.clipboard.writeText(cmds);
+                                setCopiedCmd(true);
+                                setTimeout(() => setCopiedCmd(false), 2000);
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
+                        >
+                            {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
+                            {copiedCmd ? "Copied!" : "Copy all"}
+                        </button>
+                    </div>
+                    <div className="p-3 space-y-2">
+                        {provider.installCommands.map((cmd, i) => (
+                            <div key={i} className="flex items-start gap-2">
+                                <span className="text-[10px] text-emerald-500 mt-0.5 shrink-0">{i + 1}.</span>
+                                <code className="text-[11px] text-emerald-100/80 font-mono break-all">
+                                    {cmd.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole).replace(/\{token\}/g, "YOUR_TOKEN")}
+                                </code>
+                            </div>
+                        ))}
+                        <p className="text-[10px] text-emerald-100/50 mt-1">
+                            Run these on the machine where the agent will run. Then paste the LLM prompt below into Claude/ChatGPT to configure the doctrine and systemd service.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Setup prompt */}
             <div className="rounded-xl border border-amber-500/20 bg-black/30 overflow-hidden">
