@@ -310,6 +310,63 @@ EmperorClaw uses **Drizzle incremental migrations** (`npm run db:migrate`). Thes
 
 The Docker image and `docker-compose.yml` run `npm run db:migrate` automatically on startup — production-safe by default.
 
+## Updating EmperorClaw
+
+EmperorClaw checks for updates automatically and shows a banner in the dashboard when a new version is available. You can also check manually at **Settings → Updates**.
+
+### Before upgrading
+
+**Always back up your database first.** Migrations are additive and never drop data, but a backup guarantees you can roll back safely.
+
+```bash
+# Automated backup script
+./scripts/backup-db.sh        # Linux/macOS
+.\scripts\backup-db.ps1       # Windows PowerShell
+
+# Or manually
+pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql
+```
+
+### Docker upgrade (recommended)
+
+```bash
+cd ~/emperorclaw
+git pull --ff-only origin main
+docker compose up -d --build
+```
+
+Migrations run automatically on startup. The `--build` flag rebuilds the app image with the latest code.
+
+### Manual upgrade (without Docker)
+
+```bash
+cd ~/emperorclaw
+git pull --ff-only origin main
+npm install
+npm run build
+npm run db:migrate
+# Restart your server process (pm2, systemd, etc.)
+```
+
+### Rolling back
+
+If something goes wrong, you can roll back to the previous version because migrations never drop data:
+
+```bash
+git checkout v0.1.2   # replace with your previous version
+docker compose up -d --build
+```
+
+Then restore your database from the backup if needed:
+
+```bash
+psql $POSTGRES_CONNECTION_STRING < backup-YYYYMMDD.sql
+```
+
+### Update notifications
+
+The dashboard shows an update banner when a new release is available. Updates are checked against the [GitHub releases page](https://github.com/emperorclaw/emperorclaw/releases). The check is cached for 15 minutes and never sends any data about your instance.
+
 ## Quick start
 
 ### One-command install (Docker)
@@ -342,7 +399,6 @@ docker compose up -d
 Open `http://localhost:3000`. First visit → `/signup` → create your account. First user = instance admin.
 
 To stop: `docker compose down`
-To upgrade: `git pull && docker compose up -d --build`
 
 ### Manual installation (without Docker)
 
