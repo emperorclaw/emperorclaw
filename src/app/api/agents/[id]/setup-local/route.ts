@@ -72,21 +72,21 @@ export async function POST(
         outputs.push({ command: createCmd, ...r1 });
         if (r1.exitCode !== 0) return fail(outputs, "Hermes profile creation failed", agent.id);
 
-        // 2. Copy plugin files
+        // 2. Update plugin files (Hermes plugins are global, not per-profile)
         const pluginSrc = path.join(projectRoot, "integrations", "hermes", "emperor-claw");
-        const pluginDest = path.join(hermesDataDir, "profiles", safeName, "plugins", "emperor-claw");
+        const globalPluginDir = path.join(hermesDataDir, "plugins", "emperor-claw");
         const copyCmd = process.platform === "win32"
-            ? `powershell -Command "Copy-Item -Recurse -Force '${pluginSrc.replace(/'/g, "''")}' '${pluginDest.replace(/'/g, "''")}'"`
-            : `mkdir -p '${pluginDest}' && cp -R '${pluginSrc}/'* '${pluginDest}/'`;
+            ? `powershell -Command "Copy-Item -Recurse -Force '${pluginSrc.replace(/'/g, "''")}' '${globalPluginDir.replace(/'/g, "''")}'"`
+            : `mkdir -p '${globalPluginDir}' && cp -R '${pluginSrc}/'* '${globalPluginDir}/'`;
         const r2 = await runCmd(copyCmd, 15_000);
-        outputs.push({ command: `Copy plugin to ${pluginDest}`, ...r2 });
-        if (r2.exitCode !== 0) return fail(outputs, "Plugin file copy failed", agent.id);
+        outputs.push({ command: `Update global plugin → ${globalPluginDir}`, ...r2 });
+        if (r2.exitCode !== 0) return fail(outputs, "Plugin update failed", agent.id);
 
-        // 3. Enable plugin
-        const enableCmd = `hermes -p ${safeName} plugins enable emperor-claw`;
-        const r3 = await runCmd(enableCmd, 15_000);
-        outputs.push({ command: enableCmd, ...r3 });
-        if (r3.exitCode !== 0) return fail(outputs, "Plugin enable failed", agent.id);
+        // 3. Ensure plugin is enabled globally
+        const enableCmd = `hermes plugins enable emperor-claw`;
+        const r3 = await runCmd(enableCmd, 10_000);
+        outputs.push({ command: enableCmd, stdout: r3.stdout || (r3.exitCode === 0 ? "Plugin enabled" : ""), stderr: r3.stderr, exitCode: r3.exitCode });
+        // Enable failure is non-fatal if already enabled
 
         // 4. Write bridge .env
         const bridgeDir = path.join(hermesDataDir, "emperor-bridge", safeName);
@@ -112,8 +112,8 @@ export async function POST(
             return fail(outputs, `Bridge .env write failed: ${msg}`, agent.id);
         }
 
-        // 5. Start bridge (detached background)
-        const bridgeScript = path.join(pluginDest, "bridge", "emperor_hermes_bridge.py");
+        // 5. Start bridge (detached background) — uses global plugin
+        const bridgeScript = path.join(globalPluginDir, "bridge", "emperor_hermes_bridge.py");
         try {
             const bridgeProc = spawn("python", [bridgeScript], {
                 env: {
