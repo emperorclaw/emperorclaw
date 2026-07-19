@@ -391,7 +391,7 @@ def extract_session_id(output: str) -> str:
 
 
 def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.Popen(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     started = time.time()
     last_status = 0.0
     while proc.poll() is None:
