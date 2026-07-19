@@ -8,8 +8,6 @@ import {
   CodeToggle,
   codeMirrorPlugin,
   CreateLink,
-  diffSourcePlugin,
-  DiffSourceToggleWrapper,
   headingsPlugin,
   InsertCodeBlock,
   InsertTable,
@@ -31,8 +29,7 @@ import { forwardRef } from "react";
 /**
  * A single live-preview markdown surface (Obsidian-style: edit and read are
  * the same view — headings render as headings while you type, no separate
- * Reading/Split/Source panes). Includes a lightweight source-view toggle in
- * the toolbar for raw-markdown power edits, instead of a permanent third pane.
+ * Reading/Split/Source panes). Raw HTML in content is displayed as plain text.
  */
 export const MarkdownLiveEditor = forwardRef<MDXEditorMethods, {
   markdown: string;
@@ -76,10 +73,9 @@ export const MarkdownLiveEditor = forwardRef<MDXEditorMethods, {
           },
         }),
         markdownShortcutPlugin(),
-        diffSourcePlugin({ viewMode: "rich-text" }),
         toolbarPlugin({
           toolbarContents: () => (
-            <DiffSourceToggleWrapper>
+            <>
               <UndoRedo />
               <BlockTypeSelect />
               <BoldItalicUnderlineToggles />
@@ -88,7 +84,7 @@ export const MarkdownLiveEditor = forwardRef<MDXEditorMethods, {
               <CreateLink />
               <InsertTable />
               <InsertCodeBlock />
-            </DiffSourceToggleWrapper>
+            </>
           ),
         }),
       ]}
