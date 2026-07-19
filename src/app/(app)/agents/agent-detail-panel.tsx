@@ -120,6 +120,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
     }
 
     const { agent, latestSnapshot, memoryEntries, sessions, runs, threads } = data;
+    const provider = getProvider(agent.provider || "mcp");
 
     return (
         <main className="emperor-panel rounded-2xl overflow-hidden">
@@ -140,7 +141,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 {agent.role || "operator"}
                             </span>
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2 text-sm text-zinc-400">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
                             <StatusDot status={agent.status} />
                             <span className="capitalize">{agent.status}</span>
                             {agent.deploymentMode === "local" && (
@@ -148,6 +149,11 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                             )}
                             {agent.deploymentMode === "remote" && agent.provider && agent.provider !== "mcp" && (
                                 <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 font-medium">🌐 Remote</span>
+                            )}
+                            {provider && (
+                                <span className="rounded bg-zinc-800/50 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                                    {provider.id === "hermes" ? "🦀" : provider.id === "openclaw" ? "👑" : provider.id === "codex" ? "🧠" : "🔌"} {provider.name}
+                                </span>
                             )}
                         </div>
                     </div>
@@ -164,8 +170,8 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 </div>
             </div>
 
-            {/* Setup banner — shown when agent is offline / not yet connected */}
-            {agent.status === "offline" && (
+            {/* Setup banner — always visible for local agents, shown when offline for remote */}
+            {(agent.deploymentMode === "local" || agent.status === "offline") && (
                 <SetupBanner
                     agentId={agent.id}
                     agentName={agent.name}

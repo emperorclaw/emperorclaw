@@ -12,7 +12,7 @@ type Step = "role" | "provider" | "name";
 
 const providers = getAvailableProviders();
 
-export function CreateAgentDialog() {
+export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentId: string) => void }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [step, setStep] = useState<Step>("role");
@@ -78,7 +78,7 @@ export function CreateAgentDialog() {
                 setOpen(false);
                 resetForm();
                 router.refresh();
-                router.push(`/agents/${data.agent.id}`);
+                onAgentCreated?.(data.agent.id);
             }
         } catch (e) {
             setError(e instanceof Error ? e.message : "Agent creation failed");

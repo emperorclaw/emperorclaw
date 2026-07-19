@@ -42,7 +42,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 eyebrow="Agents"
                 title="Agent Directory"
                 description="Find agents, inspect workload, and jump into the durable profile when you need details."
-                actions={<CreateAgentDialog />}
+                actions={<CreateAgentDialog onAgentCreated={(id) => setSelectedId(id)} />}
             />
 
             {agents.length === 0 ? (
