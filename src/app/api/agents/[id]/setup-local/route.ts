@@ -1,19 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyId } from "@/lib/auth";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
+import { agents, companyTokens } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { getProvider } from "@/lib/agent-providers";
 import path from "path";
+import os from "os";
+import fs from "fs";
+import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
+
+type SetupOutput = { command: string; stdout: string; stderr: string; exitCode: number | null };
 
 /**
  * POST /api/agents/[id]/setup-local
  *
- * Runs the provider's install commands on the server for a locally-deployed agent.
- * Only works when deployment_mode = 'local'.
+ * Full local agent setup:
+ * - Hermes: profile, plugin, token, bridge .env, bridge process start ONLINE
+ * - Other providers: runs installCommands + generates API token
  */
 export async function POST(
     _req: NextRequest,
@@ -23,121 +29,154 @@ export async function POST(
     if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-
-    // Fetch the agent
     const [agent] = await db.select().from(agents).where(
         and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))
     ).limit(1);
 
     if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-
-    // Only local agents can be set up from the server
     if (agent.deploymentMode !== "local") {
-        return NextResponse.json({
-            error: "This agent is deployed remotely. Run the setup commands on the target machine instead.",
-        }, { status: 400 });
+        return NextResponse.json({ error: "This agent is deployed remotely." }, { status: 400 });
     }
 
     const provider = getProvider(agent.provider || "mcp");
-    if (!provider || provider.installCommands.length === 0) {
-        return NextResponse.json({
-            success: true,
-            message: "No setup commands needed for this provider.",
-            outputs: [],
-        });
+    if (!provider) return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+
+    const projectRoot = path.resolve(process.cwd());
+    const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
+    const role = agent.role || "operator";
+    const homeDir = os.homedir();
+    const emperorUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+
+    // Hermes data directory is platform-specific
+    const hermesDataDir = process.platform === "win32"
+        ? path.join(homeDir, "AppData", "Local", "hermes")
+        : path.join(homeDir, ".hermes");
+    const hermesBin = process.platform === "win32" ? "hermes" : path.join(homeDir, ".local", "bin", "hermes");
+
+    // Generate API token
+    const rawToken = `ec_${crypto.randomBytes(24).toString("hex")}`;
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    await db.insert(companyTokens).values({
+        companyId, tokenHash,
+        name: `${safeName}-local-setup`,
+        scope: "mcp_full",
+    });
+
+    const outputs: SetupOutput[] = [];
+
+    // ── Hermes: full local setup ────────────────────────────────────
+    if (provider.id === "hermes") {
+        // 1. Create profile
+        const createCmd = `hermes profile create ${safeName} --clone --description "${role.replace(/"/g, '\\"')}" --no-alias`;
+        const r1 = await runCmd(createCmd, 30_000);
+        outputs.push({ command: createCmd, ...r1 });
+        if (r1.exitCode !== 0) return fail(outputs, "Hermes profile creation failed", agent.id);
+
+        // 2. Copy plugin files
+        const pluginSrc = path.join(projectRoot, "integrations", "hermes", "emperor-claw");
+        const pluginDest = path.join(hermesDataDir, "profiles", safeName, "plugins", "emperor-claw");
+        const copyCmd = process.platform === "win32"
+            ? `powershell -Command "Copy-Item -Recurse -Force '${pluginSrc.replace(/'/g, "''")}' '${pluginDest.replace(/'/g, "''")}'"`
+            : `mkdir -p '${pluginDest}' && cp -R '${pluginSrc}/'* '${pluginDest}/'`;
+        const r2 = await runCmd(copyCmd, 15_000);
+        outputs.push({ command: `Copy plugin to ${pluginDest}`, ...r2 });
+        if (r2.exitCode !== 0) return fail(outputs, "Plugin file copy failed", agent.id);
+
+        // 3. Enable plugin
+        const enableCmd = `hermes -p ${safeName} plugins enable emperor-claw`;
+        const r3 = await runCmd(enableCmd, 15_000);
+        outputs.push({ command: enableCmd, ...r3 });
+        if (r3.exitCode !== 0) return fail(outputs, "Plugin enable failed", agent.id);
+
+        // 4. Write bridge .env
+        const bridgeDir = path.join(hermesDataDir, "emperor-bridge", safeName);
+        const bridgeEnv = [
+            `EMPEROR_CLAW_API_URL="${emperorUrl}"`,
+            `EMPEROR_CLAW_API_TOKEN="${rawToken}"`,
+            `EMPEROR_CLAW_AGENT_NAME="${safeName}"`,
+            `EMPEROR_CLAW_AGENT_ID="${agent.id}"`,
+            `EMPEROR_CLAW_AGENT_ROLE="${role}"`,
+            `EMPEROR_CLAW_RUNTIME_ID="hermes-${safeName}-${os.hostname()}-1"`,
+            `EMPEROR_CLAW_HERMES_POLL_SECONDS="5"`,
+            `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="300"`,
+            `HERMES_BIN="${hermesBin}"`,
+            `HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"`,
+            `DEEPSEEK_API_KEY="<your-model-api-key>"`,
+        ].join("\n") + "\n";
+        try {
+            fs.mkdirSync(bridgeDir, { recursive: true });
+            fs.writeFileSync(path.join(bridgeDir, ".env"), bridgeEnv);
+            outputs.push({ command: `Write bridge .env to ${bridgeDir}`, stdout: "Created", stderr: "", exitCode: 0 });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Unknown";
+            return fail(outputs, `Bridge .env write failed: ${msg}`, agent.id);
+        }
+
+        // 5. Start bridge (detached background)
+        const bridgeScript = path.join(pluginDest, "bridge", "emperor_hermes_bridge.py");
+        try {
+            const bridgeProc = spawn("python", [bridgeScript], {
+                env: {
+                    ...process.env,
+                    EMPEROR_CLAW_API_URL: emperorUrl,
+                    EMPEROR_CLAW_API_TOKEN: rawToken,
+                    EMPEROR_CLAW_AGENT_NAME: safeName,
+                    EMPEROR_CLAW_AGENT_ID: agent.id,
+                    EMPEROR_CLAW_AGENT_ROLE: role,
+                    EMPEROR_CLAW_RUNTIME_ID: `hermes-${safeName}-${os.hostname()}-1`,
+                    EMPEROR_CLAW_HERMES_POLL_SECONDS: "5",
+                    EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS: "300",
+                    HERMES_BIN: hermesBin,
+                    HERMES_TOOLSETS: "emperor-claw,web,terminal,code_execution",
+                },
+                detached: true, stdio: "ignore",
+                cwd: path.dirname(bridgeScript),
+            });
+            bridgeProc.unref();
+            outputs.push({ command: `Start bridge PID ${bridgeProc.pid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Unknown";
+            return fail(outputs, `Bridge start failed: ${msg}`, agent.id);
+        }
+
+        await db.update(agents).set({ status: "online", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
+        return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Hermes profile created, plugin installed, bridge running. Agent is ONLINE.`, token: rawToken, outputs });
     }
 
-    // Build commands with placeholders replaced
-    const projectRoot = path.resolve(process.cwd());
-    const name = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
-    const role = (agent.role || "operator").replace(/"/g, '\\"');
-    // We don't have a token here — the user should generate one from Settings
-    const token = "YOUR_TOKEN";
+    // ── Generic: run installCommands ────────────────────────────────
+    if (provider.installCommands.length === 0) {
+        return NextResponse.json({ success: true, message: "No setup commands needed.", outputs: [] });
+    }
 
     const commands = provider.installCommands.map((cmd) =>
-        cmd
-            .replace(/\{name\}/g, name)
-            .replace(/\{role\}/g, role)
-            .replace(/\{token\}/g, token)
-            .replace(/\{projectRoot\}/g, projectRoot)
+        cmd.replace(/\{name\}/g, safeName).replace(/\{role\}/g, role.replace(/"/g, '\\"')).replace(/\{token\}/g, rawToken).replace(/\{projectRoot\}/g, projectRoot)
     );
-
-    // Run commands sequentially
-    const outputs: { command: string; stdout: string; stderr: string; exitCode: number | null }[] = [];
-
     for (const command of commands) {
-        // Skip comment lines
-        if (command.trim().startsWith("#")) {
-            outputs.push({ command, stdout: "", stderr: "", exitCode: 0 });
-            continue;
-        }
-
+        if (command.trim().startsWith("#")) { outputs.push({ command, stdout: "", stderr: "", exitCode: 0 }); continue; }
         try {
-            const result = await runCommand(command, 15_000); // 15s timeout per command
+            const result = await runCmd(command, 15_000);
             outputs.push({ command, ...result });
-            if (result.exitCode !== 0) {
-                return NextResponse.json({
-                    success: false,
-                    message: `Command failed: ${command}`,
-                    outputs,
-                    failedAt: outputs.length,
-                });
-            }
+            if (result.exitCode !== 0) return fail(outputs, `Command failed: ${command}`, agent.id);
         } catch (err) {
-            const message = err instanceof Error ? err.message : "Unknown error";
-            outputs.push({ command, stdout: "", stderr: message, exitCode: -1 });
-            return NextResponse.json({
-                success: false,
-                message: `Command error: ${message}`,
-                outputs,
-                failedAt: outputs.length,
-            });
+            const msg = err instanceof Error ? err.message : "Unknown";
+            return fail(outputs, `Command error: ${msg}`, agent.id);
         }
     }
-
-    // Update agent status to "offline" (it will go online once the agent starts sending heartbeats)
-    await db.update(agents)
-        .set({ status: "offline", lastSeenAt: new Date() })
-        .where(eq(agents.id, id));
-
-    return NextResponse.json({
-        success: true,
-        message: `All ${outputs.length} setup commands completed. The agent will appear as online once it starts sending heartbeats.`,
-        outputs,
-    });
+    await db.update(agents).set({ status: "offline", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
+    return NextResponse.json({ success: true, message: `All ${outputs.length} commands completed.`, token: rawToken, outputs });
 }
 
-function runCommand(
-    command: string,
-    timeoutMs: number
-): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
-    return new Promise((resolve, reject) => {
-        const child = exec(command, {
-            timeout: timeoutMs,
-            maxBuffer: 1024 * 1024, // 1MB
-            shell: process.platform === "win32" ? "powershell.exe" : "/bin/bash",
-        }, (error, stdout, stderr) => {
-            if (error) {
-                resolve({
-                    stdout: stdout.trim(),
-                    stderr: stderr.trim() || error.message,
-                    exitCode: error.code ?? -1,
-                });
-            } else {
-                resolve({
-                    stdout: stdout.trim(),
-                    stderr: stderr.trim(),
-                    exitCode: 0,
-                });
-            }
+function fail(outputs: SetupOutput[], message: string, agentId: string) {
+    db.update(agents).set({ status: "offline" }).where(eq(agents.id, agentId)).catch(() => {});
+    return NextResponse.json({ success: false, message, outputs }, { status: 200 });
+}
+
+function runCmd(command: string, timeoutMs: number): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+    return new Promise((resolve) => {
+        const child = exec(command, { timeout: timeoutMs, maxBuffer: 1024 * 1024, shell: process.platform === "win32" ? "powershell.exe" : "/bin/bash" }, (error, stdout, stderr) => {
+            resolve({ stdout: stdout.trim(), stderr: stderr.trim() || (error?.message ?? ""), exitCode: error?.code ?? 0 });
         });
-
-        // Safety: kill after timeout + 5s grace
-        const killer = setTimeout(() => {
-            child.kill("SIGTERM");
-            setTimeout(() => child.kill("SIGKILL"), 5000);
-        }, timeoutMs + 5000);
-
+        const killer = setTimeout(() => { child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 5000); }, timeoutMs + 5000);
         child.on("close", () => clearTimeout(killer));
     });
 }
