@@ -64,6 +64,33 @@ async function heartbeat() {
     }
 }
 
+async function checkBudget() {
+    try {
+        const payload = await api("GET", `/agents/${AGENT_ID}`);
+        const agent = payload.agent || payload;
+        const status = agent.budgetStatus || "active";
+        const usage = agent.monthlyTokenUsage || 0;
+        const budget = agent.monthlyBudgetCents || 0;
+        if (status === "paused") {
+            log(`BUDGET PAUSED: ${usage} tokens used of ${budget} cents budget`);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return true; // If we can't check, allow (fail open)
+    }
+}
+
+async function reportTokenUsage(tokens) {
+    try {
+        await api("PATCH", `/agents/${AGENT_ID}`, {
+            monthlyTokenUsage: tokens,
+        });
+    } catch (e) {
+        log(`token report failed: ${e.message}`);
+    }
+}
+
 async function syncMessages() {
     const query = ["mode=all"];
     if (lastSeenAt) query.push(`since=${encodeURIComponent(lastSeenAt)}`);
@@ -109,6 +136,7 @@ async function main() {
     await heartbeat();
 
     let lastHeartbeat = Date.now();
+    let msgCount = 0;
 
     while (true) {
         try {
@@ -170,6 +198,20 @@ async function main() {
                 }
 
                 log(`dispatching message ${msgId}: "${text.slice(0, 80)}..."`);
+                
+                // Budget check — skip if paused
+                let budgetOk = true;
+                if (msgCount++ % 5 === 0) { // Check every 5 messages
+                    budgetOk = await checkBudget();
+                }
+                if (!budgetOk) {
+                    await sendReply(msg, `⚠️ Budget exhausted. ${AGENT_NAME} is paused until the next billing cycle.`);
+                    await updateStatus(msg, { typing: false, executionState: "resolved" });
+                    seen.add(msgId);
+                    if (msg.createdAt) lastSeenAt = msg.createdAt;
+                    continue;
+                }
+
                 await updateStatus(msg, { markRead: true, executionState: "seen" });
                 await updateStatus(msg, { typing: true, executionState: "acting" });
 
@@ -225,6 +267,9 @@ async function main() {
                     if (result.output) {
                         await sendReply(msg, result.output);
                         log(`replied to ${msgId} (${result.output.length} chars)`);
+                        // Estimate and report token usage (rough: 4 chars ≈ 1 token)
+                        const estimatedTokens = Math.ceil((text.length + result.output.length) / 4);
+                        reportTokenUsage(estimatedTokens).catch(() => {});
                     }
                 } catch (execErr) {
                     log(`codex exec failed: ${execErr.message}`);
