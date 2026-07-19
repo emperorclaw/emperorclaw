@@ -186,11 +186,13 @@ async function main() {
                 ].join("\n");
 
                 // Pipe prompt via stdin (Paperclip pattern)
+                // shell:true needed on Windows for .cmd files
                 try {
                     const result = await new Promise((resolve, reject) => {
                         const child = spawn("codex", ["exec", "-"], {
                             timeout: TIMEOUT_SECONDS * 1000,
                             stdio: ["pipe", "pipe", "pipe"],
+                            shell: process.platform === "win32",
                             env: { ...process.env },
                         });
 
