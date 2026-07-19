@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { companyMembers, companyTokens, users } from "@/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import SettingsClient from "./settings-client";
 import { serializeCompanyToken } from "@/lib/mcp";
 
@@ -38,10 +39,12 @@ export default async function SettingsPage() {
         .orderBy(desc(companyTokens.createdAt));
 
     return (
-        <SettingsClient
-            initialTokens={tokens.map(serializeCompanyToken)}
-            companyRole={membership.role}
-            instanceRole={userRecord?.instanceRole ?? "member"}
-        />
+        <Suspense fallback={<div className="p-8"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" /></div>}>
+            <SettingsClient
+                initialTokens={tokens.map(serializeCompanyToken)}
+                companyRole={membership.role}
+                instanceRole={userRecord?.instanceRole ?? "member"}
+            />
+        </Suspense>
     );
 }

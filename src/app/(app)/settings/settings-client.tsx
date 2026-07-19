@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers, IconArrowUp } from "@tabler/icons-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { UpdateSettingsTab } from "@/components/update-settings-tab";
 
 type SettingsToken = {
     id: string;
@@ -18,7 +20,7 @@ type SettingsToken = {
     expiresAt: string;
 };
 
-type SettingsTab = "connections" | "tokens" | "advanced" | "instance" | "members";
+type SettingsTab = "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
 type TokenScope = "mcp_full" | "mcp_danger";
 
 const runtimeCards = [
@@ -55,10 +57,13 @@ export default function SettingsClient({
     companyRole: string;
     instanceRole: string;
 }) {
+    const searchParams = useSearchParams();
     const [tokens, setTokens] = useState(initialTokens);
     const [newTokenName, setNewTokenName] = useState("");
     const [newTokenScope, setNewTokenScope] = useState<TokenScope>("mcp_full");
-    const [activeTab, setActiveTab] = useState<SettingsTab>("connections");
+    const [activeTab, setActiveTab] = useState<SettingsTab>(
+        (searchParams.get("tab") as SettingsTab) || "connections"
+    );
     const [generating, setGenerating] = useState(false);
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
     const [copied, setCopied] = useState(false);
@@ -161,6 +166,7 @@ export default function SettingsClient({
                 {([
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
+                    ["updates", "Updates"],
                     ["advanced", "Advanced"],
                     ...(instanceRole === "instance_admin" ? [["instance", "Instance"] as const] : []),
                     ...(instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin" ? [["members", "Members"] as const] : []),
@@ -394,6 +400,8 @@ Walk me through step by step.`}</pre>
                     </div>
                 </section>
             )}
+
+            {activeTab === "updates" && <UpdateSettingsTab />}
 
             {activeTab === "advanced" && (
                 <section className="space-y-4">
