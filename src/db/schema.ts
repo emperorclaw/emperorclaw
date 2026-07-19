@@ -176,6 +176,7 @@ export const agents = pgTable("agents", {
     modelPolicyJson: jsonb("model_policy_json"),
     concurrencyLimit: integer("concurrency_limit").default(1).notNull(),
     provider: text("provider").notNull().default("mcp"),
+    deploymentMode: text("deployment_mode").notNull().default("remote"),
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
     status: text("status").notNull().default('offline'),
     lastSeenAt: timestamp("last_seen_at"),

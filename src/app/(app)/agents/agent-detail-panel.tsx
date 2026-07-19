@@ -29,6 +29,7 @@ type AgentDetailData = {
         status: string;
         memory: string | null;
         provider?: string;
+        deploymentMode?: string;
         doctrineJson?: Record<string, string>;
     };
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
@@ -139,6 +140,12 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                         <div className="mt-1.5 flex items-center gap-2 text-sm text-zinc-400">
                             <StatusDot status={agent.status} />
                             <span className="capitalize">{agent.status}</span>
+                            {agent.deploymentMode === "local" && (
+                                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 font-medium">🖥️ Local</span>
+                            )}
+                            {agent.deploymentMode === "remote" && agent.provider && agent.provider !== "mcp" && (
+                                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 font-medium">🌐 Remote</span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -160,6 +167,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     agentName={agent.name}
                     agentRole={agent.role}
                     providerId={agent.provider || "mcp"}
+                    deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
                 />
             )}
 
@@ -307,10 +315,11 @@ function EmptyState({ text }: { text: string }) {
     );
 }
 
-function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; agentRole: string; providerId: string }) {
+function SetupBanner({ agentName, agentRole, providerId, deploymentMode }: { agentName: string; agentRole: string; providerId: string; deploymentMode: "local" | "remote" }) {
     const [copied, setCopied] = useState(false);
     const [copiedCmd, setCopiedCmd] = useState(false);
     const provider = getProvider(providerId) || getProvider("mcp")!;
+    const isLocal = deploymentMode === "local";
     const template = getAgentTemplate(
         Object.entries({
             "SEO Specialist": "seo",
@@ -335,14 +344,25 @@ function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; 
     };
 
     return (
-        <div className="border-b border-amber-500/20 bg-amber-500/[0.06] p-4 sm:p-5 space-y-4">
+        <div className={cn(
+            "border-b p-4 sm:p-5 space-y-4",
+            isLocal
+                ? "border-emerald-500/20 bg-emerald-500/[0.06]"
+                : "border-amber-500/20 bg-amber-500/[0.06]"
+        )}>
             <div className="flex items-start gap-3">
-                <span className="text-xl mt-0.5">🚀</span>
+                <span className="text-xl mt-0.5">{isLocal ? "🖥️" : "🚀"}</span>
                 <div className="flex-1">
-                    <h3 className="text-sm font-semibold text-amber-100">Agent created — now connect it</h3>
-                    <p className="text-xs text-amber-100/70 mt-1">
+                    <h3 className={cn("text-sm font-semibold", isLocal ? "text-emerald-100" : "text-amber-100")}>
+                        {isLocal ? "Agent created — connect on this server" : "Agent created — now connect it"}
+                    </h3>
+                    <p className={cn("text-xs mt-1", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
                         {agentName} is configured as a <strong>{agentRole}</strong> running on{" "}
-                        <strong>{provider.name}</strong>. Copy the prompt below into Claude, ChatGPT, or Codex and it will walk you through the setup.
+                        <strong>{provider.name}</strong>{" "}
+                        {isLocal
+                            ? "on this machine. Run the commands below directly — no SSH needed."
+                            : "on a remote machine. Copy the prompt below into Claude, ChatGPT, or Codex and it will walk you through the setup."
+                        }
                     </p>
                 </div>
             </div>
@@ -378,46 +398,66 @@ function SetupBanner({ agentName, agentRole, providerId }: { agentName: string; 
                             </div>
                         ))}
                         <p className="text-[10px] text-emerald-100/50 mt-1">
-                            Assumes {provider.name} CLI is already installed. Run these on the agent's machine (or this server). Then paste the LLM prompt for doctrine + systemd configuration.
+                            {isLocal
+                                ? `Assumes ${provider.name} CLI is installed on this server. Run these commands in a terminal.`
+                                : `Assumes ${provider.name} CLI is already installed. Run these on the agent's machine (or this server). Then paste the LLM prompt for doctrine + systemd configuration.`
+                            }
                         </p>
                     </div>
                 </div>
             )}
 
-            {/* Setup prompt */}
-            <div className="rounded-xl border border-amber-500/20 bg-black/30 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-200">
-                        🤖 LLM Setup Prompt
+            {/* Setup prompt — always show for remote, optional for local */}
+            <div className={cn(
+                "rounded-xl border bg-black/30 overflow-hidden",
+                isLocal
+                    ? "border-emerald-500/20"
+                    : "border-amber-500/20"
+            )}>
+                <div className={cn(
+                    "flex items-center justify-between px-4 py-2 border-b",
+                    isLocal
+                        ? "bg-emerald-500/10 border-emerald-500/20"
+                        : "bg-amber-500/10 border-amber-500/20"
+                )}>
+                    <span className={cn("text-[10px] font-bold uppercase tracking-wider", isLocal ? "text-emerald-200" : "text-amber-200")}>
+                        {isLocal ? "📋 LLM Setup Prompt (optional)" : "🤖 LLM Setup Prompt"}
                     </span>
                     <button
                         type="button"
                         onClick={handleCopy}
-                        className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 px-3 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/15 transition-colors"
+                        className={cn(
+                            "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[11px] font-medium transition-colors",
+                            isLocal
+                                ? "border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/15"
+                                : "border-amber-500/30 text-amber-200 hover:bg-amber-500/15"
+                        )}
                     >
                         {copied ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
                         {copied ? "Copied!" : "Copy prompt"}
                     </button>
                 </div>
-                <pre className="p-4 text-[11px] text-amber-100/80 whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono leading-relaxed select-all">
+                <pre className={cn("p-4 text-[11px] whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono leading-relaxed select-all", isLocal ? "text-emerald-100/80" : "text-amber-100/80")}>
                     {setupPrompt}
                 </pre>
             </div>
 
             {/* Checklist */}
             <div className="space-y-2">
-                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Post-Install Checklist</span>
+                <span className={cn("text-[10px] font-bold uppercase tracking-wider", isLocal ? "text-emerald-300" : "text-amber-300")}>
+                    Post-Connect Checklist
+                </span>
                 <div className="grid gap-1.5">
                     {provider.postInstallChecklist.map((step, i) => (
-                        <div key={i} className="flex items-center gap-2 text-[11px] text-amber-100/70">
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-amber-500/30 text-[10px] text-amber-300">
+                        <div key={i} className={cn("flex items-center gap-2 text-[11px]", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
+                            <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]", isLocal ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
                                 {i + 1}
                             </span>
                             <span>{step.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole).replace(/\{token\}/g, "your-token")}</span>
                         </div>
                     ))}
-                    <div className="flex items-center gap-2 text-[11px] text-amber-100/70">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-amber-500/30 text-[10px] text-amber-300">
+                    <div className={cn("flex items-center gap-2 text-[11px]", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
+                        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]", isLocal ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
                             ✓
                         </span>
                         <span>Check Emperor dashboard — {agentName} should appear as <strong>online</strong></span>
