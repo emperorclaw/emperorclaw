@@ -7,6 +7,7 @@ import Link from "next/link";
 import { IconLoader2, IconArrowRight, IconShield, IconCpu } from "@tabler/icons-react";
 import { AuthBackground } from "@/components/auth-background";
 import { CustomLogo } from "@/components/custom-logo";
+import pkg from "@/../package.json" assert { type: "json" };
 
 function FadeUp({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
     return (
@@ -198,8 +199,8 @@ export default function LoginPage() {
                 </FadeUp>
 
                 <FadeUp delay={stagger.footer + 0.05} className="flex justify-center mt-6">
-                    <div className="flex items-center gap-3 text-[10px] text-zinc-500 tracking-[0.2em] uppercase font-medium">
-                        <span className="w-1 h-1 rounded-full bg-cyan-500/30" />Self-hosted control plane<span className="w-1 h-1 rounded-full bg-amber-500/30" />
+                    <div className="flex items-center gap-3 text-[10px] text-zinc-600 tracking-[0.15em] uppercase font-medium">
+                        <span className="w-1 h-1 rounded-full bg-cyan-500/20" />v{pkg.version}<span className="w-1 h-1 rounded-full bg-zinc-700" />emperorclaw.com
                     </div>
                 </FadeUp>
             </div>
