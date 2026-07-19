@@ -234,9 +234,15 @@ export function AgentDirectChat({
             });
         }, 3000);
 
+        // Safety net: full reload every 15s to catch any missed messages
+        const fullReloadInterval = setInterval(() => {
+            void loadMessages({}).catch(() => {});
+        }, 15000);
+
         return () => {
             active = false;
             clearInterval(interval);
+            clearInterval(fullReloadInterval);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         };
     }, [loadMessages]);
@@ -413,13 +419,15 @@ export function AgentDirectChat({
             if (data.message) {
                 setMessages((prev) => prev.some((message) => message.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
-                // Immediately poll for agent response
-                setTimeout(() => {
-                    void loadMessages({ since: data.message!.createdAt }).catch(() => {});
-                }, 1500);
-                setTimeout(() => {
-                    void loadMessages({ since: lastSeenAtRef.current }).catch(() => {});
-                }, 4000);
+                // Aggressive polling after send: catch agent response fast
+                const schedulePoll = (delay: number, useSince: boolean) => {
+                    setTimeout(() => {
+                        void loadMessages(useSince ? { since: lastSeenAtRef.current } : {}).catch(() => {});
+                    }, delay);
+                };
+                schedulePoll(2000, true);   // 2s: poll with since
+                schedulePoll(5000, true);   // 5s: poll with since
+                schedulePoll(8000, false);  // 8s: FULL reload (no since) — catch anything missed
             }
         } catch (error) {
             console.error("Failed to send direct message", error);
