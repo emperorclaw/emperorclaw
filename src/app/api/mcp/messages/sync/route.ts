@@ -39,9 +39,10 @@ export async function GET(req: NextRequest) {
                 conditions.push(eq(threadMessages.senderType, 'human'));
             }
 
-            // Exclude agent's own messages from sync — prevents self-triggering loops
+            // Exclude agent's own messages from sync — prevents self-triggering loops.
+            // Use SQL OR to include messages where senderId IS NULL (human-sent via MCP API).
             if (agentId) {
-                conditions.push(ne(threadMessages.senderId, agentId));
+                conditions.push(sql`(${threadMessages.senderId} IS NULL OR ${threadMessages.senderId} != ${agentId})`);
             }
 
             if (isValidSince) {
