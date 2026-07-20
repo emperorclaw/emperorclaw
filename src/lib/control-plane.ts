@@ -261,7 +261,7 @@ export async function getThreadMessages(
     ];
 
     if (since) {
-        conditions.push(sql`${threadMessages.createdAt} > ${since}`);
+        conditions.push(sql`${threadMessages.createdAt} >= ${since}`);
     }
     if (before) {
         conditions.push(lt(threadMessages.createdAt, before));
