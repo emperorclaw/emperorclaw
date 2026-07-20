@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { customers, projects, tasks, incidents, approvals, pipelines } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
-import { getCompanyId } from "@/lib/auth";
+import { eq, and, isNull, inArray } from "drizzle-orm";
+import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
+import { getScopeFromSession, getScopedCustomerIds } from "@/lib/member-scope";
 import { redirect } from "next/navigation";
 import CustomersClient from "./customers-client";
 
@@ -11,7 +12,14 @@ export default async function CustomersPage() {
     const companyId = await getCompanyId();
     if (!companyId) redirect("/login");
 
-    const allCustomers = await db.select().from(customers).where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)));
+    const session = await getValidatedServerSession();
+    const scope = session ? getScopeFromSession(session) : null;
+    const scopedCustomerIds = getScopedCustomerIds(scope);
+
+    const customerConditions: any[] = [eq(customers.companyId, companyId), isNull(customers.deletedAt)];
+    if (scopedCustomerIds) customerConditions.push(inArray(customers.id, scopedCustomerIds));
+
+    const allCustomers = await db.select().from(customers).where(and(...customerConditions));
     const allProjects = await db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)));
     const allTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
     const allIncidents = await db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt)));

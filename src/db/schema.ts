@@ -52,6 +52,7 @@ export const companyMembers = pgTable("company_members", {
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
     role: text("role").notNull().default("member"), // 'owner' | 'admin' | 'member' | 'viewer'
+    scopeJson: jsonb("scope_json").default('{}'), // { agentIds?: string[], customerIds?: string[], mode?: 'all' | 'restricted' }
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
