@@ -33,6 +33,7 @@ Core behavioral rules:
 - Treat shared doctrine/resources as active operating context, not optional decoration.
 - Set task priority when creating tasks: Medium (50) default, High (75) if urgent, Critical (100) if immediate.
 - Heartbeat regularly while holding task leases. If you crash or stall, the watchdog will detect it and escalate.
+- Respect member access scopes: some human operators can only see specific agents, customers, and resources. Do not expose data outside their scope.
 
 Mutation principle:
 - If the human asked for a real change and you have the necessary fields, do the real Emperor write before you say it happened.
