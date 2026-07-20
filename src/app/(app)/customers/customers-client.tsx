@@ -89,11 +89,11 @@ export default function CustomersClient({ initialData: customerData }: { initial
             <PageHeader
                 eyebrow="Customers"
                 title="Customer Directory"
-                description="Find a customer, inspect its portfolio health, and maintain the customer context agents should follow."
+                description="Find a customer, inspect its portfolio health, and maintain the customer description agents should follow."
                 actions={
                     <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
                         <DialogTrigger asChild>
-                            <button className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">
+                            <button className="cursor-pointer rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15">
                                 Add Customer
                             </button>
                         </DialogTrigger>
@@ -117,7 +117,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                 />
                             </div>
                             <div className="flex justify-end border-t border-zinc-900 pt-2">
-                                <button onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 hover:bg-cyan-400/15">
+                                <button onClick={() => void handleCreateCustomer()} disabled={!newClientName.trim() || sending} className="flex cursor-pointer items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-400/15">
                                     {sending ? "Creating..." : "Create Customer"}
                                 </button>
                             </div>
@@ -149,7 +149,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                         </label>
                         <div className="mt-4 space-y-2">
                             {filteredCustomers.map((customer) => (
-                                <button key={customer.id} type="button" onClick={() => setSelectedId(customer.id)} className={cn("w-full rounded-xl border p-3 text-left transition-colors", selectedCustomer?.id === customer.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
+                                <button key={customer.id} type="button" onClick={() => setSelectedId(customer.id)} className={cn("w-full cursor-pointer rounded-xl border p-3 text-left transition-colors", selectedCustomer?.id === customer.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="truncate font-medium text-zinc-100">{customer.name}</div>
@@ -185,10 +185,10 @@ export default function CustomersClient({ initialData: customerData }: { initial
                             </div>
                             <div className="pt-4 sm:pt-5">
                                 <div className="mb-2 flex items-center justify-between">
-                                    <label className="text-sm font-medium text-zinc-300">Customer context markdown</label>
-                                    <button onClick={() => void handleSaveNotes(selectedCustomer.id)} disabled={sending || localNotes[selectedCustomer.id] === undefined} className="flex items-center text-xs font-semibold text-cyan-300 transition-colors hover:text-cyan-200 disabled:opacity-50">
+                                    <label className="text-sm font-medium text-zinc-300">Description</label>
+                                    <button onClick={() => void handleSaveNotes(selectedCustomer.id)} disabled={sending || localNotes[selectedCustomer.id] === undefined} className="flex cursor-pointer items-center text-xs font-semibold text-cyan-300 transition-colors hover:text-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed">
                                         <IconDeviceFloppy className="mr-1 h-3 w-3" />
-                                        Save context
+                                        Save
                                     </button>
                                 </div>
                                 <textarea
@@ -197,7 +197,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     value={localNotes[selectedCustomer.id] ?? selectedCustomer.notes ?? ""}
                                     onChange={(event) => setLocalNotes((prev) => ({ ...prev, [selectedCustomer.id]: event.target.value }))}
                                 />
-                                <p className="mt-2 text-xs text-zinc-500">This is durable customer context. Keep project-specific rules in Project or Knowledge & Rules.</p>
+                                <p className="mt-2 text-xs text-zinc-500">Brief description and notes about this customer. For reusable rules and SOPs, use the Knowledge Base instead.</p>
                             </div>
                         </main>
                     ) : null}
