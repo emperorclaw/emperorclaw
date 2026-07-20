@@ -118,7 +118,20 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                 throw new Error(data.error || "Failed to send invitation");
             }
 
-            toast.success(`Invitation sent to ${inviteEmail.trim()}`);
+            const data = await res.json();
+            const msg = data.emailSent
+                ? `Invitation sent to ${inviteEmail.trim()}`
+                : `Invite created, but email could not be sent. Share this link manually.`;
+            
+            if (!data.emailSent && data.inviteUrl) {
+                toast.error(msg, {
+                    description: data.inviteUrl,
+                    duration: 15000,
+                });
+            } else {
+                toast.success(msg);
+            }
+            
             setInviteEmail("");
             await loadInvitations();
         } catch (err: unknown) {

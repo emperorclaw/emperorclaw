@@ -2,6 +2,7 @@ import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companies, opsEvents, runtimeNodes, users } from "@/db/schema";
 import { OpsCard, OpsSection, OpsTable, formatDateTime } from "./ui";
+import { UpdatePanel } from "@/components/update-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,8 @@ export default async function OpsOverviewPage() {
                 <OpsCard title="Errors (24h)" value={String(errorsLast24h)} detail="Ops events recorded at error level in the last 24 hours" />
                 <OpsCard title="Recent Signups" value={String(recentUsers.length)} detail="Newest accounts created on the platform" />
             </div>
+
+            <UpdatePanel />
 
             <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
                 <OpsSection

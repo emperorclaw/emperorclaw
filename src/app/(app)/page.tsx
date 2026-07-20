@@ -2,13 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { agents, tasks, incidents, companyTokens, users, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
-import { eq, inArray, and, sql, isNull, desc } from "drizzle-orm";
+import { eq, inArray, and, sql, isNull, desc, gte } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
+import { opsEvents } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,8 @@ export default async function DashboardPage() {
   const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.review), isNull(tasks.deletedAt)));
   const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
   const [{ count: activeTokens }] = await db.select({ count: sql<number>`count(*)` }).from(companyTokens).where(and(eq(companyTokens.companyId, companyId), isNull(companyTokens.revokedAt)));
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [{ count: recentErrors }] = await db.select({ count: sql<number>`count(*)` }).from(opsEvents).where(and(eq(opsEvents.companyId, companyId), eq(opsEvents.level, "error"), gte(opsEvents.createdAt, last24h)));
 
   // 2. Workforce Health / Agent Load
   const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
@@ -212,6 +215,7 @@ export default async function DashboardPage() {
         <KpiCard title="To do" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
         <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} href="/projects?attention=1" />
         <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} href="/projects?attention=1" />
+        <KpiCard title="System errors" value={recentErrors.toString()} trend="24h" trendLabel="platform errors" alert={recentErrors > 0} good={recentErrors === 0} href="/ops/errors" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">

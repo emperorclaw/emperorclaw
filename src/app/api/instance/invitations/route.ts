@@ -9,6 +9,7 @@ import { isSelfHosted } from "@/lib/instance";
 import { getAppUrl } from "@/lib/env";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
+import { recordOpsError } from "@/lib/ops-events";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -61,18 +62,33 @@ export const POST = withRoleApi("admin")(async (req, ctx) => {
         const appUrl = getAppUrl(req);
         const inviteUrl = `${appUrl}/signup?invite=${result.rawToken}&email=${encodeURIComponent(result.email)}`;
 
-        // Send invitation email (FR-17)
+        // Send invitation email (FR-17) — non-blocking, link is always returned
         const [company] = await db.select({ name: companies.name })
             .from(companies)
             .where(eq(companies.id, ctx.companyId))
             .limit(1);
         const companyName = company?.name ?? "the workspace";
 
-        await sendEmail({
-            to: result.email,
-            subject: `You're invited to join ${companyName} on Emperor Claw`,
-            html: `<p>You've been invited to join <strong>${companyName}</strong> as a <strong>${result.role}</strong>.</p><p><a href="${inviteUrl}">Click here to accept the invitation</a></p><p>This invitation expires on ${result.expiresAt.toLocaleDateString()}.</p>`,
-        });
+        let emailSent = false;
+        try {
+            emailSent = await sendEmail({
+                to: result.email,
+                subject: `You're invited to join ${companyName} on Emperor Claw`,
+                html: `<p>You've been invited to join <strong>${companyName}</strong> as a <strong>${result.role}</strong>.</p><p><a href="${inviteUrl}">Click here to accept the invitation</a></p><p>This invitation expires on ${result.expiresAt.toLocaleDateString()}.</p>`,
+            });
+        } catch (emailErr) {
+            recordOpsError({
+                category: "email",
+                source: "invitations",
+                fallbackMessage: "Failed to send invitation email",
+                error: emailErr,
+                route: "POST /api/instance/invitations",
+                method: "POST",
+                companyId: ctx.companyId,
+                userId: ctx.userId,
+                metadata: { email: result.email, role: result.role },
+            });
+        }
 
         return NextResponse.json(
             {
@@ -81,6 +97,7 @@ export const POST = withRoleApi("admin")(async (req, ctx) => {
                 role: result.role,
                 expiresAt: result.expiresAt.toISOString(),
                 inviteUrl,
+                emailSent,
             },
             { status: 201 }
         );
@@ -91,6 +108,16 @@ export const POST = withRoleApi("admin")(async (req, ctx) => {
                 { status: err.statusCode }
             );
         }
+        recordOpsError({
+            category: "invitations",
+            source: "api",
+            fallbackMessage: "Failed to create invitation",
+            error: err,
+            route: "POST /api/instance/invitations",
+            method: "POST",
+            companyId: ctx.companyId,
+            userId: ctx.userId,
+        });
         console.error("Create invitation error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
