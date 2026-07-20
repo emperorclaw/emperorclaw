@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { companies, threadMessages } from "@/db/schema";
-import { eq, and, gt, desc, sql } from "drizzle-orm";
+import { eq, and, gt, desc, sql, ne } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -37,6 +37,11 @@ export async function GET(req: NextRequest) {
             } else if (mode === 'human_only') {
                 // Default behavior keeps existing OpenClaw directive semantics.
                 conditions.push(eq(threadMessages.senderType, 'human'));
+            }
+
+            // Exclude agent's own messages from sync — prevents self-triggering loops
+            if (agentId) {
+                conditions.push(ne(threadMessages.senderId, agentId));
             }
 
             if (isValidSince) {
