@@ -213,8 +213,8 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 />
                 {!agent.lastSeenAt && (
                     <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[10px] text-rose-300/70">
-                        ⚠️ This agent has never connected. Created {agent.lastSeenAt ? "" : ""}— no heartbeat received yet.
-                        {agent.provider === "hermes" ? " The Hermes bridge must be running for the agent to appear online." : ""}
+                        ⚠️ This agent has never connected — no heartbeat received yet. The bridge must be running for the agent to appear online.
+                        {agent.provider === "hermes" ? " See the setup guide below." : ""}
                     </div>
                 )}
                 </>
@@ -647,6 +647,45 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                     {setupPrompt}
                 </pre>
             </div>
+
+            {/* Bridge config generator — Hermes only */}
+            {providerId === "hermes" && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
+                            🔌 Bridge Configuration
+                        </span>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+                                const env = [
+                                    `EMPEROR_CLAW_API_URL="${baseUrl}"`,
+                                    `EMPEROR_CLAW_API_TOKEN="<generate in Settings > Access Tokens>"`,
+                                    `EMPEROR_CLAW_AGENT_NAME="${agentName}"`,
+                                    `EMPEROR_CLAW_AGENT_ID="${agentId}"`,
+                                    `EMPEROR_CLAW_AGENT_ROLE="${agentRole}"`,
+                                    `HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"`,
+                                    `HERMES_BIN="hermes"`,
+                                    `EMPEROR_CLAW_HERMES_POLL_SECONDS="5"`,
+                                    `DEEPSEEK_API_KEY="<your-api-key>"`,
+                                ].join("\n");
+                                await navigator.clipboard.writeText(env);
+                                setCopiedCmd(true);
+                                setTimeout(() => setCopiedCmd(false), 2000);
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
+                        >
+                            {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
+                            {copiedCmd ? "Copied!" : "Copy .env"}
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-emerald-100/60">
+                        Save this as <code className="text-emerald-200/80 bg-emerald-500/5 px-1 rounded">~/.hermes/emperor-bridge/{agentName}/.env</code>.
+                        Generate an API token in <strong>Settings → Access Tokens</strong>, replace the placeholders, and start the bridge.
+                    </p>
+                </div>
+            )}
 
             {/* Checklist */}
             <div className="space-y-2">
