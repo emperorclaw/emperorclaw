@@ -94,6 +94,7 @@ export async function POST(
 
         // 4. Write bridge .env
         const bridgeDir = path.join(hermesDataDir, "emperor-bridge", safeName);
+        const bridgeStatePath = path.join(bridgeDir, "state.json");
         const bridgeEnv = [
             `EMPEROR_CLAW_API_URL="${emperorUrl}"`,
             `EMPEROR_CLAW_API_TOKEN="${rawToken}"`,
@@ -125,7 +126,6 @@ export async function POST(
         outputs.push({ command: `Kill existing bridge (if any)`, stdout: r5.stdout || "Done", stderr: r5.stderr, exitCode: 0 });
 
         // 6. Start bridge with per-agent state file
-        const bridgeStatePath = path.join(hermesDataDir, "emperor-bridge", safeName, "state.json");
         const bridgeScript = path.join(globalPluginDir, "bridge", "emperor_hermes_bridge.py");
         try {
             const bridgeProc = spawn("python", [bridgeScript], {
