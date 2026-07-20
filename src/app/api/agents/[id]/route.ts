@@ -27,10 +27,16 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
 
-    // Support updating doctrine_json, budget, and other fields
+    // Support updating doctrine_json, budget, provider, deployment mode, and other fields
     const updates: Record<string, unknown> = {};
     if (body.doctrineJson && typeof body.doctrineJson === "object") {
         updates.doctrineJson = body.doctrineJson;
+    }
+    if (typeof body.provider === "string" && body.provider) {
+        updates.provider = body.provider;
+    }
+    if (typeof body.deploymentMode === "string" && ["local", "remote"].includes(body.deploymentMode)) {
+        updates.deploymentMode = body.deploymentMode;
     }
     if (typeof body.monthlyBudgetCents === "number" && body.monthlyBudgetCents >= 0) {
         updates.monthlyBudgetCents = Math.round(body.monthlyBudgetCents);

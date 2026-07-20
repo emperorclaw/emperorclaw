@@ -14,6 +14,7 @@ import {
     IconPlayerPlay,
     IconLoader,
     IconAlertTriangle,
+    IconPencil,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
@@ -126,6 +127,27 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
     const { agent, latestSnapshot, memoryEntries, sessions, runs, threads } = data;
     const provider = getProvider(agent.provider || "mcp");
 
+    const [editingProvider, setEditingProvider] = useState(false);
+    const [editingDeployment, setEditingDeployment] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const updateAgent = async (fields: Record<string, unknown>) => {
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/agents/${agent.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(fields),
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                // Merge updated fields into local state
+                setData((prev) => prev ? { ...prev, agent: { ...prev.agent, ...updated.agent } } : prev);
+            }
+        } catch { /* ignore */ }
+        setSaving(false);
+    };
+
     return (
         <main className="emperor-panel rounded-2xl overflow-hidden">
             {/* Header */}
@@ -189,11 +211,62 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
             {/* Operational status bar — for online/active agents */}
             {agent.status !== "offline" && (
                 <div className="border-b border-emerald-500/10 bg-emerald-500/[0.03] px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs">
-                    <span className="text-zinc-500">
-                        Provider: <span className="text-zinc-300 font-medium">{provider?.name || "Unknown"}</span>
+                    {/* Provider — editable */}
+                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
+                        Provider:{" "}
+                        {editingProvider ? (
+                            <select
+                                value={agent.provider || "mcp"}
+                                disabled={saving}
+                                onChange={(e) => {
+                                    updateAgent({ provider: e.target.value });
+                                    setEditingProvider(false);
+                                }}
+                                onBlur={() => setEditingProvider(false)}
+                                className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
+                                autoFocus
+                            >
+                                <option value="mcp">🔌 Generic MCP</option>
+                                <option value="hermes">👑 Hermes</option>
+                                <option value="openclaw">🦀 OpenClaw</option>
+                                <option value="codex">🧠 Codex</option>
+                                <option value="claude">🧠 Claude</option>
+                            </select>
+                        ) : (
+                            <>
+                                <span className="text-zinc-300 font-medium">{provider?.id === "hermes" ? "👑" : provider?.id === "openclaw" ? "🦀" : provider?.id === "codex" ? "🧠" : "🔌"} {provider?.name || "Generic MCP"}</span>
+                                <button type="button" onClick={() => setEditingProvider(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Change provider">
+                                    <IconPencil className="h-3 w-3" />
+                                </button>
+                            </>
+                        )}
                     </span>
-                    <span className="text-zinc-500">
-                        Deployment: <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? "🖥️ Local" : "🌐 Remote"}</span>
+                    {/* Deployment mode — editable */}
+                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
+                        Deployment:{" "}
+                        {editingDeployment ? (
+                            <select
+                                value={agent.deploymentMode || "remote"}
+                                disabled={saving}
+                                onChange={(e) => {
+                                    updateAgent({ deploymentMode: e.target.value });
+                                    setEditingDeployment(false);
+                                }}
+                                onBlur={() => setEditingDeployment(false)}
+                                className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
+                                autoFocus
+                            >
+                                <option value="remote">🌐 Remote</option>
+                                <option value="local">🖥️ Local (This server)</option>
+                            </select>
+                        ) : (
+                            <>
+                                <span className="text-zinc-300 font-medium">{agent.deploymentMode === "local" ? "🖥️ Local" : "🌐 Remote"}</span>
+                                <button type="button" onClick={() => setEditingDeployment(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Change deployment">
+                                    <IconPencil className="h-3 w-3" />
+                                </button>
+                            </>
+                        )}
                     </span>
                     {agent.lastSeenAt && (
                         <span className="text-zinc-500">
