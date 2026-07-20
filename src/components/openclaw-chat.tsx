@@ -276,7 +276,7 @@ export function OpenClawChat() {
             <button
                 onClick={() => setIsOpen(true)}
                 className={cn(
-                    "fixed bottom-6 right-6 p-4 rounded-full shadow-2xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all transform hover:scale-105 z-50",
+                    "fixed bottom-6 right-6 p-4 rounded-full shadow-2xl bg-cyan-500 hover:bg-cyan-400 text-white transition-all transform hover:scale-105 z-50",
                     isOpen && "opacity-0 pointer-events-none scale-90"
                 )}
             >
@@ -295,11 +295,11 @@ export function OpenClawChat() {
                         <div className="flex flex-col">
                             <span className="text-sm font-semibold text-zinc-100 leading-tight">Team Channel</span>
                             {typingNames.length > 0 ? (
-                                <span className="text-[10px] text-indigo-400 flex items-center gap-1">
+                                <span className="text-[10px] text-cyan-400 flex items-center gap-1">
                                     <span className="flex gap-0.5">
-                                        <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.3s]" />
-                                        <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.15s]" />
-                                        <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce" />
+                                        <span className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.3s]" />
+                                        <span className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
+                                        <span className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" />
                                     </span>
                                     {typingNames[0]} is typing…
                                 </span>
@@ -351,7 +351,7 @@ export function OpenClawChat() {
                                                     <span className="text-[10px] font-medium text-zinc-500 mb-1 mr-1">You</span>
                                                 )}
                                                 <div className={cn(
-                                                    "min-w-0 max-w-full px-3.5 py-2 text-sm bg-indigo-600 text-white rounded-2xl",
+                                                    "min-w-0 max-w-full px-3.5 py-2 text-sm bg-cyan-500 text-white rounded-2xl",
                                                     isLastInGroup && "rounded-br-none"
                                                 )}>
                                                     <MarkdownRenderer content={msg.text} className="whitespace-pre-wrap break-words leading-relaxed prose-sm" />
@@ -402,9 +402,9 @@ export function OpenClawChat() {
                     {typingNames.length > 0 && (
                         <div className="flex items-center gap-2 px-4 py-1.5 shrink-0">
                             <div className="flex gap-1">
-                                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
-                                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
-                                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-bounce" />
+                                <div className="w-1 h-1 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.3s]" />
+                                <div className="w-1 h-1 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.15s]" />
+                                <div className="w-1 h-1 rounded-full bg-cyan-500 animate-bounce" />
                             </div>
                             <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
                                 {typingNames.join(', ')} {typingNames.length > 1 ? 'are' : 'is'} typing…
@@ -421,7 +421,7 @@ export function OpenClawChat() {
                                 requestAnimationFrame(() => textareaRef.current?.focus());
                             }}
                             title="Mention an agent"
-                            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-indigo-500/50 hover:text-indigo-400 text-zinc-500 transition-colors"
+                            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
                         >
                             <IconAt className="w-4 h-4" />
                         </button>
@@ -434,14 +434,14 @@ export function OpenClawChat() {
                             onSubmit={sendMessage}
                             placeholder="Message Team Channel…"
                             rows={1}
-                            className="w-full resize-none bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-24 overflow-y-auto"
+                            className="w-full resize-none bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-24 overflow-y-auto"
                             style={{ minHeight: "2.25rem" }}
                         />
 
                         <button
                             type="submit"
                             disabled={!message.trim()}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
                         >
                             <IconSend className="w-4 h-4" />
                         </button>
