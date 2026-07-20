@@ -31,6 +31,8 @@ Core behavioral rules:
 - Treat human thread messages as authoritative interrupts.
 - Use artifacts for durable outputs, not raw logs or transient scratch output.
 - Treat shared doctrine/resources as active operating context, not optional decoration.
+- Set task priority when creating tasks: Medium (50) default, High (75) if urgent, Critical (100) if immediate.
+- Heartbeat regularly while holding task leases. If you crash or stall, the watchdog will detect it and escalate.
 
 Mutation principle:
 - If the human asked for a real change and you have the necessary fields, do the real Emperor write before you say it happened.
@@ -107,7 +109,7 @@ Primary rule:
 - The bridge is mainly for routing threads, injecting context, preserving session/runtime state, and posting the final reply back into Emperor.
 
 Base details:
-- Base URL: https://emperorclaw.malecu.eu/api/mcp
+- Base URL: http://localhost:3000/api/mcp
 - Auth header: Authorization: Bearer <company token>
 - Mutation safety header: Idempotency-Key: <uuid>
 
@@ -180,6 +182,37 @@ Task field semantics:
 - deliverables are the concrete outputs a worker should produce.
 - acceptanceCriteria or definitionOfDone defines how another agent knows the task is complete.
 - Never create a task with taskType "any", a missing title, or no deliverables unless the human explicitly asked for a draft placeholder.
+
+### Task Priority
+
+Tasks support a priority field (integer 0–100) that controls visual prominence and sort order:
+
+| Value | Label | Meaning |
+|-------|-------|---------|
+| 0 | No priority | Default — unset |
+| 25 | Low | Nice-to-have, background work |
+| 50 | Medium | Standard work |
+| 75 | High | Important, act soon |
+| 100 | Critical | Urgent, immediate attention |
+
+Set priority when creating or updating tasks via \`PATCH /tasks/{id}\` with \`{"priority": <value>}\`.
+Higher-priority tasks appear first in the Needs Attention view and sort above lower-priority work.
+When creating a task for a human who didn't specify priority, default to Medium (50) for standard work or High (75) if the request sounds urgent.
+
+### Task lifecycle & incident awareness
+
+Emperor's watchdog runs every 60 seconds and detects:
+- **Expired leases**: task lease expired → retry (up to maxRetries) → dead-lettered
+- **SLA breaches**: task exceeded its slaDueAt deadline
+- **Stale inbox**: task unclaimed in inbox for over 1 hour
+
+When a task reaches \`dead_letter\` state or triggers an SLA breach, the watchdog creates an incident record. Operators see these in the "Needs Attention" view on the Projects board.
+
+Agent behavioral rules:
+- If you claim a task, heartbeat regularly to renew the lease.
+- If you cannot complete a task, move it to \`failed\` with a note explaining why.
+- If you see a task you cannot handle (wrong role, missing context), do NOT claim it. Add a note explaining what's needed.
+- Do not claim more tasks than you can actively work on.
 
 ## Pipelines
 Pipelines are recurring or recursive automation you build and execute in your own runtime.
@@ -578,10 +611,10 @@ const ARTIFACTS_AND_FOLDERS_QUICK_GUIDE = `# Artifact And Folder Quick Guide
 
 - Search first with GET /artifacts or GET /folders/{id}/contents.
 - Create folders first with POST /folders. Use parentFolderId for child folders. The server derives path from parent + name.
-- Never send a full folder path like /malecu/invoices/2026 as one folder name.
-- To build /malecu/invoices/2026, create three folders in sequence:
-  1. POST /folders { customerId, name: "malecu" }
-  2. POST /folders { customerId, parentFolderId: <malecu-id>, name: "invoices" }
+- Never send a full folder path like /acme/invoices/2026 as one folder name.
+- To build /acme/invoices/2026, create three folders in sequence:
+  1. POST /folders { customerId, name: "acme" }
+  2. POST /folders { customerId, parentFolderId: <acme-id>, name: "invoices" }
   3. POST /folders { customerId, parentFolderId: <invoices-id>, name: "2026" }
 - Upload fresh file bytes with POST /artifacts/upload and pass file, kind, one of customerId/projectId, and folderId when the file belongs in a folder.
 - Then upload into the last folder with POST /artifacts/upload and folderId=<2026-folder-id>.
@@ -959,7 +992,7 @@ These flows show how to operate Emperor correctly from a user request to a durab
 const API_REFERENCE_FILE = `# Emperor API Reference
 
 Base URL:
-- https://emperorclaw.malecu.eu/api/mcp
+- http://localhost:3000/api/mcp
 
 Auth:
 - Authorization: Bearer <company token>
@@ -1029,7 +1062,7 @@ Important note:
 - POST /messages/send
 - POST /chat/status
 - GET /messages/sync
-- websocket: wss://emperorclaw.malecu.eu/api/mcp/ws
+- websocket: wss://emperorclaw.acme.eu/api/mcp/ws
 
 ## Resources
 - GET /resources

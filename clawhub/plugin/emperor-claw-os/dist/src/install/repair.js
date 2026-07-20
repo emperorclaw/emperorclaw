@@ -23,7 +23,7 @@ export async function repairAllAgents(paths, api) {
     const manifests = loadManifests(paths);
     const repaired = [];
     const pluginConfig = api?.pluginConfig || {};
-    const defaultApiUrl = String(pluginConfig.apiUrl || "https://emperorclaw.malecu.eu");
+    const defaultApiUrl = String(pluginConfig.apiUrl || "http://localhost:3000");
     const defaultToken = String(pluginConfig.apiToken
         || pluginConfig.token
         || pluginConfig.emperorToken

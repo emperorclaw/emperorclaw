@@ -9,7 +9,7 @@ function normalizeApiUrl(value) {
 export function resolveEmperorChannelAccount(cfg, accountId) {
     const section = getChannelSection(cfg);
     const token = String(section.token || "").trim();
-    const apiUrl = normalizeApiUrl(String(section.apiUrl || "https://emperorclaw.malecu.eu").trim());
+    const apiUrl = normalizeApiUrl(String(section.apiUrl || "http://localhost:3000").trim());
     if (!token) {
         throw new Error("emperor channel: channels.emperor-claw-os.token is required");
     }

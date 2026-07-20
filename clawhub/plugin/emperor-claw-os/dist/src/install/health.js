@@ -7,7 +7,7 @@ import { BRIDGE_CONTRACT_VERSION, getMissingBridgeCapabilities, hasRequiredThrea
 import { inspectTrackedManifestUpgrades } from "../state/normalize.js";
 import { loadLocalConfig } from "./config.js";
 import { inspectOpenClawProfileConfig, resolveOpenClawConfigPath } from "./openclaw-profile.js";
-const DEFAULT_EMPEROR_API_URL = "https://emperorclaw.malecu.eu";
+const DEFAULT_EMPEROR_API_URL = "http://localhost:3000";
 function readBridgeUpdatedAt(bridgeStatePath) {
     if (!fs.existsSync(bridgeStatePath))
         return null;
