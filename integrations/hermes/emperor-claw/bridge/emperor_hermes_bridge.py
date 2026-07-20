@@ -502,7 +502,8 @@ _last_token_report = 0
 
 def report_token_usage(input_chars: int, output_chars: int) -> None:
     """Estimate tokens (4 chars ≈ 1 token) and report usage to EmperorClaw.
-    Throttled to at most once per 60 seconds to avoid API spam."""
+    Throttled to at most once per 60 seconds to avoid API spam.
+    Uses the MCP report-usage endpoint which atomically increments usage."""
     global _last_token_report
     now = time.time()
     if now - _last_token_report < 60:
@@ -512,12 +513,9 @@ def report_token_usage(input_chars: int, output_chars: int) -> None:
         estimated = (input_chars + output_chars) // 4
         if estimated <= 0:
             return
-        # Fetch current usage and add our estimate
-        payload = api("GET", f"/agents/{AGENT_ID}")
-        agent_data = payload.get("agent") if isinstance(payload, dict) else payload
-        current = int(agent_data.get("monthlyTokenUsage") or 0) if isinstance(agent_data, dict) else 0
-        api("PATCH", f"/agents/{AGENT_ID}", body={
-            "monthlyTokenUsage": current + estimated,
+        api("POST", "/agents/report-usage", body={
+            "agentId": AGENT_ID,
+            "tokensUsed": estimated,
         })
     except Exception:
         pass  # Non-critical — silently ignore
