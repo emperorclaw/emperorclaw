@@ -1,7 +1,4 @@
 import type { SessionWithUserId } from "@/lib/auth";
-import { db } from "@/db";
-import { companyMembers } from "@/db/schema";
-import { eq, and, inArray, sql, SQL } from "drizzle-orm";
 
 export type MemberScope = {
     agentIds?: string[];

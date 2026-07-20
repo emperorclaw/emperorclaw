@@ -259,6 +259,8 @@ export function AgentTeamChat({
         .map(p => ({ id: p.participantId, name: getAgentName(p.participantId) }));
 
     const agentReadTimes: Record<string, number> = {};
+    const onlineAgents = agents.filter(a => a.status === "online");
+    const offlineAgents = agents.filter(a => a.status !== "online");
     for (const p of participants) {
         if (p.participantType === "agent" && p.participantId && p.lastReadAt) {
             agentReadTimes[p.participantId] = new Date(p.lastReadAt).getTime();
@@ -277,6 +279,11 @@ export function AgentTeamChat({
                     )}
                 </div>
                 <div className="flex items-center space-x-2">
+                    {offlineAgents.length > 0 && (
+                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                            {offlineAgents.length} agent{offlineAgents.length !== 1 ? "s" : ""} offline
+                        </span>
+                    )}
                     <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500" />
                     <span className="text-xs font-medium uppercase tracking-tight text-zinc-500">Live Feed</span>
                 </div>
@@ -398,6 +405,14 @@ export function AgentTeamChat({
                                                     </div>
                                                     <span className="text-[10px] font-medium text-cyan-500">
                                                         {readByAgents.length === 1 ? `Read by ${readByAgents[0].name}` : `Read by ${readByAgents.length} agents`}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {/* Waiting indicator — human message with no reads after 30s */}
+                                            {isHuman && isLastInGroup && readByAgents.length === 0 && now - msgTime > 30000 && (
+                                                <div className="mt-1 px-1">
+                                                    <span className="text-[10px] font-medium text-amber-400">
+                                                        {offlineAgents.length > 0 ? "Agent offline — message queued" : "Waiting for agent..."}
                                                     </span>
                                                 </div>
                                             )}

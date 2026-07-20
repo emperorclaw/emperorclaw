@@ -535,7 +535,7 @@ function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSa
                 <label className="block">
                     <span className="text-sm font-medium text-zinc-300">Role / Title</span>
                     <input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="e.g. SEO Lead, Project Manager, Client Contact" className="mt-1 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                    <p className="mt-1 text-xs text-zinc-600">Free text — helps agents know what you're responsible for.</p>
+                    <p className="mt-1 text-xs text-zinc-600">Free text — helps agents know what you&apos;re responsible for.</p>
                 </label>
                 <button onClick={onSave} disabled={saving} className="cursor-pointer rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     {saving ? "Saving..." : "Save Profile"}

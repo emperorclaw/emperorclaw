@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     ".data/**",
     "public/**",
     "clawhub/**",
+    "integrations/**",
+    "scripts/**",
   ]),
   {
     rules: {
