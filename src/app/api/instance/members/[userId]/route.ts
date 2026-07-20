@@ -23,7 +23,7 @@ export async function PUT(
 
         const { userId } = await params;
         const body = await req.json();
-        const { role, instanceRole } = body;
+        const { role, instanceRole, displayName, roleTitle } = body;
 
         // Validate role values
         const validCompanyRoles = ["owner", "admin", "member", "viewer"];
@@ -85,6 +85,14 @@ export async function PUT(
                 .update(users)
                 .set({ instanceRole })
                 .where(eq(users.id, userId));
+        }
+
+        // Update profile fields
+        const profileUpdates: Record<string, any> = {};
+        if (displayName !== undefined) profileUpdates.displayName = displayName || null;
+        if (roleTitle !== undefined) profileUpdates.roleTitle = roleTitle || null;
+        if (Object.keys(profileUpdates).length > 0) {
+            await db.update(users).set(profileUpdates).where(eq(users.id, userId));
         }
 
         return NextResponse.json({ success: true }, { status: 200 });

@@ -20,6 +20,7 @@ interface RegisterRequestBody {
     email: string;
     password: string;
     displayName?: string;
+    roleTitle?: string;
     companyName?: string;
     inviteToken?: string;
     acceptBetaDisclaimer?: boolean;
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
         const email = normalizeEmail(body.email);
         const password = String(body.password ?? "");
         const displayName = String(body.displayName ?? "").trim() || null;
+        const roleTitle = String(body.roleTitle ?? "").trim() || null;
         const companyName = normalizeCompanyName(body.companyName || "");
         const inviteToken = String(body.inviteToken ?? "").trim();
         const acceptBetaDisclaimer = body.acceptBetaDisclaimer === true;
@@ -283,7 +285,7 @@ export async function POST(req: NextRequest) {
             const openResult = await db.transaction(async (tx) => {
                 const [newUser] = await tx
                     .insert(users)
-                    .values({ email, passwordHash, displayName, instanceRole: "member" })
+                    .values({ email, passwordHash, displayName, roleTitle, instanceRole: "member" })
                     .returning();
 
                 await tx.insert(companyMembers).values({
@@ -340,6 +342,7 @@ export async function POST(req: NextRequest) {
                 email,
                 passwordHash,
                 displayName,
+                roleTitle,
             }).returning();
 
             const [newCompany] = await tx.insert(companies).values({

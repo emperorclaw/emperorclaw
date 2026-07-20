@@ -12,6 +12,7 @@ type Member = {
     id: string;
     email: string;
     displayName?: string | null;
+    roleTitle?: string | null;
     companyRole: string;
     instanceRole: string;
     joinedAt: string | null;
@@ -301,6 +302,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                         {member.displayName && <span className="font-medium">{member.displayName}</span>}
                                         {member.displayName && <br />}
                                         <span className={member.displayName ? "text-xs text-zinc-500" : ""}>{member.email}</span>
+                                        {member.roleTitle && <span className="block text-[10px] text-cyan-400/70 mt-0.5">{member.roleTitle}</span>}
                                     </td>
                                     <td className="py-3">{roleBadge(member.companyRole)}</td>
                                     <td className="py-3">{roleBadge(member.instanceRole)}</td>
