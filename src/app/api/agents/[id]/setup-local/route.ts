@@ -125,10 +125,16 @@ export async function POST(
         const r5 = await runCmd(killCmd, 10_000);
         outputs.push({ command: `Kill existing bridge (if any)`, stdout: r5.stdout || "Done", stderr: r5.stderr, exitCode: 0 });
 
-        // 6. Start bridge with per-agent state file
+        // 6. Start bridge in background (no window, survives parent exit)
         const bridgeScript = path.join(globalPluginDir, "bridge", "emperor_hermes_bridge.py");
         try {
-            const bridgeProc = spawn("python", [bridgeScript], {
+            // On Windows, use start /B to run without a console window
+            // On Unix, use nohup to survive parent exit
+            const isWin = process.platform === "win32";
+            const bridgeCmd = isWin
+                ? `start "" /B python "${bridgeScript}"`
+                : `nohup python "${bridgeScript}" > /dev/null 2>&1 &`;
+            const bridgeProc = spawn(isWin ? "cmd.exe" : "sh", [isWin ? "/c" : "-c", bridgeCmd], {
                 env: {
                     ...process.env,
                     EMPEROR_CLAW_API_URL: emperorUrl,
@@ -146,7 +152,6 @@ export async function POST(
                 detached: true,
                 stdio: "ignore",
                 windowsHide: true,
-                cwd: path.dirname(bridgeScript),
             });
             bridgeProc.unref();
             outputs.push({ command: `Start bridge PID ${bridgeProc.pid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
@@ -156,7 +161,7 @@ export async function POST(
         }
 
         await db.update(agents).set({ status: "online", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
-        return NextResponse.json({ success: true, message: `${agent.name} is set up! ⚠️ IMPORTANT: Edit ${bridgeDir}/.env and replace <your-model-api-key> with your real LLM API key, then restart the bridge.`, token: rawToken, outputs });
+        return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Bridge running in background. The agent will reply to messages.`, token: rawToken, outputs });
     }
 
     // ── Codex: run verification, then spawn bridge ──────────────────
