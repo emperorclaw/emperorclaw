@@ -548,6 +548,20 @@ def main() -> int:
                 if m_target and m_thread:
                     state.setdefault("direct_threads", {})[m_thread] = m_target
                 ts = message.get("createdAt")
+                # ── Cold-start guard: after bridge restart, skip all team-chat ──
+                #     messages until at least one human message appears. This
+                #     prevents agent-to-agent reply storms when bridges restart
+                #     and loop-guard counters are fresh.
+                sender_type = str(message.get("senderType") or "").lower()
+                thread_type = str(message.get("threadType") or message.get("thread_type") or "")
+                if thread_type == "team" and sender_type != "human":
+                    if state.get("cold_start", True):
+                        remember_seen(state, message_id)
+                        if ts:
+                            state["lastSeenAt"] = ts
+                        continue
+                if sender_type == "human":
+                    state["cold_start"] = False
                 if not is_for_agent(message, agent_id, state):
                     remember_seen(state, message_id)
                     if ts:
