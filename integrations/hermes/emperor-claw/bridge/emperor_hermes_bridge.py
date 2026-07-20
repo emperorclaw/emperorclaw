@@ -593,6 +593,7 @@ def main() -> int:
                 update_chat_status(message, mark_read=True, execution_state="seen")
                 update_chat_status(message, typing=True, execution_state="acting")
                 send_heartbeat(1)
+                text = str(message.get("text") or "")
                 try:
                     reply = run_hermes(message, state)
                     send_reply(message, reply)
