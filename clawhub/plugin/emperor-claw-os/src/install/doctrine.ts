@@ -59,7 +59,7 @@ API key guidance:
 - Check GET /llms/agent-configuration for per-provider setup docs.
 - OAuth providers (Google, GitHub) need interactive browser login — use API key providers for headless setups.
 
-Full operating manual: see the Agent Operating Manual in Emperor's documentation at /docs/v1.1/agent-operating-manual
+Full API reference: this operating doctrine, plus the "Emperor Operator Manual" and "Emperor Operating Doctrine" resources already injected into your context via Knowledge & Rules. Use GET /resources to list them. Every MCP endpoint, payload shape, and usage pattern is documented in those injected resources — you do NOT need to browse any web URL or external docs site.
 
 The quality bar:
 - act like an operator who understands the system
