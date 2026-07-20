@@ -48,6 +48,11 @@ export async function POST(req: NextRequest) {
             ? Math.round(body.monthlyBudgetCents)
             : 0;
 
+        // LLM provider (metadata only — keys live in the runtime)
+        const llmProvider = (typeof body.llmProvider === "string" &&
+            ["openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider))
+            ? body.llmProvider : null;
+
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
@@ -69,6 +74,7 @@ export async function POST(req: NextRequest) {
             budgetStatus: "active",
             status: "offline",
             currentLoad: 0,
+            llmProvider,
         }).returning();
 
         if (memory) {

@@ -180,6 +180,7 @@ export const agents = pgTable("agents", {
     concurrencyLimit: integer("concurrency_limit").default(1).notNull(),
     provider: text("provider").notNull().default("mcp"),
     deploymentMode: text("deployment_mode").notNull().default("remote"),
+    llmProvider: text("llm_provider"),
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),

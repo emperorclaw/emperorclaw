@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import {
     IconExternalLink,
@@ -34,6 +34,7 @@ type AgentDetailData = {
         memory: string | null;
         provider?: string;
         deploymentMode?: string;
+        llmProvider?: string | null;
         lastSeenAt?: string;
         doctrineJson?: Record<string, string>;
         monthlyBudgetCents?: number;
@@ -102,6 +103,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
         return () => { cancelled = true; };
     }, [agentId]);
 
+    // ALL hooks must be called before any conditional return
+    const [editingProvider, setEditingProvider] = useState(false);
+    const [editingDeployment, setEditingDeployment] = useState(false);
+    const [editingLlm, setEditingLlm] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const editingLlmProviderRef = useRef("");
+
     if (loading) {
         return (
             <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
@@ -126,10 +134,6 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
 
     const { agent, latestSnapshot, memoryEntries, sessions, runs, threads } = data;
     const provider = getProvider(agent.provider || "mcp");
-
-    const [editingProvider, setEditingProvider] = useState(false);
-    const [editingDeployment, setEditingDeployment] = useState(false);
-    const [saving, setSaving] = useState(false);
 
     const updateAgent = async (fields: Record<string, unknown>) => {
         setSaving(true);
@@ -265,6 +269,60 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 <button type="button" onClick={() => setEditingDeployment(true)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Change deployment">
                                     <IconPencil className="h-3 w-3" />
                                 </button>
+                            </>
+                        )}
+                    </span>
+                    {/* LLM Provider — editable; keys live in the agent runtime, not here */}
+                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
+                        LLM:{" "}
+                        {editingLlm ? (
+                            <span className="inline-flex items-center gap-1.5">
+                                <select
+                                    defaultValue={agent.llmProvider || ""}
+                                    disabled={saving}
+                                    onChange={(e) => { editingLlmProviderRef.current = e.target.value; }}
+                                    className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
+                                >
+                                    <option value="">None</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="anthropic">Anthropic</option>
+                                    <option value="google">Google Gemini</option>
+                                    <option value="openrouter">OpenRouter</option>
+                                    <option value="grok">Grok</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={async () => {
+                                        await updateAgent({ llmProvider: editingLlmProviderRef.current || "" });
+                                        setEditingLlm(false);
+                                    }}
+                                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium disabled:opacity-50"
+                                >
+                                    Save
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingLlm(false)}
+                                    className="text-zinc-600 hover:text-zinc-400 text-[10px]"
+                                >
+                                    Cancel
+                                </button>
+                            </span>
+                        ) : (
+                            <>
+                                <span className="text-zinc-300 font-medium">
+                                    {agent.llmProvider ? agent.llmProvider.charAt(0).toUpperCase() + agent.llmProvider.slice(1) : "None"}
+                                </span>
+                                <button type="button" onClick={() => { editingLlmProviderRef.current = agent.llmProvider || ""; setEditingLlm(true); }} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Configure LLM provider">
+                                    <IconPencil className="h-3 w-3" />
+                                </button>
+                                {agent.llmProvider && (
+                                    <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-[9px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2" title="API keys are configured in the agent runtime, not stored in EmperorClaw. Click for setup guide.">
+                                        ⓘ setup guide
+                                    </a>
+                                )}
                             </>
                         )}
                     </span>

@@ -38,6 +38,9 @@ MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX
 # one pause notice instead, until a human message resets the counter.
 LOOP_GUARD_MAX_AGENT_TURNS = int(os.environ.get("EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS", "3"))
 
+# Cached agent LLM provider — read once at startup for documentation
+_agent_llm_provider: str | None = None
+
 
 def log(message: str) -> None:
     print(f"[emperor-hermes] {message}", flush=True)
@@ -96,6 +99,25 @@ def remember_seen(state: Dict[str, Any], message_id: str) -> bool:
     return True
 
 
+def _log_llm_guidance(provider: str) -> None:
+    """Log which env var the user should set in Hermes for this provider."""
+    provider_env_map = {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "grok": "GROK_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+    }
+    env_var = provider_env_map.get(provider.lower())
+    if env_var:
+        log(
+            f"Agent configured for LLM provider: {provider}. "
+            f"Set {env_var} in your environment or ~/.hermes/.env. "
+            "API keys are managed in the agent runtime, not stored in EmperorClaw."
+        )
+
+
 def ensure_runtime() -> None:
     api("POST", "/runtime/register", body={
         "runtimeId": RUNTIME_ID,
@@ -108,15 +130,22 @@ def ensure_runtime() -> None:
 
 
 def ensure_agent() -> str:
-    global AGENT_ID
+    global AGENT_ID, _agent_llm_provider
     if AGENT_ID:
         return AGENT_ID
     payload = api("GET", "/agents", query={"limit": 200})
     agents = payload.get("agents") if isinstance(payload, dict) else []
+    matched = None
     for agent in agents if isinstance(agents, list) else []:
         if str(agent.get("name") or "").lower() == AGENT_NAME.lower():
             AGENT_ID = str(agent.get("id"))
-            return AGENT_ID
+            matched = agent
+            break
+    if matched:
+        _agent_llm_provider = str(matched.get("llmProvider") or "") or None
+        if _agent_llm_provider:
+            _log_llm_guidance(_agent_llm_provider)
+        return AGENT_ID
     created = api("POST", "/agents", body={
         "name": AGENT_NAME,
         "role": AGENT_ROLE,
@@ -391,7 +420,12 @@ def extract_session_id(output: str) -> str:
 
 
 def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    env = os.environ.copy()
+    # Provider hint: pass EMPEROR_CLAW_LLM_PROVIDER so Hermes skills can auto-detect.
+    # The actual API key is configured by the user in ~/.hermes/.env or environment.
+    if _agent_llm_provider:
+        env["EMPEROR_CLAW_LLM_PROVIDER"] = _agent_llm_provider
+    proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     started = time.time()
     last_status = 0.0
     while proc.poll() is None:

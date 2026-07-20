@@ -21,6 +21,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
     const [name, setName] = useState("");
     const [deploymentMode, setDeploymentMode] = useState<"remote" | "local">("remote");
     const [monthlyBudget, setMonthlyBudget] = useState(""); // dollars, empty = unlimited
+    const [llmProvider, setLlmProvider] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +70,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                     provider: selectedProvider.id,
                     deploymentMode,
                     monthlyBudgetCents: monthlyBudget ? Math.round(parseFloat(monthlyBudget) * 100) : 0,
+                    llmProvider: llmProvider || undefined,
                     doctrineJson: doctrine,
                     avatarUrl: `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name.trim() || selectedRole?.title || "agent")}`,
                 }),
@@ -94,6 +96,8 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
         setSelectedRole(null);
         setSelectedProvider(providers[0]);
         setName("");
+        setMonthlyBudget("");
+        setLlmProvider("");
         setError(null);
     };
 
@@ -111,10 +115,10 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                         {step === "provider" && "How should it run?"}
                         {step === "name" && "Name your agent"}
                     </DialogTitle>
-                    <DialogDescription className="text-zinc-500">
+                    <DialogDescription className="text-zinc-400">
                         {step === "role" && "Choose a pre-built role with doctrine files, or start from scratch."}
-                        {step === "provider" && "Select the runtime that will execute this agent's work."}
-                        {step === "name" && "Give it a name and we will generate the configuration."}
+                        {step === "provider" && "Select the runtime that will execute this agent's work. API keys live in the runtime — not stored in EmperorClaw."}
+                        {step === "name" && "Give it a name and review the configuration before creating."}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -133,7 +137,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                     <span className="block text-sm font-medium text-zinc-100 group-hover:text-cyan-200 transition-colors">
                                         {template.title}
                                     </span>
-                                    <span className="block text-[11px] leading-tight text-zinc-500 mt-0.5 line-clamp-2">
+                                    <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5 line-clamp-2">
                                         {template.description}
                                     </span>
                                 </div>
@@ -147,7 +151,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                             <span className="text-2xl shrink-0">✨</span>
                             <div className="min-w-0">
                                 <span className="block text-sm font-medium text-zinc-400">Custom Role</span>
-                                <span className="block text-[11px] leading-tight text-zinc-600 mt-0.5">
+                                <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">
                                     Blank slate
                                 </span>
                             </div>
@@ -168,6 +172,15 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                     </span>
                                 </div>
                             </div>
+                        )}
+                        {/* Key guidance for the selected provider */}
+                        {selectedProvider.supportsLlmProvider && (
+                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
+                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">🔑 API Keys</span>
+                            <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
+                                Hermes reads keys from ~/.hermes/.env or your environment. EmperorClaw only stores the provider choice as metadata — the bridge reads it to auto-detect which LLM you're using.
+                            </p>
+                        </div>
                         )}
                         {providers.map((provider) => (
                             <button
@@ -191,7 +204,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                             {provider.executionModel === "persistent" ? "Daemon" : "On-demand"}
                                         </span>
                                     </div>
-                                    <span className="block text-[11px] leading-tight text-zinc-500 mt-0.5">{provider.description}</span>
+                                    <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">{provider.description}</span>
                                 </div>
                             </button>
                         ))}
@@ -210,7 +223,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                 />
                             </div>
                             <div className="flex-1 space-y-1">
-                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Agent Name</label>
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Agent Name</label>
                                 <input
                                     className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-cyan-500 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none"
                                     placeholder="e.g. SEO Agent"
@@ -222,7 +235,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Where will this agent run?</label>
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Where will this agent run?</label>
                             <div className="grid grid-cols-2 gap-2">
                                 <button
                                     type="button"
@@ -231,7 +244,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                         "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                                         deploymentMode === "remote"
                                             ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
-                                            : "border-zinc-800 bg-zinc-900/70 text-zinc-500 hover:border-zinc-600"
+                                            : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-600"
                                     )}
                                 >
                                     <span className="text-sm">🌐</span>
@@ -248,10 +261,10 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                     className={cn(
                                         "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                                         !selectedProvider.supportsLocal
-                                            ? "border-zinc-800/50 bg-zinc-900/30 text-zinc-600 cursor-not-allowed"
+                                            ? "border-zinc-800/50 bg-zinc-900/30 text-zinc-500 cursor-not-allowed"
                                             : deploymentMode === "local"
                                                 ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
-                                                : "border-zinc-800 bg-zinc-900/70 text-zinc-500 hover:border-zinc-600"
+                                                : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-600"
                                     )}
                                 >
                                     <span className="text-sm">🖥️</span>
@@ -265,9 +278,9 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
 
                         {/* Monthly budget */}
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Monthly Budget (USD)</label>
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Monthly Budget (USD)</label>
                             <div className="flex items-center gap-2">
-                                <span className="text-zinc-500 text-sm">$</span>
+                                <span className="text-zinc-400 text-sm">$</span>
                                 <input
                                     type="number"
                                     min="0"
@@ -277,41 +290,88 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                     value={monthlyBudget}
                                     onChange={(e) => setMonthlyBudget(e.target.value)}
                                 />
-                                <span className="text-[10px] text-zinc-600">Leave empty for unlimited</span>
+                                <span className="text-[10px] text-zinc-400">Leave empty for unlimited</span>
                             </div>
                         </div>
+
+                        {/* LLM Provider — only for runtimes that read it (Hermes) */}
+                        {selectedProvider.supportsLlmProvider && (
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                                LLM Provider <span className="text-zinc-500 font-normal">— Optional metadata</span>
+                            </label>
+                            <p className="text-[10px] text-zinc-400 -mt-0.5">
+                                Which LLM does this agent use? Stored as metadata — the bridge reads it to auto-detect the provider.
+                                API keys must be configured in the runtime environment (~/.hermes/.env), not in EmperorClaw.
+                            </p>
+                            <select
+                                value={llmProvider}
+                                onChange={(e) => setLlmProvider(e.target.value)}
+                                className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400 mt-1"
+                            >
+                                <option value="">None</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic</option>
+                                <option value="google">Google Gemini</option>
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="grok">Grok</option>
+                                <option value="deepseek">DeepSeek</option>
+                            </select>
+                        </div>
+                        )}
 
                         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
                             <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Configuration</span>
                             <div className="grid gap-1.5 text-[11px]">
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500">Role</span>
+                                    <span className="text-zinc-400">Role</span>
                                     <span className="text-zinc-300">{selectedRole ? `${selectedRole.emoji} ${selectedRole.title}` : "Custom"}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500">Provider</span>
+                                    <span className="text-zinc-400">Provider</span>
                                     <span className="text-zinc-300">{selectedProvider.name}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500">Deployment</span>
+                                    <span className="text-zinc-400">Deployment</span>
                                     <span className="text-zinc-300">{deploymentMode === "local" ? "🖥️ This server" : "🌐 Remote"}</span>
                                 </div>
                                 {selectedRole && (
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Doctrine</span>
+                                        <span className="text-zinc-400">Doctrine</span>
                                         <span className="text-emerald-300">SOUL.md, AGENTS.md, BOOTSTRAP.md, IDENTITY.md</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between">
-                                    <span className="text-zinc-500">Budget</span>
+                                    <span className="text-zinc-400">Budget</span>
                                     <span className="text-zinc-300">{monthlyBudget ? `$${monthlyBudget}/mo` : "Unlimited"}</span>
                                 </div>
+                                {llmProvider && (
+                                    <div className="flex justify-between">
+                                        <span className="text-zinc-400">LLM</span>
+                                        <span className="text-emerald-300">{llmProvider}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         {error && (
                             <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</div>
                         )}
+
+                        {/* What's next hint */}
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">After creation</span>
+                            <p className="text-[10px] text-zinc-400 mt-0.5 leading-relaxed">
+                                {selectedProvider.id === "hermes"
+                                    ? "1. Configure your LLM API key in ~/.hermes/.env  2. Start the Hermes bridge  3. Agent appears online"
+                                    : "1. Configure your runtime  2. Point it to EmperorClaw's MCP endpoint  3. Agent registers on first heartbeat"}
+                            </p>
+                            <p className="text-[10px] text-zinc-400 mt-1">
+                                <a href="/docs/v1.1/troubleshooting#5-agent-setup--llm-configuration" target="_blank" className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">
+                                    Troubleshooting guide →
+                                </a>
+                            </p>
+                        </div>
                     </div>
                 )}
 

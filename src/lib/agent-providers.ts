@@ -35,6 +35,8 @@ export type AgentProvider = {
     postInstallChecklist: string[];
     /** Whether this provider supports local (same-server) deployment with auto-setup */
     supportsLocal: boolean;
+    /** Whether this provider's runtime reads llmProvider from EmperorClaw metadata */
+    supportsLlmProvider: boolean;
     /** Future: how Emperor invokes on-demand agents */
     invokeCommand?: string;
     /** Future: how results come back */
@@ -87,6 +89,7 @@ The plugin injects recognized bootstrap files into the agent's prompt context au
             "Check Emperor dashboard — agent should appear as online",
         ],
         supportsLocal: false,
+        supportsLlmProvider: false,
     },
     {
         id: "hermes",
@@ -143,6 +146,7 @@ Create a systemd service at ~/.config/systemd/user/emperor-hermes-bridge-{name}.
             "Check Emperor dashboard — agent should appear as online",
         ],
         supportsLocal: true,
+        supportsLlmProvider: true,
     },
     {
         id: "mcp",
@@ -176,6 +180,7 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
             "Check Emperor dashboard — agent should appear as online",
         ],
         supportsLocal: true,
+        supportsLlmProvider: false,
     },
     {
         id: "claude",
@@ -195,15 +200,16 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
         invokeCommand: "claude --project-dir {workspace} --prompt \"{prompt}\"",
         resultCapture: "stdout",
         supportsLocal: false,
+        supportsLlmProvider: false,
     },
     {
         id: "codex",
         name: "OpenAI Codex",
         icon: "IconCode",
         description:
-            "OpenAI Codex CLI as an on-demand agent. EmperorClaw spawns codex with workspace context per task. No bridge or daemon needed.",
+            "OpenAI Codex CLI as an on-demand agent. Coming soon.",
         executionModel: "on-demand",
-        status: "available",
+        status: "planned",
         prerequisites: ["Codex CLI", "OpenAI API key"],
         doctrinePath: null,
         configFiles: [],
@@ -232,6 +238,7 @@ Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with work
         invokeCommand: "codex exec --workspace {workspace} \"{prompt}\"",
         resultCapture: "stdout",
         supportsLocal: true,
+        supportsLlmProvider: false,
     },
     {
         id: "bash",
@@ -251,6 +258,7 @@ Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with work
         invokeCommand: "bash {script}",
         resultCapture: "stdout",
         supportsLocal: false,
+        supportsLlmProvider: false,
     },
 ];
 
