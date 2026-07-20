@@ -41,9 +41,10 @@ export async function POST(
     const provider = getProvider(agent.provider || "mcp");
     if (!provider) return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
 
-    // Project root: this route file is at src/app/api/agents/[id]/setup-local/route.ts
-    // 6 levels up from this dir: src → project root
-    const projectRoot = path.resolve(__dirname, "..", "..", "..", "..", "..", "..");
+    // Project root: prefer EMPEROR_PROJECT_ROOT env var, fall back to cwd
+    const projectRoot = process.env.EMPEROR_PROJECT_ROOT || process.cwd();
+    // In dev mode (next dev), cwd is already the project root.
+    // In production standalone, set EMPEROR_PROJECT_ROOT=/var/www/emperorclaw
     const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
     const role = agent.role || "operator";
     const homeDir = os.homedir();

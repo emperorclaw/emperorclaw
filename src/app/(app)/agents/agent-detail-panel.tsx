@@ -556,6 +556,56 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 </div>
             </div>
 
+            {/* Auto-setup button — Hermes local mode only */}
+            {providerId === "hermes" && isLocal && (
+                <div className="space-y-3">
+                    <button
+                        type="button"
+                        disabled={setupRunning}
+                        onClick={async () => {
+                            setSetupRunning(true);
+                            setSetupResult(null);
+                            try {
+                                const res = await fetch(`/api/agents/${agentId}/setup-local`, { method: "POST" });
+                                const data = await res.json();
+                                setSetupResult(data);
+                            } catch (e) {
+                                setSetupResult({ success: false, message: e instanceof Error ? e.message : "Network error" });
+                            } finally {
+                                setSetupRunning(false);
+                            }
+                        }}
+                        className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+                    >
+                        {setupRunning ? (
+                            <><IconLoader className="h-4 w-4 animate-spin" />Setting up Hermes...</>
+                        ) : (
+                            <><IconPlayerPlay className="h-4 w-4" />▶ Auto-Setup Hermes (profile + plugin + bridge)</>
+                        )}
+                    </button>
+
+                    {setupResult && (
+                        <div className={`rounded-lg border p-3 text-xs space-y-2 ${setupResult.success ? "border-emerald-500/20 bg-emerald-500/[0.06]" : "border-rose-500/20 bg-rose-500/[0.06]"}`}>
+                            <div className="flex items-center gap-2">
+                                {setupResult.success ? <IconCircleCheck className="h-4 w-4 text-emerald-400" /> : <IconAlertTriangle className="h-4 w-4 text-rose-400" />}
+                                <span className={setupResult.success ? "text-emerald-200" : "text-rose-200"}>{setupResult.message}</span>
+                            </div>
+                            {setupResult.outputs && setupResult.outputs.length > 0 && (
+                                <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+                                    {setupResult.outputs.map((o: any, i: number) => (
+                                        <div key={i} className={`rounded px-2 py-1 font-mono text-[10px] ${o.exitCode === 0 ? "bg-black/30 text-emerald-100/60" : "bg-black/30 text-rose-100/60"}`}>
+                                            <div className="text-zinc-500 mb-0.5">$ {o.command}</div>
+                                            {o.stdout && <div className="text-zinc-300">{o.stdout}</div>}
+                                            {o.stderr && <div className="text-rose-300/70">{o.stderr}</div>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Setup guide — Hermes-specific */}
             {providerId === "hermes" && !isOnline && (
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 space-y-2">
