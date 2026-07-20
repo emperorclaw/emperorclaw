@@ -63,4 +63,9 @@ graphify-out/
 # Python virtual environments
 .venv/
 __pycache__/
+.pytest_cache/
+
+# Temp / research folders
+.tmp-openclaw/
+research/
 *.pyc
