@@ -156,7 +156,7 @@ export async function POST(
         }
 
         await db.update(agents).set({ status: "online", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
-        return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Hermes profile created, plugin installed, bridge running. Agent is ONLINE.`, token: rawToken, outputs });
+        return NextResponse.json({ success: true, message: `${agent.name} is set up! ⚠️ IMPORTANT: Edit ${bridgeDir}/.env and replace <your-model-api-key> with your real LLM API key, then restart the bridge.`, token: rawToken, outputs });
     }
 
     // ── Codex: run verification, then spawn bridge ──────────────────

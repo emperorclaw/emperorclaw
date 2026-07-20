@@ -594,6 +594,11 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                 {setupResult.success ? <IconCircleCheck className="h-4 w-4 text-emerald-400" /> : <IconAlertTriangle className="h-4 w-4 text-rose-400" />}
                                 <span className={setupResult.success ? "text-emerald-200" : "text-rose-200"}>{setupResult.message}</span>
                             </div>
+                            {setupResult.success && (
+                                <p className="text-[10px] text-amber-300 bg-amber-500/10 rounded px-2 py-1">
+                                    ⚠️ Next step: edit the bridge <code className="text-amber-200">.env</code> file and replace the API key placeholder with your real key. Hermes won't reply until you do.
+                                </p>
+                            )}
                             {setupResult.outputs && setupResult.outputs.length > 0 && (
                                 <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
                                     {setupResult.outputs.map((o: any, i: number) => (
