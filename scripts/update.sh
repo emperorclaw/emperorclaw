@@ -82,6 +82,12 @@ npm install --no-audit --no-fund
 echo -e "${YELLOW}[4/5] Building...${NC}"
 npm run build
 
+# Copy static files for standalone mode
+if [[ -d ".next/standalone" ]]; then
+    cp -r .next/static .next/standalone/.next/static 2>/dev/null || true
+    cp -r public .next/standalone/public 2>/dev/null || true
+fi
+
 # 5. Migrate + restart
 echo -e "${YELLOW}[5/5] Running migrations + restarting...${NC}"
 npm run db:migrate

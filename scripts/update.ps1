@@ -70,6 +70,12 @@ npm install --no-audit --no-fund
 Write-Host "[4/5] Building..." -ForegroundColor Yellow
 npm run build
 
+# Copy static files for standalone mode
+if (Test-Path ".next\standalone") {
+    Copy-Item -Recurse -Force ".next\static" ".next\standalone\.next\static" -ErrorAction SilentlyContinue
+    Copy-Item -Recurse -Force "public" ".next\standalone\public" -ErrorAction SilentlyContinue
+}
+
 # 5. Migrate + restart
 Write-Host "[5/5] Running migrations + restarting..." -ForegroundColor Yellow
 npm run db:migrate
