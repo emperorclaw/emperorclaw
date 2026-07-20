@@ -30,7 +30,16 @@ COPY --from=builder /app/public ./public
 
 # Copy migrations for startup
 COPY --from=builder /app/src/db/migrations ./src/db/migrations
+COPY --from=builder /app/src/db/migrate.ts ./src/db/migrate.ts
+COPY --from=builder /app/src/db/index.ts ./src/db/index.ts
+COPY --from=builder /app/src/db/schema.ts ./src/db/schema.ts
 COPY --from=builder /app/drizzle.config.ts ./
+COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv
+COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
+COPY --from=builder /app/node_modules/postgres ./node_modules/postgres
+
+# Install tsx for running TypeScript migrations
+RUN npm install -g tsx
 
 # Storage directory for local backend
 RUN mkdir -p .data/storage && chown -R nextjs:nodejs .data
