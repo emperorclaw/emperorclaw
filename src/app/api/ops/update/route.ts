@@ -74,7 +74,10 @@ export async function POST() {
         // 4. Build
         await run("npm-build", "npm run build");
 
-        // 5. Restart PM2
+        // 5. Copy static assets to standalone (Next.js doesn't do this automatically)
+        await run("copy-static", "cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public");
+
+        // 6. Restart PM2
         await run("pm2-restart", "pm2 restart emperorclaw --update-env");
 
         return NextResponse.json({ success: true, steps });

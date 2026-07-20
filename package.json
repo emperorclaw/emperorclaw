@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "npx tsx server.ts",
-    "build": "next build",
+    "build": "next build && cp -r .next/static .next/standalone/.next/static 2>/dev/null; cp -r public .next/standalone/public 2>/dev/null; echo 'Static assets copied to standalone'",
     "start": "npx tsx server.ts",
     "lint": "eslint",
     "db:push-dev": "drizzle-kit push",

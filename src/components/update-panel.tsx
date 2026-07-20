@@ -76,6 +76,7 @@ export function UpdatePanel() {
             "npm-install": "Installing dependencies",
             "db-migrate": "Running database migrations",
             "npm-build": "Building application",
+            "copy-static": "Copying static assets",
             "pm2-restart": "Restarting server",
         };
         return map[step] || step;
