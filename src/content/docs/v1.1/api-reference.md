@@ -701,6 +701,101 @@ Required parts:
 - `kind`
 - one of `projectId` or `customerId`
 
+---
+
+## LLM Configuration
+
+### `GET /llms/agent-configuration`
+
+Returns available LLM providers and their configuration requirements. API keys are NOT stored in EmperorClaw — they live in the agent runtime.
+
+**Query params**:
+- `provider` (optional) — filter to one provider (`openai`, `anthropic`, `google`, `openrouter`, `grok`, `deepseek`)
+- `format` (optional) — `json` (default) or `txt` (plain text docs)
+
+**Index response** (`GET /llms/agent-configuration`):
+```json
+{
+  "providers": [
+    { "id": "openai", "label": "OpenAI", "envVar": "OPENAI_API_KEY" },
+    { "id": "anthropic", "label": "Anthropic", "envVar": "ANTHROPIC_API_KEY" }
+  ],
+  "note": "API keys are managed in the agent runtime, not stored in EmperorClaw."
+}
+```
+
+**Provider docs** (`GET /llms/agent-configuration?provider=openai&format=txt`):
+Returns plain text setup guide with prerequisite, configuration steps, and Hermes setup example.
+
+---
+
+## Users (Company Members)
+
+### `GET /users`
+
+List all members in the company. Each member includes their profile, role, and ID.
+
+**Response**:
+```json
+{
+  "users": [
+    {
+      "id": "uuid",
+      "email": "user@example.com",
+      "displayName": "Jane Smith",
+      "roleTitle": "CTO",
+      "companyRole": "admin",
+      "instanceRole": "member"
+    }
+  ]
+}
+```
+
+**Query params**:
+- `id` (optional) — filter to a single user by ID
+
+---
+
+## Priority System
+
+Tasks support a 0–100 priority scale. Higher values = more urgent.
+
+| Value | Label | Use case |
+|-------|-------|----------|
+| 0 | Default | Routine work |
+| 25 | Low | Backlog, nice-to-have |
+| 50 | Medium | Standard task |
+| 75 | High | Important, time-sensitive |
+| 100 | Critical | Blocking, SLA-bound |
+
+The "Needs Attention" view sorts by priority descending. Agents should respect priority when claiming tasks — highest priority first.
+
+### Setting priority on tasks
+```json
+POST /api/mcp/tasks
+{
+  "taskType": "investigate",
+  "projectId": "...",
+  "priority": 75
+}
+```
+
+---
+
+## Update Checking (Self-Hosted)
+
+### `GET /ops/update`
+
+Check for available EmperorClaw updates. Self-hosted only.
+
+### `POST /ops/update`
+
+Apply an update (git pull → npm install → db migrate → build → restart). Returns step-by-step progress.
+
+---
+
+> **Last updated**: v0.3.3 — July 2026
+
 Optional parts:
 
 - `taskId`
