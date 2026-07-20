@@ -19,6 +19,7 @@ import { validateInviteToken, InvitationError } from "@/lib/invitations";
 interface RegisterRequestBody {
     email: string;
     password: string;
+    displayName?: string;
     companyName?: string;
     inviteToken?: string;
     acceptBetaDisclaimer?: boolean;
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
         const body = (await req.json()) as RegisterRequestBody;
         const email = normalizeEmail(body.email);
         const password = String(body.password ?? "");
+        const displayName = String(body.displayName ?? "").trim() || null;
         const companyName = normalizeCompanyName(body.companyName || "");
         const inviteToken = String(body.inviteToken ?? "").trim();
         const acceptBetaDisclaimer = body.acceptBetaDisclaimer === true;
@@ -281,7 +283,7 @@ export async function POST(req: NextRequest) {
             const openResult = await db.transaction(async (tx) => {
                 const [newUser] = await tx
                     .insert(users)
-                    .values({ email, passwordHash, instanceRole: "member" })
+                    .values({ email, passwordHash, displayName, instanceRole: "member" })
                     .returning();
 
                 await tx.insert(companyMembers).values({
@@ -337,6 +339,7 @@ export async function POST(req: NextRequest) {
             const [newUser] = await tx.insert(users).values({
                 email,
                 passwordHash,
+                displayName,
             }).returning();
 
             const [newCompany] = await tx.insert(companies).values({

@@ -5,6 +5,7 @@ export const users = pgTable("users", {
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
+    displayName: text("display_name"),
     emailVerifiedAt: timestamp("email_verified_at"),
     instanceRole: text("instance_role").notNull().default("member"), // 'instance_admin' | 'member'
     onboardingCompletedAt: timestamp("onboarding_completed_at"),

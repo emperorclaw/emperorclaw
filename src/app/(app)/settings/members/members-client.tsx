@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 type Member = {
     id: string;
     email: string;
+    displayName?: string | null;
     companyRole: string;
     instanceRole: string;
     joinedAt: string | null;
@@ -296,7 +297,11 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                         <tbody>
                             {members.map((member) => (
                                 <tr key={member.id} className="border-b border-white/5">
-                                    <td className="py-3 text-zinc-200">{member.email}</td>
+                                    <td className="py-3 text-zinc-200">
+                                        {member.displayName && <span className="font-medium">{member.displayName}</span>}
+                                        {member.displayName && <br />}
+                                        <span className={member.displayName ? "text-xs text-zinc-500" : ""}>{member.email}</span>
+                                    </td>
                                     <td className="py-3">{roleBadge(member.companyRole)}</td>
                                     <td className="py-3">{roleBadge(member.instanceRole)}</td>
                                     <td className="py-3 text-zinc-500">
