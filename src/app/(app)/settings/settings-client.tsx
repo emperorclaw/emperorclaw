@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { UpdateSettingsTab } from "@/components/update-settings-tab";
+import MembersClient from "./members/members-client";
 
 type SettingsToken = {
     id: string;
@@ -21,6 +22,14 @@ type SettingsToken = {
 };
 
 type SettingsTab = "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
+
+type Member = {
+    id: string;
+    email: string;
+    companyRole: string;
+    instanceRole: string;
+    joinedAt: string | null;
+};
 type TokenScope = "mcp_full" | "mcp_danger";
 
 const runtimeCards = [
@@ -52,10 +61,22 @@ export default function SettingsClient({
     initialTokens,
     companyRole,
     instanceRole,
+    currentUserId,
+    currentUserRole,
+    companyId,
+    initialMembers,
+    agents,
+    customersData,
 }: {
     initialTokens: SettingsToken[];
     companyRole: string;
     instanceRole: string;
+    currentUserId?: string;
+    currentUserRole?: string;
+    companyId?: string;
+    initialMembers?: Member[];
+    agents?: { id: string; name: string }[];
+    customersData?: { id: string; name: string }[];
 }) {
     const searchParams = useSearchParams();
     const [tokens, setTokens] = useState(initialTokens);
@@ -435,27 +456,15 @@ Walk me through step by step.`}</pre>
                 <InstanceSettingsTab />
             )}
 
-            {activeTab === "members" && (
-                <section className="space-y-4">
-                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                        <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                            <IconUsers className="mr-2 h-5 w-5 text-cyan-300" /> Team members
-                        </h2>
-                        <p className="mt-2 text-sm leading-6 text-zinc-400">
-                            Invite colleagues, manage roles and permissions, and control who can access your workspace.
-                        </p>
-                        <div className="mt-5">
-                            <Link
-                                href="/settings/members"
-                                className="inline-flex items-center gap-2 rounded-xl bg-cyan-400/10 border border-cyan-400/25 px-4 py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 transition-colors"
-                            >
-                                <IconUsers className="h-4 w-4" />
-                                Open Members
-                                <IconArrowRight className="h-3.5 w-3.5" />
-                            </Link>
-                        </div>
-                    </div>
-                </section>
+            {activeTab === "members" && currentUserId && currentUserRole && companyId && initialMembers && agents && customersData && (
+                <MembersClient
+                    currentUserId={currentUserId}
+                    currentUserRole={currentUserRole}
+                    companyId={companyId}
+                    initialMembers={initialMembers}
+                    agents={agents}
+                    customersData={customersData}
+                />
             )}
         </div>
     );

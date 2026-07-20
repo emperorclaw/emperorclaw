@@ -1119,28 +1119,31 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
                 <div
                     className="fixed z-[100] min-w-[180px] rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
                     style={{ left: contextMenu.x, top: contextMenu.y }}
+                    role="menu"
                 >
                     <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Set Priority</div>
                     {PRIORITY_OPTIONS.filter(p => p.value > 0).map((p) => (
-                        <button
+                        <div
                             key={p.value}
+                            role="menuitem"
                             onClick={(e) => { e.stopPropagation(); onSetPriority?.(p.value); setContextMenu(null); }}
-                            className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-zinc-800 ${task.priority >= p.value ? 'text-zinc-100' : 'text-zinc-400'}`}
+                            className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-zinc-800 ${task.priority >= p.value ? 'text-zinc-100' : 'text-zinc-400'}`}
                         >
                             <span className={`h-2 w-2 rounded-full ${task.priority >= p.value ? 'bg-current' : 'border border-current opacity-30'}`} />
                             {p.label}
-                        </button>
+                        </div>
                     ))}
                     <div className="my-1 border-t border-zinc-800" />
                     <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Move to</div>
                     {["inbox", "in_progress", "review", "done"].filter(s => s !== task.state).map((state) => (
-                        <button
+                        <div
                             key={state}
+                            role="menuitem"
                             onClick={(e) => { e.stopPropagation(); onSetState?.(state); setContextMenu(null); }}
-                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                         >
                             {humanizeKey(state)}
-                        </button>
+                        </div>
                     ))}
                 </div>
             )}
