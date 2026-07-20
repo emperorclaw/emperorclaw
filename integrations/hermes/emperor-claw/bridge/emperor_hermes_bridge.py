@@ -528,6 +528,13 @@ def main() -> int:
     agent_id = ensure_agent()
     send_heartbeat(0)
     state = load_state()
+    # Cold-start: if no lastSeenAt (fresh state or state was cleared),
+    # start from NOW so we don't re-process the entire message history.
+    # This prevents duplicate responses when bridges restart with cleared state.
+    if not state.get("lastSeenAt"):
+        state["lastSeenAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        state["seen"] = []
+        save_state(state)
     log(f"started runtime={RUNTIME_ID} agent={AGENT_NAME} agentId={agent_id}")
     last_heartbeat = time.time()
     while True:
