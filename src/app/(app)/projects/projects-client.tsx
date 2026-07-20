@@ -73,6 +73,15 @@ const emptyTaskForm = {
     humanApprovalRequired: false,
 };
 const taskStates = ["inbox", "in_progress", "review", "done", "failed", "dead_letter"];
+
+const PRIORITY_OPTIONS = [
+    { value: 0, label: "No priority", cls: "text-zinc-400 border-zinc-600" },
+    { value: 25, label: "Low", cls: "text-slate-300 border-slate-500/40" },
+    { value: 50, label: "Medium", cls: "text-amber-300 border-amber-500/40" },
+    { value: 75, label: "High", cls: "text-orange-300 border-orange-500/40" },
+    { value: 100, label: "Critical", cls: "text-rose-300 border-rose-500/40" },
+];
+const getPriorityInfo = (p: number) => PRIORITY_OPTIONS.reduce((best, opt) => (p >= opt.value ? opt : best), PRIORITY_OPTIONS[0]);
 const COLUMN_DROP_STATE: Record<string, string> = {
     inbox: "inbox",
     in_progress: "in_progress",
@@ -293,6 +302,38 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         } finally {
             setIsSubmittingContext(false);
         }
+    };
+
+    const handleSetPriority = async (task: any, priority: number) => {
+        try {
+            const res = await fetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ priority }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
+                if (selectedTask?.id === task.id) setSelectedTask(data.task);
+                toast.success(`Priority set to ${getPriorityInfo(priority).label}`);
+            }
+        } catch { toast.error("Failed to update priority"); }
+    };
+
+    const handleSetState = async (task: any, state: string) => {
+        try {
+            const res = await fetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
+                if (selectedTask?.id === task.id) setSelectedTask(data.task);
+                toast.success(`Moved to ${humanizeKey(state)}`);
+            }
+        } catch { toast.error("Failed to update state"); }
     };
 
     const selectedProject = projectFilter === "All Projects" ? null : projectItems.find((project) => project.id === projectFilter) || null;
@@ -737,25 +778,33 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             {showAttentionOnly ? (
                                 <>
                                     <BoardColumn droppableId="dead_letter" title="Dead-lettered" count={byState_attention.deadLetter.length} tone="rose" icon={IconCircleX}>
-                                        {byState_attention.deadLetter.length === 0 ? <EmptyColumnHint>No dead-lettered tasks.</EmptyColumnHint> : byState_attention.deadLetter.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                        {byState_attention.deadLetter.length === 0 ? <EmptyColumnHint>No dead-lettered tasks.</EmptyColumnHint> : byState_attention.deadLetter
+                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                     <BoardColumn droppableId="failed" title="Failed" count={byState_attention.failed.length} tone="rose" icon={IconCircleX}>
-                                        {byState_attention.failed.length === 0 ? <EmptyColumnHint>No failed tasks.</EmptyColumnHint> : byState_attention.failed.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                        {byState_attention.failed.length === 0 ? <EmptyColumnHint>No failed tasks.</EmptyColumnHint> : byState_attention.failed
+                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                     <BoardColumn droppableId="stale_inbox" title="Stale inbox (>1h)" count={byState_attention.staleInbox.length} tone="amber" icon={IconInbox}>
-                                        {byState_attention.staleInbox.length === 0 ? <EmptyColumnHint>No stale inbox tasks.</EmptyColumnHint> : byState_attention.staleInbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                        {byState_attention.staleInbox.length === 0 ? <EmptyColumnHint>No stale inbox tasks.</EmptyColumnHint> : byState_attention.staleInbox
+                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                     <BoardColumn droppableId="overdue_review" title="Overdue review (>24h)" count={byState_attention.overdueReview.length} tone="amber" icon={IconAlertTriangle}>
-                                        {byState_attention.overdueReview.length === 0 ? <EmptyColumnHint>No overdue reviews.</EmptyColumnHint> : byState_attention.overdueReview.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                        {byState_attention.overdueReview.length === 0 ? <EmptyColumnHint>No overdue reviews.</EmptyColumnHint> : byState_attention.overdueReview
+                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                 </>
                             ) : (
                                 <>
                             <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={IconInbox}>
-                                {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
+                                {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="in_progress" title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
-                                {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} />)}
+                                {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={IconCircleCheck}>
                                 <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
@@ -764,17 +813,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     <BucketBadge label="Blocked" count={reviewCounts.blocked} tone="rose" />
                                     <BucketBadge label="Ready to close" count={reviewCounts.ready_to_close} tone="emerald" />
                                 </div>
-                                {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} />)}
+                                {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={IconCircleCheck}>
-                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} />)}
+                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={IconCircleX}>
-                                {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={IconRepeat}>
                                 {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
-                                {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
+                                {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>}
                                 </>
                             )}
@@ -821,7 +870,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             </label>
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>Priority</span>
-                                <input type="number" value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400" />
+                                <select value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
+                                    {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                </select>
                             </label>
                             <div className="flex items-end gap-2">
                                 <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><IconPencil className="h-4 w-4" />Edit</button>
@@ -965,7 +1016,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Priority</span>
-                                <input type="number" value={taskForm.priority} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
+                                <select value={taskForm.priority} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
+                                    {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                </select>
                             </label>
                         </div>
                         <label className="space-y-1 text-sm text-zinc-400">
@@ -1022,11 +1075,25 @@ function BoardColumn({ title, count, tone, icon: Icon, children, droppableId }: 
     );
 }
 
-function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; overlay?: boolean }) {
+function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, onSetPriority, onSetState, onAssign, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; onSetPriority?: (priority: number) => void; onSetState?: (state: string) => void; onAssign?: (agentId: string) => void; overlay?: boolean }) {
     const draggable = useDraggable({ id: task.id, disabled: overlay });
-    const priority = task.priority >= 80 ? { label: "HIGH", cls: "bg-rose-500/10 text-rose-400 border-rose-500/20" } : task.priority >= 50 ? { label: "MED", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" } : { label: "LOW", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
+    const priorityInfo = getPriorityInfo(task.priority || 0);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const border = blocked ? "border-rose-500/50" : recurring ? "border-cyan-500/40" : active ? "border-cyan-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
     const style = overlay ? undefined : { transform: CSS.Translate.toString(draggable.transform) };
+    
+    const handleContextMenu = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+    };
+    
+    useEffect(() => {
+        if (!contextMenu) return;
+        const close = () => setContextMenu(null);
+        window.addEventListener("click", close);
+        return () => window.removeEventListener("click", close);
+    }, [contextMenu]);
     return (
         <button
             ref={overlay ? undefined : draggable.setNodeRef}
@@ -1034,6 +1101,7 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
             {...(overlay ? {} : draggable.listeners)}
             {...(overlay ? {} : draggable.attributes)}
             onClick={onClick}
+            onContextMenu={handleContextMenu}
             className={cn(
                 "w-full cursor-grab touch-none rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80 active:cursor-grabbing",
                 border,
@@ -1041,10 +1109,41 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
                 overlay && "cursor-grabbing shadow-2xl shadow-black/50",
             )}
         >
-            <div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", priority.cls)}>{priority.label}</span></div>
+            <div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", task.priority >= 75 ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : task.priority >= 50 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : task.priority >= 25 ? "bg-slate-500/10 text-slate-400 border-slate-500/20" : "bg-zinc-500/10 text-zinc-500 border-zinc-700")}>{priorityInfo.label}</span></div>
             <div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div>
             <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>
             {(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}
+            
+            {/* Right-click context menu */}
+            {contextMenu && (
+                <div
+                    className="fixed z-[100] min-w-[180px] rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                >
+                    <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Set Priority</div>
+                    {PRIORITY_OPTIONS.filter(p => p.value > 0).map((p) => (
+                        <button
+                            key={p.value}
+                            onClick={(e) => { e.stopPropagation(); onSetPriority?.(p.value); setContextMenu(null); }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-zinc-800 ${task.priority >= p.value ? 'text-zinc-100' : 'text-zinc-400'}`}
+                        >
+                            <span className={`h-2 w-2 rounded-full ${task.priority >= p.value ? 'bg-current' : 'border border-current opacity-30'}`} />
+                            {p.label}
+                        </button>
+                    ))}
+                    <div className="my-1 border-t border-zinc-800" />
+                    <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Move to</div>
+                    {["inbox", "in_progress", "review", "done"].filter(s => s !== task.state).map((state) => (
+                        <button
+                            key={state}
+                            onClick={(e) => { e.stopPropagation(); onSetState?.(state); setContextMenu(null); }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                        >
+                            {humanizeKey(state)}
+                        </button>
+                    ))}
+                </div>
+            )}
         </button>
     );
 }
