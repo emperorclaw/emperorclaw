@@ -143,7 +143,9 @@ export async function POST(
                     HERMES_BIN: hermesBin,
                     HERMES_TOOLSETS: "emperor-claw,web,terminal,code_execution",
                 },
-                detached: true, stdio: "ignore",
+                detached: true,
+                stdio: "ignore",
+                windowsHide: true,
                 cwd: path.dirname(bridgeScript),
             });
             bridgeProc.unref();
@@ -195,7 +197,7 @@ const p = spawn("node", [script], {
     EMPEROR_CLAW_POLL_SECONDS: "5",
     EMPEROR_CLAW_CODEX_TIMEOUT: "120",
   },
-  detached: true, stdio: "ignore",
+  detached: true, stdio: "ignore", windowsHide: true,
   cwd: projectRoot,
 });
 p.unref();
