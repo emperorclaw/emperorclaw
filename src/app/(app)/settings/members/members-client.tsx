@@ -30,6 +30,8 @@ interface Props {
     currentUserRole: string;
     companyId: string;
     initialMembers: Member[];
+    agents: { id: string; name: string }[];
+    customersData: { id: string; name: string }[];
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -53,7 +55,7 @@ function roleBadge(role: string) {
     );
 }
 
-export default function MembersClient({ currentUserId, currentUserRole, companyId, initialMembers }: Props) {
+export default function MembersClient({ currentUserId, currentUserRole, companyId, initialMembers, agents, customersData }: Props) {
     const [members, setMembers] = useState<Member[]>(initialMembers);
     const [invitations, setInvitations] = useState<InvitationRow[]>([]);
     const [invitationsLoaded, setInvitationsLoaded] = useState(false);
@@ -67,6 +69,13 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
     const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null);
     const [newRole, setNewRole] = useState("");
     const [removingMember, setRemovingMember] = useState<string | null>(null);
+
+    // Scope state
+    const [scopeFor, setScopeFor] = useState<string | null>(null);
+    const [scopeMode, setScopeMode] = useState<"all" | "restricted">("all");
+    const [scopeAgentIds, setScopeAgentIds] = useState<string[]>([]);
+    const [scopeCustomerIds, setScopeCustomerIds] = useState<string[]>([]);
+    const [savingScope, setSavingScope] = useState(false);
 
     const canChangeRoles = currentUserRole === "instance_admin" || currentUserRole === "owner";
     const canInvite = currentUserRole === "instance_admin" || currentUserRole === "owner" || currentUserRole === "admin";
@@ -180,6 +189,49 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
         }
     };
 
+    const openScope = async (userId: string) => {
+        try {
+            const res = await fetch(`/api/instance/members/${userId}/scope`);
+            if (res.ok) {
+                const data = await res.json();
+                const scope = data.scope || {};
+                setScopeMode(scope.mode || "all");
+                setScopeAgentIds(scope.agentIds || []);
+                setScopeCustomerIds(scope.customerIds || []);
+            }
+        } catch { /* use defaults */ }
+        setScopeFor(userId);
+    };
+
+    const saveScope = async () => {
+        if (!scopeFor || savingScope) return;
+        setSavingScope(true);
+        try {
+            const res = await fetch(`/api/instance/members/${scopeFor}/scope`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    scope: {
+                        mode: scopeMode,
+                        agentIds: scopeMode === "restricted" ? scopeAgentIds : [],
+                        customerIds: scopeMode === "restricted" ? scopeCustomerIds : [],
+                    },
+                }),
+            });
+            if (!res.ok) throw new Error("Failed to save");
+            toast.success("Access scope updated");
+            setScopeFor(null);
+        } catch {
+            toast.error("Failed to save scope");
+        } finally {
+            setSavingScope(false);
+        }
+    };
+
+    const toggleScopeItem = (id: string, list: string[], setList: (v: string[]) => void) => {
+        setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
+    };
+
     return (
         <div className="space-y-8 max-w-4xl">
             <PageHeader
@@ -253,6 +305,13 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                     <td className="py-3 text-right">
                                         {member.id !== currentUserId && (
                                             <div className="flex gap-1 justify-end">
+                                                <button
+                                                    onClick={() => openScope(member.id)}
+                                                    className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-cyan-400 transition-colors"
+                                                    title="Access scope"
+                                                >
+                                                    <IconShield className="w-4 h-4" />
+                                                </button>
                                                 {canChangeRoles && (
                                                     <button
                                                         onClick={() => { setChangingRoleFor(member.id); setNewRole(member.companyRole); }}
@@ -408,6 +467,81 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                 onClick={() => handleRemoveMember(removingMember)}
                             >
                                 Remove
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Scope Dialog ─────────────────────────────────────────── */}
+            {scopeFor && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="emperor-panel w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl">
+                        <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+                            <IconShield className="w-5 h-5 text-cyan-400" />
+                            Access Scope
+                        </h3>
+                        <p className="text-sm text-zinc-500 mb-4">
+                            {members.find(m => m.id === scopeFor)?.email}
+                        </p>
+
+                        <div className="space-y-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={scopeMode === "restricted"}
+                                    onChange={(e) => setScopeMode(e.target.checked ? "restricted" : "all")}
+                                    className="rounded border-zinc-700 bg-zinc-900 text-cyan-400 focus:ring-cyan-400"
+                                />
+                                <span className="text-sm text-zinc-200">Restricted access</span>
+                                <span className="text-xs text-zinc-500">(unchecked = see everything)</span>
+                            </label>
+
+                            {scopeMode === "restricted" && (
+                                <>
+                                    <div>
+                                        <h4 className="text-sm font-medium text-zinc-300 mb-2">Visible Agents</h4>
+                                        <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
+                                            {agents.length === 0 && <p className="text-xs text-zinc-600 p-2">No agents</p>}
+                                            {agents.map((a) => (
+                                                <label key={a.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800/50">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={scopeAgentIds.includes(a.id)}
+                                                        onChange={() => toggleScopeItem(a.id, scopeAgentIds, setScopeAgentIds)}
+                                                        className="rounded border-zinc-700 bg-zinc-900 text-cyan-400"
+                                                    />
+                                                    <span className="text-sm text-zinc-300">{a.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-medium text-zinc-300 mb-2">Visible Customers</h4>
+                                        <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
+                                            {customersData.length === 0 && <p className="text-xs text-zinc-600 p-2">No customers</p>}
+                                            {customersData.map((c) => (
+                                                <label key={c.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800/50">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={scopeCustomerIds.includes(c.id)}
+                                                        onChange={() => toggleScopeItem(c.id, scopeCustomerIds, setScopeCustomerIds)}
+                                                        className="rounded border-zinc-700 bg-zinc-900 text-cyan-400"
+                                                    />
+                                                    <span className="text-sm text-zinc-300">{c.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 justify-end mt-6">
+                            <Button variant="ghost" onClick={() => setScopeFor(null)}>Cancel</Button>
+                            <Button onClick={saveScope} disabled={savingScope}>
+                                {savingScope ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                                Save Scope
                             </Button>
                         </div>
                     </div>

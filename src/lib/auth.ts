@@ -14,6 +14,7 @@ type AuthToken = JWT & {
     sessionId?: string;
     instanceRole?: string;
     companyRole?: string;
+    scopeJson?: Record<string, any>;
 };
 
 export type SessionWithUserId = Session & {
@@ -21,6 +22,7 @@ export type SessionWithUserId = Session & {
         id?: string;
         instanceRole?: string;
         companyRole?: string;
+        scopeJson?: Record<string, any>;
     };
     sessionId?: string;
 };
@@ -118,11 +120,12 @@ export const authOptions: NextAuthOptions = {
                 authToken.instanceRole = userRecord?.instanceRole ?? "member";
 
                 const [membership] = await db
-                    .select({ role: companyMembers.role })
+                    .select({ role: companyMembers.role, scopeJson: companyMembers.scopeJson })
                     .from(companyMembers)
                     .where(eq(companyMembers.userId, user.id))
                     .limit(1);
                 authToken.companyRole = membership?.role ?? null;
+                authToken.scopeJson = (membership?.scopeJson as Record<string, any>) ?? null;
 
                 // Create a DB-backed session record when they log in
                 const expiresAt = new Date();
@@ -156,6 +159,7 @@ export const authOptions: NextAuthOptions = {
             authSession.sessionId = authToken.sessionId;
             authSession.user.instanceRole = authToken.instanceRole;
             authSession.user.companyRole = authToken.companyRole;
+            authSession.user.scopeJson = authToken.scopeJson as Record<string, any> | undefined;
             return authSession;
         }
     }
