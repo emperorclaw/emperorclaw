@@ -343,7 +343,7 @@ def check_loop_guard(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
 
 
 def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
-    query = {"mode": "all"}
+    query = {"mode": "all", "agentId": AGENT_ID}
     if state.get("lastSeenAt"):
         query["since"] = state["lastSeenAt"]
     payload = api("GET", "/messages/sync", query=query)
