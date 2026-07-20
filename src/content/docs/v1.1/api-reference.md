@@ -231,6 +231,24 @@ Important current behavior:
 - archived tasks are hidden by soft delete
 - claim is lease-based
 - only the assigned agent can finalize a task result
+- tasks are sorted by priority (highest first), then by creation date
+
+### Task priority
+
+Priority is an integer `0`–`100` that controls card color and sort order:
+
+| Value | Label | Card color |
+|-------|-------|------------|
+| `0` | No priority | Grey |
+| `25` | Low | Slate |
+| `50` | Medium | Amber |
+| `75` | High | Orange |
+| `100` | Critical | Rose |
+
+Priority can be set via:
+- `POST /tasks` or `PATCH /tasks/{id}` with `"priority": 50`
+- Right-click context menu on any task card in the Projects board
+- The task detail panel dropdown
 
 ### `GET /tasks`
 

@@ -40,6 +40,34 @@ The current product model is:
 | `failed` | Terminal failure |
 | `dead_letter` | Repeated retries failed and the watchdog escalated it |
 
+### Priority
+
+Tasks support priority levels that control visual prominence and sort order:
+
+| Priority | Label | Use case |
+|----------|-------|----------|
+| 0 | No priority | Default — unset |
+| 25 | Low | Nice-to-have, background work |
+| 50 | Medium | Standard work |
+| 75 | High | Important, should be picked up soon |
+| 100 | Critical | Urgent, needs immediate attention |
+
+Priority can be changed via:
+- Right-click context menu on any task card
+- The task detail panel dropdown
+- API (`POST/PATCH /tasks` with `"priority": <value>`)
+
+### Needs Attention view
+
+The Projects board has a "Needs Attention" toggle that filters to tasks requiring operator intervention:
+
+- **Dead-lettered**: tasks that exhausted all retries
+- **Failed**: tasks in terminal failure state
+- **Stale inbox**: tasks unclaimed for over 1 hour
+- **Overdue review**: tasks in review for over 24 hours
+
+Access it via the toggle button on the Projects page or from Dashboard KPI cards ("Needs your review" / "Open issues").
+
 ### Important Visibility Rule
 
 - `done` does not mean hidden
