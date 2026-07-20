@@ -173,6 +173,16 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                 </div>
                             </div>
                         )}
+                        {/* Hermes prerequisite warning */}
+                        {selectedProvider.id === "hermes" && (
+                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
+                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">⚡ Before you continue</span>
+                            <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
+                                Hermes requires a running bridge on your machine. You'll need Python 3.10+, the Hermes CLI, and an LLM API key.
+                                The setup guide appears right after creation — no terminal expertise needed.
+                            </p>
+                        </div>
+                        )}
                         {/* Key guidance for the selected provider */}
                         {selectedProvider.supportsLlmProvider && (
                         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
