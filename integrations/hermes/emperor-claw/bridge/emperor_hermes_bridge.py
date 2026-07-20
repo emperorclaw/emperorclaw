@@ -565,6 +565,7 @@ def main() -> int:
                         remember_seen(state, message_id)
                         if ts:
                             state["lastSeenAt"] = ts
+                        save_state(state)  # Persist cold_start_threads
                         continue
                 if not is_for_agent(message, agent_id, state):
                     remember_seen(state, message_id)
@@ -605,6 +606,7 @@ def main() -> int:
                 remember_seen(state, message_id)
                 if ts:
                     state["lastSeenAt"] = ts
+                save_state(state)  # Persist immediately after each dispatch
             save_state(state)
         except Exception as exc:
             log(f"error: {exc}")
