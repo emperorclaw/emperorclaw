@@ -3,6 +3,7 @@ import { z } from "zod";
 import { verifyMcpToken } from "@/lib/mcp";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import crypto from "crypto";
 
 const sendMessageSchema = z.object({
     text: z.string().min(1, "text is required"),
@@ -15,20 +16,28 @@ const sendMessageSchema = z.object({
     thread_type: optionalString,
 }).loose();
 
-// In-memory rate limiter: per-agent message timestamps (max 5 per 60s)
-const agentRateLimit = new Map<string, number[]>();
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 60_000;
+// Dedup cache: hash(agentId + threadId + text) → timestamp
+// Prevents the EXACT same message from being posted twice within 120 seconds.
+const dedupCache = new Map<string, number>();
+const DEDUP_WINDOW_MS = 120_000; // 2 minutes
 
-function checkRateLimit(agentId: string): boolean {
+function isDuplicate(agentId: string, threadId: string, text: string): boolean {
+    const key = crypto.createHash("sha256")
+        .update(`${agentId}:${threadId}:${text.trim()}`)
+        .digest("hex");
     const now = Date.now();
-    const timestamps = agentRateLimit.get(agentId) || [];
-    // Purge old entries
-    const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-    if (recent.length >= RATE_LIMIT_MAX) return false;
-    recent.push(now);
-    agentRateLimit.set(agentId, recent);
-    return true;
+    const lastSent = dedupCache.get(key);
+    if (lastSent && now - lastSent < DEDUP_WINDOW_MS) {
+        return true;
+    }
+    dedupCache.set(key, now);
+    // Cleanup old entries periodically
+    if (dedupCache.size > 1000) {
+        for (const [k, v] of dedupCache) {
+            if (now - v > DEDUP_WINDOW_MS) dedupCache.delete(k);
+        }
+    }
+    return false;
 }
 
 export async function POST(req: NextRequest) {
@@ -46,11 +55,12 @@ export async function POST(req: NextRequest) {
         }
         const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = parsed.data;
 
-        // Rate limit agent messages to prevent loops flooding the server
-        if (agentId && !checkRateLimit(agentId)) {
+        // Deduplicate: reject if this agent already sent the exact same
+        // text in this thread within the last 2 minutes. This is a real fix —
+        // it prevents token-wasting duplicate messages from being stored at all.
+        if (agentId && thread_id && isDuplicate(agentId, thread_id, text)) {
             return NextResponse.json(
-                { error: "Rate limit exceeded — max 5 messages per 60 seconds. Bridge safety engaged." },
-                { status: 429 },
+                { ok: true, message_id: null, thread_id, deduplicated: true },
             );
         }
 
