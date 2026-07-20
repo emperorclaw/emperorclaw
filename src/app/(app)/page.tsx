@@ -210,8 +210,8 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
         <KpiCard title="To do" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
-        <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} />
-        <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} />
+        <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} href="/projects?attention=1" />
+        <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} href="/projects?attention=1" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
@@ -304,9 +304,9 @@ export default async function DashboardPage() {
   );
 }
 
-function KpiCard({ title, value, trend, trendLabel, alert, good }: { title: string, value: string, trend: string, trendLabel: string, alert?: boolean, good?: boolean }) {
-  return (
-    <div className="emperor-panel group relative flex h-28 sm:h-36 flex-col justify-between overflow-hidden rounded-2xl p-3.5 sm:p-5 transition-colors hover:border-zinc-700/80">
+function KpiCard({ title, value, trend, trendLabel, alert, good, href }: { title: string, value: string, trend: string, trendLabel: string, alert?: boolean, good?: boolean, href?: string }) {
+  const card = (
+    <div className={`emperor-panel group relative flex h-28 sm:h-36 flex-col justify-between overflow-hidden rounded-2xl p-3.5 sm:p-5 transition-colors ${href ? 'cursor-pointer hover:border-cyan-400/30' : 'hover:border-zinc-700/80'}`}>
       {alert && <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-bl-full blur-xl" />}
       {good && <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-500/10 rounded-bl-full blur-xl" />}
       <div className="text-xs sm:text-sm font-medium text-zinc-500 truncate">{title}</div>
@@ -315,10 +315,13 @@ function KpiCard({ title, value, trend, trendLabel, alert, good }: { title: stri
         <div className="text-[10px] sm:text-xs mt-1.5 sm:mt-2 flex items-center space-x-1">
           <span className={alert ? "text-red-400" : good ? "text-cyan-400" : "text-zinc-300"}>{trend}</span>
           <span className="text-zinc-600 truncate">{trendLabel}</span>
+          {href && <span className="text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1">→</span>}
         </div>
       </div>
     </div>
   );
+  if (href) return <Link href={href}>{card}</Link>;
+  return card;
 }
 
 function truncate(value: string | null | undefined, maxLength: number) {

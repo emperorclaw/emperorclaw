@@ -18,6 +18,8 @@ type AgentDirectoryItem = {
     uptime: string;
     tasksCompleted: number;
     currentLoad: number;
+    deadLetterCount: number;
+    failedCount: number;
 };
 
 export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
@@ -70,8 +72,15 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                 <button key={agent.id} type="button" onClick={() => setSelectedId(agent.id)} className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors", selectedAgent?.id === agent.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
                                     <AgentAvatar agent={agent} size="sm" />
                                     <span className="min-w-0 flex-1">
-                                        <span className="block truncate font-medium text-zinc-100">{agent.name}</span>
-                                        <span className="block truncate text-xs text-zinc-500">{agent.role}</span>
+                                        <span className="flex items-center gap-2 truncate font-medium text-zinc-100">
+                                            {agent.name}
+                                            {(agent.deadLetterCount > 0 || agent.failedCount > 0) && (
+                                                <span className="shrink-0 rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300" title={`${agent.deadLetterCount} dead-lettered, ${agent.failedCount} failed`}>
+                                                    {agent.deadLetterCount + agent.failedCount}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="block truncate text-xs text-zinc-500">{agent.role}{agent.tasksCompleted > 0 ? ` · ${agent.tasksCompleted} done` : ""}</span>
                                     </span>
                                     <StatusDot status={agent.status} />
                                 </button>

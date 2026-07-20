@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { lt, and, eq, inArray } from "drizzle-orm";
+import { lt, and, eq, inArray, isNull } from "drizzle-orm";
 import { tasks, taskEvents, incidents } from "@/db/schema";
 import { Pool } from "pg";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "./task-state";
@@ -126,6 +126,43 @@ async function runWatchdog() {
                     severity: "medium",
                     reasonCode: "sla_breach",
                     summary: `Task ${task.id} breached SLA deadline.`,
+                }).returning();
+
+                await broadcastMcpEvent(task.companyId, {
+                    type: "incident_updated",
+                    incident,
+                });
+            }
+        }
+
+        // 3. Detect unclaimed tasks sitting too long in inbox (>1 hour)
+        const UNCLAIMED_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+        const unclaimedThreshold = new Date(now.getTime() - UNCLAIMED_THRESHOLD_MS);
+        const staleInboxTasks = await db.select().from(tasks).where(
+            and(
+                eq(tasks.state, "inbox"),
+                lt(tasks.createdAt, unclaimedThreshold),
+                isNull(tasks.deletedAt)
+            )
+        );
+
+        for (const task of staleInboxTasks) {
+            const [existingIncident] = await db.select().from(incidents).where(
+                and(
+                    eq(incidents.taskId, task.id),
+                    eq(incidents.reasonCode, "unclaimed_stale"),
+                    eq(incidents.status, "open")
+                )
+            ).limit(1);
+
+            if (!existingIncident) {
+                const [incident] = await db.insert(incidents).values({
+                    companyId: task.companyId,
+                    projectId: task.projectId,
+                    taskId: task.id,
+                    severity: "low",
+                    reasonCode: "unclaimed_stale",
+                    summary: `Task ${task.id} has been unclaimed in inbox for over 1 hour.`,
                 }).returning();
 
                 await broadcastMcpEvent(task.companyId, {

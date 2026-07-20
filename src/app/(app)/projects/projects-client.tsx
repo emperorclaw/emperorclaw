@@ -3,7 +3,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { IconAlertTriangle, IconArchive, IconBrain, IconCircleCheck, IconChevronRight, IconPencil, IconFilter, IconHistory, IconInbox, IconDots, IconPlus, IconRepeat, IconRotate, IconSearch, IconSend, IconTrash, IconCircleX } from "@tabler/icons-react";
@@ -137,6 +137,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [completingProject, setCompletingProject] = useState<string | null>(null);
     const [draggingTask, setDraggingTask] = useState<any | null>(null);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+    const searchParams = useSearchParams();
+    const [showAttentionOnly, setShowAttentionOnly] = useState(searchParams.get("attention") === "1");
 
     // Initial load from localStorage
     useEffect(() => {
@@ -210,6 +212,26 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         inProgress: workflowTasks.filter((task) => task.state === "in_progress"),
         review: workflowTasks.filter((task) => task.state === "review"),
         done: workflowTasks.filter((task) => task.state === "done"),
+    };
+    
+    // "Needs attention" view computations
+    const now = Date.now();
+    const STALE_INBOX_MS = 60 * 60 * 1000; // 1 hour unclaimed
+    const OVERDUE_REVIEW_MS = 24 * 60 * 60 * 1000; // 24 hours in review
+    const staleInboxTasks = byState.inbox.filter((task) => {
+        const created = task.createdAt ? new Date(task.createdAt).getTime() : 0;
+        return now - created > STALE_INBOX_MS;
+    });
+    const overdueReviewTasks = byState.review.filter((task) => {
+        const updated = task.updatedAt ? new Date(task.updatedAt).getTime() : 0;
+        return now - updated > OVERDUE_REVIEW_MS;
+    });
+    const attentionTasks = [...exceptionTasks, ...staleInboxTasks, ...overdueReviewTasks];
+    const byState_attention = {
+        deadLetter: exceptionTasks.filter((task) => task.state === "dead_letter"),
+        failed: exceptionTasks.filter((task) => task.state === "failed"),
+        staleInbox: staleInboxTasks,
+        overdueReview: overdueReviewTasks,
     };
     const reviewCounts = {
         approval_needed: byState.review.filter((task) => reviewBucket(task, isBlocked(task, filteredTasks)) === "approval_needed").length,
@@ -688,10 +710,47 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 </div>
             )}
 
+            {/* Needs Attention toggle */}
+            <div className="flex items-center gap-3">
+                <button
+                    type="button"
+                    onClick={() => setShowAttentionOnly((prev) => !prev)}
+                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${showAttentionOnly ? "border-rose-400/40 bg-rose-400/10 text-rose-200" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"}`}
+                >
+                    <IconAlertTriangle className="h-4 w-4" />
+                    {showAttentionOnly ? "Showing: Needs Attention" : "Show Needs Attention"}
+                    {attentionTasks.length > 0 && (
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${showAttentionOnly ? "bg-rose-400/20 text-rose-200" : "bg-zinc-800 text-zinc-400"}`}>{attentionTasks.length}</span>
+                    )}
+                </button>
+                {showAttentionOnly && (
+                    <span className="text-xs text-zinc-500">
+                        Dead-lettered · failed · stale inbox (&gt;1h) · overdue review (&gt;24h)
+                    </span>
+                )}
+            </div>
+
             <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                 <div className="flex min-h-0 flex-1 overflow-hidden -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8">
                     <div className="flex-1 overflow-x-auto pb-4">
                         <div className="flex h-full min-w-max gap-6">
+                            {showAttentionOnly ? (
+                                <>
+                                    <BoardColumn droppableId="dead_letter" title="Dead-lettered" count={byState_attention.deadLetter.length} tone="rose" icon={IconCircleX}>
+                                        {byState_attention.deadLetter.length === 0 ? <EmptyColumnHint>No dead-lettered tasks.</EmptyColumnHint> : byState_attention.deadLetter.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                    </BoardColumn>
+                                    <BoardColumn droppableId="failed" title="Failed" count={byState_attention.failed.length} tone="rose" icon={IconCircleX}>
+                                        {byState_attention.failed.length === 0 ? <EmptyColumnHint>No failed tasks.</EmptyColumnHint> : byState_attention.failed.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                    </BoardColumn>
+                                    <BoardColumn droppableId="stale_inbox" title="Stale inbox (>1h)" count={byState_attention.staleInbox.length} tone="amber" icon={IconInbox}>
+                                        {byState_attention.staleInbox.length === 0 ? <EmptyColumnHint>No stale inbox tasks.</EmptyColumnHint> : byState_attention.staleInbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                    </BoardColumn>
+                                    <BoardColumn droppableId="overdue_review" title="Overdue review (>24h)" count={byState_attention.overdueReview.length} tone="amber" icon={IconAlertTriangle}>
+                                        {byState_attention.overdueReview.length === 0 ? <EmptyColumnHint>No overdue reviews.</EmptyColumnHint> : byState_attention.overdueReview.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} />)}
+                                    </BoardColumn>
+                                </>
+                            ) : (
+                                <>
                             <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={IconInbox}>
                                 {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>
@@ -717,6 +776,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
                                 {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} />)}
                             </BoardColumn>}
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

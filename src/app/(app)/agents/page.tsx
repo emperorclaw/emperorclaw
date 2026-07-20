@@ -22,18 +22,38 @@ export default async function AgentsPage() {
         return acc;
     }, {} as Record<string, number>);
 
+    // Agent failure stats: dead-lettered + failed tasks per agent
+    const failuresByAgent = await db.select({
+        agentId: tasks.assignedAgentId,
+        deadCount: sql<number>`count(*) filter (where ${tasks.state} = 'dead_letter')`,
+        failedCount: sql<number>`count(*) filter (where ${tasks.state} = 'failed')`,
+    }).from(tasks).where(and(
+        eq(tasks.companyId, companyId),
+        isNull(tasks.deletedAt),
+    )).groupBy(tasks.assignedAgentId);
+
+    const failureMap = failuresByAgent.reduce((acc, curr) => {
+        if (curr.agentId) acc[curr.agentId] = { dead: curr.deadCount, failed: curr.failedCount };
+        return acc;
+    }, {} as Record<string, { dead: number; failed: number }>);
+
     return (
         <AgentsClient
-            agents={allAgents.map((agent) => ({
-                id: agent.id,
-                name: agent.name,
-                avatarUrl: agent.avatarUrl,
-                role: agent.role || "Unspecified",
-                status: agent.status,
-                uptime: "99.9%",
-                tasksCompleted: completedMap[agent.id] || 0,
-                currentLoad: agent.concurrencyLimit > 0 ? Math.round((agent.currentLoad / agent.concurrencyLimit) * 100) : 0,
-            }))}
+            agents={allAgents.map((agent) => {
+                const failures = failureMap[agent.id];
+                return {
+                    id: agent.id,
+                    name: agent.name,
+                    avatarUrl: agent.avatarUrl,
+                    role: agent.role || "Unspecified",
+                    status: agent.status,
+                    uptime: "99.9%",
+                    tasksCompleted: completedMap[agent.id] || 0,
+                    currentLoad: agent.concurrencyLimit > 0 ? Math.round((agent.currentLoad / agent.concurrencyLimit) * 100) : 0,
+                    deadLetterCount: failures?.dead || 0,
+                    failedCount: failures?.failed || 0,
+                };
+            })}
         />
     );
 }
