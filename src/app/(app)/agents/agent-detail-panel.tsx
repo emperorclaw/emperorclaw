@@ -202,6 +202,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
 
             {/* Setup banner — only for offline agents that need configuration */}
             {agent.status === "offline" && (
+                <>
                 <SetupBanner
                     agentId={agent.id}
                     agentName={agent.name}
@@ -210,6 +211,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     providerId={agent.provider || "mcp"}
                     deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
                 />
+                {!agent.lastSeenAt && (
+                    <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[10px] text-rose-300/70">
+                        ⚠️ This agent has never connected. Created {agent.lastSeenAt ? "" : ""}— no heartbeat received yet.
+                        {agent.provider === "hermes" ? " The Hermes bridge must be running for the agent to appear online." : ""}
+                    </div>
+                )}
+                </>
             )}
 
             {/* Operational status bar — for online/active agents */}
@@ -548,73 +556,20 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 </div>
             </div>
 
-            {/* Auto-setup button — local mode only */}
-            {isLocal && provider.installCommands.length > 0 && (
-                <div className="space-y-3">
-                    <button
-                        type="button"
-                        disabled={setupRunning}
-                        onClick={async () => {
-                            setSetupRunning(true);
-                            setSetupResult(null);
-                            try {
-                                const res = await fetch(`/api/agents/${agentId}/setup-local`, { method: "POST" });
-                                const data = await res.json();
-                                setSetupResult(data);
-                            } catch (e) {
-                                setSetupResult({ success: false, message: e instanceof Error ? e.message : "Network error" });
-                            } finally {
-                                setSetupRunning(false);
-                            }
-                        }}
-                        className={cn(
-                            "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
-                            setupRunning
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 cursor-wait"
-                                : "border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
-                        )}
-                    >
-                        {setupRunning ? (
-                            <IconLoader className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <IconPlayerPlay className="h-4 w-4" />
-                        )}
-                        {setupRunning ? "Running setup..." : isOnline ? "🔄 Restart Bridge" : "▶ Run Setup Automatically"}
-                    </button>
-
-                    {setupResult && (
-                        <div className={cn(
-                            "rounded-lg border p-3 text-xs space-y-2",
-                            setupResult.success
-                                ? "border-emerald-500/20 bg-emerald-500/[0.06]"
-                                : "border-rose-500/20 bg-rose-500/[0.06]"
-                        )}>
-                            <div className="flex items-center gap-2">
-                                {setupResult.success ? (
-                                    <IconCircleCheck className="h-4 w-4 text-emerald-400" />
-                                ) : (
-                                    <IconAlertTriangle className="h-4 w-4 text-rose-400" />
-                                )}
-                                <span className={setupResult.success ? "text-emerald-200" : "text-rose-200"}>
-                                    {setupResult.message}
-                                </span>
-                            </div>
-                            {setupResult.outputs && setupResult.outputs.length > 0 && (
-                                <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
-                                    {setupResult.outputs.map((o, i) => (
-                                        <div key={i} className={cn(
-                                            "rounded px-2 py-1 font-mono text-[10px]",
-                                            o.exitCode === 0 ? "bg-black/30 text-emerald-100/60" : "bg-black/30 text-rose-100/60"
-                                        )}>
-                                            <div className="text-zinc-500 mb-0.5">$ {o.command}</div>
-                                            {o.stdout && <div className="text-zinc-300">{o.stdout}</div>}
-                                            {o.stderr && <div className="text-rose-300/70">{o.stderr}</div>}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
+            {/* Setup guide — Hermes-specific */}
+            {providerId === "hermes" && !isOnline && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">🔧 What you need to do</span>
+                    <ol className="space-y-1.5 text-[11px] text-amber-100/80 list-decimal list-inside">
+                        <li>Install Hermes: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">pip install hermes-agent</code></li>
+                        <li>Set your LLM key in <code className="text-amber-200 bg-amber-500/10 px-1 rounded">~/.hermes/.env</code></li>
+                        <li>Set up the bridge env at <code className="text-amber-200 bg-amber-500/10 px-1 rounded">~/.hermes/emperor-bridge/{agentName}/.env</code></li>
+                        <li>Run the bridge: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">python emperor_hermes_bridge.py</code></li>
+                    </ol>
+                    <p className="text-[10px] text-amber-100/60 mt-2">
+                        The bridge script is in <code className="text-amber-200/60 bg-amber-500/5 px-1 rounded">integrations/hermes/emperor-claw/bridge/</code>.
+                        Once running, this agent will appear <span className="text-emerald-300">online</span> here automatically.
+                    </p>
                 </div>
             )}
 
