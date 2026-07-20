@@ -527,10 +527,12 @@ def main() -> int:
     send_heartbeat(0)
     state = load_state()
     # Cold-start: if no lastSeenAt (fresh state or state was cleared),
-    # start from NOW so we don't re-process the entire message history.
-    # This prevents duplicate responses when bridges restart with cleared state.
+    # look back 2 minutes so we don't miss messages sent right before
+    # the bridge started (e.g. user sets up bridge, then sends a test message).
+    # This prevents the "I messaged and nothing happened" first-run experience.
     if not state.get("lastSeenAt"):
-        state["lastSeenAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        lookback = time.time() - 120  # 2 minutes ago
+        state["lastSeenAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(lookback))
         state["seen"] = []
         save_state(state)
     log(f"started runtime={RUNTIME_ID} agent={AGENT_NAME} agentId={agent_id}")
