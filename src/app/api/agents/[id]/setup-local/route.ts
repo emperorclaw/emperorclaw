@@ -105,6 +105,7 @@ export async function POST(
             `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="300"`,
             `HERMES_BIN="${hermesBin}"`,
             `HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"`,
+            `EMPEROR_CLAW_HERMES_STATE_PATH="${bridgeStatePath}"`,
             `DEEPSEEK_API_KEY="<your-model-api-key>"`,
         ].join("\n") + "\n";
         try {
@@ -116,7 +117,15 @@ export async function POST(
             return fail(outputs, `Bridge .env write failed: ${msg}`, agent.id);
         }
 
-        // 5. Start bridge (detached background) — uses global plugin
+        // 5. Kill any existing bridge for this agent (prevent duplicates)
+        const killCmd = process.platform === "win32"
+            ? `taskkill /F /FI "WINDOWTITLE eq *${safeName}*" 2>nul & taskkill /F /IM python.exe 2>nul`
+            : `pkill -f "emperor_hermes_bridge.*${safeName}" 2>/dev/null; sleep 1`;
+        const r5 = await runCmd(killCmd, 10_000);
+        outputs.push({ command: `Kill existing bridge (if any)`, stdout: r5.stdout || "Done", stderr: r5.stderr, exitCode: 0 });
+
+        // 6. Start bridge with per-agent state file
+        const bridgeStatePath = path.join(hermesDataDir, "emperor-bridge", safeName, "state.json");
         const bridgeScript = path.join(globalPluginDir, "bridge", "emperor_hermes_bridge.py");
         try {
             const bridgeProc = spawn("python", [bridgeScript], {
@@ -130,6 +139,7 @@ export async function POST(
                     EMPEROR_CLAW_RUNTIME_ID: `hermes-${safeName}-${os.hostname()}-1`,
                     EMPEROR_CLAW_HERMES_POLL_SECONDS: "5",
                     EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS: "300",
+                    EMPEROR_CLAW_HERMES_STATE_PATH: bridgeStatePath,
                     HERMES_BIN: hermesBin,
                     HERMES_TOOLSETS: "emperor-claw,web,terminal,code_execution",
                 },
