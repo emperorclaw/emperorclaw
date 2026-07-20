@@ -569,6 +569,10 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                 const res = await fetch(`/api/agents/${agentId}/setup-local`, { method: "POST" });
                                 const data = await res.json();
                                 setSetupResult(data);
+                                if (data.success) {
+                                    // Reload after 2s so user sees success, then banner hides
+                                    setTimeout(() => window.location.reload(), 2000);
+                                }
                             } catch (e) {
                                 setSetupResult({ success: false, message: e instanceof Error ? e.message : "Network error" });
                             } finally {
