@@ -15,6 +15,22 @@ const sendMessageSchema = z.object({
     thread_type: optionalString,
 }).loose();
 
+// In-memory rate limiter: per-agent message timestamps (max 5 per 60s)
+const agentRateLimit = new Map<string, number[]>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+function checkRateLimit(agentId: string): boolean {
+    const now = Date.now();
+    const timestamps = agentRateLimit.get(agentId) || [];
+    // Purge old entries
+    const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    if (recent.length >= RATE_LIMIT_MAX) return false;
+    recent.push(now);
+    agentRateLimit.set(agentId, recent);
+    return true;
+}
+
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
@@ -29,6 +45,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
         const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = parsed.data;
+
+        // Rate limit agent messages to prevent loops flooding the server
+        if (agentId && !checkRateLimit(agentId)) {
+            return NextResponse.json(
+                { error: "Rate limit exceeded — max 5 messages per 60 seconds. Bridge safety engaged." },
+                { status: 429 },
+            );
+        }
 
         const result = await sendThreadMessageFromMcp({
             companyId,
