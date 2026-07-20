@@ -76,6 +76,25 @@ Access it via the toggle button on the Projects page or from Dashboard KPI cards
 
 That means "closed" and "hidden" are different concepts in Emperor today.
 
+## Member Access Scoping
+
+Admins can restrict what individual team members can see via Settings → Members → Shield icon:
+
+| Scope mode | Effect |
+|------------|--------|
+| All access (default) | Member sees everything in the company |
+| Restricted access | Member only sees selected agents, customers, and their associated data |
+
+When restricted:
+- **Agents page**: only selected agents appear
+- **Customers page**: only selected customers appear
+- **Knowledge Base**: resources scoped to visible agents/customers
+- **Storage**: artifacts linked to visible customers' projects
+- **Projects**: only projects belonging to visible customers
+- **Dashboard KPIs**: counts reflect only visible data
+
+Scope is stored per member in the `company_members` table and loaded into the session at login — no extra DB queries per page.
+
 ## Review And Approval
 
 Review and approval are separate ideas:

@@ -113,11 +113,12 @@ export const authOptions: NextAuthOptions = {
 
                 // Fetch instance_role and company_role for JWT claims (FR-19, FR-20)
                 const [userRecord] = await db
-                    .select({ instanceRole: users.instanceRole })
+                    .select({ instanceRole: users.instanceRole, displayName: users.displayName })
                     .from(users)
                     .where(eq(users.id, user.id))
                     .limit(1);
                 authToken.instanceRole = userRecord?.instanceRole ?? "member";
+                authToken.name = userRecord?.displayName || user.email?.split("@")[0] || "User";
 
                 const [membership] = await db
                     .select({ role: companyMembers.role, scopeJson: companyMembers.scopeJson })
@@ -160,6 +161,7 @@ export const authOptions: NextAuthOptions = {
             authSession.user.instanceRole = authToken.instanceRole;
             authSession.user.companyRole = authToken.companyRole;
             authSession.user.scopeJson = authToken.scopeJson as Record<string, any> | undefined;
+            authSession.user.name = authToken.name ?? null;
             return authSession;
         }
     }

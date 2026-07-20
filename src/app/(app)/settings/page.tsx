@@ -43,6 +43,7 @@ export default async function SettingsPage() {
         .select({
             id: users.id,
             email: users.email,
+            displayName: users.displayName,
             instanceRole: users.instanceRole,
             companyRole: companyMembers.role,
             joinedAt: companyMembers.createdAt,
@@ -54,6 +55,7 @@ export default async function SettingsPage() {
     const membersList = memberships.map((m) => ({
         id: m.id,
         email: m.email,
+        displayName: m.displayName,
         companyRole: m.companyRole,
         instanceRole: m.instanceRole,
         joinedAt: m.joinedAt?.toISOString() ?? null,
