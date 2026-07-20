@@ -76,12 +76,12 @@ export async function POST(
         // Profile already exists is OK — continue
         const alreadyExists = r1.stderr.includes("already exists") || r1.stdout.includes("already exists");
 
-        // 2. Update plugin files (Hermes plugins are global, not per-profile)
+        // 2. Update plugin files and clear stale bytecode
         const pluginSrc = path.join(projectRoot, "integrations", "hermes", "emperor-claw");
         const globalPluginDir = path.join(hermesDataDir, "plugins", "emperor-claw");
         const copyCmd = process.platform === "win32"
-            ? `powershell -Command "Copy-Item -Recurse -Force '${pluginSrc.replace(/'/g, "''")}' '${globalPluginDir.replace(/'/g, "''")}'"`
-            : `mkdir -p '${globalPluginDir}' && cp -R '${pluginSrc}/'* '${globalPluginDir}/'`;
+            ? `powershell -Command "Remove-Item -Recurse -Force '${globalPluginDir.replace(/'/g, "''")}\\__pycache__' -ErrorAction SilentlyContinue; Copy-Item -Recurse -Force '${pluginSrc.replace(/'/g, "''")}\\*' '${globalPluginDir.replace(/'/g, "''")}\\'"`
+            : `rm -rf '${globalPluginDir}/__pycache__' 2>/dev/null; mkdir -p '${globalPluginDir}' && cp -R '${pluginSrc}/'* '${globalPluginDir}/'`;
         const r2 = await runCmd(copyCmd, 15_000);
         outputs.push({ command: `Update global plugin → ${globalPluginDir}`, ...r2 });
         if (r2.exitCode !== 0) return fail(outputs, "Plugin update failed", agent.id);
