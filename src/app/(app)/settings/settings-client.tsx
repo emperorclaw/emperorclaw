@@ -21,7 +21,7 @@ type SettingsToken = {
     expiresAt: string;
 };
 
-type SettingsTab = "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
+type SettingsTab = "profile" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
 
 type Member = {
     id: string;
@@ -90,6 +90,41 @@ export default function SettingsClient({
     const [copied, setCopied] = useState(false);
     const [revokingTokenId, setRevokingTokenId] = useState<string | null>(null);
     const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null);
+    const [profileDisplayName, setProfileDisplayName] = useState("");
+    const [profileRoleTitle, setProfileRoleTitle] = useState("");
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [profileLoaded, setProfileLoaded] = useState(false);
+
+    const loadProfile = async () => {
+        if (profileLoaded) return;
+        try {
+            const res = await fetch("/api/user/profile");
+            if (res.ok) {
+                const data = await res.json();
+                setProfileDisplayName(data.displayName || "");
+                setProfileRoleTitle(data.roleTitle || "");
+            }
+        } catch {}
+        setProfileLoaded(true);
+    };
+
+    const saveProfile = async () => {
+        if (savingProfile) return;
+        setSavingProfile(true);
+        try {
+            const res = await fetch("/api/user/profile", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ displayName: profileDisplayName, roleTitle: profileRoleTitle }),
+            });
+            if (!res.ok) throw new Error("Failed");
+            toast.success("Profile updated");
+        } catch {
+            toast.error("Failed to save profile");
+        } finally {
+            setSavingProfile(false);
+        }
+    };
 
     const handleGenerate = async () => {
         if (!newTokenName.trim() || generating) return;
@@ -185,6 +220,7 @@ export default function SettingsClient({
 
             <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950/60 p-1.5 sm:p-2">
                 {([
+                    ["profile", "Profile"],
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
                     ["updates", "Updates"],
@@ -205,6 +241,19 @@ export default function SettingsClient({
                     </button>
                 ))}
             </div>
+
+            {activeTab === "profile" && (
+                <ProfileTab
+                    displayName={profileDisplayName}
+                    setDisplayName={setProfileDisplayName}
+                    roleTitle={profileRoleTitle}
+                    setRoleTitle={setProfileRoleTitle}
+                    onSave={saveProfile}
+                    saving={savingProfile}
+                    onLoad={loadProfile}
+                    loaded={profileLoaded}
+                />
+            )}
 
             {activeTab === "connections" && (
                 <section className="grid gap-3 sm:gap-4 lg:grid-cols-2">
@@ -467,6 +516,32 @@ Walk me through step by step.`}</pre>
                 />
             )}
         </div>
+    );
+}
+
+function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded }: { displayName: string; setDisplayName: (v: string) => void; roleTitle: string; setRoleTitle: (v: string) => void; onSave: () => void; saving: boolean; onLoad: () => void; loaded: boolean }) {
+    useEffect(() => { if (!loaded) onLoad(); }, [loaded, onLoad]);
+    return (
+        <section className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-lg">
+            <h2 className="flex items-center text-lg font-semibold text-zinc-100 mb-4">
+                <IconUsers className="mr-2 h-5 w-5 text-cyan-300" /> Your Profile
+            </h2>
+            <p className="text-sm text-zinc-500 mb-6">Agents can see this info to know who to contact for what.</p>
+            <div className="space-y-4">
+                <label className="block">
+                    <span className="text-sm font-medium text-zinc-300">Display Name</span>
+                    <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your full name" className="mt-1 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
+                </label>
+                <label className="block">
+                    <span className="text-sm font-medium text-zinc-300">Role / Title</span>
+                    <input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="e.g. SEO Lead, Project Manager, Client Contact" className="mt-1 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
+                    <p className="mt-1 text-xs text-zinc-600">Free text — helps agents know what you're responsible for.</p>
+                </label>
+                <button onClick={onSave} disabled={saving} className="cursor-pointer rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    {saving ? "Saving..." : "Save Profile"}
+                </button>
+            </div>
+        </section>
     );
 }
 

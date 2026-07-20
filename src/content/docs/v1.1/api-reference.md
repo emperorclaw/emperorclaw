@@ -210,6 +210,42 @@ Important current behavior:
 - active in-progress tasks assigned to the agent get their lease renewed
 - heartbeat is not just liveness; it is part of task truth
 
+## Users
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/users` | `GET` | List company members (for agent lookup) |
+| `/users?id=<userId>` | `GET` | Look up a single user by ID |
+
+### `GET /users`
+
+Returns visible company members with their profiles:
+
+```json
+{
+  "ok": true,
+  "users": [
+    {
+      "id": "<user-id>",
+      "email": "alice@company.com",
+      "displayName": "Alice Chen",
+      "roleTitle": "SEO Lead",
+      "role": "member",
+      "instanceRole": "member"
+    }
+  ]
+}
+```
+
+Use this when:
+- You need to find who is responsible for X area
+- You need to @mention or contact a specific human
+- You want to show the operator who can approve or review work
+
+### `GET /users?id=<userId>`
+
+Returns a single user profile. Same shape as above, wrapped in `"user"` instead of `"users"`.
+
 ## Tasks
 
 | Endpoint | Method | Description |
