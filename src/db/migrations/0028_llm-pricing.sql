@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS token_usage_company_date_idx ON token_usage_log(compa
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS llm_model text;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS monthly_cost_cents integer NOT NULL DEFAULT 0;
 
--- 4. Seed pricing data (cents × 100 per 1K tokens)
+-- 4. Seed pricing data (cents × 100 per 1K tokens). Prices editable via UI.
 INSERT INTO llm_pricing (provider, model, label, input_price_per_1k, output_price_per_1k) VALUES
     -- DeepSeek
     ('deepseek', 'deepseek-chat', 'DeepSeek V3', 14, 28),
@@ -45,18 +45,24 @@ INSERT INTO llm_pricing (provider, model, label, input_price_per_1k, output_pric
     ('openai', 'gpt-4.1-nano', 'GPT-4.1 Nano', 10, 40),
     ('openai', 'o3', 'o3', 1000, 4000),
     ('openai', 'o4-mini', 'o4-mini', 110, 440),
+    ('openai', 'gpt-5', 'GPT-5', 500, 2000),
+    ('openai', 'gpt-5-mini', 'GPT-5 Mini', 50, 200),
+    ('openai', 'gpt-5-nano', 'GPT-5 Nano', 15, 60),
     -- Anthropic
     ('anthropic', 'claude-sonnet-4-20250514', 'Claude Sonnet 4', 300, 1500),
-    ('anthropic', 'claude-3.5-haiku-20241022', 'Claude 3.5 Haiku', 80, 400),
     ('anthropic', 'claude-opus-4-20250514', 'Claude Opus 4', 1500, 7500),
+    ('anthropic', 'claude-3.5-haiku-20241022', 'Claude 3.5 Haiku', 80, 400),
+    ('anthropic', 'claude-4-5-haiku', 'Claude 4.5 Haiku', 100, 500),
     -- Google
     ('google', 'gemini-2.5-flash', 'Gemini 2.5 Flash', 15, 60),
     ('google', 'gemini-2.5-pro', 'Gemini 2.5 Pro', 125, 500),
-    -- OpenRouter (average prices)
-    ('openrouter', 'openrouter-auto', 'OpenRouter (auto)', 50, 150),
-    -- Grok
+    ('google', 'gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 5, 20),
+    -- xAI / Grok
     ('grok', 'grok-3', 'Grok 3', 300, 1500),
-    ('grok', 'grok-3-mini', 'Grok 3 Mini', 30, 150)
+    ('grok', 'grok-3-mini', 'Grok 3 Mini', 30, 150),
+    ('grok', 'grok-4', 'Grok 4', 500, 2000),
+    -- OpenRouter (proxy — prices vary)
+    ('openrouter', 'openrouter-auto', 'OpenRouter (auto)', 50, 150)
 ON CONFLICT (provider, model) DO UPDATE SET
     label = EXCLUDED.label,
     input_price_per_1k = EXCLUDED.input_price_per_1k,
