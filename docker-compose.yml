@@ -32,21 +32,20 @@ services:
       - STORAGE_LOCAL_DIR=./.data/storage
     volumes:
       - app-storage:/app/.data/storage
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
 
-  # ---- Auto-update via Watchtower ----
-  # Checks for new GHCR images every 5 min. The app can also trigger
-  # an immediate update via POST http://watchtower:8080/v1/update
-  watchtower:
-    image: containrrr/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 300 --cleanup --http-api emperorclaw-app-1
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8080:8080"
+  # ---- Auto-update via Watchtower (uncomment to enable) ----
+  # Checks for new GHCR images every 5 min and updates automatically.
+  # Without Watchtower, use the Update button in /ops to pull + restart manually.
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 300 --cleanup emperorclaw-app-1
+  #   restart: unless-stopped
 
 volumes:
   pgdata:
