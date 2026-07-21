@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { agentRoleTemplates, getAgentTemplate, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/agent-providers";
-import { ModelSearchSelect } from "@/components/budget-inline-edit";
+import { ModelSearchSelect } from "@/components/model-search-select";
 import { cn } from "@/lib/utils";
 
 type Step = "role" | "provider" | "name";
