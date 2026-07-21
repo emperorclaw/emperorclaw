@@ -33,8 +33,11 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
-      - name: Typecheck
-        run: npx tsc --noEmit
+      # `next build` generates route types (.next/types) AND type-checks; a bare
+      # `tsc --noEmit` fails in a clean checkout because those types aren't
+      # generated yet (e.g. RouteContext). Build is the authoritative gate.
+      - name: Build (typecheck + compile)
+        run: npm run build
 
       - name: Test (unit + static)
         run: npm test
