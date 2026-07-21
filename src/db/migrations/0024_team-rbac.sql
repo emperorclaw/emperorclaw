@@ -17,20 +17,21 @@ CREATE TABLE IF NOT EXISTS "invitations" (
     "created_at" timestamp DEFAULT now() NOT NULL,
     "deleted_at" timestamp
 );
-
+--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "invitations_token_hash_idx" ON "invitations"("token_hash");
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "invitations_email_company_idx" ON "invitations"("email", "company_id");
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "instance_settings" (
     "key" text PRIMARY KEY,
     "value" jsonb NOT NULL,
     "updated_at" timestamp DEFAULT now() NOT NULL
 );
-
+--> statement-breakpoint
 -- ── Modify existing tables ────────────────────────────────────────────────
 
 ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "instance_role" text DEFAULT 'member' NOT NULL;
-
+--> statement-breakpoint
 -- ── Auto-migrate existing sole-company creator to instance_admin (NFR-11) ──
 -- Only fires when exactly one non-deleted company exists AND the user is its creator.
 -- The subquery ensures we only update users who actually created a company.

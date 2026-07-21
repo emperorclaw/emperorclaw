@@ -12,8 +12,9 @@ CREATE TABLE IF NOT EXISTS llm_pricing (
     active boolean DEFAULT true NOT NULL,
     created_at timestamp DEFAULT now() NOT NULL
 );
+--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS llm_pricing_provider_model_idx ON llm_pricing(provider, model);
-
+--> statement-breakpoint
 -- 2. Token usage log
 CREATE TABLE IF NOT EXISTS token_usage_log (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -25,13 +26,16 @@ CREATE TABLE IF NOT EXISTS token_usage_log (
     cost_cents integer DEFAULT 0 NOT NULL, -- cents × 100
     reported_at timestamp DEFAULT now() NOT NULL
 );
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS token_usage_agent_date_idx ON token_usage_log(agent_id, reported_at);
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS token_usage_company_date_idx ON token_usage_log(company_id, reported_at);
-
+--> statement-breakpoint
 -- 3. Add columns to agents
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS llm_model text;
+--> statement-breakpoint
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS monthly_cost_cents integer NOT NULL DEFAULT 0;
-
+--> statement-breakpoint
 -- 4. Seed pricing data (cents × 100 per 1K tokens). Prices editable via UI.
 -- Sourced from official provider pricing pages as of July 2026.
 INSERT INTO llm_pricing (provider, model, label, input_price_per_1k, output_price_per_1k) VALUES
