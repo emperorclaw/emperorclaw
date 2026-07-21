@@ -125,7 +125,8 @@ async function lookupPricing(model: string): Promise<PricingRow | null> {
     const [exact] = await db.select({ provider: llmPricing.provider, model: llmPricing.model, inputPricePer1k: llmPricing.inputPricePer1k, outputPricePer1k: llmPricing.outputPricePer1k })
         .from(llmPricing).where(and(eq(llmPricing.model, model), eq(llmPricing.active, true))).limit(1);
     if (exact) return exact;
+    // Fallback by provider: pick cheapest active model
     const [byProv] = await db.select({ provider: llmPricing.provider, model: llmPricing.model, inputPricePer1k: llmPricing.inputPricePer1k, outputPricePer1k: llmPricing.outputPricePer1k })
-        .from(llmPricing).where(and(eq(llmPricing.provider, model), eq(llmPricing.active, true))).orderBy(desc(llmPricing.createdAt)).limit(1);
+        .from(llmPricing).where(and(eq(llmPricing.provider, model), eq(llmPricing.active, true))).orderBy(llmPricing.inputPricePer1k).limit(1);
     return byProv ?? null;
 }
