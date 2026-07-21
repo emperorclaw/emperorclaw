@@ -204,7 +204,6 @@ export const llmPricing = pgTable("llm_pricing", {
     label: text("label").notNull(),       // human-friendly name
     inputPricePer1k: integer("input_price_per_1k").notNull(),   // cents per 1M input tokens (14 = $0.14/1M)
     outputPricePer1k: integer("output_price_per_1k").notNull(), // cents per 1M output tokens
-    outputPricePer1k: integer("output_price_per_1k").notNull(), // cents per 1000 output tokens × 100
     active: boolean("active").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [

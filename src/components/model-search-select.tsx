@@ -62,7 +62,7 @@ export function ModelSearchSelect({
                                 className={cn("w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-800 flex items-center justify-between",
                                     o.model === value ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-300")}>
                                 <span><span className="text-zinc-500">{o.provider}</span><span className="text-zinc-600 mx-1.5">/</span>{o.label}</span>
-                                <span className="text-[10px] text-zinc-600 font-mono shrink-0">${(o.inputPricePer1k / 100000).toFixed(2)}/1M</span>
+                                <span className="text-[10px] text-zinc-600 font-mono shrink-0">${(o.inputPricePer1k / 100).toFixed(2)}/1M</span>
                             </button>
                         ))}
                         {filtered.length === 0 && <div className="px-3 py-3 text-xs text-zinc-600 text-center">No models match</div>}
