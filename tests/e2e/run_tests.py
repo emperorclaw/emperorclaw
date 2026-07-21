@@ -2,8 +2,10 @@
 """EmperorClaw E2E v2 — 12 comprehensive tests."""
 import json, time, urllib.request, uuid, sys, os
 
-BASE = os.environ.get("EC_URL", "http://localhost:3001")
-TOKEN = os.environ.get("EC_TOKEN", "ec_72a35087b809fb4e852dc73d72dd89b492b28d7814e833d0")
+BASE = os.environ.get("EC_URL", "http://localhost:3000")
+TOKEN = os.environ.get("EC_TOKEN", "")
+if not TOKEN:
+    sys.exit("Set EC_TOKEN (a company MCP token from Settings > Access Tokens). Never hardcode tokens.")
 P, F = "\u2705", "\u274c"
 
 def api(method, path, body=None, hdrs=None):

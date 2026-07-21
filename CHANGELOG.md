@@ -26,6 +26,14 @@ ships in the release notes.
 
 ### Fixed
 
+- **Fresh installs now get a complete database.** The migration chain was broken:
+  migrations 0024–0029 were missing from the drizzle journal (silently skipped by
+  `db:migrate`, which the Docker image runs on boot), lacked statement-breakpoints,
+  and never added four `schema.ts` columns. A fresh install was missing tables
+  (invitations, instance_settings, llm_pricing, token_usage_log, …) and columns,
+  breaking registration outright. Journal + breakpoints repaired and idempotent
+  migration 0030 added; a from-scratch `db:migrate` now reproduces `schema.ts`
+  with zero drift. Existing (push-built) deployments re-apply these as a no-op.
 - **Signup no longer requires SMTP.** When email is not configured, invited
   teammates and open self-hosted signups are auto-verified (previously they were
   sent a verification email that never arrived, locking them out permanently).
@@ -56,7 +64,17 @@ ships in the release notes.
   the DB is reachable, 503 otherwise) plus a Docker Compose healthcheck on the
   app service.
 - CI workflow (`.github/workflows/ci.yml`) running lint, typecheck, and tests on
-  every push and pull request.
+  every push and pull request, plus an integration job with a Postgres service.
+- Layered test suite (see `TESTING.md`): unit tests for billing/semver, a
+  deterministic Codex-bridge reply-decision matrix (mock LLM), and in-process
+  integration tests (register, report-usage, health) against real Postgres.
+  `npm test` grew from ~42 to 118 always-run tests.
+
+### Security
+
+- Removed a hardcoded company API token from the test files and their production
+  host defaults. **The leaked token remains in git history and must be revoked**
+  (Settings → Access Tokens).
 
 ### Changed
 

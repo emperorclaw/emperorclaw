@@ -1,10 +1,12 @@
 """
-EmperorClaw Agent Chat Integration Tests
-
-Tests run against the LIVE VPS (emperorclaw.malecu.eu).
+EmperorClaw Agent Chat — LIVE integration tests (require a running instance,
+a running bridge, and a real model). Not part of CI. See TESTING.md (Layer 4).
 Validates: message send, agent response, dedup, sync filtering, no loops.
 
-Usage: python tests/agent-chat.test.py
+Usage:
+  export EMPEROR_CLAW_API_URL=http://localhost:3000
+  export EMPEROR_CLAW_API_TOKEN=<company MCP token>
+  python tests/agent-chat.test.py
 """
 import json
 import os
@@ -16,7 +18,7 @@ import urllib.error
 import uuid
 
 # ── Config ────────────────────────────────────────────────────────
-API_BASE = os.environ.get("EMPEROR_CLAW_API_URL", "https://emperorclaw.malecu.eu")
+API_BASE = os.environ.get("EMPEROR_CLAW_API_URL", "http://localhost:3000")
 API_TOKEN = os.environ.get("EMPEROR_CLAW_API_TOKEN", "")
 
 if not API_TOKEN:
