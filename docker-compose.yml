@@ -37,15 +37,14 @@ services:
       postgres:
         condition: service_healthy
 
-  # ---- Auto-update via Watchtower (uncomment to enable) ----
+  # ---- Auto-update via Watchtower ----
   # Checks for new GHCR images every 5 min and updates automatically.
-  # Without Watchtower, use the Update button in /ops to pull + restart manually.
-  # watchtower:
-  #   image: containrrr/watchtower
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   command: --interval 300 --cleanup emperorclaw-app-1
-  #   restart: unless-stopped
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup emperorclaw-app-1
+    restart: unless-stopped
 
 volumes:
   pgdata:
