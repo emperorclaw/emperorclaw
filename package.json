@@ -24,7 +24,7 @@
     "test": "npm run test:static && npm run test:unit",
     "test:static": "node --test tests/*.test.cjs tests/unit/*.test.cjs",
     "test:unit": "npx tsx --test tests/path-sanitizer.test.ts tests/team-rbac.test.ts tests/unit/*.test.ts",
-    "test:integration": "npx tsx --test tests/integration/*.test.ts",
+    "test:integration": "npx tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "test:all": "npm run test && npm run test:integration",
     "db:migrate": "npx tsx src/db/migrate.ts"
   },
