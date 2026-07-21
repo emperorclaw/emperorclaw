@@ -74,7 +74,7 @@ function ModelCell({ agentId, currentModel, options, updateAgent }: { agentId: s
                             className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100 outline-none focus:border-cyan-400 placeholder:text-zinc-600" />
                     </div>
                     <div className="max-h-56 overflow-y-auto">
-                        <button onClick={() => select(null)} className={cn("w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-800", !currentModel ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-500")}>None — auto-detect</button>
+                        <button onClick={() => select(null)} className={cn("w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-800", !currentModel ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-500")}>Not set — uses provider default</button>
                         {filtered.map(o => (
                             <button key={o.model} onClick={() => select(o.model)} className={cn("w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-800 flex items-center justify-between", o.model === currentModel ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-300")}>
                                 <span><span className="text-zinc-500">{o.provider}</span><span className="text-zinc-600 mx-1.5">/</span>{o.label}</span>

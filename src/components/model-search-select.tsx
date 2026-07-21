@@ -7,7 +7,7 @@ type ModelOption = { model: string; label: string; provider: string; inputPriceP
 
 /** Searchable model selector for create-agent dialog */
 export function ModelSearchSelect({
-    options, value, onChange, placeholder = "Auto-detect"
+    options, value, onChange, placeholder = "Not set"
 }: {
     options: ModelOption[];
     value: string;

@@ -354,7 +354,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                 options={pricingOptions}
                                 value={llmModel}
                                 onChange={setLlmModel}
-                                placeholder="Auto-detect"
+                                placeholder="Not set"
                             />
                         </div>
                         )}
