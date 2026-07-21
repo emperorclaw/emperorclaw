@@ -22,6 +22,7 @@ import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
 import { getAgentTemplate } from "@/lib/agent-templates";
+import { ModelSearchSelect } from "@/components/model-search-select";
 import { cn } from "@/lib/utils";
 
 type AgentDetailData = {
@@ -35,6 +36,7 @@ type AgentDetailData = {
         provider?: string;
         deploymentMode?: string;
         llmProvider?: string | null;
+        llmModel?: string | null;
         lastSeenAt?: string;
         doctrineJson?: Record<string, string>;
         monthlyBudgetCents?: number;
@@ -109,6 +111,16 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
     const [editingLlm, setEditingLlm] = useState(false);
     const [saving, setSaving] = useState(false);
     const editingLlmProviderRef = useRef("");
+    const [pricingOpts, setPricingOpts] = useState<{ model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number }[]>([]);
+
+    useEffect(() => {
+        fetch("/api/mcp/pricing").then(r => r.json()).then(d => {
+            if (d.pricing) setPricingOpts(d.pricing.map((p: any) => ({
+                model: p.model, label: p.label, provider: p.provider,
+                inputPricePer1k: p.inputPricePer1k, outputPricePer1k: p.outputPricePer1k,
+            })));
+        }).catch(() => {});
+    }, []);
 
     if (loading) {
         return (
@@ -333,6 +345,17 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 )}
                             </>
                         )}
+                    </span>
+                    {/* Model selector — uses pricing table for cost tracking */}
+                    <span className="text-zinc-500 inline-flex items-center gap-1.5">
+                        Model:{" "}
+                        <ModelSearchSelect
+                            options={pricingOpts}
+                            value={data.agent.llmModel || ""}
+                            onChange={async (model) => {
+                                await updateAgent({ llmModel: model || null });
+                            }}
+                        />
                     </span>
                     {agent.lastSeenAt && (
                         <span className="text-zinc-500">
