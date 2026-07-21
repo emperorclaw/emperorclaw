@@ -40,6 +40,7 @@ LOOP_GUARD_MAX_AGENT_TURNS = int(os.environ.get("EMPEROR_CLAW_LOOP_GUARD_MAX_TUR
 
 # Cached agent LLM provider — read once at startup for documentation
 _agent_llm_provider: str | None = None
+_agent_llm_model: str | None = None
 
 
 def log(message: str) -> None:
@@ -130,7 +131,7 @@ def ensure_runtime() -> None:
 
 
 def ensure_agent() -> str:
-    global AGENT_ID, _agent_llm_provider
+    global AGENT_ID, _agent_llm_provider, _agent_llm_model
     if AGENT_ID:
         return AGENT_ID
     payload = api("GET", "/agents", query={"limit": 200})
@@ -143,6 +144,7 @@ def ensure_agent() -> str:
             break
     if matched:
         _agent_llm_provider = str(matched.get("llmProvider") or "") or None
+        _agent_llm_model = str(matched.get("llmModel") or "") or None
         if _agent_llm_provider:
             _log_llm_guidance(_agent_llm_provider)
         return AGENT_ID
@@ -533,30 +535,43 @@ def send_reply(message: Dict[str, Any], text: str) -> None:
 
 
 _last_token_report = 0
-_pending_tokens = 0
+_pending_input_chars = 0
+_pending_output_chars = 0
 
 def report_token_usage(input_chars: int, output_chars: int) -> None:
-    """Estimate tokens (4 chars ≈ 1 token) and report usage to EmperorClaw.
-    Accumulates tokens between calls and reports at most once per 60 seconds.
-    Uses the MCP report-usage endpoint which atomically increments usage."""
-    global _last_token_report, _pending_tokens
-    estimated = (input_chars + output_chars) // 4
-    if estimated > 0:
-        _pending_tokens += estimated
+    """Estimate tokens and report usage to EmperorClaw with model-aware cost tracking.
+    Accumulates between calls and reports at most once per 60 seconds.
+    Sends model info + separate input/output for accurate pricing."""
+    global _last_token_report, _pending_input_chars, _pending_output_chars
+    _pending_input_chars += input_chars
+    _pending_output_chars += output_chars
     now = time.time()
     if now - _last_token_report < 60:
-        return  # Accumulate, don't drop
+        return
     _last_token_report = now
-    if _pending_tokens <= 0:
+    total_input = _pending_input_chars
+    total_output = _pending_output_chars
+    _pending_input_chars = 0
+    _pending_output_chars = 0
+    if total_input <= 0 and total_output <= 0:
         return
     try:
-        api("POST", "/agents/report-usage", body={
+        # Estimate tokens: 4 chars ≈ 1 token
+        est_input = max(1, total_input // 4)
+        est_output = max(1, total_output // 4)
+        model = _agent_llm_model or _agent_llm_provider or None
+        body: dict = {
             "agentId": AGENT_ID,
-            "tokensUsed": _pending_tokens,
-        })
-        _pending_tokens = 0
+            "inputTokens": est_input,
+            "outputTokens": est_output,
+        }
+        if model:
+            body["model"] = model
+        api("POST", "/agents/report-usage", body=body)
     except Exception:
-        pass  # Non-critical — silently ignore; tokens stay accumulated for next window
+        # Tokens stay accumulated for next window
+        _pending_input_chars += total_input
+        _pending_output_chars += total_output
 
 
 def main() -> int:
