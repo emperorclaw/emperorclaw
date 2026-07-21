@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pkg from "@/../package.json" assert { type: "json" };
+import { isVersionNewer as isNewer } from "@/lib/semver";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -89,16 +90,3 @@ export async function GET() {
     }
 }
 
-function isNewer(latest: string, current: string): boolean {
-    const parse = (v: string) =>
-        v.split(".").map((n) => parseInt(n, 10) || 0);
-    const l = parse(latest);
-    const c = parse(current);
-    for (let i = 0; i < Math.max(l.length, c.length); i++) {
-        const a = l[i] || 0;
-        const b = c[i] || 0;
-        if (a > b) return true;
-        if (a < b) return false;
-    }
-    return false;
-}

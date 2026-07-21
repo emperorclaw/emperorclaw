@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { agents, tokenUsageLog, llmPricing } from "@/db/schema";
 import { and, eq, isNull, sql, desc } from "drizzle-orm";
 import { z } from "zod";
+import { splitLegacyTokens, priceUsageCents, nextBudgetStatus, type BudgetStatus } from "@/lib/billing";
 
 const reportSchema = z.object({
     agentId: z.string().min(1),
@@ -77,14 +78,19 @@ export async function POST(req: NextRequest) {
             .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
         const resolvedModel = agentCfg?.m || agentCfg?.p || model || "deepseek-chat";
 
-        const inputT = inputTokens ?? Math.round(totalTokens * 0.8);
-        const outputT = outputTokens ?? Math.round(totalTokens * 0.2);
+        const split = splitLegacyTokens(totalTokens);
+        const inputT = inputTokens ?? split.inputTokens;
+        const outputT = outputTokens ?? split.outputTokens;
 
-        // Cost: pricePer1M is in cents per 1M tokens (e.g. 14 = $0.14/1M).
-        // costCents = (inputT * inputPrice + outputT * outputPrice) / 1_000_000
+        // Prices are cents per 1M tokens (e.g. 14 = $0.14/1M). See src/lib/billing.ts.
         const pricing = await lookupPricing(resolvedModel);
         const costCents = pricing
-            ? Math.round((inputT * pricing.inputPricePer1k + outputT * pricing.outputPricePer1k) / 1_000_000)
+            ? priceUsageCents({
+                inputTokens: inputT,
+                outputTokens: outputT,
+                inputCentsPer1M: pricing.inputPricePer1k,
+                outputCentsPer1M: pricing.outputPricePer1k,
+            })
             : 0;
 
         const [updated] = await db.update(agents).set({
@@ -99,17 +105,14 @@ export async function POST(req: NextRequest) {
         // Log
         await db.insert(tokenUsageLog).values({ companyId, agentId, model: resolvedModel, inputTokens: inputT, outputTokens: outputT, costCents });
 
-        // Budget enforcement
-        let bs = updated.budgetStatus;
-        const budget = updated.monthlyBudgetCents ?? 0;
-        const spent = updated.monthlyCostCents ?? 0;
-        if (budget > 0) {
-            const pct = spent / budget;
-            if (pct >= 1.0 && bs !== "paused") bs = "paused";
-            else if (pct >= 0.8 && bs === "active") bs = "warning";
-            if (bs !== updated.budgetStatus) {
-                await db.update(agents).set({ budgetStatus: bs }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
-            }
+        // Budget enforcement (single source of truth: src/lib/billing.ts)
+        const bs = nextBudgetStatus({
+            spentCents: updated.monthlyCostCents ?? 0,
+            budgetCents: updated.monthlyBudgetCents ?? 0,
+            current: (updated.budgetStatus ?? "active") as BudgetStatus,
+        });
+        if (bs !== updated.budgetStatus) {
+            await db.update(agents).set({ budgetStatus: bs }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
         }
 
         return NextResponse.json({ ok: true, agentId: updated.id, monthlyTokenUsage: updated.monthlyTokenUsage, monthlyCostCents: updated.monthlyCostCents, budgetStatus: bs, model: resolvedModel, costCents });
