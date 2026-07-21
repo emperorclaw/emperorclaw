@@ -39,6 +39,35 @@ export async function POST(req: NextRequest) {
         if (!parsed.success) return NextResponse.json({ error: "agentId and token count required" }, { status: 400 });
 
         const { agentId, tokensUsed, model, inputTokens, outputTokens } = parsed.data;
+
+        // Monthly reset: if month changed, archive & reset counters
+        const currentMonth = new Date().toISOString().slice(0, 7); // "2026-07"
+        const [agent] = await db.select({ lastResetMonth: agents.lastResetMonth, monthlyTokenUsage: agents.monthlyTokenUsage, monthlyCostCents: agents.monthlyCostCents })
+            .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
+
+        if (agent && agent.lastResetMonth && agent.lastResetMonth !== currentMonth) {
+            // Archive previous month in token_usage_log as a summary row
+            await db.insert(tokenUsageLog).values({
+                companyId, agentId,
+                model: "monthly-reset",
+                inputTokens: agent.monthlyTokenUsage ?? 0,
+                outputTokens: 0,
+                costCents: agent.monthlyCostCents ?? 0,
+                reportedAt: new Date(`${agent.lastResetMonth}-01T00:00:00Z`),
+            });
+            // Reset counters
+            await db.update(agents).set({
+                monthlyTokenUsage: 0,
+                monthlyCostCents: 0,
+                lastResetMonth: currentMonth,
+                budgetStatus: "active", // Reset budget status for new month
+            }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
+        } else if (agent && !agent.lastResetMonth) {
+            // First time: set the month marker without resetting
+            await db.update(agents).set({ lastResetMonth: currentMonth })
+                .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
+        }
+
         const totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0) || tokensUsed || 0;
         if (totalTokens <= 0) return NextResponse.json({ ok: true, agentId, monthlyTokenUsage: 0 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ type Step = "role" | "provider" | "name";
 
 const providers = getAvailableProviders();
 
+type PricingOption = { provider: string; model: string; label: string; inputPricePer1k: number; outputPricePer1k: number };
+
 export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentId: string) => void }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
@@ -22,8 +24,18 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
     const [deploymentMode, setDeploymentMode] = useState<"remote" | "local">("remote");
     const [monthlyBudget, setMonthlyBudget] = useState(""); // dollars, empty = unlimited
     const [llmProvider, setLlmProvider] = useState("");
+    const [llmModel, setLlmModel] = useState("");
+    const [pricingOptions, setPricingOptions] = useState<PricingOption[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (open) {
+            fetch("/api/mcp/pricing").then(r => r.json()).then(d => {
+                setPricingOptions(d.pricing || []);
+            }).catch(() => {});
+        }
+    }, [open]);
 
     const handleRoleSelect = (roleId: string) => {
         const template = getAgentTemplate(roleId);
@@ -71,6 +83,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                     deploymentMode,
                     monthlyBudgetCents: monthlyBudget ? Math.round(parseFloat(monthlyBudget) * 100) : 0,
                     llmProvider: llmProvider || undefined,
+                    llmModel: llmModel || undefined,
                     doctrineJson: doctrine,
                     avatarUrl: `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name.trim() || selectedRole?.title || "agent")}`,
                 }),
@@ -326,6 +339,27 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                                 <option value="openrouter">OpenRouter</option>
                                 <option value="grok">Grok</option>
                                 <option value="deepseek">DeepSeek</option>
+                            </select>
+                        </div>
+                        )}
+
+                        {/* LLM Model — specific model selection for cost tracking */}
+                        {selectedProvider.supportsLlmProvider && pricingOptions.length > 0 && (
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                                LLM Model <span className="text-zinc-500 font-normal">— For cost tracking</span>
+                            </label>
+                            <select
+                                value={llmModel}
+                                onChange={(e) => setLlmModel(e.target.value)}
+                                className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400"
+                            >
+                                <option value="">Auto-detect</option>
+                                {pricingOptions.map(p => (
+                                    <option key={`${p.provider}/${p.model}`} value={p.model}>
+                                        {p.label} ({p.provider}) — ${(p.inputPricePer1k / 100000).toFixed(2)}/1M in
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         )}
