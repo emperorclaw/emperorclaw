@@ -41,7 +41,7 @@ export async function ensureTeamThread(companyId: string) {
 }
 
 export async function ensureDirectThread(companyId: string, agentId: string, userId?: string | null) {
-    const targetUserRef = userId || "human-manager";
+    // Find ALL direct threads where this agent participates
     const agentParticipants = await db.select({ threadId: threadParticipants.threadId })
         .from(threadParticipants)
         .where(
@@ -51,34 +51,62 @@ export async function ensureDirectThread(companyId: string, agentId: string, use
                 eq(threadParticipants.participantId, agentId)
             )
         );
-    const agentThreadIds = agentParticipants.map(participant => participant.threadId);
+    const agentThreadIds = agentParticipants.map(p => p.threadId);
 
     if (agentThreadIds.length > 0) {
-        const [humanParticipant] = await db.select({ threadId: threadParticipants.threadId })
+        // Try exact userId match first
+        if (userId) {
+            const [exact] = await db.select({ threadId: threadParticipants.threadId })
+                .from(threadParticipants)
+                .where(
+                    and(
+                        eq(threadParticipants.companyId, companyId),
+                        inArray(threadParticipants.threadId, agentThreadIds),
+                        eq(threadParticipants.participantType, "human"),
+                        eq(threadParticipants.participantRef, userId)
+                    )
+                ).limit(1);
+            if (exact) {
+                const [t] = await db.select().from(messageThreads).where(
+                    and(eq(messageThreads.id, exact.threadId), eq(messageThreads.companyId, companyId), eq(messageThreads.type, "direct"), isNull(messageThreads.archivedAt))
+                ).limit(1);
+                if (t) return t;
+            }
+        }
+
+        // Fallback: any direct thread with this agent (bridge-created, wrong participantRef, etc.)
+        const [anyHuman] = await db.select({ threadId: threadParticipants.threadId })
             .from(threadParticipants)
             .where(
                 and(
                     eq(threadParticipants.companyId, companyId),
                     inArray(threadParticipants.threadId, agentThreadIds),
-                    eq(threadParticipants.participantType, "human"),
-                    eq(threadParticipants.participantRef, targetUserRef)
-                )
-            )
-            .limit(1);
-
-        if (humanParticipant) {
-            const [existingThread] = await db.select().from(messageThreads).where(
-                and(
-                    eq(messageThreads.id, humanParticipant.threadId),
-                    eq(messageThreads.companyId, companyId),
-                    eq(messageThreads.type, "direct"),
-                    isNull(messageThreads.archivedAt)
+                    eq(threadParticipants.participantType, "human")
                 )
             ).limit(1);
 
-            if (existingThread) return existingThread;
+        if (anyHuman) {
+            // If userId is provided and differs, fix the participantRef so next lookup is exact
+            if (userId) {
+                await db.update(threadParticipants)
+                    .set({ participantRef: userId })
+                    .where(
+                        and(
+                            eq(threadParticipants.threadId, anyHuman.threadId),
+                            eq(threadParticipants.participantType, "human")
+                        )
+                    );
+            }
+
+            const [t] = await db.select().from(messageThreads).where(
+                and(eq(messageThreads.id, anyHuman.threadId), eq(messageThreads.companyId, companyId), eq(messageThreads.type, "direct"), isNull(messageThreads.archivedAt))
+            ).limit(1);
+            if (t) return t;
         }
     }
+
+    // No existing thread — create one with the best participantRef we have
+    const targetUserRef = userId || "human-manager";
 
     const [created] = await db.insert(messageThreads).values({
         companyId,
