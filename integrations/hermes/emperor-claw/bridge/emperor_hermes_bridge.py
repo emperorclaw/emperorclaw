@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -533,26 +533,30 @@ def send_reply(message: Dict[str, Any], text: str) -> None:
 
 
 _last_token_report = 0
+_pending_tokens = 0
 
 def report_token_usage(input_chars: int, output_chars: int) -> None:
     """Estimate tokens (4 chars ≈ 1 token) and report usage to EmperorClaw.
-    Throttled to at most once per 60 seconds to avoid API spam.
+    Accumulates tokens between calls and reports at most once per 60 seconds.
     Uses the MCP report-usage endpoint which atomically increments usage."""
-    global _last_token_report
+    global _last_token_report, _pending_tokens
+    estimated = (input_chars + output_chars) // 4
+    if estimated > 0:
+        _pending_tokens += estimated
     now = time.time()
     if now - _last_token_report < 60:
-        return
+        return  # Accumulate, don't drop
     _last_token_report = now
+    if _pending_tokens <= 0:
+        return
     try:
-        estimated = (input_chars + output_chars) // 4
-        if estimated <= 0:
-            return
         api("POST", "/agents/report-usage", body={
             "agentId": AGENT_ID,
-            "tokensUsed": estimated,
+            "tokensUsed": _pending_tokens,
         })
+        _pending_tokens = 0
     except Exception:
-        pass  # Non-critical — silently ignore
+        pass  # Non-critical — silently ignore; tokens stay accumulated for next window
 
 
 def main() -> int:
