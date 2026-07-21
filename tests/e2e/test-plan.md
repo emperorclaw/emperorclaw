@@ -3,9 +3,10 @@
 > Run these tests after deploying a fresh version. Each test validates a core user flow.
 
 ## Prerequisites
-- Local dev running: `http://localhost:3001`
-- Token: `ec_72a35087b809fb4e852dc73d72dd89b492b28d7814e833d0`
-- A Hermes bridge running locally with `EMPEROR_CLAW_API_URL=http://localhost:3001`
+- Local dev running: `http://localhost:3000`
+- A company MCP token from **Settings → Access Tokens**, exported as `EC_TOKEN`
+  (never commit tokens to the repo)
+- A Hermes bridge running locally with `EMPEROR_CLAW_API_URL=http://localhost:3000`
 
 ---
 
