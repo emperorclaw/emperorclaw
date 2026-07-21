@@ -9,7 +9,7 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.4.0] — 2026-07-22
 
 ### ⚠️ Breaking / action required
 
