@@ -80,11 +80,11 @@ export async function POST(req: NextRequest) {
         const inputT = inputTokens ?? Math.round(totalTokens * 0.8);
         const outputT = outputTokens ?? Math.round(totalTokens * 0.2);
 
-        // Cost: (inputT * pricePer1k + outputT * pricePer1k) / 100000
-        // pricePer1k is in cents × 100 (micro-cents). Result is in cents.
+        // Cost: pricePer1M is in cents per 1M tokens (e.g. 14 = $0.14/1M).
+        // costCents = (inputT * inputPrice + outputT * outputPrice) / 1_000_000
         const pricing = await lookupPricing(resolvedModel);
         const costCents = pricing
-            ? Math.round((inputT * pricing.inputPricePer1k + outputT * pricing.outputPricePer1k) / 100000)
+            ? Math.round((inputT * pricing.inputPricePer1k + outputT * pricing.outputPricePer1k) / 1_000_000)
             : 0;
 
         const [updated] = await db.update(agents).set({

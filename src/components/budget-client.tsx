@@ -78,7 +78,7 @@ function ModelCell({ agentId, currentModel, options, updateAgent }: { agentId: s
                         {filtered.map(o => (
                             <button key={o.model} onClick={() => select(o.model)} className={cn("w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-800 flex items-center justify-between", o.model === currentModel ? "text-cyan-300 bg-cyan-500/10" : "text-zinc-300")}>
                                 <span><span className="text-zinc-500">{o.provider}</span><span className="text-zinc-600 mx-1.5">/</span>{o.label}</span>
-                                <span className="text-[10px] text-zinc-600 font-mono shrink-0">${(o.inputPricePer1k / 100000).toFixed(2)}/1M</span>
+                                <span className="text-[10px] text-zinc-600 font-mono shrink-0">${(o.inputPricePer1k / 100).toFixed(2)}/1M</span>
                             </button>
                         ))}
                         {filtered.length === 0 && <div className="px-3 py-3 text-xs text-zinc-600 text-center">No models match</div>}
@@ -93,12 +93,12 @@ function ModelCell({ agentId, currentModel, options, updateAgent }: { agentId: s
 
 function PricingRow({ p, onSaved }: { p: PricingRow; onSaved: () => void }) {
     const [editing, setEditing] = useState(false);
-    const [inP, setInP] = useState(String(p.inputPricePer1k / 100000));
-    const [outP, setOutP] = useState(String(p.outputPricePer1k / 100000));
+    const [inP, setInP] = useState(String(p.inputPricePer1k / 100));
+    const [outP, setOutP] = useState(String(p.outputPricePer1k / 100));
     const [saving, setSaving] = useState(false);
     const save = async () => {
         setSaving(true);
-        await fetch("/api/mcp/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: p.provider, model: p.model, label: p.label, inputPricePer1k: Math.round(parseFloat(inP) * 100000), outputPricePer1k: Math.round(parseFloat(outP) * 100000) }) });
+        await fetch("/api/mcp/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: p.provider, model: p.model, label: p.label, inputPricePer1k: Math.round(parseFloat(inP) * 100), outputPricePer1k: Math.round(parseFloat(outP) * 100) }) });
         setSaving(false); setEditing(false); onSaved();
     };
     const toggle = async () => {
@@ -109,8 +109,8 @@ function PricingRow({ p, onSaved }: { p: PricingRow; onSaved: () => void }) {
         <tr className={cn("text-xs group hover:bg-zinc-900/30", !p.active && "opacity-40")}>
             <td className="px-5 py-1.5 text-zinc-400 capitalize">{p.provider}</td>
             <td className="px-5 py-1.5 text-zinc-300 font-mono">{p.model}</td>
-            <td className="px-5 py-1.5 text-right text-zinc-400 font-mono"><button onClick={() => setEditing(true)} className="hover:text-cyan-300">${(p.inputPricePer1k / 100000).toFixed(2)}</button></td>
-            <td className="px-5 py-1.5 text-right text-zinc-400 font-mono"><button onClick={() => setEditing(true)} className="hover:text-cyan-300">${(p.outputPricePer1k / 100000).toFixed(2)}</button></td>
+            <td className="px-5 py-1.5 text-right text-zinc-400 font-mono"><button onClick={() => setEditing(true)} className="hover:text-cyan-300">${(p.inputPricePer1k / 100).toFixed(2)}</button></td>
+            <td className="px-5 py-1.5 text-right text-zinc-400 font-mono"><button onClick={() => setEditing(true)} className="hover:text-cyan-300">${(p.outputPricePer1k / 100).toFixed(2)}</button></td>
             <td className="px-3 py-1.5 text-center"><button onClick={toggle} className="text-[10px] text-zinc-600 hover:text-emerald-400" title={p.active ? "Disable" : "Enable"}>{p.active ? "✓" : "—"}</button></td>
         </tr>
     );
@@ -136,7 +136,7 @@ function AddModelRow({ onSaved }: { onSaved: () => void }) {
     const save = async () => {
         if (!model || !label) return;
         setSaving(true);
-        await fetch("/api/mcp/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: prov, model, label, inputPricePer1k: Math.round(parseFloat(inP || "0") * 100000), outputPricePer1k: Math.round(parseFloat(outP || "0") * 100000) }) });
+        await fetch("/api/mcp/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: prov, model, label, inputPricePer1k: Math.round(parseFloat(inP || "0") * 100), outputPricePer1k: Math.round(parseFloat(outP || "0") * 100) }) });
         setSaving(false); setOpen(false); setModel(""); setLabel(""); setInP(""); setOutP(""); onSaved();
     };
     if (!open) return (<tr className="text-xs"><td colSpan={5} className="px-5 py-2"><button onClick={() => setOpen(true)} className="text-zinc-500 hover:text-cyan-300 text-xs">+ Add model pricing</button></td></tr>);

@@ -202,7 +202,8 @@ export const llmPricing = pgTable("llm_pricing", {
     provider: text("provider").notNull(), // openai, anthropic, google, deepseek, openrouter, grok
     model: text("model").notNull(),       // e.g. "deepseek-chat", "gpt-4o", "claude-sonnet-4-20250514"
     label: text("label").notNull(),       // human-friendly name
-    inputPricePer1k: integer("input_price_per_1k").notNull(),   // cents per 1000 input tokens × 100 (to avoid floats)
+    inputPricePer1k: integer("input_price_per_1k").notNull(),   // cents per 1M input tokens (14 = $0.14/1M)
+    outputPricePer1k: integer("output_price_per_1k").notNull(), // cents per 1M output tokens
     outputPricePer1k: integer("output_price_per_1k").notNull(), // cents per 1000 output tokens × 100
     active: boolean("active").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
