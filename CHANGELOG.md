@@ -26,12 +26,22 @@ ships in the release notes.
 
 ### Fixed
 
+- **Signup no longer requires SMTP.** When email is not configured, invited
+  teammates and open self-hosted signups are auto-verified (previously they were
+  sent a verification email that never arrived, locking them out permanently).
+  The signup flow now sends such users straight to login. Configure SMTP to
+  re-enable email verification and password resets.
 - **Budgets now actually enforce on the Codex bridge.** It previously reported
   usage via `PATCH /agents/{id}`, which *overwrote* the running total, never
   recorded cost, and never flipped `budget_status` — so per-agent budgets were
   cosmetic for Codex agents. It now reports via `POST /agents/report-usage`
   (the same path the Hermes bridge uses), which increments usage, prices the
   input/output split against the pricing table, and pauses at 100%.
+- **Bare-metal self-update targets the right directory.** `/api/ops/update` no
+  longer hardcodes `/var/www/emperorclaw` (which mismatched the installer's
+  `$HOME/emperorclaw`); it now uses the app's working directory, overridable
+  with `EMPEROR_UPDATE_DIR`.
+- Added an "Open detail" link from the agents list to the full agent page.
 
 ### Added
 
@@ -42,6 +52,11 @@ ships in the release notes.
   backup fails; it is skipped with a warning for external/managed databases.
 - Installer support for setting the platform admin email during setup
   (`install.sh --admin-email`, `install.ps1 -AdminEmail`).
+- Unauthenticated `GET /api/health` liveness/readiness probe (returns 200 when
+  the DB is reachable, 503 otherwise) plus a Docker Compose healthcheck on the
+  app service.
+- CI workflow (`.github/workflows/ci.yml`) running lint, typecheck, and tests on
+  every push and pull request.
 
 ### Changed
 

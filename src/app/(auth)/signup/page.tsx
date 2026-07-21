@@ -158,11 +158,14 @@ function SignupForm() {
             }
 
             const data = await res.json();
-            // Bootstrap: first user is auto-verified, go straight to login
-            if (data.instanceCreated) {
+            // Go straight to login when no verification is needed:
+            //  - bootstrap (first user is always auto-verified), or
+            //  - SMTP not configured, so the account was auto-verified
+            //    (emailVerificationRequired === false).
+            if (data.instanceCreated || data.emailVerificationRequired === false) {
                 router.push("/login?setup=complete");
             } else {
-                // Invited/open signup: still needs email verification
+                // Verification email was sent — tell them to check their inbox.
                 router.push(`/signup/check-email?email=${encodeURIComponent(normalizedEmail)}`);
             }
             router.refresh();

@@ -8,7 +8,10 @@ import http from "http";
 export const dynamic = "force-dynamic";
 const execAsync = promisify(exec);
 
-const PROJECT_DIR = "/var/www/emperorclaw";
+// Bare-metal self-update runs git/npm/pm2 here. Default to the directory the
+// app is actually running from (the repo root, wherever it was cloned — the
+// installer uses $HOME/emperorclaw); override with EMPEROR_UPDATE_DIR if needed.
+const PROJECT_DIR = process.env.EMPEROR_UPDATE_DIR || process.cwd();
 const GITHUB_RELEASES_API = "https://api.github.com/repos/emperorclaw/emperorclaw/releases/latest";
 const DOCKER_SOCKET = "/var/run/docker.sock";
 const IMAGE = "ghcr.io/emperorclaw/emperorclaw:latest";

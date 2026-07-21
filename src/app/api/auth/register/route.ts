@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { users, companies, companyMembers, instanceSettings, invitations } from "@/db/schema";
 import { hash } from "argon2";
 import { eq, isNull, sql, and } from "drizzle-orm";
-import { sendEmail, getEmailVerificationEmailHtml } from "@/lib/email";
+import { sendEmail, getEmailVerificationEmailHtml, isEmailConfigured } from "@/lib/email";
 import { consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 import { issueEmailVerificationToken } from "@/lib/email-verification";
 import { getAppUrl } from "@/lib/env";
@@ -191,6 +191,11 @@ export async function POST(req: NextRequest) {
                     );
                 }
 
+                // Without SMTP, a verification email would never arrive and the
+                // user could never log in. Auto-verify so invite-based team
+                // onboarding works out of the box on a fresh self-hosted install.
+                const autoVerify = !isEmailConfigured();
+
                 const newUserResult = await db.transaction(async (tx) => {
                     const [newUser] = await tx
                         .insert(users)
@@ -198,6 +203,7 @@ export async function POST(req: NextRequest) {
                             email,
                             passwordHash,
                             instanceRole: validation.role === "viewer" ? "member" : validation.role,
+                            emailVerifiedAt: autoVerify ? new Date() : null,
                         })
                         .returning();
 
@@ -248,17 +254,22 @@ export async function POST(req: NextRequest) {
 
                 const invitedCompanyName = company?.name ?? "the workspace";
 
-                const { rawToken: verifyToken } = await issueEmailVerificationToken(newUserResult.user.id);
-                const verificationUrl = `${getAppUrl(req)}/signup/verify?token=${verifyToken}&email=${encodeURIComponent(email)}`;
+                if (!autoVerify) {
+                    const { rawToken: verifyToken } = await issueEmailVerificationToken(newUserResult.user.id);
+                    const verificationUrl = `${getAppUrl(req)}/signup/verify?token=${verifyToken}&email=${encodeURIComponent(email)}`;
 
-                await sendEmail({
-                    to: email,
-                    subject: "Verify your Emperor Claw email",
-                    html: getEmailVerificationEmailHtml(email, verificationUrl, invitedCompanyName),
-                });
+                    await sendEmail({
+                        to: email,
+                        subject: "Verify your Emperor Claw email",
+                        html: getEmailVerificationEmailHtml(email, verificationUrl, invitedCompanyName),
+                    });
+                }
 
                 return NextResponse.json({
-                    message: "Account created. Check your inbox to verify your email before logging in.",
+                    message: autoVerify
+                        ? "Account created. You can now log in."
+                        : "Account created. Check your inbox to verify your email before logging in.",
+                    emailVerificationRequired: !autoVerify,
                     data: {
                         email,
                         companyId: newUserResult.companyId,
@@ -282,10 +293,16 @@ export async function POST(req: NextRequest) {
                 );
             }
 
+            // Without SMTP, auto-verify so open self-hosted signups can log in.
+            const openAutoVerify = !isEmailConfigured();
+
             const openResult = await db.transaction(async (tx) => {
                 const [newUser] = await tx
                     .insert(users)
-                    .values({ email, passwordHash, displayName, roleTitle, instanceRole: "member" })
+                    .values({
+                        email, passwordHash, displayName, roleTitle, instanceRole: "member",
+                        emailVerifiedAt: openAutoVerify ? new Date() : null,
+                    })
                     .returning();
 
                 await tx.insert(companyMembers).values({
@@ -297,17 +314,22 @@ export async function POST(req: NextRequest) {
                 return { user: { id: newUser.id, email: newUser.email }, company: existingCompany };
             });
 
-            const { rawToken: openVerifyToken } = await issueEmailVerificationToken(openResult.user.id);
-            const openVerifyUrl = `${getAppUrl(req)}/signup/verify?token=${openVerifyToken}&email=${encodeURIComponent(email)}`;
+            if (!openAutoVerify) {
+                const { rawToken: openVerifyToken } = await issueEmailVerificationToken(openResult.user.id);
+                const openVerifyUrl = `${getAppUrl(req)}/signup/verify?token=${openVerifyToken}&email=${encodeURIComponent(email)}`;
 
-            await sendEmail({
-                to: email,
-                subject: "Verify your Emperor Claw email",
-                html: getEmailVerificationEmailHtml(email, openVerifyUrl, openResult.company.name),
-            });
+                await sendEmail({
+                    to: email,
+                    subject: "Verify your Emperor Claw email",
+                    html: getEmailVerificationEmailHtml(email, openVerifyUrl, openResult.company.name),
+                });
+            }
 
             return NextResponse.json({
-                message: "Account created. Check your inbox to verify your email before logging in.",
+                message: openAutoVerify
+                    ? "Account created. You can now log in."
+                    : "Account created. Check your inbox to verify your email before logging in.",
+                emailVerificationRequired: !openAutoVerify,
                 data: {
                     email,
                     companyId: openResult.company.id,
