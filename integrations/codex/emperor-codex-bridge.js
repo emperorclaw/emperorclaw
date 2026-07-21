@@ -17,6 +17,7 @@
 
 const { spawn } = require("child_process");
 const os = require("os");
+const { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise } = require("./bridge-logic");
 
 const API_URL = (process.env.EMPEROR_CLAW_API_URL || "http://localhost:3000").replace(/\/+$/, "");
 const API_TOKEN = process.env.EMPEROR_CLAW_API_TOKEN || "";
@@ -155,47 +156,23 @@ async function main() {
                 const msgId = msg.id;
                 if (!msgId || seen.has(msgId)) continue;
 
-                // ── SAFETY CHECKS ──────────────────────────────────
-                const senderType = (msg.senderType || "").toLowerCase();
-                const targetId = msg.targetAgentId || msg.target_agent_id || "";
-                const threadType = (msg.threadType || msg.thread_type || "");
+                // ── SAFETY CHECKS (pure logic in ./bridge-logic.js) ─────
                 const threadId = msg.threadId || msg.thread_id || "";
                 const text = (msg.text || "").trim();
 
-                // Reset loop guard on human message
-                if (senderType === "human") {
-                    loopCounts.set(threadId, 0);
-                }
+                const decision = classifyMessage(msg, { agentId: AGENT_ID, agentName: AGENT_NAME });
 
-                // 1. NEVER respond to agent messages (prevents loops)
-                if (senderType === "agent") {
+                // Reset the loop guard whenever a human speaks in the thread.
+                if (decision.resetLoop) loopCounts.set(threadId, 0);
+
+                if (decision.action === "skip") {
                     seen.add(msgId);
                     if (msg.createdAt) lastSeenAt = msg.createdAt;
                     continue;
                 }
 
-                if (!text) { seen.add(msgId); continue; }
-
-                // 2. Only respond to messages explicitly FOR this agent
-                if (targetId && targetId !== AGENT_ID) {
-                    seen.add(msgId);
-                    if (msg.createdAt) lastSeenAt = msg.createdAt;
-                    continue;
-                }
-
-                // 3. Team chat: only respond when @mentioned
-                const isTeamChat = threadType === "team" || (!threadType && !targetId);
-                const mentioned = text.includes(`@${AGENT_NAME}`);
-                if (isTeamChat && !targetId && !mentioned) {
-                    seen.add(msgId);
-                    if (msg.createdAt) lastSeenAt = msg.createdAt;
-                    continue;
-                }
-
-                // 4. Loop guard: max 3 replies per thread
-                const loopCount = (loopCounts.get(threadId) || 0) + 1;
-                loopCounts.set(threadId, loopCount);
-                if (loopCount > 3) {
+                // Loop guard: cap consecutive non-human replies per thread.
+                if (!loopGuardOk(loopCounts, threadId)) {
                     log(`loop guard tripped in thread ${threadId}, pausing`);
                     seen.add(msgId);
                     if (msg.createdAt) lastSeenAt = msg.createdAt;
@@ -257,11 +234,7 @@ async function main() {
 
                         child.on("close", (code) => {
                             // Strip Codex rollout noise (Paperclip pattern)
-                            const clean = stdout
-                                .split(/\r?\n/)
-                                .filter((l) => !/codex_core::rollout/i.test(l))
-                                .join("\n")
-                                .trim();
+                            const clean = stripCodexNoise(stdout);
                             const output = clean || stderr.trim();
                             resolve({ output, code });
                         });
@@ -271,12 +244,11 @@ async function main() {
                     if (result.output) {
                         await sendReply(msg, result.output);
                         log(`replied to ${msgId} (${result.output.length} chars)`);
-                        // Estimate and report token usage (rough: 4 chars ≈ 1 token).
-                        // Split into input (prompt) vs output (reply) so the server
-                        // applies the correct per-direction price and enforces budget.
-                        const inputTokens = Math.ceil(text.length / 4);
-                        const outputTokens = Math.ceil(result.output.length / 4);
-                        reportUsage(inputTokens, outputTokens).catch(() => {});
+                        // Estimate and report token usage. Split into input (prompt)
+                        // vs output (reply) so the server applies the correct
+                        // per-direction price and enforces budget.
+                        const usage = estimateUsageTokens(text, result.output);
+                        reportUsage(usage.inputTokens, usage.outputTokens).catch(() => {});
                     }
                 } catch (execErr) {
                     log(`codex exec failed: ${execErr.message}`);
