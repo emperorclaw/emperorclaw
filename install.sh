@@ -26,12 +26,16 @@ echo ""
 
 # ── Parse args ──────────────────────────────────────────────────
 DOMAIN=""
-for arg in "$@"; do
-    case "$arg" in
-        --domain=*) DOMAIN="${arg#*=}" ;;
-        --domain) DOMAIN="$2"; shift ;;
+ADMIN_EMAIL=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --domain=*)      DOMAIN="${1#*=}" ;;
+        --domain)        DOMAIN="${2:-}"; shift ;;
+        --admin-email=*) ADMIN_EMAIL="${1#*=}" ;;
+        --admin-email)   ADMIN_EMAIL="${2:-}"; shift ;;
+        *) echo -e "${YELLOW}Ignoring unknown argument: $1${NC}" ;;
     esac
-    shift 2>/dev/null || true
+    shift
 done
 
 # ── Prerequisites ────────────────────────────────────────────────
@@ -102,6 +106,19 @@ if [ ! -f ".env" ]; then
     fi
 
     echo -e "${GREEN}✓ .env created with generated secrets${NC}"
+
+    # Platform admin email — unlocks /ops and the in-app Update button.
+    if [ -n "$ADMIN_EMAIL" ]; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|^EMPEROR_PLATFORM_ADMIN_EMAILS=.*|EMPEROR_PLATFORM_ADMIN_EMAILS=$ADMIN_EMAIL|" .env
+        else
+            sed -i "s|^EMPEROR_PLATFORM_ADMIN_EMAILS=.*|EMPEROR_PLATFORM_ADMIN_EMAILS=$ADMIN_EMAIL|" .env
+        fi
+        echo -e "${GREEN}✓ Platform admin set to $ADMIN_EMAIL${NC}"
+    else
+        echo -e "${YELLOW}ℹ  No --admin-email given. Set EMPEROR_PLATFORM_ADMIN_EMAILS in .env${NC}"
+        echo -e "${YELLOW}   (to your admin email) to unlock /ops and the in-app Update button.${NC}"
+    fi
 else
     echo -e "${YELLOW}.env already exists — skipping${NC}"
     # Check if NEXTAUTH_SECRET is still blank
@@ -126,11 +143,13 @@ fi
 echo ""
 
 # ── Build & start ────────────────────────────────────────────────
-echo -e "${CYAN}Building and starting EmperorClaw ...${NC}"
-echo -e "This may take a few minutes on first run."
+echo -e "${CYAN}Starting EmperorClaw ...${NC}"
+echo -e "Pulling the prebuilt image on first run may take a minute."
+echo -e "(To build from source instead, uncomment 'build: .' in docker-compose.yml.)"
 echo ""
 
-$DOCKER_COMPOSE_CMD up -d --build
+# docker-compose.yml uses the prebuilt GHCR image by default, so no --build.
+$DOCKER_COMPOSE_CMD up -d
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -149,5 +168,5 @@ echo -e "${GREEN}║  Site: https://emperorclaw.com                             
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "To stop:  ${YELLOW}cd $REPO_DIR && $DOCKER_COMPOSE_CMD down${NC}"
-echo -e "To update: ${YELLOW}cd $REPO_DIR && git pull && $DOCKER_COMPOSE_CMD up -d --build${NC}"
+echo -e "To update: ${YELLOW}cd $REPO_DIR && ./scripts/update.sh --docker${NC}  (or use the Update button in /ops)"
 echo ""
