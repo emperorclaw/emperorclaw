@@ -169,6 +169,55 @@
       "when": 1783900000000,
       "tag": "0023_consolidate-artifact-storage-schema",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783900100000,
+      "tag": "0024_team-rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783900200000,
+      "tag": "0025_agent-provider-and-doctrine",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783900300000,
+      "tag": "0026_deployment-mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783900400000,
+      "tag": "0027_agent-budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783900500000,
+      "tag": "0028_llm-pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783900600000,
+      "tag": "0029_monthly-reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783900700000,
+      "tag": "0030_reconcile-schema-drift",
+      "breakpoints": true
     }
   ]
 }
