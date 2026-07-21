@@ -36,7 +36,7 @@ COPY --from=builder /app/src/db/schema.ts ./src/db/schema.ts
 COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv
 COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
-COPY --from=builder /app/node_modules/postgres ./node_modules/postgres
+COPY --from=builder /app/node_modules/pg ./node_modules/pg
 
 # Install tsx for running TypeScript migrations
 RUN npm install -g tsx
