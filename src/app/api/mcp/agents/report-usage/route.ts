@@ -71,13 +71,11 @@ export async function POST(req: NextRequest) {
         const totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0) || tokensUsed || 0;
         if (totalTokens <= 0) return NextResponse.json({ ok: true, agentId, monthlyTokenUsage: 0 });
 
-        // Resolve model
-        let resolvedModel = model || null;
-        if (!resolvedModel) {
-            const [a] = await db.select({ m: agents.llmModel, p: agents.llmProvider })
-                .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
-            resolvedModel = a?.m || a?.p || "deepseek-chat";
-        }
+        // Model: ALWAYS use agent's configured llmModel from DB.
+        // The bridge may send a stale/wrong model name — the admin's choice in Emperor UI is authoritative.
+        const [agentCfg] = await db.select({ m: agents.llmModel, p: agents.llmProvider })
+            .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
+        const resolvedModel = agentCfg?.m || agentCfg?.p || model || "deepseek-chat";
 
         const inputT = inputTokens ?? Math.round(totalTokens * 0.8);
         const outputT = outputTokens ?? Math.round(totalTokens * 0.2);
