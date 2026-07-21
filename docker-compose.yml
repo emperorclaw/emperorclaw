@@ -36,13 +36,17 @@ services:
       postgres:
         condition: service_healthy
 
-  # ---- Auto-update via Watchtower (uncomment to enable) ----
-  # watchtower:
-  #   image: containrrr/watchtower
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   command: --interval 3600 --cleanup emperorclaw-app-1
-  #   restart: unless-stopped
+  # ---- Auto-update via Watchtower ----
+  # Checks for new GHCR images every 5 min. The app can also trigger
+  # an immediate update via POST http://watchtower:8080/v1/update
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup --http-api emperorclaw-app-1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
 
 volumes:
   pgdata:

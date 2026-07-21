@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { IconRefresh, IconLoader2, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
+import { IconRefresh, IconLoader2, IconCircleCheck, IconAlertTriangle, IconDownload, IconCloudCheck } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 
 type VersionInfo = {
@@ -9,6 +9,7 @@ type VersionInfo = {
     latest: string;
     updateAvailable: boolean;
     changelog: string | null;
+    mode?: "docker" | "bare-metal";
     error?: string;
 };
 
@@ -78,9 +79,12 @@ export function UpdatePanel() {
             "npm-build": "Building application",
             "copy-static": "Copying static assets",
             "pm2-restart": "Restarting server",
+            "watchtower-trigger": "Triggering Watchtower update",
         };
         return map[step] || step;
     };
+
+    const isDocker = version?.mode === "docker";
 
     return (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5">
@@ -93,6 +97,9 @@ export function UpdatePanel() {
                                 ? `v${version.current} → v${version.latest} available`
                                 : `v${version.current} — up to date`
                             : "Checking..."}
+                        {isDocker && (
+                            <span className="text-zinc-600 ml-1">· Watchtower auto-update</span>
+                        )}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -106,7 +113,20 @@ export function UpdatePanel() {
                         <IconRefresh className={`h-3 w-3 ${checking ? "animate-spin" : ""}`} />
                         Check
                     </Button>
-                    {version?.updateAvailable && (
+                    {version?.updateAvailable && (isDocker ? (
+                        <Button
+                            size="sm"
+                            onClick={handleUpdate}
+                            disabled={updating}
+                            className="h-7 text-xs bg-cyan-600 hover:bg-cyan-500 text-white"
+                        >
+                            {updating ? (
+                                <IconLoader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                                <><IconDownload className="h-3 w-3" /> Pull &amp; Restart</>
+                            )}
+                        </Button>
+                    ) : (
                         <Button
                             size="sm"
                             onClick={handleUpdate}
@@ -119,7 +139,7 @@ export function UpdatePanel() {
                                 "Update"
                             )}
                         </Button>
-                    )}
+                    ))}
                 </div>
             </div>
 
