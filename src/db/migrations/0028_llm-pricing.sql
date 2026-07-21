@@ -33,11 +33,18 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS llm_model text;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS monthly_cost_cents integer NOT NULL DEFAULT 0;
 
 -- 4. Seed pricing data (cents × 100 per 1K tokens). Prices editable via UI.
+-- Sourced from official provider pricing pages as of July 2026.
 INSERT INTO llm_pricing (provider, model, label, input_price_per_1k, output_price_per_1k) VALUES
-    -- DeepSeek
-    ('deepseek', 'deepseek-chat', 'DeepSeek V3', 14, 28),
-    ('deepseek', 'deepseek-reasoner', 'DeepSeek R1', 55, 219),
-    -- OpenAI
+    -- DeepSeek (api-docs.deepseek.com, Jul 2026)
+    ('deepseek', 'deepseek-v4-flash', 'DeepSeek V4 Flash', 14, 28),
+    ('deepseek', 'deepseek-v4-pro', 'DeepSeek V4 Pro', 44, 87),
+    -- Legacy DeepSeek (deprecated 2026-07-24)
+    ('deepseek', 'deepseek-chat', 'DeepSeek V3 (legacy)', 14, 28),
+    ('deepseek', 'deepseek-reasoner', 'DeepSeek R1 (legacy)', 55, 219),
+    -- OpenAI (platform.openai.com, mid-2026)
+    ('openai', 'gpt-5.6', 'GPT-5.6', 500, 2000),
+    ('openai', 'gpt-5.6-mini', 'GPT-5.6 Mini', 50, 200),
+    ('openai', 'gpt-5.6-nano', 'GPT-5.6 Nano', 15, 60),
     ('openai', 'gpt-4o', 'GPT-4o', 250, 1000),
     ('openai', 'gpt-4o-mini', 'GPT-4o Mini', 15, 60),
     ('openai', 'gpt-4.1', 'GPT-4.1', 200, 800),
@@ -45,25 +52,27 @@ INSERT INTO llm_pricing (provider, model, label, input_price_per_1k, output_pric
     ('openai', 'gpt-4.1-nano', 'GPT-4.1 Nano', 10, 40),
     ('openai', 'o3', 'o3', 1000, 4000),
     ('openai', 'o4-mini', 'o4-mini', 110, 440),
-    ('openai', 'gpt-5', 'GPT-5', 500, 2000),
-    ('openai', 'gpt-5-mini', 'GPT-5 Mini', 50, 200),
-    ('openai', 'gpt-5-nano', 'GPT-5 Nano', 15, 60),
-    -- Anthropic
+    ('openai', 'codex', 'Codex', 300, 1200),
+    -- Anthropic (docs.anthropic.com, mid-2026)
     ('anthropic', 'claude-sonnet-4-20250514', 'Claude Sonnet 4', 300, 1500),
     ('anthropic', 'claude-opus-4-20250514', 'Claude Opus 4', 1500, 7500),
-    ('anthropic', 'claude-3.5-haiku-20241022', 'Claude 3.5 Haiku', 80, 400),
-    ('anthropic', 'claude-4-5-haiku', 'Claude 4.5 Haiku', 100, 500),
-    -- Google
-    ('google', 'gemini-2.5-flash', 'Gemini 2.5 Flash', 15, 60),
-    ('google', 'gemini-2.5-pro', 'Gemini 2.5 Pro', 125, 500),
-    ('google', 'gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 5, 20),
-    -- xAI / Grok
+    ('anthropic', 'claude-haiku-3.5', 'Claude 3.5 Haiku', 80, 400),
+    -- Google Gemini (ai.google.dev, Jul 2026)
+    ('google', 'gemini-3.5-flash', 'Gemini 3.5 Flash', 150, 900),
+    ('google', 'gemini-3.1-pro-preview', 'Gemini 3.1 Pro', 200, 1200),
+    ('google', 'gemini-3.1-flash-lite', 'Gemini 3.1 Flash Lite', 25, 150),
+    ('google', 'gemini-3-flash-preview', 'Gemini 3 Flash', 50, 300),
+    ('google', 'gemini-2.5-pro', 'Gemini 2.5 Pro', 125, 1000),
+    ('google', 'gemini-2.5-flash', 'Gemini 2.5 Flash', 30, 250),
+    ('google', 'gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 10, 40),
+    -- xAI / Grok (x.ai, mid-2026)
     ('grok', 'grok-3', 'Grok 3', 300, 1500),
     ('grok', 'grok-3-mini', 'Grok 3 Mini', 30, 150),
     ('grok', 'grok-4', 'Grok 4', 500, 2000),
-    -- OpenRouter (proxy — prices vary)
+    -- OpenRouter (proxy, prices vary)
     ('openrouter', 'openrouter-auto', 'OpenRouter (auto)', 50, 150)
 ON CONFLICT (provider, model) DO UPDATE SET
     label = EXCLUDED.label,
     input_price_per_1k = EXCLUDED.input_price_per_1k,
-    output_price_per_1k = EXCLUDED.output_price_per_1k;
+    output_price_per_1k = EXCLUDED.output_price_per_1k,
+    active = true;
