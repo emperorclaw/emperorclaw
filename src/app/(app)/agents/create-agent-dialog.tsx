@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { agentRoleTemplates, getAgentTemplate, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/agent-providers";
+import { ModelSearchSelect } from "@/components/budget-inline-edit";
 import { cn } from "@/lib/utils";
 
 type Step = "role" | "provider" | "name";
@@ -343,24 +344,18 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                         </div>
                         )}
 
-                        {/* LLM Model — specific model selection for cost tracking */}
+                        {/* LLM Model — searchable dropdown with pricing */}
                         {selectedProvider.supportsLlmProvider && pricingOptions.length > 0 && (
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                                 LLM Model <span className="text-zinc-500 font-normal">— For cost tracking</span>
                             </label>
-                            <select
+                            <ModelSearchSelect
+                                options={pricingOptions}
                                 value={llmModel}
-                                onChange={(e) => setLlmModel(e.target.value)}
-                                className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400"
-                            >
-                                <option value="">Auto-detect</option>
-                                {pricingOptions.map(p => (
-                                    <option key={`${p.provider}/${p.model}`} value={p.model}>
-                                        {p.label} ({p.provider}) — ${(p.inputPricePer1k / 100000).toFixed(2)}/1M in
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={setLlmModel}
+                                placeholder="Auto-detect"
+                            />
                         </div>
                         )}
 

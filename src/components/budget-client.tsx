@@ -106,7 +106,7 @@ export function BudgetClient({ initialAgents, initialPricing }: {
                                             <ModelInlineSelect
                                                 agentId={agent.id}
                                                 currentModel={agent.llmModel}
-                                                options={pricing.map(p => ({ model: p.model, label: p.label, provider: p.provider }))}
+                                                options={pricing.map(p => ({ model: p.model, label: p.label, provider: p.provider, inputPricePer1k: p.inputPricePer1k, outputPricePer1k: p.outputPricePer1k }))}
                                                 onSaved={refresh}
                                             />
                                         </td>
