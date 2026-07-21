@@ -50,6 +50,9 @@ export async function PATCH(
     if (typeof body.llmProvider === "string" && ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider)) {
         updates.llmProvider = body.llmProvider || null;
     }
+    if (typeof body.llmModel === "string") {
+        updates.llmModel = body.llmModel || null;
+    }
 
     if (Object.keys(updates).length === 0) {
         return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
