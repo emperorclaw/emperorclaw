@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""EmperorClaw E2E Test Suite v3"""
-import json, time, urllib.request, urllib.error, uuid, sys, os
+"""EmperorClaw E2E v7"""
+import json, time, urllib.request, uuid, sys, os
 
 BASE = os.environ.get("EC_URL", "http://localhost:3001")
 TOKEN = os.environ.get("EC_TOKEN", "ec_72a35087b809fb4e852dc73d72dd89b492b28d7814e833d0")
-P, F, S = "\u2705", "\u274c", "\u23ed\ufe0f"
+P, F = "\u2705", "\u274c"
 
-def api(method, path, body=None):
+def api(method, path, body=None, hdrs=None):
     url = f"{BASE}/api/mcp{path}"
     data = json.dumps(body).encode() if body else None
     h = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json", "Idempotency-Key": str(uuid.uuid4())}
+    if hdrs: h.update(hdrs)
     req = urllib.request.Request(url, data=data, headers=h, method=method)
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
@@ -27,114 +28,110 @@ def case(name, fn):
     print(f"\n{'='*50}\n{name}\n{'='*50}")
     try:
         r = fn(); results.append((name, r))
-        print(f"  -> {P if r else (S if r is None else F)}")
+        print(f"  -> {P if r else F}")
     except Exception as e:
         print(f"  {F} {e}"); results.append((name, False))
 
+# ============================================================
 def tc01():
-    r = api("POST","/agents",{"name":"E2E Runner v3","role":"e2e-tester","provider":"hermes","deploymentMode":"local","llmProvider":"deepseek","llmModel":"deepseek-v4-flash"})
+    r = api("POST","/agents",{"name":"E2E v7","role":"e2e","provider":"hermes","deploymentMode":"local","llmProvider":"deepseek","llmModel":"deepseek-v4-flash"})
     aid = (r[1].get("agent") or {}).get("id","")
     o = ok("Agent created", bool(aid), aid[:12])
     r2 = api("GET","/agents")
     return o and ok("In list", any(a.get("id")==aid for a in r2[1].get("agents",[])))
 
 def tc02():
-    r = api("GET","/agents")
-    agent = next((a for a in r[1].get("agents",[]) if a.get("provider")=="hermes" and a.get("status")=="online"), None)
-    if not agent: print("  No online Hermes agent"); return None
-    aid = agent["id"]
-    print(f"  Agent: {agent['name']} ({aid[:8]})")
-    r = api("POST","/threads",{"type":"direct","agentId":aid})
-    tid = (r[1].get("thread") or {}).get("id","")
+    agents = api("GET","/agents")[1].get("agents",[])
+    a = next((x for x in agents if x.get("provider")=="hermes" and x.get("status")=="online"), None)
+    if not a: print("  No online Hermes agent"); return False
+    aid = a["id"]
+    print(f"  {a['name']} ({aid[:8]})")
+    tid = (api("POST","/threads",{"type":"direct","agentId":aid})[1].get("thread") or {}).get("id","")
     o = ok("Thread", bool(tid), tid[:8])
-    r = api("POST","/messages/send",{"thread_id":tid,"thread_type":"direct","agentId":aid,"text":f"E2E {time.strftime('%H:%M:%S')}: Reply PONG"})
-    o &= ok("Sent", r[0] in (200,201))
+    o &= ok("Sent", api("POST","/messages/send",{"thread_id":tid,"thread_type":"direct","agentId":aid,"text":f"E2E {time.strftime('%H:%M:%S')}: Reply PONG"})[0] in (200,201))
     print("  Waiting 15s...", end=" ", flush=True); time.sleep(15); print("done")
-    r = api("GET", f"/threads/{tid}/messages")
-    has = any("PONG" in str(m.get("text","")).upper() for m in r[1].get("messages",[]))
-    return o and ok("Replied PONG", has, f"{len(r[1].get('messages',[]))} msgs")
+    msgs = api("GET",f"/threads/{tid}/messages")[1].get("messages",[])
+    return o and ok("Replied PONG", any("PONG" in str(m.get("text","")).upper() for m in msgs), f"{len(msgs)} msgs")
 
 def tc03():
     name = f"e2e-pipe-{uuid.uuid4().hex[:6]}"
-    r = api("POST","/pipelines",{"name":name,"purpose":"E2E test","docMarkdown":"E2E test pipeline.","trigger":"manual","steps":[{"name":"analyze","taskType":"analysis"},{"name":"report","taskType":"content"}],"status":"active"})
+    r = api("POST","/pipelines",{"name":name,"purpose":"E2E","docMarkdown":"E2E.","trigger":"manual","steps":[{"name":"s1"}],"status":"active"})
     pid = (r[1].get("pipeline") or r[1]).get("id","")
     o = ok("Created", bool(pid), name)
-    r2 = api("GET","/pipelines")
-    found = any(p.get("name")==name for p in r2[1].get("pipelines",[]))
-    return o and ok("In list", found)
+    return o and ok("In list", any(p.get("name")==name for p in api("GET","/pipelines")[1].get("pipelines",[])))
 
 def tc04():
     name = f"e2e-kb-{uuid.uuid4().hex[:6]}"; content = f"E2E KB {time.strftime('%H:%M:%S')}"
-    r = api("POST","/resources",{"displayName":name,"resourceType":"knowledge_base","provider":"emperor-claw-plugin","scopeType":"company","configText":content,"isShared":True,"status":"active"})
-    rid = (r[1].get("resource") or r[1]).get("id","")
+    rid = (api("POST","/resources",{"name":name,"resourceType":"knowledge_base","provider":"ec","scopeType":"company","configText":content,"isShared":True,"status":"active"})[1].get("resource") or {}).get("id","")
     o = ok("Created", bool(rid), name)
     if rid:
-        r2 = api("GET",f"/resources/{rid}")
-        res = r2[1].get("resource") or r2[1]
-        txt = res.get("configText","") if isinstance(res,dict) else str(res)
-        return o and ok("Readable", content in txt)
+        res = (api("GET",f"/resources/{rid}")[1].get("resource") or {})
+        o &= ok("Readable", content in str(res.get("configText","")), f"got: {res.get('configText','')[:50]}")
+    return o
 
 def tc05():
-    fname = f"e2e-f-{uuid.uuid4().hex[:6]}"
-    r = api("POST","/folders",{"name":fname})
-    fid = (r[1].get("folder") or r[1]).get("id","")
-    o = ok("Folder", bool(fid), fname)
-    data = f"folderId={fid}&kind=document&displayName=test-output.txt".encode()
-    req = urllib.request.Request(f"{BASE}/api/mcp/artifacts", data=data,
-        headers={"Authorization":f"Bearer {TOKEN}","Content-Type":"application/x-www-form-urlencoded"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            j = json.loads(resp.read().decode())
-            o &= ok("Uploaded", bool((j.get("artifact") or j).get("id")), "test-output.txt")
-    except Exception as e: o &= ok("Uploaded", False, str(e)[:80])
-    r2 = api("GET",f"/folders/{fid}/contents")
-    items = r2[1].get("artifacts") or r2[1].get("contents") or []
-    return o and ok("Items in folder", len(items)>0, len(items))
+    pid = api("GET","/projects")[1].get("projects",[{}])[0].get("id","")
+    fid = (api("POST","/folders",{"name":f"e2e-f-{uuid.uuid4().hex[:6]}"})[1].get("folder") or {}).get("id","")
+    o = ok("Folder", bool(fid), fid[:8] if fid else "no")
+    if fid and pid:
+        # Multipart upload with required fields
+        boundary = "----E2EFinal"
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\nContent-Type: text/plain\r\n\r\nE2E OK\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"folderId\"\r\n\r\n{fid}\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"projectId\"\r\n\r\n{pid}\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\ndocument\r\n"
+            f"--{boundary}--\r\n"
+        ).encode()
+        req = urllib.request.Request(f"{BASE}/api/mcp/artifacts/upload", data=body,
+            headers={"Authorization":f"Bearer {TOKEN}","Content-Type":f"multipart/form-data; boundary={boundary}","Idempotency-Key":str(uuid.uuid4())}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                j = json.loads(resp.read().decode())
+                o &= ok("Uploaded", bool((j.get("artifact") or j).get("id")))
+        except urllib.error.HTTPError as e:
+            o &= ok("Uploaded", False, f"HTTP {e.code}: {e.read().decode()[:120]}")
+        except Exception as e:
+            o &= ok("Uploaded", False, str(e)[:80])
+        items = api("GET",f"/folders/{fid}/contents")[1].get("artifacts",[])
+        o &= ok("Items in folder", len(items)>0, len(items))
+    return o
 
 def tc06():
-    r = api("GET","/projects"); projs = r[1].get("projects",[])
-    proj = projs[0] if projs else api("POST","/projects",{"goal":"E2E Project"})[1].get("project",{})
-    pid = proj.get("id","")
-    o = ok("Project", bool(pid), proj.get("goal","")[:30])
-    r = api("POST","/tasks",{"projectId":pid,"taskType":"ops","title":f"E2E Task {uuid.uuid4().hex[:4]}","description":"E2E test","acceptanceCriteria":["Passes"],"deliverables":["Report"],"priority":50})
-    tid = (r[1].get("task") or r[1]).get("id","")
+    pid = api("GET","/projects")[1].get("projects",[{}])[0].get("id","")
+    aid = api("GET","/agents")[1].get("agents",[{}])[0].get("id","")
+    o = ok("Setup", bool(pid) and bool(aid), f"P:{pid[:6]} A:{aid[:6]}")
+    tid = (api("POST","/tasks",{"projectId":pid,"taskType":"ops","title":f"E2E {uuid.uuid4().hex[:4]}","description":"E2E","acceptanceCriteria":["OK"],"deliverables":["Rpt"],"priority":50})[1].get("task") or {}).get("id","")
     o &= ok("Task created", bool(tid), tid[:8])
     if tid:
-        r = api("POST",f"/tasks/{tid}/notes",{"content":"E2E note"}); o &= ok("Note added", r[0] in (200,201))
-        r = api("POST",f"/tasks/{tid}/result",{"state":"done","summary":"Done"}); o &= ok("Completed", r[0] in (200,201))
-        r = api("GET",f"/tasks/{tid}"); st = (r[1].get("task") or r[1]).get("state",""); o &= ok("State=done", st in ("done","review"), st)
+        api("POST",f"/tasks/{tid}/assign",{"agentId":aid})
+        o &= ok("Note", api("POST",f"/tasks/{tid}/notes",{"agentId":aid,"note":"E2E"})[0] in (200,201))
+        o &= ok("Complete", api("POST",f"/tasks/{tid}/result",{"agentId":aid,"state":"done","summary":"Done"})[0] in (200,201))
+        st = (api("GET",f"/tasks/{tid}")[1].get("task") or {}).get("state","")
+        o &= ok("State=done", st in ("done","review"), st)
     return o
 
 def tc07():
-    r = api("GET","/pricing")
-    o = ok("Pricing API", len(r[1].get("pricing",[]))>0, f"{len(r[1].get('pricing',[]))} models")
-    r = api("GET","/agents"); agents = r[1].get("agents",[])
-    aid = agents[0].get("id","") if agents else ""
+    o = ok("Pricing API", len(api("GET","/pricing")[1].get("pricing",[]))>0)
+    aid = api("GET","/agents")[1].get("agents",[{}])[0].get("id","")
     if aid:
         api("PATCH",f"/agents/{aid}",{"llmModel":"deepseek-v4-flash"})
-        # 500K input + 100K output @ $0.14/$0.28 per 1M = ~$0.098 = ~10 cents
         r = api("POST","/agents/report-usage",{"agentId":aid,"inputTokens":500000,"outputTokens":100000})
         cc = r[1].get("costCents",0) if isinstance(r[1],dict) else 0
-        o &= ok("report-usage OK", r[1].get("ok")==True if isinstance(r[1],dict) else False)
-        o &= ok(f"Cost={cc}\u00a2", cc > 0, f"${cc/100:.4f}")
-        o &= ok("Cost ~$0.10", 7 <= cc <= 13, f"{cc}\u00a2")  # ~10 cents +/- 3
+        o &= ok("report-usage OK", r[1].get("ok")==True)
+        o &= ok(f"Cost > 0", cc > 0, f"{cc}\u00a2")
+        o &= ok("Cost ~10\u00a2", 7 <= cc <= 13, f"{cc}\u00a2")
     return o
 
-# ============================================================
-print(f"EmperorClaw E2E — {BASE}\nTime: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-case("TC-01 Agent Creation", tc01)
-case("TC-02 Messaging (PONG)", tc02)
-case("TC-03 Pipeline", tc03)
-case("TC-04 Knowledge Base", tc04)
-case("TC-05 Storage", tc05)
-case("TC-06 Task Lifecycle", tc06)
-case("TC-07 Budget & Cost", tc07)
+# Run
+print(f"EmperorClaw E2E v7 — {BASE}")
+for t in [(tc01,"TC-01 Agent Creation"),(tc02,"TC-02 Messaging"),(tc03,"TC-03 Pipeline"),
+           (tc04,"TC-04 Knowledge Base"),(tc05,"TC-05 Storage"),(tc06,"TC-06 Task Lifecycle"),
+           (tc07,"TC-07 Budget & Cost")]:
+    case(t[1], t[0])
 
-print(f"\n{'='*50}\nRESULTS\n{'='*50}")
-ps = fs = ss = 0
-for name, r in results:
-    if r is None: print(f"  {S} {name}"); ss+=1
-    elif r: print(f"  {P} {name}"); ps+=1
-    else: print(f"  {F} {name}"); fs+=1
-print(f"\n{ps}/{ps+fs+ss} passed")
+ps = sum(1 for _,r in results if r)
+fs = sum(1 for _,r in results if not r)
+print(f"\n{'='*50}\n{ps}/{ps+fs} passed")
+for n,r in results: print(f"  {P if r else F} {n}")
 sys.exit(0 if fs==0 else 1)
