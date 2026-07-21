@@ -142,7 +142,6 @@ async function main() {
     await heartbeat();
 
     let lastHeartbeat = Date.now();
-    let msgCount = 0;
 
     while (true) {
         try {
@@ -205,11 +204,10 @@ async function main() {
 
                 log(`dispatching message ${msgId}: "${text.slice(0, 80)}..."`);
                 
-                // Budget check — skip if paused
-                let budgetOk = true;
-                if (msgCount++ % 5 === 0) { // Check every 5 messages
-                    budgetOk = await checkBudget();
-                }
+                // Budget check — skip if paused. Check on EVERY message: sampling
+                // (every 5th) let a paused agent keep answering 4 of 5 messages.
+                // checkBudget() is a single cheap GET and messages are infrequent.
+                const budgetOk = await checkBudget();
                 if (!budgetOk) {
                     await sendReply(msg, `⚠️ Budget exhausted. ${AGENT_NAME} is paused until the next billing cycle.`);
                     await updateStatus(msg, { typing: false, executionState: "resolved" });

@@ -14,7 +14,10 @@ export async function GET() {
         {
             version: pkg.version,
             name: pkg.name,
-            repo: "josezuma/emperorclaw",
+            // Canonical public repo. Must match the slug used by the update-check
+            // routes (emperorclaw/emperorclaw); the old josezuma/emperorclaw only
+            // resolves via a GitHub 301 redirect, so the banner checked the wrong repo.
+            repo: "emperorclaw/emperorclaw",
         },
         { status: 200 },
     );
