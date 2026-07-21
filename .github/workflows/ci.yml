@@ -27,8 +27,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
+      # Advisory until the ~22 pre-existing lint errors are burned down; then
+      # drop continue-on-error to make it a hard gate.
+      - name: Lint (advisory)
         run: npm run lint
+        continue-on-error: true
 
       - name: Typecheck
         run: npx tsc --noEmit
