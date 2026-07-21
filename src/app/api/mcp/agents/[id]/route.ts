@@ -39,10 +39,13 @@ export async function PATCH(
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = parsed.data;
+        const body = parsed.data;
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
 
         // Ensure we actually have something to update
-        if (name === undefined && role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined) {
+        const hasBudget = typeof body.monthlyBudgetCents === "number" || typeof body.monthlyCostCents === "number" || typeof body.monthlyTokenUsage === "number" || (typeof body.budgetStatus === "string" && ["active","warning","paused"].includes(body.budgetStatus));
+        const hasLLM = typeof body.llmProvider === "string" || typeof body.llmModel === "string";
+        if (name === undefined && role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined && !hasBudget && !hasLLM) {
             return NextResponse.json({ error: "At least one field to update must be provided" }, { status: 400 });
         }
 
@@ -62,6 +65,12 @@ export async function PATCH(
         if (modelPolicyJson !== undefined) updateData.modelPolicyJson = modelPolicyJson;
         if (concurrencyLimit !== undefined) updateData.concurrencyLimit = concurrencyLimit;
         if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+        if (typeof body.monthlyBudgetCents === "number" && body.monthlyBudgetCents >= 0) updateData.monthlyBudgetCents = Math.round(body.monthlyBudgetCents);
+        if (typeof body.monthlyCostCents === "number" && body.monthlyCostCents >= 0) updateData.monthlyCostCents = Math.round(body.monthlyCostCents);
+        if (typeof body.monthlyTokenUsage === "number" && body.monthlyTokenUsage >= 0) updateData.monthlyTokenUsage = Math.round(body.monthlyTokenUsage);
+        if (typeof body.budgetStatus === "string" && ["active", "warning", "paused"].includes(body.budgetStatus)) updateData.budgetStatus = body.budgetStatus;
+        if (typeof body.llmProvider === "string") updateData.llmProvider = body.llmProvider || null;
+        if (typeof body.llmModel === "string") updateData.llmModel = body.llmModel || null;
 
         const [updatedAgent] = await db.update(agents).set(updateData).where(eq(agents.id, agentId)).returning();
 
