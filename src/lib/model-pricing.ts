@@ -45,16 +45,9 @@ export function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
 
-/** Budget status from usage vs limit */
-export function computeBudgetStatus(
-    monthlyBudgetCents: number,
-    monthlyTokenUsage: number,
-    modelId?: string
-): "active" | "warning" | "paused" {
-    if (monthlyBudgetCents <= 0) return "active"; // unlimited
-    const estimatedCost = estimateCost(modelId || "openrouter/auto", monthlyTokenUsage, 0);
-    const percentUsed = (estimatedCost / monthlyBudgetCents) * 100;
-    if (percentUsed >= 100) return "paused";
-    if (percentUsed >= 80) return "warning";
-    return "active";
-}
+// NOTE: Budget status is NOT computed here. The single source of truth for
+// budget enforcement is POST /api/mcp/agents/report-usage, which prices the
+// exact input/output split against the `llm_pricing` DB table and flips
+// budget_status (active → warning at 80% → paused at 100%). An earlier
+// computeBudgetStatus() helper duplicated that logic incorrectly (it costed
+// output tokens at $0) and was unused — removed to avoid drift.

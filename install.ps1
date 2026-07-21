@@ -1,5 +1,5 @@
 ﻿# EmperorClaw - One-command installer (Windows PowerShell)
-param([string]$Domain = "")
+param([string]$Domain = "", [string]$AdminEmail = "")
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
@@ -54,6 +54,13 @@ if (-not (Test-Path ".env")) {
         $c = $c -replace '(?m)^APP_URL=.*$', "APP_URL=https://$Domain"
         $c = $c -replace '(?m)^NEXTAUTH_URL=.*$', "NEXTAUTH_URL=https://$Domain"
     }
+    if ($AdminEmail) {
+        $c = $c -replace '(?m)^EMPEROR_PLATFORM_ADMIN_EMAILS=.*$', "EMPEROR_PLATFORM_ADMIN_EMAILS=$AdminEmail"
+        Write-Host "[OK] Platform admin set to $AdminEmail" -ForegroundColor Green
+    } else {
+        Write-Host "[i] No -AdminEmail given. Set EMPEROR_PLATFORM_ADMIN_EMAILS in .env" -ForegroundColor Yellow
+        Write-Host "    (to your admin email) to unlock /ops and the in-app Update button." -ForegroundColor Yellow
+    }
     $c | Out-File -Encoding ascii .env -NoNewline
     Write-Host "[OK] .env created" -ForegroundColor Green
 } else {
@@ -61,8 +68,9 @@ if (-not (Test-Path ".env")) {
 }
 Write-Host ""
 
-Write-Host "Building and starting EmperorClaw ..." -ForegroundColor Cyan
-docker compose up -d --build
+Write-Host "Starting EmperorClaw (pulling prebuilt image) ..." -ForegroundColor Cyan
+# docker-compose.yml uses the prebuilt GHCR image by default, so no --build.
+docker compose up -d
 
 Write-Host ""
 Write-Host "==============================================================" -ForegroundColor Green
@@ -75,5 +83,5 @@ Write-Host "  Site: https://emperorclaw.com" -ForegroundColor Green
 Write-Host "==============================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host ("To stop:  cd " + $RepoDir + "; docker compose down") -ForegroundColor Yellow
-Write-Host ("To update: cd " + $RepoDir + "; git pull; docker compose up -d --build") -ForegroundColor Yellow
+Write-Host ("To update: cd " + $RepoDir + "; .\scripts\update.ps1  (or use the Update button in /ops)") -ForegroundColor Yellow
 Write-Host ""

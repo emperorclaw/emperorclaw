@@ -81,13 +81,19 @@ async function checkBudget() {
     }
 }
 
-async function reportTokenUsage(tokens) {
+async function reportUsage(inputTokens, outputTokens) {
+    // Use /agents/report-usage (same path as the Hermes bridge): the server
+    // INCREMENTS monthly usage, computes cost from the pricing table, and flips
+    // budgetStatus to warning/paused. The old PATCH /agents/{id} path OVERWROTE
+    // monthlyTokenUsage, never set cost, and never enforced the budget.
     try {
-        await api("PATCH", `/agents/${AGENT_ID}`, {
-            monthlyTokenUsage: tokens,
+        await api("POST", "/agents/report-usage", {
+            agentId: AGENT_ID,
+            inputTokens: Math.max(0, Math.round(inputTokens) || 0),
+            outputTokens: Math.max(0, Math.round(outputTokens) || 0),
         });
     } catch (e) {
-        log(`token report failed: ${e.message}`);
+        log(`usage report failed: ${e.message}`);
     }
 }
 
@@ -267,9 +273,12 @@ async function main() {
                     if (result.output) {
                         await sendReply(msg, result.output);
                         log(`replied to ${msgId} (${result.output.length} chars)`);
-                        // Estimate and report token usage (rough: 4 chars ≈ 1 token)
-                        const estimatedTokens = Math.ceil((text.length + result.output.length) / 4);
-                        reportTokenUsage(estimatedTokens).catch(() => {});
+                        // Estimate and report token usage (rough: 4 chars ≈ 1 token).
+                        // Split into input (prompt) vs output (reply) so the server
+                        // applies the correct per-direction price and enforces budget.
+                        const inputTokens = Math.ceil(text.length / 4);
+                        const outputTokens = Math.ceil(result.output.length / 4);
+                        reportUsage(inputTokens, outputTokens).catch(() => {});
                     }
                 } catch (execErr) {
                     log(`codex exec failed: ${execErr.message}`);

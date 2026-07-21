@@ -51,9 +51,21 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          # Publish the top-most "## [..]" section of CHANGELOG.md as the release
+          # body. Falls back to empty (auto-generated notes still apply).
+          if [ -f CHANGELOG.md ]; then
+            awk '/^## \[/{c++} c==1{print} c==2{exit}' CHANGELOG.md | sed '1d' > RELEASE_BODY.md
+          fi
+          if [ ! -s RELEASE_BODY.md ]; then echo "_See commit history for changes._" > RELEASE_BODY.md; fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          body_path: RELEASE_BODY.md
+          append_body: true
           generate_release_notes: true

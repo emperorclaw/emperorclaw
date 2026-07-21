@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { getCompanyId } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requirePlatformAdminSession } from "@/lib/platform-admin";
 import fs from "fs";
 import http from "http";
 
@@ -93,6 +92,131 @@ async function getOwnContainerId(): Promise<string> {
     throw new Error("Cannot determine container ID");
 }
 
+// ---- Pre-update DB backup (Docker path) ----
+// Migrations run on the new container's startup and are effectively
+// irreversible, so we snapshot the database first via pg_dump inside the
+// Postgres container (postgres:alpine ships pg_dump). The dump is written to
+// the app's persistent storage volume so it survives the container swap.
+
+type PgConn = { user: string; password: string; database: string };
+
+function parsePgConn(): PgConn | null {
+    const raw = process.env.POSTGRES_CONNECTION_STRING || process.env.DATABASE_URL || "";
+    if (!raw) return null;
+    try {
+        const u = new URL(raw);
+        const database = decodeURIComponent(u.pathname.replace(/^\//, "")) || "postgres";
+        return {
+            user: decodeURIComponent(u.username) || "postgres",
+            password: decodeURIComponent(u.password) || "",
+            database,
+        };
+    } catch { return null; }
+}
+
+async function findPostgresContainer(): Promise<string | null> {
+    const { code, data } = await dockerCall("GET", "/containers/json");
+    if (code !== 200 || !Array.isArray(data)) return null;
+    const match = (data as Array<Record<string, unknown>>).find(
+        (c) => typeof c.Image === "string" && /postgres/i.test(c.Image as string),
+    );
+    return match ? (match.Id as string) : null;
+}
+
+/** Run a command in a container via the Docker exec API, streaming stdout to a file. */
+function dockerExecToFile(containerId: string, cmd: string[], env: string[], filePath: string): Promise<{ exitCode: number; stderr: string; bytes: number }> {
+    return new Promise((resolve, reject) => {
+        dockerCall("POST", `/containers/${containerId}/exec`, {
+            AttachStdout: true, AttachStderr: true, Tty: false, Cmd: cmd, Env: env,
+        }).then(({ code, data }) => {
+            if (code !== 201) return reject(new Error(`exec create HTTP ${code}`));
+            const execId = (data as { Id: string }).Id;
+            const out = fs.createWriteStream(filePath);
+            let stderr = "";
+            let bytes = 0;
+            let leftover = Buffer.alloc(0);
+
+            const req = http.request({
+                socketPath: DOCKER_SOCKET, method: "POST",
+                path: `/exec/${execId}/start`,
+                headers: { "Content-Type": "application/json" },
+                timeout: 600_000, agent: false,
+            }, (res) => {
+                res.on("data", (chunk: Buffer) => {
+                    // Demux Docker's multiplexed stream: [type(1)][000][size(4 BE)][payload]
+                    let buf = Buffer.concat([leftover, chunk]);
+                    while (buf.length >= 8) {
+                        const size = buf.readUInt32BE(4);
+                        if (buf.length < 8 + size) break;
+                        const type = buf[0];
+                        const payload = buf.subarray(8, 8 + size);
+                        if (type === 2) stderr += payload.toString("utf-8").slice(0, 4000);
+                        else { out.write(payload); bytes += payload.length; }
+                        buf = buf.subarray(8 + size);
+                    }
+                    leftover = buf;
+                });
+                res.on("end", () => {
+                    out.end(async () => {
+                        try {
+                            const { data: inspect } = await dockerCall("GET", `/exec/${execId}/json`);
+                            const exitCode = ((inspect as { ExitCode?: number }).ExitCode) ?? 0;
+                            resolve({ exitCode, stderr: stderr.trim(), bytes });
+                        } catch (e) { reject(e); }
+                    });
+                });
+                res.on("error", reject);
+            });
+            req.on("error", reject);
+            req.end();
+        }).catch(reject);
+    });
+}
+
+/**
+ * Best-effort-but-fail-closed DB backup before a Docker self-update.
+ * Returns a step. If a Postgres container is found and the dump fails, the
+ * caller MUST abort the update. If no Postgres container is found (external /
+ * managed DB), the backup is skipped with a warning and the update continues.
+ */
+async function backupDatabaseViaDocker(): Promise<{ step: UpdateStep; fatal: boolean }> {
+    const conn = parsePgConn();
+    if (!conn) {
+        return { step: { step: "backup-db", status: "ok", output: "Skipped: no POSTGRES_CONNECTION_STRING to back up." }, fatal: false };
+    }
+    let pgId: string | null;
+    try {
+        pgId = await findPostgresContainer();
+    } catch (e) {
+        return { step: { step: "backup-db", status: "error", output: `Could not list containers: ${(e as Error).message}` }, fatal: true };
+    }
+    if (!pgId) {
+        return { step: { step: "backup-db", status: "ok", output: "Skipped: no Postgres container found (external DB — back up yourself before updating)." }, fatal: false };
+    }
+
+    const dir = process.env.STORAGE_LOCAL_DIR || "./.data/storage";
+    const backupDir = `${dir.replace(/\/+$/, "")}/backups`;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = `${backupDir}/pre-update-${stamp}.sql`;
+    try {
+        fs.mkdirSync(backupDir, { recursive: true });
+        const { exitCode, stderr, bytes } = await dockerExecToFile(
+            pgId,
+            ["pg_dump", "-U", conn.user, "-d", conn.database, "--no-owner", "--clean", "--if-exists"],
+            [`PGPASSWORD=${conn.password}`],
+            filePath,
+        );
+        if (exitCode !== 0 || bytes === 0) {
+            try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+            return { step: { step: "backup-db", status: "error", output: `pg_dump exit ${exitCode}${stderr ? `: ${stderr}` : ""} (${bytes} bytes)` }, fatal: true };
+        }
+        return { step: { step: "backup-db", status: "ok", output: `Backed up ${(bytes / 1024).toFixed(0)} KB → ${filePath}` }, fatal: false };
+    } catch (e) {
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+        return { step: { step: "backup-db", status: "error", output: `Backup failed: ${(e as Error).message}` }, fatal: true };
+    }
+}
+
 async function dockerUpdateSelf(): Promise<UpdateStep[]> {
     const steps: UpdateStep[] = [];
 
@@ -117,7 +241,12 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
         return steps;
     }
 
-    // 3. Pull latest image
+    // 3. Back up the database (fail-closed: abort if a dump was possible but failed)
+    const backup = await backupDatabaseViaDocker();
+    steps.push(backup.step);
+    if (backup.fatal) return steps;
+
+    // 4. Pull latest image
     try {
         const msg = await dockerPull();
         steps.push({ step: "pull-image", status: "ok", output: msg });
@@ -194,13 +323,11 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
 // ===================================================================
 
 export async function POST() {
-    const cookieStore = await cookies();
-    const sessionToken = cookieStore.get("__Secure-next-auth.session-token")
-        || cookieStore.get("next-auth.session-token");
-    if (!sessionToken) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Self-update runs shell commands / pulls arbitrary images / talks to the
+    // Docker socket (root on host). Restrict to configured platform admins only,
+    // matching the /ops UI that renders the Update button.
+    const admin = await requirePlatformAdminSession();
+    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     // ---- Docker with socket: pull + recreate ----
     if (isDocker() && fs.existsSync(DOCKER_SOCKET)) {
@@ -249,8 +376,8 @@ export async function POST() {
 }
 
 export async function GET() {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = await requirePlatformAdminSession();
+    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     if (isDocker()) {
         try {
