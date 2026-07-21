@@ -89,7 +89,20 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                         </div>
                     </aside>
 
-                    {selectedAgent ? <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} /> : (
+                    {selectedAgent ? (
+                        <div className="space-y-3">
+                            <div className="flex justify-end">
+                                <Link
+                                    href={`/agents/${selectedAgent.id}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
+                                >
+                                    Open detail
+                                    <span aria-hidden>→</span>
+                                </Link>
+                            </div>
+                            <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} />
+                        </div>
+                    ) : (
                         <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                             <div className="text-center text-zinc-500">
                                 <IconRobot className="mx-auto h-12 w-12 mb-3 text-zinc-600" />
