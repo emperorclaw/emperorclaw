@@ -17,20 +17,20 @@ type PricingRow = {
 };
 type ModelOption = { model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number };
 
-/* ======== Sub-components ======== */
+/* ============ INLINE CELLS ============ */
 
-function BudgetCell({ agentId, value, onSaved }: { agentId: string; value: number; onSaved: () => void }) {
+function BudgetCell({ agentId, value, updateAgent }: { agentId: string; value: number; updateAgent: (id: string, p: Partial<AgentRow>) => void }) {
     const [editing, setEditing] = useState(false);
     const [input, setInput] = useState(value > 0 ? String(value / 100) : "");
     const [saving, setSaving] = useState(false);
     const save = async () => {
         setSaving(true);
-        await fetch(`/api/agents/${agentId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ monthlyBudgetCents: input ? Math.round(parseFloat(input) * 100) : 0 }) });
-        setSaving(false); setEditing(false); onSaved();
+        const cents = input ? Math.round(parseFloat(input) * 100) : 0;
+        updateAgent(agentId, { monthlyBudgetCents: cents, budgetStatus: "active" });
+        await fetch(`/api/agents/${agentId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ monthlyBudgetCents: cents, budgetStatus: "active" }) });
+        setSaving(false); setEditing(false);
     };
-    if (!editing) return (
-        <button onClick={() => setEditing(true)} className="text-zinc-300 font-mono text-xs hover:text-cyan-300">{value > 0 ? `$${(value / 100).toFixed(2)}` : <span className="text-zinc-600">∞</span>}</button>
-    );
+    if (!editing) return <button onClick={() => setEditing(true)} className="text-zinc-300 font-mono text-xs hover:text-cyan-300">{value > 0 ? `$${(value / 100).toFixed(2)}` : <span className="text-zinc-600">∞</span>}</button>;
     return (
         <span className="inline-flex items-center gap-1">
             <span className="text-zinc-400 text-xs">$</span>
@@ -42,10 +42,9 @@ function BudgetCell({ agentId, value, onSaved }: { agentId: string; value: numbe
     );
 }
 
-function ModelCell({ agentId, currentModel, options, onSaved }: { agentId: string; currentModel: string | null; options: ModelOption[]; onSaved: () => void }) {
+function ModelCell({ agentId, currentModel, options, updateAgent }: { agentId: string; currentModel: string | null; options: ModelOption[]; updateAgent: (id: string, p: Partial<AgentRow>) => void }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
-    const [saving, setSaving] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     useEffect(() => {
@@ -57,9 +56,9 @@ function ModelCell({ agentId, currentModel, options, onSaved }: { agentId: strin
     const filtered = search ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()) || o.model.toLowerCase().includes(search.toLowerCase()) || o.provider.toLowerCase().includes(search.toLowerCase())) : options;
     const sel = options.find(o => o.model === currentModel);
     const select = async (m: string | null) => {
-        setSaving(true);
+        updateAgent(agentId, { llmModel: m });
+        setOpen(false); setSearch("");
         await fetch(`/api/agents/${agentId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ llmModel: m || null }) });
-        setSaving(false); setOpen(false); setSearch(""); onSaved();
     };
     return (
         <div ref={ref} className="relative">
@@ -89,6 +88,8 @@ function ModelCell({ agentId, currentModel, options, onSaved }: { agentId: strin
         </div>
     );
 }
+
+/* ============ PRICING TABLE ============ */
 
 function PricingRow({ p, onSaved }: { p: PricingRow; onSaved: () => void }) {
     const [editing, setEditing] = useState(false);
@@ -150,30 +151,34 @@ function AddModelRow({ onSaved }: { onSaved: () => void }) {
     );
 }
 
-/* ======== Main component ======== */
+/* ============ MAIN ============ */
 
 export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost }: {
     initialAgents: AgentRow[]; initialPricing: PricingRow[]; initialWeeklyCost: number;
 }) {
     const [agents, setAgents] = useState(initialAgents);
     const [pricing, setPricing] = useState(initialPricing);
-    const [weeklyCost, setWeeklyCost] = useState(initialWeeklyCost);
     const [key, setKey] = useState(0);
-    const refresh = () => setKey(k => k + 1);
-    const updateAgent = (id: string, patch: Partial<AgentRow>) => {
-        setAgents(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
-    };
+    const refreshPricing = () => setKey(k => k + 1);
 
     useEffect(() => {
         fetch("/api/mcp/pricing").then(r => r.json()).then(d => { if (d.pricing) setPricing(d.pricing); }).catch(() => {});
     }, [key]);
 
-    const totalBudgetCents = agents.reduce((s, a) => s + (a.monthlyBudgetCents ?? 0), 0);
+    // Single source of truth for ALL inline edits
+    const updateAgent = (id: string, patch: Partial<AgentRow>) => {
+        setAgents(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
+    };
+
+    // Live totals from current state
     const totalCostCents = agents.reduce((s, a) => s + (a.monthlyCostCents ?? 0), 0);
     const totalTokens = agents.reduce((s, a) => s + (a.monthlyTokenUsage ?? 0), 0);
-    const agentsWithBudget = agents.filter(a => (a.monthlyBudgetCents ?? 0) > 0);
+    const totalBudgetCents = agents.reduce((s, a) => s + (a.monthlyBudgetCents ?? 0), 0);
+    const capped = agents.filter(a => (a.monthlyBudgetCents ?? 0) > 0).length;
+    const paused = agents.filter(a => a.budgetStatus === "paused").length;
+    const warned = agents.filter(a => a.budgetStatus === "warning").length;
 
-    const modelOpts: ModelOption[] = pricing.filter(p => p.active).map(p => ({
+    const models: ModelOption[] = pricing.filter(p => p.active).map(p => ({
         model: p.model, label: p.label, provider: p.provider,
         inputPricePer1k: p.inputPricePer1k, outputPricePer1k: p.outputPricePer1k,
     }));
@@ -182,9 +187,9 @@ export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost 
         <>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Monthly Spend</div><div className="text-2xl font-bold text-zinc-100">${(totalCostCents / 100).toFixed(2)}</div><div className="text-xs text-zinc-500 mt-1">{(totalTokens / 1000).toFixed(0)}K tokens</div></div>
-                <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Monthly Budget</div><div className="text-2xl font-bold text-zinc-100">{totalBudgetCents > 0 ? `$${(totalBudgetCents / 100).toFixed(0)}` : "Unlimited"}</div><div className="text-xs text-zinc-500 mt-1">{agentsWithBudget.length} agents capped</div></div>
-                <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">7-Day Spend</div><div className="text-2xl font-bold text-zinc-100">${(weeklyCost / 100).toFixed(2)}</div><div className="text-xs text-zinc-500 mt-1">last 7 days</div></div>
-                <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Status</div><div className="text-2xl font-bold text-rose-400">{agents.filter(a => a.budgetStatus === "paused").length} paused</div><div className="text-xs text-zinc-500 mt-1">{agents.filter(a => a.budgetStatus === "warning").length} at warning</div></div>
+                <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Budget</div><div className="text-2xl font-bold text-zinc-100">{totalBudgetCents > 0 ? `$${(totalBudgetCents / 100).toFixed(0)}` : "Unlimited"}</div><div className="text-xs text-zinc-500 mt-1">{capped} agents capped</div></div>
+                <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">7-Day Spend</div><div className="text-2xl font-bold text-zinc-100">${(initialWeeklyCost / 100).toFixed(2)}</div><div className="text-xs text-zinc-500 mt-1">last 7 days</div></div>
+                <div className="emperor-panel rounded-2xl p-5"><div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Alerts</div><div className="text-2xl font-bold text-rose-400">{paused} paused</div><div className="text-xs text-zinc-500 mt-1">{warned} at warning</div></div>
             </div>
 
             <div className="emperor-panel rounded-2xl overflow-hidden">
@@ -192,14 +197,15 @@ export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost 
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider"><th className="text-left px-5 py-3 font-medium">Agent</th><th className="text-left px-5 py-3 font-medium">Model</th><th className="text-right px-5 py-3 font-medium">Tokens</th><th className="text-right px-5 py-3 font-medium">Cost</th><th className="text-right px-5 py-3 font-medium">Limit</th><th className="text-right px-5 py-3 font-medium">Status</th></tr></thead>
                     <tbody className="divide-y divide-zinc-800/50">
                         {agents.map(a => {
-                            const budget = a.monthlyBudgetCents ?? 0, cost = a.monthlyCostCents ?? 0, tokens = a.monthlyTokenUsage ?? 0, pct = budget > 0 ? Math.min(100, (cost / budget) * 100) : 0;
+                            const b = a.monthlyBudgetCents ?? 0, c = a.monthlyCostCents ?? 0, t = a.monthlyTokenUsage ?? 0;
+                            const pct = b > 0 ? Math.min(100, (c / b) * 100) : 0;
                             return (<tr key={a.id} className="hover:bg-zinc-900/50 transition-colors">
                                 <td className="px-5 py-3"><Link href={`/agents/${a.id}`} className="text-zinc-200 hover:text-cyan-300 font-medium">{a.name}</Link><div className="text-xs text-zinc-500">{a.role}</div></td>
-                                <td className="px-5 py-3"><ModelCell agentId={a.id} currentModel={a.llmModel} options={modelOpts} onSaved={refresh} /></td>
-                                <td className="px-5 py-3 text-right font-mono text-xs text-zinc-400">{tokens > 0 ? `${(tokens / 1000).toFixed(1)}K` : "—"}</td>
-                                <td className="px-5 py-3 text-right"><span className="flex items-center justify-end gap-2">{budget > 0 && <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden"><div className={cn("h-full rounded-full", a.budgetStatus === "paused" ? "bg-rose-500" : a.budgetStatus === "warning" ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${pct}%` }} /></div>}<span className="text-zinc-200 font-mono text-xs">${(cost / 100).toFixed(4)}</span></span></td>
-                                <td className="px-5 py-3 text-right"><BudgetCell agentId={a.id} value={budget} onSaved={refresh} /></td>
-                                <td className="px-5 py-3 text-right">{budget <= 0 ? <span className="text-zinc-500 text-xs">—</span> : a.budgetStatus === "paused" ? <button onClick={async () => { updateAgent(a.id, { budgetStatus: "active" }); await fetch(`/api/agents/${a.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ budgetStatus: "active" }) }); }} className="text-rose-400 text-xs font-medium bg-rose-500/10 px-2 py-0.5 rounded hover:bg-rose-500/20 cursor-pointer" title="Budget exhausted. Click to reactivate.">⏸ Paused</button> : a.budgetStatus === "warning" ? <button onClick={async () => { updateAgent(a.id, { budgetStatus: "active" }); await fetch(`/api/agents/${a.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ budgetStatus: "active" }) }); }} className="text-amber-400 text-xs font-medium bg-amber-500/10 px-2 py-0.5 rounded hover:bg-amber-500/20 cursor-pointer" title="Nearing budget limit. Click to dismiss warning.">⚠ {Math.round(pct)}%</button> : <span className="text-emerald-400 text-xs font-medium bg-emerald-500/10 px-2 py-0.5 rounded">{Math.round(pct)}%</span>}</td>
+                                <td className="px-5 py-3"><ModelCell agentId={a.id} currentModel={a.llmModel} options={models} updateAgent={updateAgent} /></td>
+                                <td className="px-5 py-3 text-right font-mono text-xs text-zinc-400">{t > 0 ? `${(t / 1000).toFixed(1)}K` : "—"}</td>
+                                <td className="px-5 py-3 text-right"><span className="flex items-center justify-end gap-2">{b > 0 && <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden"><div className={cn("h-full rounded-full", a.budgetStatus === "paused" ? "bg-rose-500" : a.budgetStatus === "warning" ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${pct}%` }} /></div>}<span className="text-zinc-200 font-mono text-xs">${(c / 100).toFixed(4)}</span></span></td>
+                                <td className="px-5 py-3 text-right"><BudgetCell agentId={a.id} value={b} updateAgent={updateAgent} /></td>
+                                <td className="px-5 py-3 text-right">{b <= 0 ? <span className="text-zinc-500 text-xs">—</span> : a.budgetStatus === "paused" ? <button onClick={async () => { updateAgent(a.id, { budgetStatus: "active" }); await fetch(`/api/agents/${a.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ budgetStatus: "active" }) }); }} className="text-rose-400 text-xs font-medium bg-rose-500/10 px-2 py-0.5 rounded hover:bg-rose-500/20 cursor-pointer" title="Budget exhausted. Click to reactivate.">⏸ Paused</button> : a.budgetStatus === "warning" ? <button onClick={async () => { updateAgent(a.id, { budgetStatus: "active" }); await fetch(`/api/agents/${a.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ budgetStatus: "active" }) }); }} className="text-amber-400 text-xs font-medium bg-amber-500/10 px-2 py-0.5 rounded hover:bg-amber-500/20 cursor-pointer" title="Nearing limit. Click to dismiss.">⚠ {Math.round(pct)}%</button> : <span className="text-emerald-400 text-xs font-medium bg-emerald-500/10 px-2 py-0.5 rounded">{Math.round(pct)}%</span>}</td>
                             </tr>);
                         })}
                     </tbody></table></div>
@@ -207,12 +213,12 @@ export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost 
             </div>
 
             <div className="emperor-panel rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-zinc-800/80"><h2 className="text-sm font-semibold text-zinc-200">Model Pricing</h2><p className="text-xs text-zinc-500 mt-0.5">Click prices to edit. Toggle ✓ to disable. Add new models with + below.</p></div>
+                <div className="px-5 py-3 border-b border-zinc-800/80"><h2 className="text-sm font-semibold text-zinc-200">Model Pricing</h2><p className="text-xs text-zinc-500 mt-0.5">Click prices to edit. Toggle ✓ to disable. + to add new.</p></div>
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider"><th className="text-left px-5 py-2 font-medium">Provider</th><th className="text-left px-5 py-2 font-medium">Model ID</th><th className="text-right px-5 py-2 font-medium">Input /1M</th><th className="text-right px-5 py-2 font-medium">Output /1M</th><th className="text-center px-3 py-2 font-medium w-8">On</th></tr></thead>
                     <tbody className="divide-y divide-zinc-800/50">
-                        {pricing.filter(p => p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refresh} />)}
-                        {pricing.filter(p => !p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refresh} />)}
-                        <AddModelRow onSaved={refresh} />
+                        {pricing.filter(p => p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refreshPricing} />)}
+                        {pricing.filter(p => !p.active).map(p => <PricingRow key={p.id} p={p} onSaved={refreshPricing} />)}
+                        <AddModelRow onSaved={refreshPricing} />
                     </tbody></table></div>
             </div>
         </>
