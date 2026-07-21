@@ -181,9 +181,11 @@ export const agents = pgTable("agents", {
     provider: text("provider").notNull().default("mcp"),
     deploymentMode: text("deployment_mode").notNull().default("remote"),
     llmProvider: text("llm_provider"),
+    llmModel: text("llm_model"), // specific model name (e.g. "deepseek-chat", "gpt-4o")
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
+    monthlyCostCents: integer("monthly_cost_cents").default(0).notNull(), // calculated spend in cents
     budgetStatus: text("budget_status").default("active").notNull(), // active | warning | paused
     status: text("status").notNull().default('offline'),
     lastSeenAt: timestamp("last_seen_at"),
@@ -191,6 +193,35 @@ export const agents = pgTable("agents", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
+
+// ---- LLM Pricing & Usage Tracking ----
+
+export const llmPricing = pgTable("llm_pricing", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(), // openai, anthropic, google, deepseek, openrouter, grok
+    model: text("model").notNull(),       // e.g. "deepseek-chat", "gpt-4o", "claude-sonnet-4-20250514"
+    label: text("label").notNull(),       // human-friendly name
+    inputPricePer1k: integer("input_price_per_1k").notNull(),   // cents per 1000 input tokens × 100 (to avoid floats)
+    outputPricePer1k: integer("output_price_per_1k").notNull(), // cents per 1000 output tokens × 100
+    active: boolean("active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+    uniqueIndex("llm_pricing_provider_model_idx").on(t.provider, t.model),
+]);
+
+export const tokenUsageLog = pgTable("token_usage_log", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    model: text("model").notNull(),           // which model was used
+    inputTokens: integer("input_tokens").default(0).notNull(),
+    outputTokens: integer("output_tokens").default(0).notNull(),
+    costCents: integer("cost_cents").default(0).notNull(), // calculated cost in cents × 100
+    reportedAt: timestamp("reported_at").defaultNow().notNull(),
+}, (t) => [
+    index("token_usage_agent_date_idx").on(t.agentId, t.reportedAt),
+    index("token_usage_company_date_idx").on(t.companyId, t.reportedAt),
+]);
 
 // @ts-expect-error self-referential column referencing the same table causes circular type inference.
 export const artifactFolders = pgTable("artifact_folders", {
