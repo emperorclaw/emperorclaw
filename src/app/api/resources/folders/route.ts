@@ -1,0 +1,76 @@
+export const dynamic = "force-dynamic";
+
+import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
+import { getValidatedServerSession } from "@/lib/auth";
+import { db } from "@/db";
+import { companyMembers } from "@/db/schema";
+import { buildResourceFolderTree, listScopedResources, moveResourceFolder } from "@/lib/resources";
+
+async function getMembership() {
+  const session = await getValidatedServerSession();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return null;
+  }
+
+  const [membership] = await db.select().from(companyMembers)
+    .where(eq(companyMembers.userId, userId))
+    .limit(1);
+
+  return membership || null;
+}
+
+/** The Knowledge & Rules folder tree, derived from note paths. */
+export async function GET() {
+  try {
+    const membership = await getMembership();
+    if (!membership) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const rows = await listScopedResources({ companyId: membership.companyId });
+    return NextResponse.json({ folders: buildResourceFolderTree(rows) });
+  } catch (error) {
+    console.error("Error building resource folder tree:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+/**
+ * Rename or move a folder.
+ *
+ * Folders are implicit — they exist only because notes reference them — so
+ * this re-files every note under `fromPath`. There is no folder row to rename.
+ */
+export async function POST(request: Request) {
+  try {
+    const membership = await getMembership();
+    if (!membership) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const fromPath = typeof body.fromPath === "string" ? body.fromPath : "";
+    const toPath = typeof body.toPath === "string" ? body.toPath : "";
+
+    if (!fromPath.trim()) {
+      return NextResponse.json({ error: "fromPath is required" }, { status: 400 });
+    }
+
+    const moved = await moveResourceFolder({
+      companyId: membership.companyId,
+      fromPath,
+      toPath,
+    });
+
+    const rows = await listScopedResources({ companyId: membership.companyId });
+    return NextResponse.json({ moved, folders: buildResourceFolderTree(rows) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    // moveResourceFolder rejects moving a folder into its own subtree.
+    const status = message.startsWith("Cannot move") ? 400 : 500;
+    if (status === 500) console.error("Error moving resource folder:", error);
+    return NextResponse.json({ error: message }, { status });
+  }
+}

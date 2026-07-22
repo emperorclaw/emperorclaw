@@ -9,7 +9,54 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.5.0] — 2026-07-22
+
+### Added
+
+- **Folders in Knowledge & Rules.** Notes now carry an Obsidian-style `path`
+  (`Company/Fundraising`, `Ferrari/Audits/2026-07`), so the Company Brain can be
+  organised as a real vault instead of a flat list. Folders are *implicit* —
+  a folder exists exactly as long as a note inside it does, so there are no
+  empty folders to clean up and no folder table to keep in sync.
+  - Set `path` on create or patch; patch it to `""`/`null` to move a note back
+    to the root. Parent folders appear automatically.
+  - `GET /api/mcp/resources` gains `path` (exact folder) and `pathPrefix`
+    (whole subtree) filters, and returns a derived `folders` tree alongside
+    `resources`.
+  - New `GET /api/resources/folders` (tree with per-folder counts) and
+    `POST /api/resources/folders` (rename/move a folder, re-filing every note
+    beneath it). Moving a folder into its own subtree is rejected.
+  - The Knowledge & Rules sidebar groups notes under folder headings, and the
+    note **Properties** panel has a Folder field.
+  - Paths are normalised on write (`/Ferrari/XXX`, `Ferrari/XXX/` and
+    `Ferrari // XXX` all become `Ferrari/XXX`). Traversal segments (`.`, `..`)
+    are stripped rather than resolved, since paths also drive prefix queries.
+    Depth is capped at 10 segments, each at 80 characters.
+
+- **`EMPEROR_BRAIN_MAX_CHARS_PER_RESOURCE`** to tune how much of a single
+  Knowledge & Rules note is injected into agent context.
+
+### Changed
+
+- **Agent context no longer silently truncates doctrine at 3000 characters.**
+  The per-note ceiling in the Company Brain resolver was hard-coded at 3000,
+  while `maxChars` (default 12000) only capped the *total* across notes. Any
+  longer note was cut off mid-document with no error surfaced anywhere — agents
+  received the opening sections and confidently acted as if the rest did not
+  exist, which is especially dangerous because the lost text is whatever was
+  appended most recently. The default per-note ceiling is now 8000 and is
+  configurable via `EMPEROR_BRAIN_MAX_CHARS_PER_RESOURCE` or a
+  `maxCharsPerResource` query param on `GET /api/mcp/resources/context`.
+
+  Splitting long doctrine into several cross-linked notes is still the better
+  pattern — the resolver can then select the relevant one — but doing so is now
+  a choice rather than a hidden requirement.
+
+### Documentation
+
+- Company Brain docs cover folders, path normalisation, the folder API, and the
+  two distinct context limits, including a `curl` recipe for verifying what an
+  agent actually receives instead of assuming a successful write was delivered.
 
 ### Added
 

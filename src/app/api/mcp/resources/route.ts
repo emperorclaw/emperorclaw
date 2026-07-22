@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
+import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
 import { scopedResources } from "@/db/schema";
 
 function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
@@ -42,9 +42,16 @@ export async function GET(req: NextRequest) {
       search: searchParams.get("search") || searchParams.get("q"),
       status,
       isShared,
+      path: searchParams.get("path"),
+      pathPrefix: searchParams.get("pathPrefix"),
     });
 
-    return NextResponse.json({ resources: resources.map(sanitizeResource) });
+    // The folder tree is derived from whatever this query matched, so it stays
+    // consistent with the filters the caller actually applied.
+    return NextResponse.json({
+      resources: resources.map(sanitizeResource),
+      folders: buildResourceFolderTree(resources),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal Server Error";
     const statusCode = message.startsWith("Agent not found") ? 404 : 500;
@@ -119,6 +126,7 @@ export async function POST(req: NextRequest) {
       scopeId: finalScopeId,
       name,
       displayName: body.displayName || null,
+      path: body.path || null,
       resourceType,
       provider,
       configText: configJson || body.configText || "",

@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
-import { createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
+import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
 
 async function getMembership() {
   const session = await getValidatedServerSession();
@@ -38,6 +38,7 @@ export async function GET() {
         ...resolveResourceScope(resource),
         secretText: undefined,
       })),
+      folders: buildResourceFolderTree(rows),
     });
   } catch (error) {
     console.error("Error fetching scoped resources:", error);
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       resourceType: typeof body.resourceType === "string" ? body.resourceType : "external_account",
       name,
       displayName: typeof body.displayName === "string" ? body.displayName.trim() : null,
+      path: typeof body.path === "string" ? body.path : null,
       configText: typeof body.configJson === "string" ? body.configJson : body.configText || "",
       secretText: typeof body.secretJson === "string" ? body.secretJson : body.secretText || "",
       status: "active",

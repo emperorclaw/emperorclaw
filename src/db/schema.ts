@@ -514,6 +514,10 @@ export const scopedResources = pgTable("scoped_resources", {
     resourceType: text("resource_type").notNull(),
     name: text("name").notNull(),
     displayName: text("display_name"),
+    // Obsidian-style folder path, e.g. "Company/Fundraising". Empty string is
+    // the vault root. Folders are implicit: the tree is derived from the
+    // distinct paths at read time, so there is no folder table to keep in sync.
+    path: text("path").default('').notNull(),
     configText: text("config_text").default('').notNull(),
     secretText: text("secret_text").default('').notNull(),
     status: text("status").default('active').notNull(),

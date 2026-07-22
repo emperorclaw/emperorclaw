@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { IconArchive, IconArrowLeft, IconArrowRight, IconCheck, IconChevronDown, IconFileText, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
+import { IconArchive, IconArrowLeft, IconArrowRight, IconCheck, IconChevronDown, IconFileText, IconFolder, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { PageHeader } from "@/components/page-header";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -22,6 +22,8 @@ type ResourceRecord = {
   resourceType: string;
   name: string;
   displayName: string | null;
+  /** Obsidian-style folder path, e.g. "Company/Fundraising". "" is the root. */
+  path?: string | null;
   ownership: string;
   status: string;
   configText: string;
@@ -115,6 +117,7 @@ export default function ResourcesClient({
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
   const [draftContent, setDraftContent] = useState(initialResources[0]?.configText || "");
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
+  const [draftPath, setDraftPath] = useState(initialResources[0]?.path || "");
   const [draftScopeId, setDraftScopeId] = useState(initialResources[0]?.scopeId || "");
   const [draftShared, setDraftShared] = useState(Boolean(initialResources[0]?.isShared));
   const [publicationStatus, setPublicationStatus] = useState<"draft" | "active">(noteStatus(initialResources[0]?.configText || "") === "draft" ? "draft" : "active");
@@ -159,6 +162,19 @@ export default function ResourcesClient({
     }
 
     const rank = (key: string) => key === "company" ? 0 : key.startsWith("customer:") ? 1 : key.startsWith("project:") ? 2 : key.startsWith("agent:") ? 3 : 4;
+
+    // Within a scope, order by folder path so notes in the same folder sit
+    // together and the render can emit a folder heading on each path change.
+    // Root notes ("") sort first, which keeps unfiled notes visible.
+    for (const group of byScope.values()) {
+      group.items.sort((a, b) => {
+        const pathA = (a.path || "").toLowerCase();
+        const pathB = (b.path || "").toLowerCase();
+        if (pathA !== pathB) return pathA.localeCompare(pathB);
+        return (a.displayName || a.name).localeCompare(b.displayName || b.name);
+      });
+    }
+
     return Array.from(byScope.values()).sort((a, b) => rank(a.key) - rank(b.key) || a.label.localeCompare(b.label));
   }, [agents, customers, filteredResources, projects]);
 
@@ -167,6 +183,7 @@ export default function ResourcesClient({
     setDraftTitle(selectedResource.displayName || selectedResource.name);
     setDraftContent(selectedResource.configText || "");
     setDraftScopeType(selectedResource.scopeType);
+    setDraftPath(selectedResource.path || "");
     setDraftScopeId(selectedResource.scopeId || "");
     setDraftShared(Boolean(selectedResource.isShared));
     setPublicationStatus(noteStatus(selectedResource.configText || "") === "draft" ? "draft" : "active");
@@ -268,6 +285,7 @@ export default function ResourcesClient({
         body: JSON.stringify({
           name: slugifyResourceKey(draftTitle),
           displayName: draftTitle,
+          path: draftPath,
           scopeType: draftScopeType,
           scopeId: draftScopeType === "company" ? null : draftScopeId || null,
           provider: selectedResource.provider || "knowledge",
@@ -434,8 +452,22 @@ export default function ResourcesClient({
                       <span className="ml-auto text-zinc-700">{group.items.length}</span>
                     </div>
                     <div className="space-y-0.5 pl-4">
-                      {group.items.map((resource) => (
-                        <ContextMenu key={resource.id}>
+                      {group.items.map((resource, itemIndex) => {
+                      // Items are pre-sorted by path, so a folder heading is
+                      // emitted whenever the path changes from the previous row.
+                      const currentPath = resource.path || "";
+                      const previousPath = itemIndex === 0 ? null : (group.items[itemIndex - 1].path || "");
+                      const showFolderHeading = Boolean(currentPath) && currentPath !== previousPath;
+
+                      return (
+                      <Fragment key={resource.id}>
+                        {showFolderHeading && (
+                          <div className="flex items-center gap-1.5 px-2 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600" title={currentPath}>
+                            <IconFolder className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{currentPath}</span>
+                          </div>
+                        )}
+                        <ContextMenu>
                           <ContextMenuTrigger asChild>
                             <button onClick={() => setSelectedResourceId(resource.id)} className={cn("group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", selectedResourceId === resource.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}>
                               <IconFileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === resource.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
@@ -453,7 +485,9 @@ export default function ResourcesClient({
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
-                      ))}
+                      </Fragment>
+                      );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -509,6 +543,21 @@ export default function ResourcesClient({
                   </div>
                   <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">Properties</summary>
+                    <div className="mt-3">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Folder</label>
+                      <input
+                        value={draftPath}
+                        onChange={(event) => setDraftPath(event.target.value)}
+                        placeholder="Company/Fundraising"
+                        spellCheck={false}
+                        className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-400/60"
+                      />
+                      <p className="mt-1 text-[11px] text-zinc-600">
+                        Slash-separated, like a vault path. Leave empty to keep the note at the root.
+                        Folders are created automatically when you save.
+                      </p>
+                    </div>
+
                     <div className="mt-3">
                       <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Publication status</label>
                       <select value={publicationStatus} onChange={(event) => setPublicationStatus(event.target.value === "draft" ? "draft" : "active")} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
