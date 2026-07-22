@@ -11,6 +11,14 @@ ships in the release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **"Generate token" button in the agent connect panel.** The quick-connect
+  commands showed a `YOUR_TOKEN` placeholder; you can now mint a scoped access
+  token inline (shown once) and it's inserted into the commands and `.env` —
+  no need to detour to Settings → Access Tokens. (Also fixes "Copy all" copying
+  a literal `{token}`.)
+
 ### Fixed
 
 - **Signup/login no longer tell SMTP-less users to "verify your email."** When no
