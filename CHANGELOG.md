@@ -25,6 +25,11 @@ ships in the release notes.
   (Next 16 middleware) matcher was redirecting these public endpoints to
   `/login`, which also silently defeated the Docker healthcheck. Added both to
   the public allowlist.
+- **Docker healthcheck actually works now.** The container bound only to its
+  container-ID hostname (not loopback), and the healthcheck used `localhost`
+  (which resolves to IPv6 `::1`). Set `HOSTNAME=0.0.0.0` so the server binds all
+  interfaces, and point the healthcheck at `127.0.0.1`. Verified end-to-end on a
+  native arm64 build.
 
 ## [0.4.0] — 2026-07-22
 

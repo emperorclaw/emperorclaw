@@ -34,7 +34,9 @@ services:
       - app-storage:/app/.data/storage
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      # Use 127.0.0.1, not localhost: the server binds IPv4 0.0.0.0, but
+      # `localhost` resolves to IPv6 ::1 first in the container → refused.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
