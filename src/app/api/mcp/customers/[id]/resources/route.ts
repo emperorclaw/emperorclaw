@@ -88,6 +88,7 @@ export async function POST(
             resourceType,
             name,
             displayName: displayName || null,
+            path: body.path || null,
             configText: configJson || body.configText || "",
             secretText: secretJson || body.secretText || "",
             ownership: ownership || null,

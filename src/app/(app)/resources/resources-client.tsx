@@ -3,7 +3,8 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { IconArchive, IconArrowLeft, IconArrowRight, IconCheck, IconChevronDown, IconFileText, IconFolder, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
+import { IconArchive, IconArrowLeft, IconArrowRight, IconCheck, IconChevronDown, IconChevronRight, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
+import { buildResourceFolderTree, normalizeResourcePath, resourcePathAncestors, type ResourceFolderNode } from "@/lib/resource-paths";
 import { ExpandablePanel } from "@/components/expandable-panel";
 import { PageHeader } from "@/components/page-header";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -118,6 +119,16 @@ export default function ResourcesClient({
   const [draftContent, setDraftContent] = useState(initialResources[0]?.configText || "");
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
   const [draftPath, setDraftPath] = useState(initialResources[0]?.path || "");
+  // null = "All notes". Otherwise the selected folder and its subtree.
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  // Folders are implicit, so a folder with no note yet has nothing to derive it
+  // from. Hold it here until a note is filed into it.
+  const [pendingFolders, setPendingFolders] = useState<string[]>([]);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [renameFolderTarget, setRenameFolderTarget] = useState<string | null>(null);
+  const [renameFolderValue, setRenameFolderValue] = useState("");
   const [draftScopeId, setDraftScopeId] = useState(initialResources[0]?.scopeId || "");
   const [draftShared, setDraftShared] = useState(Boolean(initialResources[0]?.isShared));
   const [publicationStatus, setPublicationStatus] = useState<"draft" | "active">(noteStatus(initialResources[0]?.configText || "") === "draft" ? "draft" : "active");
@@ -136,11 +147,25 @@ export default function ResourcesClient({
     return resources.filter((resource) => {
       const haystack = `${resource.name} ${resource.displayName || ""} ${resource.configText}`.toLowerCase();
       if (normalized && !haystack.includes(normalized)) return false;
+      if (activeFolder !== null) {
+        const notePath = normalizeResourcePath(resource.path);
+        // Selecting a folder shows it and everything beneath it.
+        if (notePath !== activeFolder && !notePath.startsWith(`${activeFolder}/`)) return false;
+      }
       if (filter === "shared") return resource.isShared;
       if (filter === "drafts") return noteStatus(resource.configText || "") === "draft";
       return true;
     });
-  }, [filter, query, resources]);
+  }, [activeFolder, filter, query, resources]);
+
+  const folderTree = useMemo(
+    () => buildResourceFolderTree(resources, pendingFolders),
+    [pendingFolders, resources],
+  );
+  const rootNoteCount = useMemo(
+    () => resources.filter((resource) => !normalizeResourcePath(resource.path)).length,
+    [resources],
+  );
 
   const resourceTree = useMemo(() => {
     const customerNames = new Map(customers.map((customer) => [customer.id, customer.name]));
@@ -216,6 +241,105 @@ export default function ResourcesClient({
     if (response.ok) setResources((await response.json()).resources || []);
   }
 
+  function toggleFolder(path: string) {
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }
+
+  function createFolder() {
+    const path = normalizeResourcePath(newFolderName);
+    if (!path) return toast.error("Enter a folder name");
+
+    // A folder only becomes real once a note lives in it, so hold it locally
+    // until then and drop the operator straight into it.
+    setPendingFolders((current) => (current.includes(path) ? current : [...current, path]));
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      resourcePathAncestors(path).forEach((ancestor) => next.delete(ancestor));
+      return next;
+    });
+    setActiveFolder(path);
+    setNewFolderOpen(false);
+    setNewFolderName("");
+    toast.success(`Folder ${path} ready — new notes will be filed here`);
+  }
+
+  async function renameFolder() {
+    const fromPath = renameFolderTarget;
+    const toPath = normalizeResourcePath(renameFolderValue);
+    if (!fromPath || !toPath || fromPath === toPath) {
+      setRenameFolderTarget(null);
+      return;
+    }
+
+    const response = await fetch("/api/resources/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromPath, toPath }),
+    });
+    const body = await response.json();
+    if (!response.ok) return toast.error(body.error || "Failed to rename folder");
+
+    // Re-file the notes we already hold so the tree updates without a reload.
+    setResources((current) => current.map((resource) => {
+      const notePath = normalizeResourcePath(resource.path);
+      if (notePath !== fromPath && !notePath.startsWith(`${fromPath}/`)) return resource;
+      return { ...resource, path: `${toPath}${notePath.slice(fromPath.length)}` };
+    }));
+    setPendingFolders((current) => current.map((path) => (path === fromPath ? toPath : path)));
+    setActiveFolder((current) => (current === fromPath ? toPath : current));
+    setRenameFolderTarget(null);
+    toast.success(`Renamed to ${toPath}${body.moved ? ` (${body.moved} notes moved)` : ""}`);
+  }
+
+  function renderFolderNodes(nodes: ResourceFolderNode[], depth: number): ReactNode {
+    return nodes.map((node) => {
+      const isCollapsed = collapsedFolders.has(node.path);
+      const hasChildren = node.children.length > 0;
+
+      return (
+        <div key={node.path}>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setActiveFolder(node.path)}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveFolder(node.path); } }}
+                style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                className={cn("group flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm transition-colors", activeFolder === node.path ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}
+              >
+                <button
+                  type="button"
+                  aria-label={isCollapsed ? `Expand ${node.name}` : `Collapse ${node.name}`}
+                  onClick={(event) => { event.stopPropagation(); toggleFolder(node.path); }}
+                  className={cn("cursor-pointer rounded p-0.5 hover:bg-zinc-800", !hasChildren && "invisible")}
+                >
+                  {isCollapsed ? <IconChevronRight className="h-3 w-3" /> : <IconChevronDown className="h-3 w-3" />}
+                </button>
+                {isCollapsed ? <IconFolder className="h-3.5 w-3.5 shrink-0" /> : <IconFolderOpen className="h-3.5 w-3.5 shrink-0" />}
+                <span className="min-w-0 flex-1 truncate" title={node.path}>{node.name}</span>
+                <span className="text-[11px] text-zinc-600">{node.totalCount}</span>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-52 border-zinc-800 bg-zinc-950 text-zinc-100">
+              <ContextMenuItem onClick={() => { setNewFolderName(`${node.path}/`); setNewFolderOpen(true); }}>
+                <IconFolderPlus className="h-3.5 w-3.5" /> New subfolder
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => { setRenameFolderTarget(node.path); setRenameFolderValue(node.path); }}>
+                <IconPencil className="h-3.5 w-3.5" /> Rename / move
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+          {hasChildren && !isCollapsed && renderFolderNodes(node.children, depth + 1)}
+        </div>
+      );
+    });
+  }
+
   async function createResource() {
     const title = "New Knowledge Rule";
     const response = await fetch("/api/resources", {
@@ -228,6 +352,7 @@ export default function ResourcesClient({
         resourceType: "knowledge_base",
         name: slugifyResourceKey(title),
         displayName: title,
+        path: activeFolder || "",
         configText: "---\nscope: company\ntype: sop\nstatus: draft\nowner: operator\ntags:\n  - knowledge\n---\n\n# New Knowledge Rule\n\nWrite one reusable rule, SOP, customer context note, or agent instruction here.\n\n## Rule\n\n- \n\n## Related\n\n- [[Company Operating Doctrine]]",
         isShared: false,
       }),
@@ -388,6 +513,7 @@ export default function ResourcesClient({
           <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-1.5 text-zinc-500">
               <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note" aria-label="New note" onClick={createResource}><IconFileText className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New folder" aria-label="New folder" onClick={() => { setNewFolderName(activeFolder ? `${activeFolder}/` : ""); setNewFolderOpen(true); }}><IconFolderPlus className="h-4 w-4" /></button>
               <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><IconPlus className="h-4 w-4" /></button>
               <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><IconRefresh className="h-4 w-4" /></button>
             </div>
@@ -440,6 +566,31 @@ export default function ResourcesClient({
                 ))}
                 <span className="ml-auto text-[11px] text-zinc-600">{filteredResources.length} notes</span>
               </div>
+            </div>
+
+            <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
+              <button
+                onClick={() => setActiveFolder(null)}
+                className={cn("flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", activeFolder === null ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}
+              >
+                <IconArchive className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">All notes</span>
+                <span className="text-[11px] text-zinc-600">{resources.length}</span>
+              </button>
+              {rootNoteCount > 0 && (
+                <button
+                  onClick={() => setActiveFolder("")}
+                  className={cn("flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", activeFolder === "" ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-100")}
+                >
+                  <IconFileText className="h-3.5 w-3.5 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">Unfiled</span>
+                  <span className="text-[11px] text-zinc-600">{rootNoteCount}</span>
+                </button>
+              )}
+              {renderFolderNodes(folderTree, 0)}
+              {!folderTree.length && (
+                <p className="px-2 py-1.5 text-[11px] text-zinc-600">No folders yet. Use the folder icon above to create one.</p>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -606,6 +757,55 @@ export default function ResourcesClient({
           </aside>
         </div>
       </div>
+
+      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New folder</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Use slashes for nesting, e.g. <span className="text-zinc-200">Company/Fundraising</span>.
+              Folders exist as long as a note is filed in them, so the next note you create lands here.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            autoFocus
+            value={newFolderName}
+            onChange={(event) => setNewFolderName(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") createFolder(); }}
+            placeholder="Company/Fundraising"
+            spellCheck={false}
+            className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-400/60"
+          />
+          <DialogFooter>
+            <button onClick={() => setNewFolderOpen(false)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">Cancel</button>
+            <button onClick={createFolder} className="cursor-pointer rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">Create folder</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(renameFolderTarget)} onOpenChange={(open) => { if (!open) setRenameFolderTarget(null); }}>
+        <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename or move folder</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Every note under <span className="text-zinc-200">{renameFolderTarget}</span> is re-filed.
+              Give it a new path to move the whole folder.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            autoFocus
+            value={renameFolderValue}
+            onChange={(event) => setRenameFolderValue(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") void renameFolder(); }}
+            spellCheck={false}
+            className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60"
+          />
+          <DialogFooter>
+            <button onClick={() => setRenameFolderTarget(null)} className="cursor-pointer rounded-md border border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-900">Cancel</button>
+            <button onClick={() => void renameFolder()} className="cursor-pointer rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">Save</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(deleteDialogTarget)} onOpenChange={(open) => { if (!open && !isDeletingDialog) setDeleteDialogTarget(null); }}>
         <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">

@@ -635,6 +635,45 @@ Important current behavior:
 - `isShared=true` means force-injected context for the relevant scope
 - not every resource should be force-injected
 
+### Folders
+
+Knowledge & Rules resources carry a `path` — an Obsidian-style folder such as
+`Company/Fundraising`. This is **separate from Storage folders**: Storage
+(`/folders`, `/artifacts`) organises uploaded files and uses real folder records
+with `folderId`; Knowledge & Rules folders are implicit and addressed by the
+`path` string on the note itself. Do not send `folderId` to a resource endpoint.
+
+An empty `path` means the vault root. Scope and path are independent: scope says
+*who the note belongs to*, path says *where it is filed*.
+
+`path` is accepted on create and patch by every resource-creating endpoint:
+`/resources`, `/customers/{id}/resources`, and `/projects/{projectId}/resources`.
+
+Query parameters on `GET /resources`:
+
+| Param | Meaning |
+|---|---|
+| `path` | Exactly this folder. Use `path=` (empty) for unfiled notes at the root. |
+| `pathPrefix` | This folder and everything beneath it. |
+
+`GET /resources` also returns a derived `folders` tree alongside `resources`,
+where each node carries `path`, `name`, `directCount`, and `totalCount`.
+
+Paths are normalised on write: `/Ferrari/XXX`, `Ferrari/XXX/` and
+`Ferrari // XXX` all become `Ferrari/XXX`. Traversal segments (`.`, `..`) are
+stripped rather than resolved. Depth is capped at 10 segments, each at 80
+characters.
+
+Operator-session endpoints (cookie auth, not MCP tokens):
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/resources/folders` | `GET` | Folder tree with per-folder counts |
+| `/api/resources/folders` | `POST` | Rename or move a folder (`fromPath`, `toPath`) |
+
+Renaming re-files every note beneath the folder and returns `moved`. Moving a
+folder into its own subtree is rejected with `400`.
+
 ### `POST /resources`
 
 Purpose:
@@ -649,12 +688,21 @@ Example:
   "displayName": "Launch Doctrine",
   "provider": "manual",
   "resourceType": "knowledge_base",
+  "path": "Company/Launches",
   "configText": "# Launch Doctrine\nAlways capture assumptions and risks.",
   "isShared": true,
   "status": "active",
   "ownership": "managed"
 }
 ```
+
+Move an existing note between folders by patching `path` alone:
+
+```json
+{ "path": "Ferrari/Audits" }
+```
+
+Send `""` or `null` to move it back to the vault root.
 
 Use resources for:
 

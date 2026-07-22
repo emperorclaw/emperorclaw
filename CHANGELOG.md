@@ -9,6 +9,54 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.6.0] — 2026-07-22
+
+Completes the Knowledge & Rules folders shipped in 0.5.0. In 0.5.0 folders
+existed in the data model but you could only reach them by typing a path into a
+text field, and three endpoints ignored `path` entirely.
+
+### Added
+
+- **Folder explorer in the Knowledge & Rules sidebar.** A real tree: expand and
+  collapse folders, click one to filter to it and everything beneath it, with
+  note counts per folder. "All notes" and "Unfiled" entries sit above it.
+- **Create a folder from the UI.** A folder button in the sidebar header, plus
+  **New subfolder** on a folder's right-click menu. Because folders are implicit,
+  a new folder is held in the sidebar and becomes permanent as soon as a note is
+  filed into it — and the next note you create is filed there automatically.
+- **Rename or move a folder from the UI** via right-click → *Rename / move*,
+  which re-files every note beneath it and reports how many moved.
+- **New notes inherit the selected folder** instead of always landing at the root.
+
+### Fixed
+
+- **`path` was ignored by three resource-creating endpoints.** Notes created via
+  `POST /api/mcp/projects/{projectId}/resources`, `POST /api/mcp/customers/{id}/resources`,
+  or an approved resource proposal were always filed at the vault root, with no
+  way to place them in a folder. All three now accept `path`, and proposal review
+  accepts `pathOverride`. Folder support is now consistent across the API rather
+  than present on only the two company-scoped routes.
+
+### Documentation
+
+- **Agent operating manual** documents Knowledge & Rules folders, with an
+  explicit warning that they are *not* Storage folders — Storage uses real folder
+  records and `folderId`, Knowledge & Rules uses the `path` string on the note.
+  Sending `folderId` to a resource endpoint does nothing, and the manual
+  previously documented only the Storage variant.
+- **API reference** documents `path` on create/patch, the `path` and `pathPrefix`
+  query filters, the derived `folders` tree in list responses, and the
+  `/api/resources/folders` tree/rename endpoints.
+- **Resources as wiki memory** gains a Folders section covering the
+  implicit-folder model and how path differs from scope.
+
+### Internal
+
+- Path helpers moved to `src/lib/resource-paths.ts`, a database-free module, so
+  the client component builds the same folder tree as the server instead of
+  reimplementing it. `@/lib/resources` re-exports them, so server imports are
+  unchanged.
+
 ## [0.5.0] — 2026-07-22
 
 ### Added

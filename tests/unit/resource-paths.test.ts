@@ -6,6 +6,7 @@ import {
   DEFAULT_CONTEXT_MAX_CHARS_PER_RESOURCE,
   normalizeResourcePath,
   resolveMaxCharsPerResource,
+  resourcePathAncestors,
   RESOURCE_PATH_MAX_DEPTH,
 } from "../../src/lib/resources";
 
@@ -79,6 +80,22 @@ test("buildResourceFolderTree separates direct from rolled-up counts", () => {
 test("buildResourceFolderTree ignores root-level notes", () => {
   const tree = buildResourceFolderTree([{ path: "" }, { path: null }, { path: undefined }]);
   assert.deepEqual(tree, []);
+});
+
+test("buildResourceFolderTree materializes folders that hold no note yet", () => {
+  // The UI creates a folder before anything is filed in it; without extraPaths
+  // that folder would vanish on the next render.
+  const tree = buildResourceFolderTree([], ["Company/Fundraising"]);
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].path, "Company");
+  assert.equal(tree[0].children[0].path, "Company/Fundraising");
+  assert.equal(tree[0].children[0].totalCount, 0);
+});
+
+test("resourcePathAncestors lists parents without the folder itself", () => {
+  assert.deepEqual(resourcePathAncestors("A/B/C"), ["A", "A/B"]);
+  assert.deepEqual(resourcePathAncestors("A"), []);
+  assert.deepEqual(resourcePathAncestors(""), []);
 });
 
 test("resolveMaxCharsPerResource honours the env override", () => {

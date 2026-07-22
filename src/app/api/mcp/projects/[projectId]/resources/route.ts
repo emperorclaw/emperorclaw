@@ -72,6 +72,7 @@ export async function POST(
       scopeId: projectId,
       name: body.name,
       displayName: body.displayName || null,
+      path: body.path || null,
       resourceType: body.resourceType,
       provider: body.provider,
       configText: body.configJson || body.configText || "",
