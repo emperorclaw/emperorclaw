@@ -27,6 +27,12 @@ Coordinate agents, customers, projects, knowledge, artifacts, approvals, and inc
 
 ## Quick install
 
+**No server or Docker? Deploy to the cloud in one click** (managed Postgres, secrets auto-generated):
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/emperorclaw/emperorclaw)
+
+**Self-host with Docker:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
 ```

@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **One-click cloud deploy (Render).** A `render.yaml` Blueprint + "Deploy to
+  Render" button in the README provision managed Postgres, auto-generate the
+  secrets, and need no URL input — so people can try EmperorClaw without local
+  Docker (verified that login works behind a proxy with no `NEXTAUTH_URL` set).
+
 ## [0.4.1] — 2026-07-22
 
 ### Added

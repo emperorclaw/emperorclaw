@@ -1,0 +1,45 @@
+# Render Blueprint — one-click deploy for EmperorClaw.
+# https://render.com/docs/blueprint-spec
+#
+# Provisions a managed Postgres + the app from the prebuilt image, generates the
+# required secrets automatically, and needs no public-URL input (the app derives
+# it from the proxy's forwarded host). After deploy, open the service URL and
+# create your admin account.
+#
+# Notes:
+#  - Free tiers sleep after inactivity and the free database expires after 90
+#    days — fine for evaluation; upgrade the plans for real use.
+#  - Local storage is on the service's ephemeral disk, so uploaded artifacts do
+#    not survive a redeploy. For durable storage attach a Render disk at
+#    /app/.data/storage, or set STORAGE_BACKEND=bunny with the BUNNY_* vars.
+
+databases:
+  - name: emperorclaw-db
+    databaseName: emperor
+    user: emperor
+    plan: free
+
+services:
+  - type: web
+    name: emperorclaw
+    runtime: image
+    image:
+      url: ghcr.io/emperorclaw/emperorclaw:latest
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: POSTGRES_CONNECTION_STRING
+        fromDatabase:
+          name: emperorclaw-db
+          property: connectionString
+      # Generated once and kept stable across deploys.
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: EMPEROR_CLAW_MASTER_KEY
+        generateValue: true
+      - key: STORAGE_BACKEND
+        value: local
+      # Enter the email you'll register your admin account with — it unlocks the
+      # /ops panel and the in-app Update button. Render prompts for this on deploy.
+      - key: EMPEROR_PLATFORM_ADMIN_EMAILS
+        sync: false
