@@ -6,6 +6,7 @@ import {
     agents,
     chatMessages,
     companies,
+    companyMembers,
     credentialAccessLogs,
     integrationSecretVersions,
     messageThreads,
@@ -19,6 +20,45 @@ import { normalizeExecutionState, type ExecutionState } from "./project-workflow
 
 type SenderType = "human" | "agent" | "system";
 
+/**
+ * Shared-channel membership: every company member gets their own
+ * threadParticipants row on a thread, so read state (lastReadAt) and unread
+ * counts are per-user even though the conversation itself is shared. Idempotent
+ * — only missing members are inserted, and they start "caught up" (lastReadAt =
+ * now) so joining a channel does not surface every historical message as unread.
+ */
+export async function ensureThreadHumanParticipants(companyId: string, threadId: string) {
+    const members = await db.select({ userId: companyMembers.userId })
+        .from(companyMembers)
+        .where(eq(companyMembers.companyId, companyId));
+    if (members.length === 0) return;
+
+    const existing = await db.select({ ref: threadParticipants.participantRef })
+        .from(threadParticipants)
+        .where(and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.threadId, threadId),
+            eq(threadParticipants.participantType, "human"),
+        ));
+    const have = new Set(existing.map((row) => row.ref));
+
+    const missing = members
+        .filter((member) => !have.has(member.userId))
+        .map((member) => ({
+            threadId,
+            companyId,
+            participantType: "human" as const,
+            participantRef: member.userId,
+            role: "member" as const,
+            // DB now() so it's directly comparable to thread_messages.created_at
+            // (also DB now()); a JS Date can skew read state on non-UTC servers.
+            lastReadAt: sql`now()`,
+        }));
+    if (missing.length > 0) {
+        await db.insert(threadParticipants).values(missing).onConflictDoNothing();
+    }
+}
+
 export async function ensureTeamThread(companyId: string) {
     const [existing] = await db.select().from(messageThreads).where(
         and(
@@ -26,9 +66,12 @@ export async function ensureTeamThread(companyId: string) {
             eq(messageThreads.type, "team"),
             isNull(messageThreads.archivedAt)
         )
-    ).limit(1);
+    ).orderBy(messageThreads.createdAt).limit(1);
 
-    if (existing) return existing;
+    if (existing) {
+        await ensureThreadHumanParticipants(companyId, existing.id);
+        return existing;
+    }
 
     const [created] = await db.insert(messageThreads).values({
         companyId,
@@ -37,100 +80,59 @@ export async function ensureTeamThread(companyId: string) {
         createdByType: "system",
     }).returning();
 
+    await ensureThreadHumanParticipants(companyId, created.id);
     return created;
 }
 
-export async function ensureDirectThread(companyId: string, agentId: string, userId?: string | null) {
-    // Find ALL direct threads where this agent participates
-    const agentParticipants = await db.select({ threadId: threadParticipants.threadId })
+/**
+ * The shared channel for one agent: exactly one "direct" thread per
+ * (company, agent), visible to the whole company. Every member is a participant
+ * (for per-user read state); the agent is a participant. `userId` is accepted
+ * for backward compatibility but no longer affects thread identity — it is NOT
+ * used to fork per-user threads, and no participant ref is ever overwritten.
+ */
+export async function ensureDirectThread(companyId: string, agentId: string, _userId?: string | null) {
+    // The canonical thread is the one this agent participates in.
+    const [agentParticipant] = await db.select({ threadId: threadParticipants.threadId })
         .from(threadParticipants)
-        .where(
-            and(
-                eq(threadParticipants.companyId, companyId),
-                eq(threadParticipants.participantType, "agent"),
-                eq(threadParticipants.participantId, agentId)
-            )
-        );
-    const agentThreadIds = agentParticipants.map(p => p.threadId);
+        .innerJoin(messageThreads, and(
+            eq(messageThreads.id, threadParticipants.threadId),
+            eq(messageThreads.companyId, companyId),
+            eq(messageThreads.type, "direct"),
+            isNull(messageThreads.archivedAt),
+        ))
+        .where(and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.participantType, "agent"),
+            eq(threadParticipants.participantId, agentId),
+        ))
+        .limit(1);
 
-    if (agentThreadIds.length > 0) {
-        // Try exact userId match first
-        if (userId) {
-            const [exact] = await db.select({ threadId: threadParticipants.threadId })
-                .from(threadParticipants)
-                .where(
-                    and(
-                        eq(threadParticipants.companyId, companyId),
-                        inArray(threadParticipants.threadId, agentThreadIds),
-                        eq(threadParticipants.participantType, "human"),
-                        eq(threadParticipants.participantRef, userId)
-                    )
-                ).limit(1);
-            if (exact) {
-                const [t] = await db.select().from(messageThreads).where(
-                    and(eq(messageThreads.id, exact.threadId), eq(messageThreads.companyId, companyId), eq(messageThreads.type, "direct"), isNull(messageThreads.archivedAt))
-                ).limit(1);
-                if (t) return t;
-            }
-        }
-
-        // Fallback: any direct thread with this agent (bridge-created, wrong participantRef, etc.)
-        const [anyHuman] = await db.select({ threadId: threadParticipants.threadId })
-            .from(threadParticipants)
-            .where(
-                and(
-                    eq(threadParticipants.companyId, companyId),
-                    inArray(threadParticipants.threadId, agentThreadIds),
-                    eq(threadParticipants.participantType, "human")
-                )
-            ).limit(1);
-
-        if (anyHuman) {
-            // If userId is provided and differs, fix the participantRef so next lookup is exact
-            if (userId) {
-                await db.update(threadParticipants)
-                    .set({ participantRef: userId })
-                    .where(
-                        and(
-                            eq(threadParticipants.threadId, anyHuman.threadId),
-                            eq(threadParticipants.participantType, "human")
-                        )
-                    );
-            }
-
-            const [t] = await db.select().from(messageThreads).where(
-                and(eq(messageThreads.id, anyHuman.threadId), eq(messageThreads.companyId, companyId), eq(messageThreads.type, "direct"), isNull(messageThreads.archivedAt))
-            ).limit(1);
-            if (t) return t;
+    if (agentParticipant) {
+        const [existing] = await db.select().from(messageThreads)
+            .where(eq(messageThreads.id, agentParticipant.threadId)).limit(1);
+        if (existing) {
+            await ensureThreadHumanParticipants(companyId, existing.id);
+            return existing;
         }
     }
 
-    // No existing thread — create one with the best participantRef we have
-    const targetUserRef = userId || "human-manager";
-
+    // None yet — create the agent's shared channel.
     const [created] = await db.insert(messageThreads).values({
         companyId,
         type: "direct",
         title: "Direct Agent Thread",
-        createdByType: userId ? "human" : "system",
+        createdByType: "system",
     }).returning();
 
-    await db.insert(threadParticipants).values([
-        {
-            threadId: created.id,
-            companyId,
-            participantType: "agent",
-            participantId: agentId,
-            role: "member",
-        },
-        {
-            threadId: created.id,
-            companyId,
-            participantType: "human",
-            participantRef: targetUserRef,
-            role: "member",
-        },
-    ]);
+    await db.insert(threadParticipants).values({
+        threadId: created.id,
+        companyId,
+        participantType: "agent",
+        participantId: agentId,
+        role: "member",
+    });
+    await ensureThreadHumanParticipants(companyId, created.id);
 
     return created;
 }
@@ -154,14 +156,14 @@ export async function markThreadRead(companyId: string, threadId: string, userId
         .limit(1);
 
     if (existing) {
-        await db.update(threadParticipants).set({ lastReadAt: new Date() }).where(eq(threadParticipants.id, existing.id));
+        await db.update(threadParticipants).set({ lastReadAt: sql`now()` }).where(eq(threadParticipants.id, existing.id));
     } else {
         await db.insert(threadParticipants).values({
             threadId,
             companyId,
             participantType: "human",
             participantRef: userId,
-            lastReadAt: new Date(),
+            lastReadAt: sql`now()`,
         });
     }
 }

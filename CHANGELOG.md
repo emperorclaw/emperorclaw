@@ -9,6 +9,28 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Multi-user chat now works as shared channels with per-user read state.** Chat
+  with an agent (and the team channel) is company-shared — every member sees the
+  same conversation — but each user has their own unread count and read position.
+  Several bugs made this unreliable:
+  - `ensureDirectThread` overwrote the thread's human participant to whoever
+    opened it last, clobbering everyone else's membership and read state. It now
+    resolves one canonical thread per (company, agent) and never rewrites refs.
+  - Duplicate `thread_participants` rows double-counted unread and left read
+    state partially stuck — deduped and a unique index added (migration 0032).
+  - A race in `ensureTeamThread` could create multiple team channels per company,
+    splitting the conversation — consolidated into one, with a unique index
+    (migration 0033).
+  - Read timestamps were written as JS `Date` while message timestamps use DB
+    `now()`; on a non-UTC server the skew broke unread. Read state now uses
+    `now()` too.
+  - Every company member is seeded a participant row (caught-up) on each shared
+    thread, so per-user unread badges are correct.
+
 ## [0.6.1] — 2026-07-22
 
 ### Fixed
