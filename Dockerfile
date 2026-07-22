@@ -19,6 +19,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Bind to all interfaces. Next's standalone server defaults to $HOSTNAME, which
+# Docker sets to the container ID — so it would listen only on the container's
+# eth0 IP and not loopback, breaking in-container healthchecks (wget localhost).
+ENV HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
