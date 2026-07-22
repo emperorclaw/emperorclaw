@@ -35,6 +35,10 @@ function SignupForm() {
     const [regMode, setRegMode] = useState<"loading" | "bootstrap" | "invite-only" | "open" | "invited">(
         inviteParam ? "invited" : "loading"
     );
+    // Whether SMTP is configured. When it isn't, accounts are auto-verified, so
+    // we must not tell the user to check their email. Assume configured until we
+    // learn otherwise (cloud default), then correct from register-state.
+    const [emailConfigured, setEmailConfigured] = useState(true);
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedCompanyName = companyName.trim().replace(/\s+/g, " ");
@@ -81,6 +85,7 @@ function SignupForm() {
             fetch("/api/auth/register-state")
                 .then((res) => res.json())
                 .then((data) => {
+                    setEmailConfigured(data.emailConfigured !== false);
                     if (data.isBootstrap) {
                         setRegMode("bootstrap");
                     } else if (data.registrationMode === "open") {
@@ -225,11 +230,12 @@ function SignupForm() {
             ? "Accept your invitation"
             : "Create an account";
 
+    const activateSuffix = emailConfigured ? " and verify your email to activate it" : "";
     const subtitle = regMode === "bootstrap"
-        ? "Set up your Emperor Claw workspace and verify your email to activate it."
+        ? `Set up your Emperor Claw workspace${activateSuffix}.`
         : regMode === "invited" && inviteInfo
             ? `You've been invited to join ${inviteInfo.companyName} as ${inviteInfo.role}.`
-            : "Create your Emperor Claw account and verify your email to activate it.";
+            : `Create your Emperor Claw account${activateSuffix}.`;
 
     const showCompanyName = regMode === "bootstrap";
     const showBetaDisclaimer = regMode === "bootstrap";
@@ -382,7 +388,9 @@ function SignupForm() {
                             <div className="flex items-start gap-2">
                                 <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
                                 <p>
-                                    We will send a verification link to this email before the workspace can be used.
+                                    {emailConfigured
+                                        ? "We will send a verification link to this email before the workspace can be used."
+                                        : "No email server is configured, so your account is activated immediately — you can log in right after signing up."}
                                     {showCompanyName && " Create only one workspace per company unless you intentionally want separate isolated datasets and agent state."}
                                 </p>
                             </div>

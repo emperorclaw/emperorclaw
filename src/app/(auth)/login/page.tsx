@@ -29,7 +29,17 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [focused, setFocused] = useState<"email" | "password" | null>(null);
+    // When SMTP isn't configured, accounts are auto-verified, so the
+    // "verify your email first" hint would be misleading. Hide it in that case.
+    const [emailConfigured, setEmailConfigured] = useState(true);
     const cardRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        fetch("/api/auth/register-state")
+            .then((res) => res.json())
+            .then((data) => setEmailConfigured(data.emailConfigured !== false))
+            .catch(() => { /* keep default */ });
+    }, []);
 
     useEffect(() => {
         const card = cardRef.current;
@@ -177,12 +187,14 @@ export default function LoginPage() {
                             {/* Footer */}
                             <FadeUp delay={stagger.footer}>
                                 <div className="mt-7 pt-6 border-t border-white/[0.05] text-center">
-                                    <p className="text-xs text-zinc-400 mb-3 font-light">
-                                        New workspaces must verify their email first.{" "}
-                                        <Link href={`/signup/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`} className="text-cyan-300 hover:text-cyan-200 transition-colors duration-300">
-                                            Resend activation
-                                        </Link>
-                                    </p>
+                                    {emailConfigured && (
+                                        <p className="text-xs text-zinc-400 mb-3 font-light">
+                                            New workspaces must verify their email first.{" "}
+                                            <Link href={`/signup/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`} className="text-cyan-300 hover:text-cyan-200 transition-colors duration-300">
+                                                Resend activation
+                                            </Link>
+                                        </p>
+                                    )}
                                     <div className="flex items-center justify-center gap-6 text-xs">
                                         <Link href="/signup" className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 group">
                                             <IconShield className="w-3 h-3 transition-colors duration-300 group-hover:text-cyan-300" />Create account
