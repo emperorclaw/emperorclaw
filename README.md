@@ -33,6 +33,8 @@ curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/instal
 
 Open `http://localhost:3000` and create your admin account. That's it — Docker, PostgreSQL, secrets, and migrations are handled automatically.
 
+**Next:** [Connect your first agent →](docs/CONNECT-FIRST-AGENT.md) — get an agent online and replying to chat in ~5 minutes.
+
 <details>
 <summary>Other platforms & options</summary>
 

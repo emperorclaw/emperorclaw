@@ -11,6 +11,11 @@ ships in the release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **"Connect your first agent" quickstart** (`docs/CONNECT-FIRST-AGENT.md`,
+  linked from the README) — gets an agent online and replying in ~5 minutes.
+
 ### Fixed
 
 - **Multi-arch Docker image.** The published image was `linux/amd64` only, so a
