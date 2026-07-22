@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Multi-arch Docker image.** The published image was `linux/amd64` only, so a
+  fresh `docker compose up` failed on Apple Silicon (arm64) with
+  `no matching manifest`. The release now builds `linux/amd64,linux/arm64`.
+- **`/api/health` and `/api/version` are reachable without auth.** The proxy
+  (Next 16 middleware) matcher was redirecting these public endpoints to
+  `/login`, which also silently defeated the Docker healthcheck. Added both to
+  the public allowlist.
+
 ## [0.4.0] — 2026-07-22
 
 ### ⚠️ Breaking / action required

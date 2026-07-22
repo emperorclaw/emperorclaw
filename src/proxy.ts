@@ -31,10 +31,12 @@ export const config = {
     //   /api/webhook/*       — webhook endpoints
     //   /api/skills/*        — public skill registry
     //   /api/docs/*          — public documentation API
+    //   /api/health          — unauthenticated liveness/readiness probe
+    //   /api/version         — public version info (update banner)
     //   /docs/*              — documentation pages
     //   /login, /signup      — auth pages
     //   /setup, /install.*   — setup scripts
     //   /downloads/*         — public downloads
     //   /_next/*, favicon    — Next.js internals
-    matcher: ["/((?!$|api/auth|api/mcp|api/webhook|api/skills|api/docs|api/updates|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|emperor-claw-os|icon\\.png).*)"],
+    matcher: ["/((?!$|api/auth|api/mcp|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|emperor-claw-os|icon\\.png).*)"],
 };
