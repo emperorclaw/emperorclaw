@@ -524,9 +524,41 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
     const [copiedCmd, setCopiedCmd] = useState(false);
     const [setupRunning, setSetupRunning] = useState(false);
     const [setupResult, setSetupResult] = useState<{ success: boolean; message: string; outputs?: { command: string; stdout: string; stderr: string; exitCode: number | null }[] } | null>(null);
+    // A freshly-minted access token, injected into the connect commands so the
+    // user doesn't have to go create one and paste it in. Shown once.
+    const [genToken, setGenToken] = useState<string | null>(null);
+    const [genningToken, setGenningToken] = useState(false);
+    const [genTokenError, setGenTokenError] = useState<string | null>(null);
     const provider = getProvider(providerId) || getProvider("mcp")!;
     const isLocal = deploymentMode === "local";
     const isOnline = agentStatus === "online";
+
+    // Substitute template vars. Uses the generated token when available, else a
+    // clear placeholder that tells the user to create one.
+    const tokenValue = genToken ?? "YOUR_TOKEN";
+    const applyVars = (s: string) => s
+        .replace(/\{name\}/g, agentName)
+        .replace(/\{role\}/g, agentRole)
+        .replace(/\{token\}/g, tokenValue);
+
+    const generateToken = async () => {
+        setGenningToken(true);
+        setGenTokenError(null);
+        try {
+            const res = await fetch("/api/settings/tokens", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: `agent: ${agentName}`, scope: "mcp_full" }),
+            });
+            const body = await res.json();
+            if (!res.ok || !body.secret) throw new Error(body.error || "Could not create token");
+            setGenToken(body.secret as string);
+        } catch (e) {
+            setGenTokenError(e instanceof Error ? e.message : "Could not create token");
+        } finally {
+            setGenningToken(false);
+        }
+    };
     const template = getAgentTemplate(
         Object.entries({
             "SEO Specialist": "seo",
@@ -657,29 +689,52 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
                             ⚡ Quick Connect Commands
                         </span>
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const cmds = provider.installCommands.map(c => c.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole)).join("\n");
-                                await navigator.clipboard.writeText(cmds);
-                                setCopiedCmd(true);
-                                setTimeout(() => setCopiedCmd(false), 2000);
-                            }}
-                            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
-                        >
-                            {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
-                            {copiedCmd ? "Copied!" : "Copy all"}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            {!genToken && (
+                                <button
+                                    type="button"
+                                    onClick={generateToken}
+                                    disabled={genningToken}
+                                    className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors disabled:opacity-50"
+                                >
+                                    {genningToken ? "Generating…" : "Generate token"}
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const cmds = provider.installCommands.map(applyVars).join("\n");
+                                    await navigator.clipboard.writeText(cmds);
+                                    setCopiedCmd(true);
+                                    setTimeout(() => setCopiedCmd(false), 2000);
+                                }}
+                                className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors"
+                            >
+                                {copiedCmd ? <IconCircleCheck className="h-3 w-3" /> : <IconCopy className="h-3 w-3" />}
+                                {copiedCmd ? "Copied!" : "Copy all"}
+                            </button>
+                        </div>
                     </div>
                     <div className="p-3 space-y-2">
                         {provider.installCommands.map((cmd, i) => (
                             <div key={i} className="flex items-start gap-2">
                                 <span className="text-[10px] text-emerald-500 mt-0.5 shrink-0">{i + 1}.</span>
                                 <code className="text-[11px] text-emerald-100/80 font-mono break-all">
-                                    {cmd.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole).replace(/\{token\}/g, "YOUR_TOKEN")}
+                                    {applyVars(cmd)}
                                 </code>
                             </div>
                         ))}
+                        {genToken ? (
+                            <p className="text-[10px] text-emerald-200/90 mt-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1.5">
+                                ✓ A new access token was created and inserted above. Copy it now — it won&apos;t be shown again. Manage tokens in Settings → Access Tokens.
+                            </p>
+                        ) : genTokenError ? (
+                            <p className="text-[10px] text-rose-300/90 mt-1">Could not create token: {genTokenError}. Create one manually in Settings → Access Tokens.</p>
+                        ) : (
+                            <p className="text-[10px] text-emerald-100/50 mt-1">
+                                Click <span className="text-emerald-200">Generate token</span> to insert a real token, or replace <code className="text-emerald-200/80">YOUR_TOKEN</code> with one from Settings → Access Tokens.
+                            </p>
+                        )}
                         <p className="text-[10px] text-emerald-100/50 mt-1">
                             {isLocal
                                 ? `Assumes ${provider.name} CLI is installed on this server. Run these commands in a terminal.`
@@ -738,7 +793,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                 const baseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
                                 const env = [
                                     `EMPEROR_CLAW_API_URL="${baseUrl}"`,
-                                    `EMPEROR_CLAW_API_TOKEN="<generate in Settings > Access Tokens>"`,
+                                    `EMPEROR_CLAW_API_TOKEN="${genToken ?? "<generate in Settings > Access Tokens>"}"`,
                                     `EMPEROR_CLAW_AGENT_NAME="${agentName}"`,
                                     `EMPEROR_CLAW_AGENT_ID="${agentId}"`,
                                     `EMPEROR_CLAW_AGENT_ROLE="${agentRole}"`,
@@ -775,7 +830,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                             <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]", isLocal ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300")}>
                                 {i + 1}
                             </span>
-                            <span>{step.replace(/\{name\}/g, agentName).replace(/\{role\}/g, agentRole).replace(/\{token\}/g, "your-token")}</span>
+                            <span>{applyVars(step)}</span>
                         </div>
                     ))}
                     <div className={cn("flex items-center gap-2 text-[11px]", isLocal ? "text-emerald-100/70" : "text-amber-100/70")}>
