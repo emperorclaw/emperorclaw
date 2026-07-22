@@ -84,14 +84,57 @@ Obsidian works because the primitives stay boring:
 | Obsidian idea | Emperor equivalent | Agent rule |
 | --- | --- | --- |
 | Vault | Company Brain / Knowledge & Rules | Treat it as the shared company knowledge vault. |
-| Folder explorer | Scope tree: company, customer, project, agent | Pick the smallest correct scope instead of inventing title prefixes. |
+| Folders | `scopedResources.path`, e.g. `Company/Fundraising` | File the note in a real folder instead of encoding one in the title. |
+| Folder explorer | Scope tree (company, customer, project, agent) + folder paths within it | Pick the smallest correct scope, then a descriptive folder path. |
 | Markdown note | `scopedResources.configText` | Write durable markdown, not chat transcript. |
 | Properties | Frontmatter | Use `status: active` for published knowledge and `status: draft` only for explicitly uncertain notes. |
 | Wikilinks | `[[Resource Name]]` | Link related doctrine explicitly. |
 | Tags | `#tag` or frontmatter `tags` | Use for retrieval categories, not decoration. |
 | Graph | Resource links and inferred title mentions | Improve graph quality by linking notes deliberately. |
 
-Do not create notes named like folders (`Acme / Project / Rule`). Use scope fields for placement and a human title for the note. Do not create a separate approval item; if review is truly needed, mark the note `status: draft`.
+Do not encode a folder in the note title (`Acme / Project / Rule`). Titles are human labels; `path` is the folder. Do not create a separate approval item; if review is truly needed, mark the note `status: draft`.
+
+## Folders
+
+Notes carry an Obsidian-style `path`. Folders are **implicit** — a folder exists exactly as long as something inside it does, so there is no folder table to keep in sync and no empty folders to clean up.
+
+```
+Company/Fundraising
+Company/Legal/Contracts
+Ferrari/Audits/2026-07
+```
+
+An empty `path` is the vault root. Scope and path are independent: scope answers *who this note belongs to*, path answers *where it is filed*.
+
+Input is normalized on write, so `/Ferrari/XXX`, `Ferrari/XXX/`, and `Ferrari // XXX` all land on `Ferrari/XXX`. Traversal segments (`.`, `..`) are stripped rather than resolved, because paths also drive prefix queries. Depth is capped at 10, each segment at 80 characters.
+
+| Task | How |
+| --- | --- |
+| File a note | Set `path` on create or patch. Parent folders appear automatically. |
+| Move a note | Patch `path`. Send `""` or `null` for the root. |
+| List one folder | `GET /api/mcp/resources?path=Company/Fundraising` |
+| List a subtree | `GET /api/mcp/resources?pathPrefix=Company` |
+| Read the tree | `GET /api/resources/folders` |
+| Rename or move a folder | `POST /api/resources/folders` with `fromPath` and `toPath` |
+
+Renaming a folder re-files every note beneath it and returns how many moved. Moving a folder into its own subtree is rejected — it would orphan everything inside it.
+
+## Context budget and truncation
+
+Two separate limits apply, and confusing them causes silent doctrine loss:
+
+| Limit | Default | Controlled by |
+| --- | --- | --- |
+| Total across all notes in one context | 12000 chars | `maxChars` query param |
+| Any single note | 8000 chars | `maxCharsPerResource` param, else `EMPEROR_BRAIN_MAX_CHARS_PER_RESOURCE` |
+
+Raising `maxChars` does **not** raise the per-note ceiling. A longer note is truncated with a `...[trimmed by Emperor]` marker and everything after the cut never reaches the agent — typically the most recently written sections. Prefer several focused, cross-linked notes over one very long one, and verify what the agent actually receives after changing doctrine:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$APP_URL/api/mcp/resources/context?agentId=$AGENT_ID&maxChars=12000" \
+  | jq -r '.sources[] | "\(.name): \(.content|length) chars"'
+```
 
 ## Brain vs memory vs task notes vs Storage
 

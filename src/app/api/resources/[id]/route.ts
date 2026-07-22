@@ -61,6 +61,7 @@ export async function PATCH(
     const patch: {
       name?: string;
       displayName?: string | null;
+      path?: string | null;
       resourceType?: string;
       provider?: string;
       configText?: string;
@@ -74,6 +75,8 @@ export async function PATCH(
     } = {};
     if (body.name !== undefined) patch.name = typeof body.name === "string" ? body.name.trim() : "";
     if (body.displayName !== undefined) patch.displayName = typeof body.displayName === "string" ? body.displayName.trim() : null;
+    // Moving a note between folders. null/"" files it at the vault root.
+    if (body.path !== undefined) patch.path = typeof body.path === "string" ? body.path : null;
     if (body.resourceType !== undefined) patch.resourceType = typeof body.resourceType === "string" ? body.resourceType : "external_account";
     if (body.provider !== undefined) patch.provider = typeof body.provider === "string" ? body.provider.trim() || "generic" : "generic";
     if (body.configJson !== undefined) patch.configText = body.configJson;

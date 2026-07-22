@@ -41,8 +41,111 @@ function normalizeBrainKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Hard limits so a malformed path can never blow up the folder tree. */
+export const RESOURCE_PATH_MAX_DEPTH = 10;
+export const RESOURCE_PATH_MAX_SEGMENT = 80;
+
+/**
+ * Normalize an Obsidian-style folder path.
+ *
+ * Accepts the shapes people actually type — "/Ferrari/XXX", "Company/Fundraising/",
+ * "Company // Fundraising" — and returns a canonical "Company/Fundraising".
+ * Returns "" for the vault root.
+ *
+ * Traversal segments ("." / "..") are dropped rather than escaped: these paths
+ * are display/grouping keys, but they also flow into prefix queries, so letting
+ * ".." through would let a note claim membership of a folder above its own.
+ */
+export function normalizeResourcePath(input: unknown): string {
+  if (typeof input !== "string") return "";
+  return input
+    .split("/")
+    .map((segment) => segment.trim().replace(/\s+/g, " "))
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    .slice(0, RESOURCE_PATH_MAX_DEPTH)
+    .map((segment) => segment.slice(0, RESOURCE_PATH_MAX_SEGMENT))
+    .join("/");
+}
+
+export type ResourceFolderNode = {
+  /** Full path from the root, e.g. "Company/Fundraising". */
+  path: string;
+  /** Last segment only, e.g. "Fundraising". */
+  name: string;
+  /** Notes filed directly in this folder, excluding descendants. */
+  directCount: number;
+  /** Notes in this folder and everything beneath it. */
+  totalCount: number;
+  children: ResourceFolderNode[];
+};
+
+/**
+ * Derive the folder tree from the distinct paths of a set of resources.
+ *
+ * Folders are implicit, so an intermediate folder exists purely because
+ * something below it does — "A/B/C" materializes "A" and "A/B" even when
+ * neither holds a note directly.
+ */
+export function buildResourceFolderTree(
+  resources: Array<{ path?: string | null }>,
+): ResourceFolderNode[] {
+  const byPath = new Map<string, ResourceFolderNode>();
+  const roots: ResourceFolderNode[] = [];
+
+  const ensure = (path: string): ResourceFolderNode => {
+    const existing = byPath.get(path);
+    if (existing) return existing;
+
+    const segments = path.split("/");
+    const node: ResourceFolderNode = {
+      path,
+      name: segments[segments.length - 1],
+      directCount: 0,
+      totalCount: 0,
+      children: [],
+    };
+    byPath.set(path, node);
+
+    if (segments.length === 1) {
+      roots.push(node);
+    } else {
+      ensure(segments.slice(0, -1).join("/")).children.push(node);
+    }
+    return node;
+  };
+
+  for (const resource of resources) {
+    const path = normalizeResourcePath(resource.path);
+    if (!path) continue;
+
+    ensure(path).directCount += 1;
+
+    // Every ancestor counts this note in its rollup.
+    const segments = path.split("/");
+    for (let index = 1; index <= segments.length; index += 1) {
+      ensure(segments.slice(0, index).join("/")).totalCount += 1;
+    }
+  }
+
+  const sortTree = (nodes: ResourceFolderNode[]): ResourceFolderNode[] => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    nodes.forEach((node) => sortTree(node.children));
+    return nodes;
+  };
+
+  return sortTree(roots);
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Escape LIKE/ILIKE wildcards. A folder literally named "50% Done" must not
+ * match every sibling folder because of a stray %.
+ */
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function mentionsResourceTitle(content: string, title: string) {
@@ -54,6 +157,27 @@ function mentionsResourceTitle(content: string, title: string) {
 function truncateForContext(value: string, maxChars: number) {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, Math.max(0, maxChars - 24)).trimEnd()}\n...[trimmed by Emperor]`;
+}
+
+/** Total budget across all resources injected into one agent context. */
+export const DEFAULT_CONTEXT_MAX_CHARS = 12000;
+
+/**
+ * Per-resource ceiling inside that budget.
+ *
+ * This used to be hard-coded at 3000, which silently truncated any longer
+ * doctrine note mid-document: the agent received the opening sections and
+ * never saw the rest, with no error surfaced anywhere. The default is now
+ * generous enough for a real operating doctrine, and deployments that want a
+ * different trade-off between "one deep note" and "many shallow notes" can
+ * tune it without a code change.
+ */
+export const DEFAULT_CONTEXT_MAX_CHARS_PER_RESOURCE = 8000;
+
+export function resolveMaxCharsPerResource(): number {
+  const raw = Number.parseInt(process.env.EMPEROR_BRAIN_MAX_CHARS_PER_RESOURCE || "", 10);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return DEFAULT_CONTEXT_MAX_CHARS_PER_RESOURCE;
 }
 
 export function parseResourceMarkdownMetadata(markdown: string) {
@@ -115,11 +239,33 @@ export async function listScopedResources(input: {
   displayName?: string | null;
   search?: string | null;
   isShared?: boolean | null;
+  /** Exact folder, e.g. "Company/Fundraising". Use "" for the vault root. */
+  path?: string | null;
+  /** That folder and everything beneath it. */
+  pathPrefix?: string | null;
 }) {
   const conditions = [
     eq(scopedResources.companyId, input.companyId),
     isNull(scopedResources.deletedAt),
   ];
+
+  // "" is a meaningful value here (the vault root), so check against undefined
+  // and null rather than truthiness.
+  if (input.path !== undefined && input.path !== null) {
+    conditions.push(eq(scopedResources.path, normalizeResourcePath(input.path)));
+  }
+
+  if (input.pathPrefix !== undefined && input.pathPrefix !== null) {
+    const prefix = normalizeResourcePath(input.pathPrefix);
+    // An empty prefix means the whole vault — no filter needed.
+    if (prefix) {
+      const descendants = or(
+        eq(scopedResources.path, prefix),
+        ilike(scopedResources.path, `${escapeLikePattern(prefix)}/%`),
+      );
+      if (descendants) conditions.push(descendants);
+    }
+  }
 
   if (input.scopeType) conditions.push(eq(scopedResources.scopeType, normalizeScopeType(input.scopeType)));
   if (input.scopeId) conditions.push(eq(scopedResources.scopeId, input.scopeId));
@@ -152,6 +298,44 @@ export async function getScopedResource(companyId: string, resourceId: string) {
   return resource || null;
 }
 
+/**
+ * Rename or move a folder by rewriting the path prefix of everything inside it.
+ *
+ * Implicit folders have no row of their own, so "renaming a folder" is really
+ * "re-filing every note under it". Returns the number of notes moved; 0 means
+ * the folder was empty or absent, which is not an error.
+ */
+export async function moveResourceFolder(input: {
+  companyId: string;
+  fromPath: string;
+  toPath: string;
+}) {
+  const from = normalizeResourcePath(input.fromPath);
+  const to = normalizeResourcePath(input.toPath);
+  if (!from || from === to) return 0;
+
+  // Refuse to move a folder inside itself — that would build an unreachable
+  // path and orphan every note under it.
+  if (to === from || to.startsWith(`${from}/`)) {
+    throw new Error("Cannot move a folder into its own subtree");
+  }
+
+  const affected = await listScopedResources({
+    companyId: input.companyId,
+    pathPrefix: from,
+  });
+
+  for (const resource of affected) {
+    const suffix = resource.path.slice(from.length).replace(/^\//, "");
+    const nextPath = normalizeResourcePath(to && suffix ? `${to}/${suffix}` : to || suffix);
+    await db.update(scopedResources)
+      .set({ path: nextPath, updatedAt: new Date() })
+      .where(eq(scopedResources.id, resource.id));
+  }
+
+  return affected.length;
+}
+
 export async function createScopedResource(input: {
   companyId: string;
   scopeType: string;
@@ -160,6 +344,7 @@ export async function createScopedResource(input: {
   resourceType: string;
   name: string;
   displayName?: string | null;
+  path?: string | null;
   configText?: string | null;
   secretText?: string | null;
   status?: string | null;
@@ -178,6 +363,7 @@ export async function createScopedResource(input: {
     resourceType: normalizeResourceType(input.resourceType),
     name: input.name,
     displayName: input.displayName || null,
+    path: normalizeResourcePath(input.path),
     configText: input.configText || "",
     secretText: input.secretText || "",
     status: input.status || "active",
@@ -208,6 +394,7 @@ export async function updateScopedResource(input: {
     resourceType: string;
     name: string;
     displayName: string | null;
+    path: string | null;
     configText: string;
     secretText: string;
     status: string;
@@ -228,6 +415,9 @@ export async function updateScopedResource(input: {
     resourceType: input.patch.resourceType ? normalizeResourceType(input.patch.resourceType) : existing.resourceType,
     name: input.patch.name ?? existing.name,
     displayName: input.patch.displayName === undefined ? existing.displayName : input.patch.displayName,
+    // Moving a note between folders is just a path patch. Undefined leaves it
+    // where it is; null or "" moves it to the vault root.
+    path: input.patch.path === undefined ? existing.path : normalizeResourcePath(input.patch.path),
     configText: input.patch.configText ?? existing.configText,
     secretText: input.patch.secretText ?? existing.secretText,
     status: input.patch.status ?? existing.status,
@@ -623,8 +813,10 @@ export async function resolveCompanyBrainContext(input: {
   resourceIds?: string[];
   tagFilters?: string[];
   maxChars?: number;
+  maxCharsPerResource?: number;
 }) {
-  const maxChars = input.maxChars || 12000;
+  const maxChars = input.maxChars || DEFAULT_CONTEXT_MAX_CHARS;
+  const maxCharsPerResource = input.maxCharsPerResource || resolveMaxCharsPerResource();
   const allResources = await listScopedResources({ companyId: input.companyId, status: "active" });
   const links = await db.select().from(resourceLinks).where(eq(resourceLinks.companyId, input.companyId));
   const requestedTags = new Set((input.tagFilters || []).map((tag) => tag.replace(/^#/, "").trim()).filter(Boolean));
@@ -672,7 +864,7 @@ export async function resolveCompanyBrainContext(input: {
   for (const item of scored) {
     const remaining = maxChars - usedChars;
     if (remaining <= 0) break;
-    const content = truncateForContext(item.resource.configText || "", Math.min(remaining, 3000));
+    const content = truncateForContext(item.resource.configText || "", Math.min(remaining, maxCharsPerResource));
     usedChars += content.length;
     resources.push({
       id: item.resource.id,
