@@ -233,6 +233,9 @@ export async function moveResourceFolder(input: {
   companyId: string;
   fromPath: string;
   toPath: string;
+  /** Restrict to one scope. Folders are per-scope, so omit only for global moves. */
+  scopeType?: string | null;
+  scopeId?: string | null;
 }) {
   const from = normalizeResourcePath(input.fromPath);
   const to = normalizeResourcePath(input.toPath);
@@ -246,6 +249,8 @@ export async function moveResourceFolder(input: {
 
   const affected = await listScopedResources({
     companyId: input.companyId,
+    scopeType: input.scopeType,
+    scopeId: input.scopeId,
     pathPrefix: from,
   });
 
@@ -254,6 +259,36 @@ export async function moveResourceFolder(input: {
     const nextPath = normalizeResourcePath(to && suffix ? `${to}/${suffix}` : to || suffix);
     await db.update(scopedResources)
       .set({ path: nextPath, updatedAt: new Date() })
+      .where(eq(scopedResources.id, resource.id));
+  }
+
+  return affected.length;
+}
+
+/**
+ * Delete a folder and every note within it and its subfolders (soft-delete).
+ * Scoped so deleting "Fundraising" under Company leaves an Agent's identically
+ * named folder untouched. Returns how many notes were deleted.
+ */
+export async function deleteResourceFolder(input: {
+  companyId: string;
+  path: string;
+  scopeType?: string | null;
+  scopeId?: string | null;
+}) {
+  const path = normalizeResourcePath(input.path);
+  if (!path) return 0;
+
+  const affected = await listScopedResources({
+    companyId: input.companyId,
+    scopeType: input.scopeType,
+    scopeId: input.scopeId,
+    pathPrefix: path,
+  });
+
+  for (const resource of affected) {
+    await db.update(scopedResources)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(eq(scopedResources.id, resource.id));
   }
 

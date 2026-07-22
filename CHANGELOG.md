@@ -9,6 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Knowledge & Rules folders now behave like Storage — and adding a folder no
+  longer hides your notes.** Creating a folder auto-selected it, and because it
+  was empty the note list filtered down to nothing, so every existing note
+  appeared to vanish. The sidebar was also two disconnected views (a folder
+  filter-tree plus a separate scope list). Both are replaced by a single unified
+  tree: **scope → nested folders → notes**, each folder expandable/collapsible,
+  scoped per company/customer/project/agent. Right-click a folder for *New note
+  here / New subfolder / Rename / move / Delete folder*, and a note for *Open /
+  Delete note* — mirroring the Storage explorer. Delete-folder is scoped and
+  confirmed. New API: `DELETE /api/resources/folders`; folder rename/delete now
+  take an optional scope so identically-named folders in different scopes stay
+  independent.
+
 ## [0.6.0] — 2026-07-22
 
 Completes the Knowledge & Rules folders shipped in 0.5.0. In 0.5.0 folders
