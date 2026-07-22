@@ -10,6 +10,24 @@ import {
   scopedResources,
 } from "@/db/schema";
 import type { McpTaskScopeContext } from "@/lib/mcp";
+import {
+  buildResourceFolderTree,
+  normalizeResourcePath,
+  RESOURCE_PATH_MAX_DEPTH,
+  RESOURCE_PATH_MAX_SEGMENT,
+  resourcePathAncestors,
+  type ResourceFolderNode,
+} from "@/lib/resource-paths";
+
+// Path helpers live in a db-free module so client components can share them.
+export {
+  buildResourceFolderTree,
+  normalizeResourcePath,
+  RESOURCE_PATH_MAX_DEPTH,
+  RESOURCE_PATH_MAX_SEGMENT,
+  resourcePathAncestors,
+};
+export type { ResourceFolderNode };
 
 export const RESOURCE_SCOPE_TYPES = ["company", "customer", "project", "agent"] as const;
 export const RESOURCE_TYPES = [
@@ -41,100 +59,6 @@ function normalizeBrainKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Hard limits so a malformed path can never blow up the folder tree. */
-export const RESOURCE_PATH_MAX_DEPTH = 10;
-export const RESOURCE_PATH_MAX_SEGMENT = 80;
-
-/**
- * Normalize an Obsidian-style folder path.
- *
- * Accepts the shapes people actually type — "/Ferrari/XXX", "Company/Fundraising/",
- * "Company // Fundraising" — and returns a canonical "Company/Fundraising".
- * Returns "" for the vault root.
- *
- * Traversal segments ("." / "..") are dropped rather than escaped: these paths
- * are display/grouping keys, but they also flow into prefix queries, so letting
- * ".." through would let a note claim membership of a folder above its own.
- */
-export function normalizeResourcePath(input: unknown): string {
-  if (typeof input !== "string") return "";
-  return input
-    .split("/")
-    .map((segment) => segment.trim().replace(/\s+/g, " "))
-    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..")
-    .slice(0, RESOURCE_PATH_MAX_DEPTH)
-    .map((segment) => segment.slice(0, RESOURCE_PATH_MAX_SEGMENT))
-    .join("/");
-}
-
-export type ResourceFolderNode = {
-  /** Full path from the root, e.g. "Company/Fundraising". */
-  path: string;
-  /** Last segment only, e.g. "Fundraising". */
-  name: string;
-  /** Notes filed directly in this folder, excluding descendants. */
-  directCount: number;
-  /** Notes in this folder and everything beneath it. */
-  totalCount: number;
-  children: ResourceFolderNode[];
-};
-
-/**
- * Derive the folder tree from the distinct paths of a set of resources.
- *
- * Folders are implicit, so an intermediate folder exists purely because
- * something below it does — "A/B/C" materializes "A" and "A/B" even when
- * neither holds a note directly.
- */
-export function buildResourceFolderTree(
-  resources: Array<{ path?: string | null }>,
-): ResourceFolderNode[] {
-  const byPath = new Map<string, ResourceFolderNode>();
-  const roots: ResourceFolderNode[] = [];
-
-  const ensure = (path: string): ResourceFolderNode => {
-    const existing = byPath.get(path);
-    if (existing) return existing;
-
-    const segments = path.split("/");
-    const node: ResourceFolderNode = {
-      path,
-      name: segments[segments.length - 1],
-      directCount: 0,
-      totalCount: 0,
-      children: [],
-    };
-    byPath.set(path, node);
-
-    if (segments.length === 1) {
-      roots.push(node);
-    } else {
-      ensure(segments.slice(0, -1).join("/")).children.push(node);
-    }
-    return node;
-  };
-
-  for (const resource of resources) {
-    const path = normalizeResourcePath(resource.path);
-    if (!path) continue;
-
-    ensure(path).directCount += 1;
-
-    // Every ancestor counts this note in its rollup.
-    const segments = path.split("/");
-    for (let index = 1; index <= segments.length; index += 1) {
-      ensure(segments.slice(0, index).join("/")).totalCount += 1;
-    }
-  }
-
-  const sortTree = (nodes: ResourceFolderNode[]): ResourceFolderNode[] => {
-    nodes.sort((a, b) => a.name.localeCompare(b.name));
-    nodes.forEach((node) => sortTree(node.children));
-    return nodes;
-  };
-
-  return sortTree(roots);
-}
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -750,6 +674,8 @@ export async function reviewResourceProposal(input: {
   resolutionNote?: string | null;
   reviewedByUserId?: string | null;
   proposedTextOverride?: string | null;
+  /** Folder to file an approved proposal into. Defaults to the vault root. */
+  pathOverride?: string | null;
 }) {
   const [proposal] = await db.select().from(resourceProposals).where(and(
     eq(resourceProposals.companyId, input.companyId),
@@ -770,6 +696,7 @@ export async function reviewResourceProposal(input: {
         resourceType: "knowledge_base",
         name: normalizeBrainKey(proposal.title).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
         displayName: proposal.title,
+        path: input.pathOverride ?? null,
         configText: proposedText,
         status: "active",
         ownership: "managed",

@@ -60,6 +60,42 @@ Those belong elsewhere:
 - temporary execution state belongs in task notes or project memory
 - files belong in artifacts
 
+## Folders
+
+A vault needs folders, and resources have them: every note carries a `path` such
+as `Company/Fundraising` or `Ferrari/Audits/2026-07`. An empty path is the root.
+
+Folders are **implicit**. There is no folder record and no "create folder" call —
+a folder exists exactly as long as a note is filed in it, and parent folders
+appear automatically. That means an empty folder cannot exist: to make a folder,
+file something in it.
+
+```
+POST  /resources        { "displayName": "Q3 Audit", "path": "Ferrari/Audits" }
+PATCH /resources/{id}   { "path": "Ferrari/Archive" }   // move a note
+GET   /resources?pathPrefix=Ferrari                     // the whole subtree
+```
+
+Path and scope answer different questions and are set independently:
+
+| Field | Question it answers | Example |
+| --- | --- | --- |
+| `scopeType` / `scopeId` | Who does this note belong to? | this customer, this project, this agent |
+| `path` | Where is it filed? | `Ferrari/Audits` |
+
+A customer-scoped note can sit in any folder, and a folder can hold notes of
+mixed scope. Choose the smallest correct scope first, then a descriptive path.
+
+Paths are normalised on write, so `/Ferrari/XXX`, `Ferrari/XXX/`, and
+`Ferrari // XXX` all resolve to `Ferrari/XXX`.
+
+In the operator UI the Knowledge & Rules sidebar shows the folder tree: click a
+folder to filter to it, use the folder icon to create one, and right-click a
+folder to add a subfolder or rename it. Renaming re-files every note beneath it.
+
+Do not confuse these with Storage folders, which organise uploaded files and use
+real folder records with `folderId`.
+
 ## Linking Resources Like A Wiki
 
 The wiki framing above is not just a metaphor — Knowledge & Rules notes are actually cross-linked, the same way Obsidian or any personal-wiki tool works:

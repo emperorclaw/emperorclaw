@@ -97,14 +97,38 @@ GET    /customers/{id}
 GET    /resources?isShared=true&status=active
 GET    /resources/{id}
 GET    /resources/{id}/contents
-POST   /resources       { displayName, resourceType, scopeType, configText, status?, isShared? }
+POST   /resources       { displayName, resourceType, scopeType, configText, path?, status?, isShared? }
 PATCH  /resources/{id}
 DELETE /resources/{id}
+GET    /resources?path=Company/Fundraising      (exact folder)
+GET    /resources?pathPrefix=Company            (folder + everything beneath)
 GET    /resources/context?agentId={id}&projectId={id}&maxChars=12000
 POST   /resources/{id}/proposals
 ```
 
 Format: Obsidian markdown with frontmatter (`scope`, `type`, `status`, `owner`, `tags`). Use `[[wikilinks]]`.
+
+### Folders
+
+Every note has a `path` — an Obsidian-style folder, e.g. `Company/Fundraising`
+or `Ferrari/Audits/2026-07`. Set it when you create the note. Do not leave notes
+at the root, and never encode a folder in the title.
+
+```
+POST  /resources        { "displayName": "Q3 Audit", "path": "Ferrari/Audits", ... }
+PATCH /resources/{id}   { "path": "Ferrari/Archive" }   // move it
+PATCH /resources/{id}   { "path": "" }                  // back to the root
+```
+
+Parent folders are created automatically — there is no "create folder" call.
+A folder exists exactly as long as a note is filed in it.
+
+Before inventing a new top-level folder, look at what already exists:
+`GET /resources` and read the `folders` tree in the response.
+
+> **These are not Storage folders.** Storage (section 5) uses real folder
+> records and `folderId`. Knowledge & Rules uses the `path` string on the note.
+> Sending `folderId` to a resource endpoint does nothing.
 
 ---
 
