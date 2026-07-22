@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { isNull, sql } from "drizzle-orm";
 import { isSelfHosted, getRegistrationMode } from "@/lib/instance";
+import { isEmailConfigured } from "@/lib/email";
 
 /**
  * GET /api/auth/register-state
@@ -17,6 +18,7 @@ export async function GET(_req: NextRequest) {
                 isBootstrap: false,
                 registrationMode: "open",
                 deploymentMode: "cloud",
+                emailConfigured: isEmailConfigured(),
             });
         }
 
@@ -33,6 +35,7 @@ export async function GET(_req: NextRequest) {
                 isBootstrap: true,
                 registrationMode: "invite-only",
                 deploymentMode: "self-hosted",
+                emailConfigured: isEmailConfigured(),
             });
         }
 
@@ -42,6 +45,7 @@ export async function GET(_req: NextRequest) {
             isBootstrap: false,
             registrationMode,
             deploymentMode: "self-hosted",
+            emailConfigured: isEmailConfigured(),
         });
     } catch (err) {
         console.error("Register-state error:", err);
@@ -49,6 +53,7 @@ export async function GET(_req: NextRequest) {
             isBootstrap: false,
             registrationMode: "invite-only",
             deploymentMode: "self-hosted",
+            emailConfigured: isEmailConfigured(),
         }, { status: 200 });
     }
 }

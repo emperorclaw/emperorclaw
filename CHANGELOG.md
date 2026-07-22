@@ -11,6 +11,15 @@ ships in the release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Signup/login no longer tell SMTP-less users to "verify your email."** When no
+  email server is configured, accounts are auto-verified — but the UI still said
+  a verification link would be sent and that new workspaces must verify first,
+  making a successful self-hoster think they were locked out. The signup subtitle,
+  the signup notice ("activated immediately"), and the login footer now reflect
+  the real state via a new `emailConfigured` flag on `/api/auth/register-state`.
+
 ### Added
 
 - **One-click cloud deploy (Render).** A `render.yaml` Blueprint + "Deploy to
