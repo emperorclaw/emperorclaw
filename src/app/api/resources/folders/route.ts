@@ -5,7 +5,14 @@ import { eq } from "drizzle-orm";
 import { getValidatedServerSession } from "@/lib/auth";
 import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
-import { buildResourceFolderTree, listScopedResources, moveResourceFolder } from "@/lib/resources";
+import { buildResourceFolderTree, listScopedResources, moveResourceFolder, deleteResourceFolder } from "@/lib/resources";
+
+function readScope(body: Record<string, unknown>): { scopeType: string | null; scopeId: string | null } {
+  return {
+    scopeType: typeof body.scopeType === "string" ? body.scopeType : null,
+    scopeId: typeof body.scopeId === "string" ? body.scopeId : null,
+  };
+}
 
 async function getMembership() {
   const session = await getValidatedServerSession();
@@ -62,6 +69,7 @@ export async function POST(request: Request) {
       companyId: membership.companyId,
       fromPath,
       toPath,
+      ...readScope(body),
     });
 
     const rows = await listScopedResources({ companyId: membership.companyId });
@@ -72,5 +80,33 @@ export async function POST(request: Request) {
     const status = message.startsWith("Cannot move") ? 400 : 500;
     if (status === 500) console.error("Error moving resource folder:", error);
     return NextResponse.json({ error: message }, { status });
+  }
+}
+
+/** Delete a folder and every note inside it (and its subfolders), scoped. */
+export async function DELETE(request: Request) {
+  try {
+    const membership = await getMembership();
+    if (!membership) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const path = typeof body.path === "string" ? body.path : "";
+    if (!path.trim()) {
+      return NextResponse.json({ error: "path is required" }, { status: 400 });
+    }
+
+    const deleted = await deleteResourceFolder({
+      companyId: membership.companyId,
+      path,
+      ...readScope(body),
+    });
+
+    const rows = await listScopedResources({ companyId: membership.companyId });
+    return NextResponse.json({ deleted, folders: buildResourceFolderTree(rows) });
+  } catch (error) {
+    console.error("Error deleting resource folder:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
