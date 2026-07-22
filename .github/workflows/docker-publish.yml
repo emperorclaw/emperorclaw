@@ -20,6 +20,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up QEMU (for arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -49,7 +52,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          # Multi-arch so Apple Silicon (arm64) users can pull the image.
+          # arm64 builds via QEMU emulation — slower, but cached across runs.
+          platforms: linux/amd64,linux/arm64
 
       - name: Extract release notes from CHANGELOG
         id: notes
