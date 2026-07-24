@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken } from "@/lib/mcp";
+import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { companies, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc, sql, ne } from "drizzle-orm";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -15,10 +17,26 @@ export async function GET(req: NextRequest) {
     const since = searchParams.get('since'); // ISO Date string
     const mode = (searchParams.get('mode') || 'human_only').toLowerCase(); // human_only | all
     const senderTypeFilter = searchParams.get('senderType'); // optional explicit sender type
-    const agentId = searchParams.get('agentId'); // agent requesting sync — used for dedup
+    const agentId = searchParams.get('agentId'); // agent requesting sync — used for dedup + scoping
 
     const sinceDate = since ? new Date(since) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
+
+    // Resolve the polling agent to its canonical UUID so we can (a) exclude its
+    // own messages and (b) scope delivery to the threads it actually belongs to.
+    // Without scoping, every agent receives every human message in the company —
+    // so a message directed at one agent gets picked up and answered by others,
+    // and their replies land in the wrong direct thread (messages appear to
+    // "jump" between agents' chats).
+    let resolvedAgentId: string | null = null;
+    if (agentId) {
+        try {
+            resolvedAgentId = await resolveAgentId(companyId, agentId);
+        } catch {
+            resolvedAgentId = UUID_RE.test(agentId) ? agentId : null;
+        }
+    }
+    const scopeAgentId = resolvedAgentId && UUID_RE.test(resolvedAgentId) ? resolvedAgentId : null;
 
     const MAX_POLL_TIME_MS = 25000;
     const POLL_INTERVAL_MS = 1000;
@@ -41,8 +59,27 @@ export async function GET(req: NextRequest) {
 
             // Exclude agent's own messages from sync — prevents self-triggering loops.
             // Use SQL OR to include messages where senderId IS NULL (human-sent via MCP API).
-            if (agentId) {
-                conditions.push(sql`(${threadMessages.senderId} IS NULL OR ${threadMessages.senderId} != ${agentId})`);
+            if (resolvedAgentId) {
+                conditions.push(sql`(${threadMessages.senderId} IS NULL OR ${threadMessages.senderId} != ${resolvedAgentId})`);
+            }
+
+            // Scope delivery to threads this agent belongs to: the shared team
+            // channel (everyone) plus its own direct thread. This is the fix for
+            // messages "leaking" into the wrong agent's chat — an agent must only
+            // receive messages addressed to it or posted in the team channel.
+            // Recomputed each iteration so a direct thread created mid-poll (the
+            // human's first DM provisions it) is picked up without waiting for
+            // the next sync call.
+            if (scopeAgentId) {
+                conditions.push(sql`${threadMessages.threadId} IN (
+                    SELECT id FROM message_threads
+                        WHERE company_id = ${companyId}::uuid AND type = 'team' AND archived_at IS NULL
+                    UNION
+                    SELECT thread_id FROM thread_participants
+                        WHERE company_id = ${companyId}::uuid
+                          AND participant_type = 'agent'
+                          AND participant_id = ${scopeAgentId}::uuid
+                )`);
             }
 
             if (isValidSince) {
@@ -63,7 +100,7 @@ export async function GET(req: NextRequest) {
                 // the bridge from re-processing messages it already responded to,
                 // even if bridge state (JSON file) was lost or corrupted.
                 let filtered = messages;
-                if (agentId) {
+                if (resolvedAgentId) {
                     const threadIds = [...new Set(messages.map(m => m.threadId).filter(Boolean))];
                     if (threadIds.length > 0) {
                         // Get the latest agent message in each of these threads
@@ -76,7 +113,7 @@ export async function GET(req: NextRequest) {
                             .where(and(
                                 eq(threadMessages.companyId, companyId),
                                 eq(threadMessages.senderType, 'agent'),
-                                eq(threadMessages.senderId, agentId),
+                                eq(threadMessages.senderId, resolvedAgentId),
                                 // Only check threads we care about
                                 sql`${threadMessages.threadId} = ANY(ARRAY[${sql.join(threadIds.map(id => sql`${id}::uuid`), sql`, `)}])`,
                             ))
