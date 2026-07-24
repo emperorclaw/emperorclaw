@@ -9,7 +9,7 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.6.2] — 2026-07-24
 
 ### Fixed
 
@@ -30,6 +30,14 @@ ships in the release notes.
     `now()` too.
   - Every company member is seeded a participant row (caught-up) on each shared
     thread, so per-user unread badges are correct.
+- **Direct messages no longer leak into other agents' chats.** `GET
+  /messages/sync` returned every human message in the company to every polling
+  agent, with no thread scoping. A message addressed to one agent was picked up
+  and answered by others, and because a reply reuses the payload's `threadId`,
+  those replies landed in the wrong direct thread — so a reply appeared to
+  vanish and re-appear in another agent's chat, as if sent by someone else. Sync
+  is now scoped to the threads an agent belongs to: the shared team channel plus
+  its own direct thread.
 
 ## [0.6.1] — 2026-07-22
 
