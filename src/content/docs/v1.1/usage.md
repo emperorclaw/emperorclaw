@@ -30,14 +30,21 @@ If you do not want another reply, do not repeat the `@AgentName`.
 The normal task flow is:
 
 1. Create the task in a project.
-2. Move it into active execution.
-3. Leave notes as real work progresses.
-4. Move it to review if human or proof validation is needed.
-5. Mark it done when the work is genuinely complete.
-6. Archive it later if you want it hidden from normal board views.
+2. Optionally assign it to one person or one agent using the shared assignee
+   selector. Leave it unassigned if nobody owns it yet.
+3. Move it into active execution.
+4. Leave notes as real work progresses.
+5. Change the assignee when ownership passes between a person and an agent.
+   That reassignment is the handoff; a second assignee column is not needed.
+6. Move it to review if human or proof validation is needed.
+7. Mark it done when the work is genuinely complete.
+8. Archive it later if you want it hidden from normal board views.
 
 Important:
 
+- a task has at most one current assignee: one person, one agent, or nobody
+- use the dashboard's **My work**, **People**, **Agents**, and **Unassigned**
+  filters to focus the overview
 - `done` means complete, not hidden
 - archive is what hides inactive tasks from the board
 

@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions } from "@/db/schema";
+import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemory, recurringTaskDefinitions, companyMembers, users } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -22,6 +22,17 @@ export default async function ProjectsPage() {
     const allEvents = await db.select().from(taskEvents).where(eq(taskEvents.companyId, companyId));
     const allProjectMemory = await db.select().from(projectMemory).where(eq(projectMemory.companyId, companyId));
     const allRecurringTaskDefinitions = await db.select().from(recurringTaskDefinitions).where(and(eq(recurringTaskDefinitions.companyId, companyId), isNull(recurringTaskDefinitions.deletedAt)));
+    const members = await db.select({
+        id: companyMembers.id,
+        userId: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        roleTitle: users.roleTitle,
+        companyRole: companyMembers.role,
+    }).from(companyMembers)
+        .innerJoin(users, eq(users.id, companyMembers.userId))
+        .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt)));
+    const currentMemberId = members.find((member) => member.userId === session?.user?.id)?.id || null;
 
     return (
         <ProjectsClient
@@ -33,6 +44,8 @@ export default async function ProjectsPage() {
             taskEvents={allEvents}
             initialProjectMemory={allProjectMemory}
             recurringDefinitions={allRecurringTaskDefinitions}
+            members={members}
+            currentMemberId={currentMemberId}
             companyRole={companyRole}
         />
     );

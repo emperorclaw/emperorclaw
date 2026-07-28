@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { getTaskContextForCompany } from "@/lib/openclaw/task-context";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function GET(
   req: NextRequest,
@@ -20,7 +21,10 @@ export async function GET(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    return NextResponse.json(context, { status: 200 });
+    return NextResponse.json({
+      ...context,
+      task: serializeTaskWithAssignee(context.task),
+    }, { status: 200 });
   } catch (error) {
     console.error(`Error fetching task context ${taskId}:`, error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

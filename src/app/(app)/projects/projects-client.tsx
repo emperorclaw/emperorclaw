@@ -26,6 +26,8 @@ type Props = {
     taskEvents?: any[];
     initialMessages?: any[];
     initialProjectMemory?: any[];
+    members?: any[];
+    currentMemberId?: string | null;
     companyRole?: string;
 };
 
@@ -64,7 +66,7 @@ const emptyTaskForm = {
     description: "",
     goal: "",
     priority: 0,
-    assignedAgentId: "",
+    assignee: "",
     state: "inbox",
     acceptanceCriteria: "",
     definitionOfDone: "",
@@ -119,13 +121,26 @@ function getWorkTypeLabel(value: unknown) {
     return option?.label || humanizeKey(value) || "Standard task";
 }
 
-export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], companyRole = "member" }: Props) {
+function assigneeValue(task: any) {
+    if (task?.assignedMemberId) return `human:${task.assignedMemberId}`;
+    if (task?.assignedAgentId) return `agent:${task.assignedAgentId}`;
+    return "";
+}
+
+function parseAssigneeValue(value: string) {
+    if (!value) return null;
+    const [type, id] = value.split(":", 2);
+    if ((type !== "human" && type !== "agent") || !id) return null;
+    return { type, id };
+}
+
+export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], members = [], currentMemberId = null, companyRole = "member" }: Props) {
     const router = useRouter();
     const [tasks, setTasks] = useState<any[]>(initialTasks);
     const [projectItems, setProjectItems] = useState<any[]>(projects);
     const [selectedTask, setSelectedTask] = useState<any | null>(null);
     const [projectFilter, setProjectFilter] = useState("All Projects");
-    const [agentFilter, setAgentFilter] = useState("All Agents");
+    const [assigneeFilter, setAssigneeFilter] = useState("all");
     const [customerFilter, setCustomerFilter] = useState("All Customers");
     const [searchQuery, setSearchQuery] = useState("");
     const [comment, setComment] = useState("");
@@ -152,26 +167,30 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     // Initial load from localStorage
     useEffect(() => {
         const savedProject = localStorage.getItem("projects-board-project-filter");
+        const requestedAssignee = searchParams.get("assignee");
+        const savedAssignee = localStorage.getItem("projects-board-assignee-filter");
         const savedAgent = localStorage.getItem("projects-board-agent-filter");
         const savedCustomer = localStorage.getItem("projects-board-customer-filter");
         const savedSearch = localStorage.getItem("projects-board-search-query");
         const savedHideCompleted = localStorage.getItem("projects-board-hide-completed");
 
         if (savedProject) setProjectFilter(savedProject);
-        if (savedAgent) setAgentFilter(savedAgent);
+        if (requestedAssignee) setAssigneeFilter(requestedAssignee);
+        else if (savedAssignee) setAssigneeFilter(savedAssignee);
+        else if (savedAgent) setAssigneeFilter(`agent:${savedAgent}`);
         if (savedCustomer) setCustomerFilter(savedCustomer);
         if (savedSearch) setSearchQuery(savedSearch);
         // Only override the default (true) if user explicitly chose to show all
         if (savedHideCompleted === "0") setHideCompletedProjects(false);
-    }, []);
+    }, [searchParams]);
 
     // Save to localStorage when filters change
     useEffect(() => {
         localStorage.setItem("projects-board-project-filter", projectFilter);
-        localStorage.setItem("projects-board-agent-filter", agentFilter);
+        localStorage.setItem("projects-board-assignee-filter", assigneeFilter);
         localStorage.setItem("projects-board-customer-filter", customerFilter);
         localStorage.setItem("projects-board-search-query", searchQuery);
-    }, [projectFilter, agentFilter, customerFilter, searchQuery]);
+    }, [projectFilter, assigneeFilter, customerFilter, searchQuery]);
 
     // Persist hide-completed preference
     useEffect(() => {
@@ -188,7 +207,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         const query = searchQuery.trim().toLowerCase();
         return tasks.filter((task) => {
             if (projectFilter !== "All Projects" && task.projectId !== projectFilter) return false;
-            if (agentFilter !== "All Agents" && task.assignedAgentId !== agentFilter) return false;
+            const taskAssignee = assigneeValue(task);
+            if (assigneeFilter === "human" && !task.assignedMemberId) return false;
+            if (assigneeFilter === "agent" && !task.assignedAgentId) return false;
+            if (assigneeFilter === "unassigned" && taskAssignee) return false;
+            if (!["all", "human", "agent", "unassigned"].includes(assigneeFilter) && taskAssignee !== assigneeFilter) return false;
             
             if (customerFilter !== "All Customers") {
                 const project = projectItems.find((p) => p.id === task.projectId);
@@ -200,10 +223,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const project = projectItems.find((item) => item.id === task.projectId);
             const customer = project ? customers.find((item) => item.id === project.customerId) : null;
             const agent = task.assignedAgentId ? agents.find((item) => item.id === task.assignedAgentId) : null;
+            const member = task.assignedMemberId ? members.find((item) => item.id === task.assignedMemberId) : null;
             const input = taskInput(task);
-            return [getTaskTitle(task), input.description, input.goal, task.taskType, task.state, project?.goal, customer?.name, agent?.name, task.templateVersion, task.contractVersion].filter(Boolean).join(" ").toLowerCase().includes(query);
+            return [getTaskTitle(task), input.description, input.goal, task.taskType, task.state, project?.goal, customer?.name, agent?.name, member?.displayName, member?.email, task.templateVersion, task.contractVersion].filter(Boolean).join(" ").toLowerCase().includes(query);
         });
-    }, [agentFilter, customers, tasks, projectFilter, projectItems, searchQuery, agents, customerFilter]);
+    }, [assigneeFilter, customers, tasks, projectFilter, projectItems, searchQuery, agents, members, customerFilter]);
 
     const recurringTasks = filteredTasks.filter(isRecurring);
     const filteredRecurringDefinitions = recurringDefinitions.filter((definition) => {
@@ -255,6 +279,31 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         return project ? customers.find((item) => item.id === project.customerId)?.name || "Unknown Customer" : "Unknown Customer";
     };
     const getAgentName = (agentId?: string | null) => agents.find((agent) => agent.id === agentId)?.name || "Unassigned";
+    const getMemberName = (memberId?: string | null) => {
+        const member = members.find((item) => item.id === memberId);
+        return member?.displayName || member?.email || "Unknown person";
+    };
+    const getAssigneeLabel = (task: any) => task.assignedMemberId
+        ? getMemberName(task.assignedMemberId)
+        : task.assignedAgentId
+            ? getAgentName(task.assignedAgentId)
+            : "Unassigned";
+    const getEventDescription = (event: any) => {
+        if (event.eventType === "task_note" && event.payloadJson?.note) return `Note: ${event.payloadJson.note}`;
+        if (event.eventType === "task_handoff" && event.payloadJson?.handoff) return `Handoff from ${event.payloadJson.handoff.fromRole} to ${event.payloadJson.handoff.toRole}`;
+        if (event.eventType === "task_reassigned") {
+            const assignee = event.payloadJson?.assignee;
+            const label = assignee?.type === "human"
+                ? getMemberName(assignee.id)
+                : assignee?.type === "agent"
+                    ? getAgentName(assignee.id)
+                    : "Unassigned";
+            return `Assignee changed to ${label}`;
+        }
+        return event.eventType.startsWith("task_")
+            ? `Status changed to ${event.eventType.replace("task_", "")}`
+            : `Event: ${event.eventType}`;
+    };
     const artifactsForTask = (taskId: string) => artifacts.filter((artifact) => artifact.taskId === taskId);
     const getTaskEvents = (taskId: string) => events.filter((event) => event.taskId === taskId).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -270,14 +319,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 const data = await noteRes.json();
                 if (data.event) setEvents((prev) => [...prev, data.event]);
             }
-            await fetch("/api/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    text: `Task Directive for TASK-${selectedTask.id}:\n${comment}`,
-                    targetAgentId: selectedTask.assignedAgentId || undefined,
-                }),
-            });
+            if (selectedTask.assignedAgentId) {
+                await fetch("/api/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: `Task Directive for TASK-${selectedTask.id}:\n${comment}`,
+                        targetAgentId: selectedTask.assignedAgentId,
+                    }),
+                });
+            }
             setComment("");
         } catch (error) {
             console.error("Failed to send task context", error);
@@ -355,9 +406,22 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 };
             }),
     ];
-    const agentOptions = [
-        { value: "All Agents", label: "All Agents", description: `${agents.length} agents` },
-        ...agents.map((agent) => ({ value: agent.id, label: agent.name, description: agent.role || "Agent" })),
+    const assigneeOptions = [
+        { value: "all", label: "All assignees", description: `${members.length} people · ${agents.length} agents` },
+        ...(currentMemberId ? [{ value: `human:${currentMemberId}`, label: "Assigned to me", description: "Your tasks" }] : []),
+        { value: "human", label: "All people", description: "Human-assigned work" },
+        { value: "agent", label: "All agents", description: "Agent-assigned work" },
+        { value: "unassigned", label: "Unassigned", description: "Waiting for an assignee" },
+        ...members.map((member) => ({
+            value: `human:${member.id}`,
+            label: member.displayName || member.email,
+            description: member.roleTitle || "Human",
+        })),
+        ...agents.map((agent) => ({
+            value: `agent:${agent.id}`,
+            label: agent.name,
+            description: agent.role || "Agent",
+        })),
     ];
 
     const openCreateProject = () => {
@@ -497,7 +561,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             description: getTaskDescription(task) || "",
             goal: typeof input.goal === "string" ? input.goal : "",
             priority: task.priority || 0,
-            assignedAgentId: task.assignedAgentId || "",
+            assignee: assigneeValue(task),
             state: task.state || "inbox",
             acceptanceCriteria: Array.isArray(input.acceptanceCriteria) ? input.acceptanceCriteria.join("\n") : "",
             definitionOfDone: typeof input.definitionOfDone === "string" ? input.definitionOfDone : "",
@@ -527,6 +591,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...taskForm,
+                    assignee: parseAssigneeValue(taskForm.assignee),
                     priority: Number(taskForm.priority) || 0,
                     inputJson,
                 }),
@@ -692,16 +757,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             Advanced filters and project actions
                         </summary>
                         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-3">
-                            <SearchableSelect
-                                value={agentFilter}
-                                options={agentOptions}
-                                placeholder="All Agents"
-                                searchPlaceholder="Search agents..."
-                                onChange={setAgentFilter}
+                        <SearchableSelect
+                                value={assigneeFilter}
+                                options={assigneeOptions}
+                                placeholder="All assignees"
+                                searchPlaceholder="Search people and agents..."
+                                onChange={setAssigneeFilter}
                             />
                             <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
                                 <IconFilter className="h-4 w-4" />
-                                Filter by agent
+                                Filter by assignee
                             </div>
                             {selectedProject && (
                                 <span className={cn("rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-wider", PROJECT_STATUS_STYLES[selectedProject.status] || PROJECT_STATUS_STYLES.active)}>
@@ -780,31 +845,31 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     <BoardColumn droppableId="dead_letter" title="Dead-lettered" count={byState_attention.deadLetter.length} tone="rose" icon={IconCircleX}>
                                         {byState_attention.deadLetter.length === 0 ? <EmptyColumnHint>No dead-lettered tasks.</EmptyColumnHint> : byState_attention.deadLetter
                                             .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                     <BoardColumn droppableId="failed" title="Failed" count={byState_attention.failed.length} tone="rose" icon={IconCircleX}>
                                         {byState_attention.failed.length === 0 ? <EmptyColumnHint>No failed tasks.</EmptyColumnHint> : byState_attention.failed
                                             .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                     <BoardColumn droppableId="stale_inbox" title="Stale inbox (>1h)" count={byState_attention.staleInbox.length} tone="amber" icon={IconInbox}>
                                         {byState_attention.staleInbox.length === 0 ? <EmptyColumnHint>No stale inbox tasks.</EmptyColumnHint> : byState_attention.staleInbox
                                             .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                     <BoardColumn droppableId="overdue_review" title="Overdue review (>24h)" count={byState_attention.overdueReview.length} tone="amber" icon={IconAlertTriangle}>
                                         {byState_attention.overdueReview.length === 0 ? <EmptyColumnHint>No overdue reviews.</EmptyColumnHint> : byState_attention.overdueReview
                                             .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                                     </BoardColumn>
                                 </>
                             ) : (
                                 <>
                             <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={IconInbox}>
-                                {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="in_progress" title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
-                                {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={IconCircleCheck}>
                                 <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
@@ -813,17 +878,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     <BucketBadge label="Blocked" count={reviewCounts.blocked} tone="rose" />
                                     <BucketBadge label="Ready to close" count={reviewCounts.ready_to_close} tone="emerald" />
                                 </div>
-                                {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={IconCircleCheck}>
-                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} done onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} done onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={IconCircleX}>
-                                {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={IconRepeat}>
                                 {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
-                                {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAgentName(task.assignedAgentId)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>}
                                 </>
                             )}
@@ -831,7 +896,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </div>
                 </div>
                 <DragOverlay>
-                    {draggingTask ? <TaskCard task={draggingTask} project={getProjectName(draggingTask.projectId)} customer={getCustomerName(draggingTask.projectId)} agent={getAgentName(draggingTask.assignedAgentId)} onClick={() => {}} overlay /> : null}
+                    {draggingTask ? <TaskCard task={draggingTask} project={getProjectName(draggingTask.projectId)} customer={getCustomerName(draggingTask.projectId)} agent={getAssigneeLabel(draggingTask)} onClick={() => {}} overlay /> : null}
                 </DragOverlay>
             </DndContext>
 
@@ -850,7 +915,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         </div>
                         <div className="flex flex-wrap gap-2 text-sm">
                             <span className="rounded bg-zinc-800 px-2.5 py-1 font-medium text-zinc-300">{humanizeKey(selectedTask.state)}</span>
-                            <span className="rounded bg-zinc-800 px-2.5 py-1 text-zinc-400">Assigned: {getAgentName(selectedTask.assignedAgentId)}</span>
+                            <span className="rounded bg-zinc-800 px-2.5 py-1 text-zinc-400">Assigned: {getAssigneeLabel(selectedTask)}</span>
                             {isBlocked(selectedTask, filteredTasks) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
                             {isRecurring(selectedTask) && <span className="rounded bg-cyan-500/20 px-2.5 py-1 text-cyan-300">Recurring</span>}
                         </div>
@@ -863,9 +928,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             </label>
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>Assignee</span>
-                                <select value={selectedTask.assignedAgentId || ""} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { assignedAgentId: event.target.value || null })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
+                                <select value={assigneeValue(selectedTask)} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { assignee: parseAssigneeValue(event.target.value) })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
                                     <option value="">Unassigned</option>
-                                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                                    <optgroup label="People">
+                                        {members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}
+                                    </optgroup>
+                                    <optgroup label="Agents">
+                                        {agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}
+                                    </optgroup>
                                 </select>
                             </label>
                             <label className="space-y-1 text-xs text-zinc-500">
@@ -881,10 +951,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         </div>
                         {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}
                         <Section title="Storage & Reports">{artifactsForTask(selectedTask.id).length === 0 ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-400">No files submitted yet.</div> : artifactsForTask(selectedTask.id).map((artifact) => <div key={artifact.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-4"><div className="mb-2 flex items-center justify-between gap-3 text-xs text-zinc-500"><div className="flex min-w-0 items-center gap-2"><span className="font-mono">{artifact.title || artifact.originalFilename || artifact.kind}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 uppercase tracking-wider text-[10px]">{getArtifactClassLabel(artifact.artifactClass || artifact.kind)}</span>{artifact.isCanonical && <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 uppercase tracking-wider text-[10px] text-emerald-300">canonical</span>}</div><span>{artifact.contentType}</span></div><div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-600"><span>{getArtifactImportanceLabel(artifact.importance || "operational")}</span>{artifact.originalFilename && <span className="truncate">{artifact.originalFilename}</span>}</div>{artifact.contentText ? <MarkdownRenderer content={artifact.contentText} className="text-xs" /> : <div className="text-xs text-zinc-500">Stored securely. Use Storage to preview or download.</div>}</div>)}</Section>
-                        <Section title="Timeline">{getTaskEvents(selectedTask.id).length === 0 ? <><TimelineEvent time={new Date(selectedTask.createdAt).toLocaleTimeString()} desc="Task created and entered inbox." /><>{selectedTask.state !== "queued" && selectedTask.state !== "inbox" && <TimelineEvent time={new Date(selectedTask.updatedAt).toLocaleTimeString()} desc={`Status changed to ${selectedTask.state}`} />}</></> : getTaskEvents(selectedTask.id).map((event) => <TimelineEvent key={event.id} time={new Date(event.createdAt).toLocaleTimeString()} desc={event.eventType === "task_note" && event.payloadJson?.note ? `Note: ${event.payloadJson.note}` : event.eventType === "task_handoff" && event.payloadJson?.handoff ? `Handoff from ${event.payloadJson.handoff.fromRole} to ${event.payloadJson.handoff.toRole}` : event.eventType.startsWith("task_") ? `Status changed to ${event.eventType.replace("task_", "")}` : `Event: ${event.eventType}`} isNote={event.eventType === "task_note" || event.eventType === "task_handoff"} />)}</Section>
+                        <Section title="Timeline">{getTaskEvents(selectedTask.id).length === 0 ? <><TimelineEvent time={new Date(selectedTask.createdAt).toLocaleTimeString()} desc="Task created and entered inbox." /><>{selectedTask.state !== "queued" && selectedTask.state !== "inbox" && <TimelineEvent time={new Date(selectedTask.updatedAt).toLocaleTimeString()} desc={`Status changed to ${selectedTask.state}`} />}</></> : getTaskEvents(selectedTask.id).map((event) => <TimelineEvent key={event.id} time={new Date(event.createdAt).toLocaleTimeString()} desc={getEventDescription(event)} isNote={event.eventType === "task_note" || event.eventType === "task_handoff" || event.eventType === "task_reassigned"} />)}</Section>
                     </div>
                     <div className="mt-auto border-t border-zinc-800 pt-6">
-                        <div className="mb-2 text-xs font-medium text-zinc-500">Add Task Note / Send to Agent</div>
+                        <div className="mb-2 text-xs font-medium text-zinc-500">{selectedTask.assignedAgentId ? "Add task note / send to agent" : "Add task note"}</div>
                         <div className="flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 focus-within:ring-1 focus-within:ring-cyan-500">
                             <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Agent instructions or private notes..." className="h-20 flex-1 resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none" />
                             <div className="flex flex-col justify-end border-l border-zinc-800 bg-zinc-950/70 p-2">
@@ -1009,9 +1079,14 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
                                 <span>Assignee</span>
-                                <select value={taskForm.assignedAgentId} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, assignedAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
+                                <select value={taskForm.assignee} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, assignee: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
                                     <option value="">Unassigned</option>
-                                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                                    <optgroup label="People">
+                                        {members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}
+                                    </optgroup>
+                                    <optgroup label="Agents">
+                                        {agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}
+                                    </optgroup>
                                 </select>
                             </label>
                             <label className="space-y-1 text-sm text-zinc-400">
@@ -1075,7 +1150,7 @@ function BoardColumn({ title, count, tone, icon: Icon, children, droppableId }: 
     );
 }
 
-function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, onSetPriority, onSetState, onAssign, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; onSetPriority?: (priority: number) => void; onSetState?: (state: string) => void; onAssign?: (agentId: string) => void; overlay?: boolean }) {
+function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, onSetPriority, onSetState, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; onSetPriority?: (priority: number) => void; onSetState?: (state: string) => void; overlay?: boolean }) {
     const draggable = useDraggable({ id: task.id, disabled: overlay });
     const priorityInfo = getPriorityInfo(task.priority || 0);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1110,7 +1185,7 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
             )}
         >
             <div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", task.priority >= 75 ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : task.priority >= 50 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : task.priority >= 25 ? "bg-slate-500/10 text-slate-400 border-slate-500/20" : "bg-zinc-500/10 text-zinc-500 border-zinc-700")}>{priorityInfo.label}</span></div>
-            <div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div>
+            <div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{task.assignedMemberId ? "Human · " : task.assignedAgentId ? "Agent · " : ""}{agent}</span></div>
             <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>
             {(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}
             

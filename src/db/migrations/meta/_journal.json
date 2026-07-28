@@ -239,6 +239,13 @@
       "when": 1783901000000,
       "tag": "0033_one-team-thread",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785232800000,
+      "tag": "0034_hybrid-task-assignees",
+      "breakpoints": true
     }
   ]
 }

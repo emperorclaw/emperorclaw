@@ -35,7 +35,7 @@ POST   /tasks/{id}/notes         { content }
 POST   /tasks/{id}/result        { state: "review"|"failed", summary, outputJson? }
 GET    /tasks/{id}/notes
 GET    /tasks/{id}/context
-PATCH  /tasks/{id}               { state?, priority?, assignedAgentId?, blockedReason? }
+PATCH  /tasks/{id}               { state?, priority?, assignee?, assignedAgentId?, blockedReason? }
 DELETE /tasks/{id}
 POST   /tasks/{id}/lease         { agentId }
 POST   /tasks/{id}/assign        { agentId }
@@ -43,6 +43,17 @@ POST   /tasks/{id}/steps         { description, order }
 POST   /tasks/generate           { description, projectId } — AI generates task breakdown
 POST   /tasks/{recurringId}/spawn  — spawn from recurring template
 ```
+
+`assignee` is the preferred hybrid-workforce field:
+
+```json
+{ "assignee": { "type": "human", "id": "<membership-id-or-user-id>" } }
+{ "assignee": { "type": "agent", "id": "<agent-id>" } }
+{ "assignee": null }
+```
+
+`assignedAgentId` and the agent-only `/assign` endpoint remain supported for
+older runtimes. Do not claim work assigned to a human; the server rejects it.
 
 ### Execution Contract
 1. Start actionable work same turn — don't stop at a plan unless asked

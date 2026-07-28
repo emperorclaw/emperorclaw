@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
         const [member] = await db
             .select({
                 id: users.id,
+                membershipId: companyMembers.id,
                 email: users.email,
                 displayName: users.displayName,
                 roleTitle: users.roleTitle,
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
     const allMembers = await db
         .select({
             id: users.id,
+            membershipId: companyMembers.id,
             email: users.email,
             displayName: users.displayName,
             roleTitle: users.roleTitle,
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest) {
         ok: true,
         users: allMembers.map(u => ({
             id: u.id,
+            membershipId: u.membershipId,
             email: u.email,
             displayName: u.displayName,
             roleTitle: u.roleTitle,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
-import { companyMembers, users } from "@/db/schema";
+import { companyMembers, tasks, users } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { isSelfHosted } from "@/lib/instance";
 
@@ -151,15 +151,33 @@ export async function DELETE(
             }
         }
 
-        // Remove membership
-        await db
-            .delete(companyMembers)
-            .where(
-                and(
+        // Removing a person from the company also releases work assigned to
+        // that membership. The FK provides a final safety net, while doing it
+        // explicitly keeps updated_at accurate for dashboards and sync.
+        await db.transaction(async (tx) => {
+            const [membership] = await tx.select({ id: companyMembers.id })
+                .from(companyMembers)
+                .where(and(
                     eq(companyMembers.userId, userId),
-                    eq(companyMembers.companyId, ctx.companyId)
-                )
-            );
+                    eq(companyMembers.companyId, ctx.companyId),
+                ))
+                .limit(1);
+
+            if (membership) {
+                await tx.update(tasks).set({
+                    assignedMemberId: null,
+                    updatedAt: new Date(),
+                }).where(and(
+                    eq(tasks.companyId, ctx.companyId),
+                    eq(tasks.assignedMemberId, membership.id),
+                ));
+            }
+
+            await tx.delete(companyMembers).where(and(
+                eq(companyMembers.userId, userId),
+                eq(companyMembers.companyId, ctx.companyId),
+            ));
+        });
 
         return NextResponse.json({ success: true }, { status: 200 });
     } catch (err) {

@@ -14,6 +14,7 @@ import { validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeTaskState, TASK_STATES, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
+import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
 
 type ClaimTaskInput = {
   companyId: string;
@@ -37,6 +38,10 @@ type CreateTaskInput = {
   taskKind?: string;
   recurringTaskDefinitionId?: string | null;
   source?: string;
+  assignee?: unknown;
+  assignedAgentId?: string | null;
+  actorType?: "agent" | "human" | "system";
+  actorId?: string | null;
 };
 
 type FinalizeTaskInput = {
@@ -63,9 +68,12 @@ type UpdateTaskInput = {
   title?: string;
   goal?: string;
   priority?: number;
+  assignee?: unknown;
   assignedAgentId?: string | null;
   state?: unknown;
   inputJson?: Record<string, unknown> | null;
+  actorType?: "agent" | "human" | "system";
+  actorId?: string | null;
 };
 
 export async function claimNextTaskForAgent(input: ClaimTaskInput) {
@@ -94,6 +102,7 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
     SET
       state = ${TASK_STATES.inProgress},
       assigned_agent_id = ${internalAgentId},
+      assigned_member_id = NULL,
       lease_owner = ${input.agentId},
       lease_until = NOW() + INTERVAL '10 minutes',
       processing_started_at = NOW(),
@@ -101,8 +110,17 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
     WHERE id = (
       SELECT t.id FROM tasks t
       WHERE t.company_id = ${input.companyId}
-        AND t.state = ${TASK_STATES.inbox}
+        AND (
+          t.state = ${TASK_STATES.inbox}
+          OR (
+            t.state = ${TASK_STATES.inProgress}
+            AND t.assigned_agent_id = ${internalAgentId}
+            AND t.lease_until IS NULL
+          )
+        )
         AND t.deleted_at IS NULL
+        AND t.assigned_member_id IS NULL
+        AND (t.assigned_agent_id IS NULL OR t.assigned_agent_id = ${internalAgentId})
         AND (
           ${strictOwnerRole === false} = true
           OR COALESCE(t.input_json->>'ownerRole', '') = ''
@@ -168,12 +186,23 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
 
   const state = mode === "claim" ? TASK_STATES.inProgress : existingTask.state;
   const now = new Date();
-  const leaseUntil = mode === "claim" ? new Date(now.getTime() + 10 * 60 * 1000) : existingTask.leaseUntil;
+  const sameAgent = existingTask.assignedAgentId === internalAgentId && !existingTask.assignedMemberId;
+  const leaseOwner = mode === "claim"
+    ? input.agentId
+    : sameAgent
+      ? existingTask.leaseOwner
+      : null;
+  const leaseUntil = mode === "claim"
+    ? new Date(now.getTime() + 10 * 60 * 1000)
+    : sameAgent
+      ? existingTask.leaseUntil
+      : null;
 
   const [task] = await db.update(tasks).set({
     assignedAgentId: internalAgentId,
+    assignedMemberId: null,
     state,
-    leaseOwner: mode === "claim" ? input.agentId : existingTask.leaseOwner,
+    leaseOwner,
     leaseUntil,
     processingStartedAt: mode === "claim" ? (existingTask.processingStartedAt || now) : existingTask.processingStartedAt,
     updatedAt: now,
@@ -208,11 +237,24 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     return { status: 404 as const, error: "Task not found" };
   }
 
+  const assignmentWasRequested = input.assignee !== undefined || input.assignedAgentId !== undefined;
   let resolvedAssignedAgentId = existingTask.assignedAgentId;
-  if (typeof input.assignedAgentId === "string" && input.assignedAgentId.trim()) {
-    resolvedAssignedAgentId = await resolveAgentId(input.companyId, input.assignedAgentId.trim());
+  let resolvedAssignedMemberId = existingTask.assignedMemberId;
+
+  if (input.assignee !== undefined) {
+    const resolved = await resolveTaskAssignee(input.companyId, input.assignee);
+    resolvedAssignedAgentId = resolved.assignedAgentId;
+    resolvedAssignedMemberId = resolved.assignedMemberId;
+  } else if (typeof input.assignedAgentId === "string" && input.assignedAgentId.trim()) {
+    const resolved = await resolveTaskAssignee(input.companyId, {
+      type: "agent",
+      id: input.assignedAgentId.trim(),
+    });
+    resolvedAssignedAgentId = resolved.assignedAgentId;
+    resolvedAssignedMemberId = null;
   } else if (input.assignedAgentId === null) {
     resolvedAssignedAgentId = null;
+    resolvedAssignedMemberId = null;
   }
 
   const normalizedState = input.state === undefined ? existingTask.state : normalizeTaskState(input.state);
@@ -229,9 +271,25 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     inputJson: mergedInputJson,
   });
 
+  const previousAssignee = getTaskAssignee(existingTask);
+  const nextAssignee = getTaskAssignee({
+    assignedAgentId: resolvedAssignedAgentId,
+    assignedMemberId: resolvedAssignedMemberId,
+  });
+  const assignmentChanged = previousAssignee?.type !== nextAssignee?.type || previousAssignee?.id !== nextAssignee?.id;
+  const preservingActiveAgent = Boolean(
+    existingTask.assignedAgentId &&
+    resolvedAssignedAgentId === existingTask.assignedAgentId &&
+    !resolvedAssignedMemberId,
+  );
+  const revokeLease = assignmentWasRequested && !preservingActiveAgent;
+
   const [task] = await db.update(tasks).set({
     priority: typeof input.priority === "number" ? input.priority : existingTask.priority,
     assignedAgentId: resolvedAssignedAgentId,
+    assignedMemberId: resolvedAssignedMemberId,
+    leaseOwner: revokeLease ? null : existingTask.leaseOwner,
+    leaseUntil: revokeLease ? null : existingTask.leaseUntil,
     state: normalizedState || existingTask.state,
     inputJson: normalizedSpec.inputJson,
     updatedAt: new Date(),
@@ -242,13 +300,16 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   await db.insert(taskEvents).values({
     companyId: input.companyId,
     taskId: input.taskId,
-    eventType: "task_updated",
-    actorType: "system",
+    eventType: assignmentChanged ? "task_reassigned" : "task_updated",
+    actorType: input.actorType || "system",
+    actorId: input.actorId || null,
     payloadJson: {
       title: input.title,
       goal: input.goal,
       priority: input.priority,
       assignedAgentId: input.assignedAgentId,
+      previousAssignee,
+      assignee: nextAssignee,
       state: normalizedState,
       readiness: normalizedSpec.readiness,
       missingFields: normalizedSpec.missingFields,
@@ -268,6 +329,12 @@ export async function createTaskForProject(input: CreateTaskInput) {
     throw new Error("RELATIONSHIP_VIOLATION");
   }
 
+  const initialAssignee = input.assignee !== undefined
+    ? await resolveTaskAssignee(input.companyId, input.assignee)
+    : input.assignedAgentId
+      ? await resolveTaskAssignee(input.companyId, { type: "agent", id: input.assignedAgentId })
+      : { assignedAgentId: null, assignedMemberId: null };
+
   const normalizedSpec = normalizeTaskSpec({
     taskType: input.taskType,
     inputJson: input.inputJson || {},
@@ -284,6 +351,8 @@ export async function createTaskForProject(input: CreateTaskInput) {
     contractVersion: input.contractVersion || null,
     state: TASK_STATES.inbox,
     priority: input.priority || 0,
+    assignedAgentId: initialAssignee.assignedAgentId,
+    assignedMemberId: initialAssignee.assignedMemberId,
     proofRequired: Boolean(input.proofRequired),
     humanApprovalRequired: typeof input.humanApprovalRequired === "boolean"
       ? input.humanApprovalRequired
@@ -297,9 +366,11 @@ export async function createTaskForProject(input: CreateTaskInput) {
     companyId: input.companyId,
     taskId: task.id,
     eventType: "task_generated",
-    actorType: "system",
+    actorType: input.actorType || "system",
+    actorId: input.actorId || null,
     payloadJson: {
       source: input.source || "mcp_api",
+      assignee: getTaskAssignee(initialAssignee),
       recurringTaskDefinitionId: input.recurringTaskDefinitionId || null,
       readiness: normalizedSpec.readiness,
       missingFields: normalizedSpec.missingFields,

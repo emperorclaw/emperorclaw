@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -389,6 +390,7 @@ export const tasks = pgTable("tasks", {
     priority: integer("priority").default(0).notNull(),
     processingStartedAt: timestamp("processing_started_at"),
     assignedAgentId: uuid("assigned_agent_id").references(() => agents.id),
+    assignedMemberId: uuid("assigned_member_id").references(() => companyMembers.id, { onDelete: 'set null' }),
     leaseOwner: text("lease_owner"),
     leaseUntil: timestamp("lease_until"),
     retries: integer("retries").default(0).notNull(),
@@ -403,7 +405,10 @@ export const tasks = pgTable("tasks", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
-});
+}, (table) => [
+    check("tasks_single_assignee", sql`${table.assignedAgentId} IS NULL OR ${table.assignedMemberId} IS NULL`),
+    index("tasks_assigned_member_idx").on(table.companyId, table.assignedMemberId),
+]);
 
 export const approvals = pgTable("approvals", {
     id: uuid("id").primaryKey().defaultRandom(),

@@ -227,6 +227,7 @@ Returns visible company members with their profiles:
   "users": [
     {
       "id": "<user-id>",
+      "membershipId": "<company-membership-id>",
       "email": "alice@company.com",
       "displayName": "Alice Chen",
       "roleTitle": "SEO Lead",
@@ -241,6 +242,7 @@ Use this when:
 - You need to find who is responsible for X area
 - You need to @mention or contact a specific human
 - You want to show the operator who can approve or review work
+- You want to assign a task to a human using `membershipId`
 
 ### `GET /users?id=<userId>`
 
@@ -258,7 +260,7 @@ Returns a single user profile. Same shape as above, wrapped in `"user"` instead 
 | `/tasks/claim` | `POST` | Atomically claim queued work |
 | `/tasks/{id}/context` | `GET` | Load task context bundle |
 | `/tasks/{id}/notes` | `GET/POST` | Read or append task notes |
-| `/tasks/{id}/assign` | `POST` | Assign a task to an agent |
+| `/tasks/{id}/assign` | `POST` | Backward-compatible agent assign/claim endpoint |
 | `/tasks/{id}/result` | `POST` | Record task completion or failure |
 
 Important current behavior:
@@ -268,6 +270,46 @@ Important current behavior:
 - claim is lease-based
 - only the assigned agent can finalize a task result
 - tasks are sorted by priority (highest first), then by creation date
+- one task may be assigned to one human, one agent, or nobody
+- assignment does not automatically change task state
+
+### Human and agent assignees
+
+Task responses keep the existing fields and add a unified representation:
+
+```json
+{
+  "assignedAgentId": null,
+  "assignedMemberId": "<company-membership-id>",
+  "assignee": {
+    "type": "human",
+    "id": "<company-membership-id>"
+  }
+}
+```
+
+Update an assignee through `PATCH /tasks/{id}`:
+
+```json
+{ "assignee": { "type": "human", "id": "<membership-id-or-user-id>" } }
+{ "assignee": { "type": "agent", "id": "<agent-id>" } }
+{ "assignee": null }
+```
+
+For a human, `id` may be either `membershipId` or the existing user `id`
+returned by `GET /users`. Emperor stores the company membership reference.
+
+Backward compatibility:
+
+- `PATCH /tasks/{id}` still accepts `assignedAgentId`
+- `POST /tasks/{id}/assign` still accepts `{ "agentId": "...", "mode": "assign" }`
+- existing `assignedAgentId` values are preserved during migration
+- new clients should prefer `assignee`
+
+Claiming respects assignment. An agent can claim unassigned inbox work, inbox
+work already assigned to that same agent, or an in-progress task handed to it
+with no active lease. It cannot claim work assigned to a human or another
+agent.
 
 ### Task priority
 
@@ -332,7 +374,11 @@ Recommended execution-ready body:
     ],
     "ownerRole": "operator"
   },
-  "priority": 1,
+  "assignee": {
+    "type": "human",
+    "id": "<membership-id-or-user-id>"
+  },
+  "priority": 50,
   "proofRequired": false,
   "humanApprovalRequired": false
 }
@@ -389,7 +435,7 @@ Use this when:
 
 Purpose:
 
-- make task ownership real in Emperor
+- assign or claim a task for an agent using the legacy-compatible endpoint
 
 Typical body:
 
@@ -401,6 +447,9 @@ Typical body:
 ```
 
 Use `mode: "claim"` when the assignment should also transition the task into active work.
+
+For human assignment or a unified human/agent handoff, use
+`PATCH /tasks/{id}` with `assignee`.
 
 ### `POST /tasks/{id}/notes`
 

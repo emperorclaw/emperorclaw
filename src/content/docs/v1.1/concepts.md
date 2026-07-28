@@ -76,6 +76,28 @@ Access it via the toggle button on the Projects page or from Dashboard KPI cards
 
 That means "closed" and "hidden" are different concepts in Emperor today.
 
+## Human And Agent Assignment
+
+A task has one current assignee: one company member, one agent, or nobody.
+Assignment and state are independent, so assigning a task does not
+automatically start it. An agent only receives a lease when it claims or starts
+the task.
+
+Reassignment is the basic handoff between the human and AI workforce. Assigning
+active agent work to a human or a different agent revokes the previous lease so
+the old runtime cannot continue completing the task.
+
+Agent claim rules respect existing ownership:
+
+- unassigned inbox work may be claimed by any eligible agent
+- agent-assigned inbox work may only be claimed by that agent
+- an in-progress task handed to an agent can be claimed when no lease is active
+- human-assigned work cannot be claimed by an agent
+
+Existing integrations that use `assignedAgentId` remain supported. New
+integrations should use the unified `assignee` object documented in the API
+reference.
+
 ## Member Access Scoping
 
 Admins can restrict what individual team members can see via Settings → Members → Shield icon:

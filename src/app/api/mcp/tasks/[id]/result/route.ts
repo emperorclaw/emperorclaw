@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { finalizeTaskForAgent } from "@/lib/openclaw/tasks";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             return NextResponse.json(payload, { status: result.status });
         }
 
-        const res = { message: "Task result saved", task: result.task };
+        const res = { message: "Task result saved", task: serializeTaskWithAssignee(result.task) };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res);
     } catch (error) {

@@ -5,6 +5,7 @@ import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
 import { createTaskForProject, listTasksForCompany } from "@/lib/openclaw/tasks";
 import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 const createTaskSchema = z.object({
     projectId: z.string().min(1, "projectId is required"),
@@ -28,6 +29,8 @@ const createTaskSchema = z.object({
     taskKind: z.string().default("standard"),
     recurringTaskDefinitionId: optionalString.default(null),
     allowUnderspecified: z.boolean().default(false),
+    assignee: z.unknown().optional(),
+    assignedAgentId: optionalString,
 }).loose();
 
 export async function GET(req: NextRequest) {
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
             tasks: rows.map((task) => {
                 const summary = approvalSummary.get(task.id);
                 return {
-                    ...task,
+                    ...serializeTaskWithAssignee(task),
                     approvalSummary: {
                         total: summary?.total || 0,
                         pending: summary?.pending || 0,
@@ -116,6 +119,8 @@ export async function POST(req: NextRequest) {
         taskKind,
         recurringTaskDefinitionId,
         allowUnderspecified,
+        assignee,
+        assignedAgentId,
     } = parsed.data;
 
     const inputPayload = {
@@ -159,17 +164,21 @@ export async function POST(req: NextRequest) {
             humanApprovalRequired: humanApprovalRequired ?? undefined,
             proofTypesJson,
             blockedByTaskIds,
+            assignee,
+            assignedAgentId,
             source: "mcp_api",
         });
 
-        const res = { message: "Task generated", task };
+        const res = { message: "Task generated", task: serializeTaskWithAssignee(task) };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
     } catch (dbError) {
         if (dbError instanceof Error && dbError.message === "RELATIONSHIP_VIOLATION") {
             return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "projectId does not exist or belong to this company" }, { status: 400 });
         }
+        const message = dbError instanceof Error ? dbError.message : "Failed to generate task";
+        const routeStatus = message === "Invalid assignee" ? 400 : message.includes("not found") ? 404 : 500;
         console.error("DB Error:", dbError);
-        return NextResponse.json({ error: "Failed to generate task" }, { status: 500 });
+        return NextResponse.json({ error: message }, { status: routeStatus });
     }
 }

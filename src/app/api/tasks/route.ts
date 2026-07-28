@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId } from "@/lib/auth";
+import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { createTaskForProject, updateTaskForCompany } from "@/lib/openclaw/tasks";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 function splitLines(value: unknown) {
     if (Array.isArray(value)) {
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
+        const session = await getValidatedServerSession();
         const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
         const title = typeof body.title === "string" ? body.title.trim() : "";
         const taskType = typeof body.taskType === "string" && body.taskType.trim() ? body.taskType.trim() : "manual_task";
@@ -47,25 +49,37 @@ export async function POST(req: NextRequest) {
             proofRequired: Boolean(body.proofRequired),
             humanApprovalRequired: Boolean(body.humanApprovalRequired),
             inputJson,
+            assignee: body.assignee !== undefined ? body.assignee : undefined,
+            assignedAgentId: body.assignedAgentId || undefined,
             source: "browser_ui",
+            actorType: "human",
+            actorId: session?.user?.id || null,
         });
 
-        if (body.state || body.assignedAgentId) {
+        if (body.state) {
             const result = await updateTaskForCompany({
                 companyId,
                 taskId: task.id,
                 state: body.state,
-                assignedAgentId: body.assignedAgentId || undefined,
+                actorType: "human",
+                actorId: session?.user?.id || null,
             });
-            if (!("error" in result)) {
-                return NextResponse.json({ task: result.task }, { status: 201 });
+            if ("error" in result) {
+                return NextResponse.json({ error: result.error }, { status: result.status });
             }
+            return NextResponse.json({ task: serializeTaskWithAssignee(result.task) }, { status: 201 });
         }
 
-        return NextResponse.json({ task }, { status: 201 });
+        return NextResponse.json({ task: serializeTaskWithAssignee(task) }, { status: 201 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        const status = message === "RELATIONSHIP_VIOLATION" ? 404 : 500;
-        return NextResponse.json({ error: status === 404 ? "Project not found" : message }, { status });
+        const status = message === "RELATIONSHIP_VIOLATION"
+            ? 404
+            : message === "Invalid assignee"
+                ? 400
+                : message.includes("not found")
+                    ? 404
+                    : 500;
+        return NextResponse.json({ error: message === "RELATIONSHIP_VIOLATION" ? "Project not found" : message }, { status });
     }
 }
