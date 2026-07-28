@@ -8,12 +8,14 @@ import {
     agentMemorySnapshots,
     agentSessions,
     agents,
+    llmPricing,
     messageThreads,
     threadMessages,
     threadParticipants,
 } from "@/db/schema";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { isMissingSchemaError } from "@/lib/schema-compat";
+import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +49,27 @@ export async function PATCH(
     if (typeof body.budgetStatus === "string" && ["active", "warning", "paused"].includes(body.budgetStatus)) {
         updates.budgetStatus = body.budgetStatus;
     }
-    if (typeof body.llmProvider === "string" && ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider)) {
-        updates.llmProvider = body.llmProvider || null;
-    }
-    if (typeof body.llmModel === "string") {
-        updates.llmModel = body.llmModel || null;
+    const llmProviderProvided =
+        typeof body.llmProvider === "string" &&
+        ["", "openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider);
+    const llmModelProvided = typeof body.llmModel === "string";
+    if (llmProviderProvided || llmModelProvided) {
+        const [[currentAgent], pricing] = await Promise.all([
+            db.select({ llmProvider: agents.llmProvider, llmModel: agents.llmModel })
+                .from(agents)
+                .where(and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt)))
+                .limit(1),
+            db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing),
+        ]);
+        if (!currentAgent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        const resolved = resolveAgentModelConfiguration({
+            current: currentAgent,
+            provider: llmProviderProvided ? body.llmProvider : undefined,
+            model: llmModelProvided ? body.llmModel : undefined,
+            pricing,
+        });
+        updates.llmProvider = resolved.llmProvider;
+        updates.llmModel = resolved.llmModel;
     }
 
     if (Object.keys(updates).length === 0) {

@@ -91,7 +91,9 @@ Paths are normalised on write, so `/Ferrari/XXX`, `Ferrari/XXX/`, and
 
 In the operator UI the Knowledge & Rules sidebar shows the folder tree: click a
 folder to filter to it, use the folder icon to create one, and right-click a
-folder to add a subfolder or rename it. Renaming re-files every note beneath it.
+folder to add a subfolder or rename it. When creating a subfolder, Emperor keeps
+the selected parent as read-only context; enter only the new folder's name.
+Renaming re-files every note beneath it.
 
 Do not confuse these with Storage folders, which organise uploaded files and use
 real folder records with `folderId`.

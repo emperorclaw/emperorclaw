@@ -44,6 +44,17 @@ Located at `~/.openclaw/emperor-control-plane/bridge.config.json`:
 - `model` – (Optional) LLM model override for this agent.
 - `thinking` – (Optional) Enable reasoning mode.
 
+### Agent model configuration
+
+Emperor stores one authoritative model configuration per agent. The Agent
+Details and Budget & Usage screens edit the same `llmProvider` and `llmModel`
+fields; selecting a priced model updates both fields together. A disabled model
+remains visible when already configured, but cannot be selected for new work.
+
+API and MCP clients may continue sending `llmModel` alone. When the model has
+one unambiguous pricing entry, Emperor infers its provider. Unknown custom
+models remain supported for self-hosted runtimes.
+
 ## Systemd Service
 
 The installer creates a systemd user service:

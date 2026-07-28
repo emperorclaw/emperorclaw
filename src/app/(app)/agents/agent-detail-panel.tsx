@@ -24,6 +24,16 @@ import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
 import { getAgentTemplate } from "@/lib/agent-templates";
 import { ModelSearchSelect } from "@/components/model-search-select";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+const LLM_PROVIDER_LABELS: Record<string, string> = {
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    google: "Google Gemini",
+    openrouter: "OpenRouter",
+    grok: "Grok",
+    deepseek: "DeepSeek",
+};
 
 type AgentDetailData = {
     agent: {
@@ -111,13 +121,14 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
     const [editingLlm, setEditingLlm] = useState(false);
     const [saving, setSaving] = useState(false);
     const editingLlmProviderRef = useRef("");
-    const [pricingOpts, setPricingOpts] = useState<{ model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number }[]>([]);
+    const [pricingOpts, setPricingOpts] = useState<{ model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number; active: boolean }[]>([]);
 
     useEffect(() => {
-        fetch("/api/mcp/pricing").then(r => r.json()).then(d => {
+        fetch("/api/ui/pricing").then(r => r.json()).then(d => {
             if (d.pricing) setPricingOpts(d.pricing.map((p: any) => ({
                 model: p.model, label: p.label, provider: p.provider,
                 inputPricePer1k: p.inputPricePer1k, outputPricePer1k: p.outputPricePer1k,
+                active: p.active !== false,
             })));
         }).catch(() => {});
     }, []);
@@ -155,13 +166,16 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(fields),
             });
-            if (res.ok) {
-                const updated = await res.json();
-                // Merge updated fields into local state
-                setData((prev) => prev ? { ...prev, agent: { ...prev.agent, ...updated.agent } } : prev);
-            }
-        } catch { /* ignore */ }
-        setSaving(false);
+            const updated = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(updated.error || "Could not save agent settings");
+            setData((prev) => prev ? { ...prev, agent: { ...prev.agent, ...updated.agent } } : prev);
+            return true;
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not save agent settings");
+            return false;
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -232,9 +246,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 </>
             )}
 
-            {/* Operational status bar — for online/active agents */}
-            {agent.status !== "offline" && (
-                <div className="border-b border-emerald-500/10 bg-emerald-500/[0.03] px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs">
+            {/* Runtime and model configuration stays editable before the first connection, too. */}
+            <div className={cn(
+                "border-b px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs",
+                agent.status === "offline"
+                    ? "border-zinc-800 bg-zinc-950/40"
+                    : "border-emerald-500/10 bg-emerald-500/[0.03]",
+            )}>
                     {/* Provider — editable */}
                     <span className="text-zinc-500 inline-flex items-center gap-1.5">
                         Provider:{" "}
@@ -315,8 +333,18 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                     type="button"
                                     disabled={saving}
                                     onClick={async () => {
-                                        await updateAgent({ llmProvider: editingLlmProviderRef.current || "" });
-                                        setEditingLlm(false);
+                                        const nextProvider = editingLlmProviderRef.current || "";
+                                        const configuredModel = pricingOpts.find((option) => option.model === agent.llmModel);
+                                        const clearsIncompatibleModel = Boolean(
+                                            configuredModel &&
+                                            nextProvider &&
+                                            configuredModel.provider !== nextProvider,
+                                        );
+                                        const saved = await updateAgent({
+                                            llmProvider: nextProvider,
+                                            ...(clearsIncompatibleModel ? { llmModel: "" } : {}),
+                                        });
+                                        if (saved) setEditingLlm(false);
                                     }}
                                     className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium disabled:opacity-50"
                                 >
@@ -333,7 +361,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                         ) : (
                             <>
                                 <span className="text-zinc-300 font-medium">
-                                    {agent.llmProvider ? agent.llmProvider.charAt(0).toUpperCase() + agent.llmProvider.slice(1) : "None"}
+                                    {agent.llmProvider ? LLM_PROVIDER_LABELS[agent.llmProvider] || agent.llmProvider : "None"}
                                 </span>
                                 <button type="button" onClick={() => { editingLlmProviderRef.current = agent.llmProvider || ""; setEditingLlm(true); }} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Configure LLM provider">
                                     <IconPencil className="h-3 w-3" />
@@ -352,8 +380,15 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                         <ModelSearchSelect
                             options={pricingOpts}
                             value={data.agent.llmModel || ""}
-                            onChange={async (model) => {
-                                await updateAgent({ llmModel: model || null });
+                            provider={data.agent.llmProvider || ""}
+                            disabled={saving}
+                            saving={saving}
+                            compact
+                            onChange={async (selection) => {
+                                await updateAgent({
+                                    llmProvider: selection.provider,
+                                    llmModel: selection.model,
+                                });
                             }}
                         />
                     </span>
@@ -372,8 +407,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                             {agent.budgetStatus === "paused" ? " ⏸️" : agent.budgetStatus === "warning" ? " ⚠️" : ""}
                         </span>
                     )}
-                </div>
-            )}
+            </div>
 
             {/* Tabs */}
             <Tabs defaultValue="memory" className="p-4 sm:p-5">

@@ -9,6 +9,43 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.7.1] — 2026-07-28
+
+### Changed
+
+- **Agent model configuration is now shared everywhere.** Agent creation,
+  Agent Details, and Budget & Usage edit the same provider/model pair through
+  one searchable selector. Model choices save atomically, remain editable
+  before an agent first connects, and configured disabled models stay visible
+  without being selectable for new work.
+- **Knowledge & Rules folder creation now understands context.** Opening
+  *New folder* from inside a folder shows the selected parent as a read-only
+  location and asks only for the child folder name.
+- Agent and pricing mutations now report save failures instead of silently
+  leaving the interface out of sync.
+
+### Fixed
+
+- **Existing Kanban tasks no longer disappear after upgrading to unified human
+  and AI assignment.** The old browser default `All Agents` was incorrectly
+  migrated to the impossible assignee `agent:All Agents`, filtering out every
+  task. Legacy, stale, and invalid saved filters now safely fall back to
+  *All assignees*, and a visible *Clear filters* action provides an immediate
+  recovery path.
+- Agent creation now persists the selected model instead of dropping it, and
+  browser sessions load pricing through a session-authenticated UI endpoint
+  rather than the MCP-token endpoint.
+- Changing a provider clears a known incompatible model while legacy
+  model-only API and MCP updates continue to infer the provider when possible.
+- The production build command no longer masks a failed asset-copy or build
+  step, so CI reports genuine failures.
+
+### Compatibility
+
+- This release requires no database migration and does not rewrite task data.
+  Existing agent assignments, unassigned tasks, custom model identifiers, and
+  legacy model-only API payloads remain supported.
+
 ## [0.7.0] — 2026-07-28
 
 ### Added

@@ -11,6 +11,7 @@ import {
 } from "@/db/schema";
 import type { McpTaskScopeContext } from "@/lib/mcp";
 import {
+  buildResourceChildPath,
   buildResourceFolderTree,
   normalizeResourcePath,
   RESOURCE_PATH_MAX_DEPTH,
@@ -21,6 +22,7 @@ import {
 
 // Path helpers live in a db-free module so client components can share them.
 export {
+  buildResourceChildPath,
   buildResourceFolderTree,
   normalizeResourcePath,
   RESOURCE_PATH_MAX_DEPTH,
