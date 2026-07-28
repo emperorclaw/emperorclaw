@@ -9,6 +9,44 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.7.0] — 2026-07-28
+
+### Added
+
+- **People and AI agents now share one task assignee.** A project task can be
+  owned by one company member, one agent, or nobody. Creating or editing a task
+  uses one familiar assignee selector, and changing that value is the handoff
+  between human and AI work.
+- **Dashboard work filters** for **All work**, **My work**, **People**,
+  **Agents**, and **Unassigned**, with filtered counts, activity, and links back
+  to the matching Kanban work.
+- **Unified assignee API shape.** Task responses add
+  `assignee: { type: "human" | "agent", id } | null`, and member lookup
+  responses expose the company `membershipId` used for human assignment.
+
+### Changed
+
+- Agent claiming will not take work assigned to a person or another agent.
+  Reassignment revokes an incompatible agent lease so stale runtimes cannot
+  continue work after a human/agent handoff.
+- Removing a company member safely leaves their tasks unassigned.
+- Operator, MCP, concepts, API, and usage documentation now describe people and
+  agents as peers in the same work system.
+
+### Compatibility
+
+- Migration `0034_hybrid-task-assignees` is additive and preserves every
+  existing `assignedAgentId`. Legacy task payloads and the agent-only assignment
+  endpoint remain supported; new clients can adopt the unified `assignee`
+  object incrementally.
+
+### Fixed
+
+- Docker builds now exclude host dependencies, generated Next.js output, local
+  data, and browser-test artifacts. This prevents stale host build caches from
+  leaking into release images and reduces the Docker build context
+  substantially.
+
 ## [0.6.2] — 2026-07-24
 
 ### Fixed
