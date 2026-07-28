@@ -6,6 +6,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function GET(
     req: NextRequest,
@@ -25,7 +26,7 @@ export async function GET(
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
-        return NextResponse.json({ task }, { status: 200 });
+        return NextResponse.json({ task: serializeTaskWithAssignee(task) }, { status: 200 });
     } catch (err) {
         console.error(`Error fetching task ${taskId}:`, err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -57,6 +58,7 @@ export async function PATCH(
             title: typeof body.title === "string" ? body.title : undefined,
             goal: typeof body.goal === "string" ? body.goal : undefined,
             priority: typeof body.priority === "number" ? body.priority : undefined,
+            assignee: body.assignee !== undefined ? body.assignee : undefined,
             assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
             state: body.state,
             inputJson: body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined,
@@ -66,12 +68,12 @@ export async function PATCH(
             return NextResponse.json({ error: result.error }, { status: result.status });
         }
 
-        const res = { message: `Task ${taskId} updated successfully`, task: result.task };
+        const res = { message: `Task ${taskId} updated successfully`, task: serializeTaskWithAssignee(result.task) };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 200 });
     } catch (err) {
         const message = err instanceof Error ? err.message : "Internal Server Error";
-        const routeStatus = message.startsWith("Agent not found") ? 404 : 500;
+        const routeStatus = message.includes("not found") ? 404 : message === "Invalid assignee" ? 400 : 500;
         return NextResponse.json({ error: message }, { status: routeStatus });
     }
 }

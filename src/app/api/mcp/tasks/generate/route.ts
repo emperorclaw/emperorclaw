@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { createTaskForProject } from "@/lib/openclaw/tasks";
 import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
             source: "mcp_api",
         });
 
-        const res = { message: "Task generated", task };
+        const res = { message: "Task generated", task: serializeTaskWithAssignee(task) };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: 201 });
     } catch (dbError) {

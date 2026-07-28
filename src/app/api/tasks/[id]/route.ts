@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
-import { getCompanyId } from "@/lib/auth";
+import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const companyId = await getCompanyId();
@@ -15,6 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id: taskId } = await params;
     try {
         const body = await req.json();
+        const session = await getValidatedServerSession();
         const inputJson = body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined;
         const result = await updateTaskForCompany({
             companyId,
@@ -22,19 +24,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             title: typeof body.title === "string" ? body.title : undefined,
             goal: typeof body.goal === "string" ? body.goal : undefined,
             priority: typeof body.priority === "number" ? body.priority : Number.isFinite(Number(body.priority)) ? Number(body.priority) : undefined,
+            assignee: body.assignee !== undefined ? body.assignee : undefined,
             assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
             state: body.state,
             inputJson,
+            actorType: "human",
+            actorId: session?.user?.id || null,
         });
 
         if ("error" in result) {
             return NextResponse.json({ error: result.error }, { status: result.status });
         }
 
-        return NextResponse.json({ task: result.task });
+        return NextResponse.json({ task: serializeTaskWithAssignee(result.task) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        const status = message.startsWith("Agent not found") ? 404 : 500;
+        const status = message.includes("not found") ? 404 : message === "Invalid assignee" ? 400 : 500;
         return NextResponse.json({ error: message }, { status });
     }
 }

@@ -103,7 +103,8 @@ AgentName: For Northstar Forge, I currently see one scoped resource...
 **Create a task in Emperor Web:**
 1. Go to a project.
 2. Click “Add Task”.
-3. Fill title, description, assignee (optional).
+3. Fill title, description, and one optional assignee. People and agents share
+   the same selector; changing the assignee is the handoff.
 4. Note the `TASK-XXXXXXXX` ID.
 
 **Delegate in team thread:**

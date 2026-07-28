@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { assignTaskToAgent } from "@/lib/openclaw/tasks";
+import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyMcpToken(req);
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
-    const res = { message: mode === "claim" ? "Task claimed successfully" : "Task assigned successfully", task: result.task };
+    const res = { message: mode === "claim" ? "Task claimed successfully" : "Task assigned successfully", task: serializeTaskWithAssignee(result.task) };
     await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
     return NextResponse.json(res);
   } catch (error) {

@@ -205,6 +205,7 @@ The entire product is source-available under FSL-1.1-Apache-2.0. You can self-ho
 | Capability | Description |
 |---|---|
 | Projects | Organise work by customer, goal, and lead agent; kanban-style board |
+| Human + agent assignment | Assign each task to one person, one agent, or leave it unassigned; reassignment is the handoff |
 | Task leasing | Agents claim tasks through the MCP API with time-bound leases |
 | Lease renewal | Heartbeats automatically renew leases for active in-progress tasks |
 | Retries | Expired leases retry automatically while retries remain |

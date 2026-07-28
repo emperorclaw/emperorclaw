@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { agents, tasks, incidents, companyTokens, users, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
-import { eq, inArray, and, sql, isNull, desc, gte } from "drizzle-orm";
+import { agents, tasks, incidents, companyTokens, users, companyMembers, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
+import { eq, and, sql, isNull, desc, gte } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
@@ -29,8 +29,18 @@ type RecentActivity = {
   tone: "default" | "good" | "warning" | "critical" | "info";
 };
 
-export default async function DashboardPage() {
+type WorkFilter = "all" | "mine" | "human" | "agent" | "unassigned";
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ work?: string }>;
+}) {
   const session = await getValidatedServerSession();
+  const requestedWorkFilter = (await searchParams).work;
+  const workFilter: WorkFilter = ["mine", "human", "agent", "unassigned"].includes(requestedWorkFilter || "")
+    ? requestedWorkFilter as WorkFilter
+    : "all";
   const companyId = await getCompanyId();
   if (!companyId) {
     redirect("/login");
@@ -43,18 +53,46 @@ export default async function DashboardPage() {
     }).from(users).where(eq(users.id, session.user.id)).limit(1)
     : [];
 
+  const members = await db.select({
+    id: companyMembers.id,
+    userId: users.id,
+    displayName: users.displayName,
+    email: users.email,
+  }).from(companyMembers)
+    .innerJoin(users, eq(users.id, companyMembers.userId))
+    .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt)));
+  const currentMemberId = members.find((member) => member.userId === session?.user?.id)?.id || null;
+  const memberNameById = new Map(members.map((member) => [
+    member.id,
+    member.displayName || member.email,
+  ]));
+
   // 1. Top Level KPIs
   const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-  const [{ count: queuedTasks }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.inbox), isNull(tasks.deletedAt)));
-  const [{ count: needsReview }] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.review), isNull(tasks.deletedAt)));
+  const dashboardTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
+  const filteredWorkTasks = dashboardTasks.filter((task) => {
+    if (workFilter === "mine") return Boolean(currentMemberId && task.assignedMemberId === currentMemberId);
+    if (workFilter === "human") return Boolean(task.assignedMemberId);
+    if (workFilter === "agent") return Boolean(task.assignedAgentId);
+    if (workFilter === "unassigned") return !task.assignedMemberId && !task.assignedAgentId;
+    return true;
+  });
+  const queuedTasks = filteredWorkTasks.filter((task) => task.state === TASK_STATES.inbox).length;
+  const needsReview = filteredWorkTasks.filter((task) => task.state === TASK_STATES.review).length;
+  const myOpenTasks = currentMemberId
+    ? dashboardTasks.filter((task) => task.assignedMemberId === currentMemberId && task.state !== TASK_STATES.done && task.state !== TASK_STATES.failed && task.state !== TASK_STATES.deadLetter).length
+    : 0;
   const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
   const [{ count: activeTokens }] = await db.select({ count: sql<number>`count(*)` }).from(companyTokens).where(and(eq(companyTokens.companyId, companyId), isNull(companyTokens.revokedAt)));
-  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [{ count: recentErrors }] = await db.select({ count: sql<number>`count(*)` }).from(opsEvents).where(and(eq(opsEvents.companyId, companyId), eq(opsEvents.level, "error"), gte(opsEvents.createdAt, last24h)));
+  const [{ count: recentErrors }] = await db.select({ count: sql<number>`count(*)` }).from(opsEvents).where(and(
+    eq(opsEvents.companyId, companyId),
+    eq(opsEvents.level, "error"),
+    gte(opsEvents.createdAt, sql`now() - interval '24 hours'`),
+  ));
 
   // 2. Workforce Health / Agent Load
   const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-  const activeTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, ACTIVE_TASK_STATES), isNull(tasks.deletedAt)));
+  const activeTasks = dashboardTasks.filter((task) => (ACTIVE_TASK_STATES as readonly string[]).includes(task.state));
   const agentNameById = new Map(allAgents.map(agent => [agent.id, agent.name]));
 
   // 3. Recent Activity
@@ -70,7 +108,7 @@ export default async function DashboardPage() {
     recentPipelineRuns,
   ] = await Promise.all([
     db.select().from(threadMessages).where(eq(threadMessages.companyId, companyId)).orderBy(desc(threadMessages.createdAt)).limit(8),
-    db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt))).orderBy(desc(tasks.updatedAt)).limit(6),
+    db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt))).orderBy(desc(tasks.updatedAt)).limit(50),
     db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt))).orderBy(desc(projects.updatedAt)).limit(4),
     db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))).orderBy(desc(agents.createdAt)).limit(4),
     db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt))).orderBy(desc(artifacts.createdAt)).limit(4),
@@ -98,11 +136,15 @@ export default async function DashboardPage() {
         tone: message.senderType === "human" ? "info" : "default",
       };
     }),
-    ...recentTasks.map((task): RecentActivity => ({
+    ...recentTasks.filter((task) => filteredWorkTasks.some((candidate) => candidate.id === task.id)).slice(0, 6).map((task): RecentActivity => ({
       id: `task-${task.id}`,
       kind: "Task",
       actorLabel: "Owner",
-      actor: task.assignedAgentId ? agentNameById.get(task.assignedAgentId) || "Assigned agent" : "Unassigned",
+      actor: task.assignedMemberId
+        ? memberNameById.get(task.assignedMemberId) || "Assigned person"
+        : task.assignedAgentId
+          ? agentNameById.get(task.assignedAgentId) || "Assigned agent"
+          : "Unassigned",
       title: `Task ${task.state}`,
       detail: `${task.taskType} · TASK-${task.id.substring(0, 8)}`,
       time: task.updatedAt,
@@ -199,7 +241,7 @@ export default async function DashboardPage() {
       <PageHeader
         eyebrow="Dashboard"
         title="Overview"
-        description="Your agents, recent work, and team communication — all in one place."
+        description="Your people, agents, recent work, and team communication — all in one place."
       />
 
       {totalAgents === 0 && !currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
@@ -210,10 +252,30 @@ export default async function DashboardPage() {
         />
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <nav aria-label="Dashboard work filter" className="flex flex-wrap items-center gap-2">
+        {([
+          ["all", "All work"],
+          ["mine", "My work"],
+          ["human", "People"],
+          ["agent", "Agents"],
+          ["unassigned", "Unassigned"],
+        ] as const).map(([value, label]) => (
+          <Link
+            key={value}
+            href={value === "all" ? "/" : `/?work=${value}`}
+            aria-current={workFilter === value ? "page" : undefined}
+            className={`inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${workFilter === value ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"}`}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
         <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
-        <KpiCard title="To do" value={queuedTasks.toString()} trend="Live" trendLabel="awaiting assignment" />
-        <KpiCard title="Needs your review" value={needsReview.toString()} trend="Live" trendLabel="requires human action" alert={needsReview > 0} href="/projects?attention=1" />
+        <KpiCard title="My work" value={myOpenTasks.toString()} trend="Live" trendLabel="assigned to you" href={currentMemberId ? `/projects?assignee=human:${currentMemberId}` : "/projects"} />
+        <KpiCard title="To do" value={queuedTasks.toString()} trend="Scope" trendLabel="in current filter" href={projectsAssigneeHref(workFilter, currentMemberId)} />
+        <KpiCard title="Needs review" value={needsReview.toString()} trend="Scope" trendLabel="in current filter" alert={needsReview > 0} href={`${projectsAssigneeHref(workFilter, currentMemberId)}${projectsAssigneeHref(workFilter, currentMemberId).includes("?") ? "&" : "?"}attention=1`} />
         <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} href="/projects?attention=1" />
         <KpiCard title="System errors" value={recentErrors.toString()} trend="24h" trendLabel="platform errors" alert={recentErrors > 0} good={recentErrors === 0} href="/ops/errors" />
       </div>
@@ -332,6 +394,15 @@ function truncate(value: string | null | undefined, maxLength: number) {
   const text = (value || "").trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1).trim()}...`;
+}
+
+function projectsAssigneeHref(workFilter: WorkFilter, currentMemberId: string | null) {
+  const assignee = workFilter === "mine"
+    ? currentMemberId ? `human:${currentMemberId}` : null
+    : workFilter === "human" || workFilter === "agent" || workFilter === "unassigned"
+      ? workFilter
+      : null;
+  return assignee ? `/projects?assignee=${encodeURIComponent(assignee)}` : "/projects";
 }
 
 function ActivityRow({ kind, actorLabel, actor, title, detail, time, tone }: { kind: string, actorLabel: string, actor: string, title: string, detail: string, time: Date, tone: RecentActivity["tone"] }) {

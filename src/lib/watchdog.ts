@@ -50,6 +50,7 @@ async function runWatchdog() {
                     leaseOwner: null,
                     leaseUntil: null,
                     assignedAgentId: null,
+                    assignedMemberId: null,
                     updatedAt: new Date(),
                 }).where(eq(tasks.id, task.id)).returning();
 
