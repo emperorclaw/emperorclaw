@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
+import { agents, llmPricing } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { and, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
+import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 
 export const dynamic = "force-dynamic";
 
@@ -49,13 +50,22 @@ export async function POST(req: NextRequest) {
             : 0;
 
         // LLM provider (metadata only — keys live in the runtime)
-        const llmProvider = (typeof body.llmProvider === "string" &&
+        const requestedLlmProvider = (typeof body.llmProvider === "string" &&
             ["openai", "anthropic", "google", "openrouter", "grok", "deepseek"].includes(body.llmProvider))
             ? body.llmProvider : null;
+        const requestedLlmModel = typeof body.llmModel === "string" ? body.llmModel : null;
 
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
+
+        const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
+        const llmConfiguration = resolveAgentModelConfiguration({
+            current: { llmProvider: null, llmModel: null },
+            provider: requestedLlmProvider,
+            model: requestedLlmModel,
+            pricing,
+        });
 
         const [agent] = await db.insert(agents).values({
             companyId,
@@ -74,7 +84,8 @@ export async function POST(req: NextRequest) {
             budgetStatus: "active",
             status: "offline",
             currentLoad: 0,
-            llmProvider,
+            llmProvider: llmConfiguration.llmProvider,
+            llmModel: llmConfiguration.llmModel,
         }).returning();
 
         if (memory) {

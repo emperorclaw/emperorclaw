@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getArtifactClassLabel, getArtifactImportanceLabel } from "@/lib/artifact-taxonomy";
+import { migrateLegacyAgentFilter, normalizeAssigneeFilter } from "@/lib/project-board-filters";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -163,6 +164,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
     const searchParams = useSearchParams();
     const [showAttentionOnly, setShowAttentionOnly] = useState(searchParams.get("attention") === "1");
+    const [filtersHydrated, setFiltersHydrated] = useState(false);
 
     // Initial load from localStorage
     useEffect(() => {
@@ -174,23 +176,38 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         const savedSearch = localStorage.getItem("projects-board-search-query");
         const savedHideCompleted = localStorage.getItem("projects-board-hide-completed");
 
-        if (savedProject) setProjectFilter(savedProject);
-        if (requestedAssignee) setAssigneeFilter(requestedAssignee);
-        else if (savedAssignee) setAssigneeFilter(savedAssignee);
-        else if (savedAgent) setAssigneeFilter(`agent:${savedAgent}`);
-        if (savedCustomer) setCustomerFilter(savedCustomer);
+        if (savedProject && (savedProject === "All Projects" || projects.some((project) => project.id === savedProject))) {
+            setProjectFilter(savedProject);
+        }
+        const validAssignees = {
+            agentIds: agents.map((agent) => agent.id),
+            memberIds: members.map((member) => member.id),
+        };
+        if (requestedAssignee) {
+            setAssigneeFilter(normalizeAssigneeFilter(requestedAssignee, validAssignees));
+        } else if (savedAssignee) {
+            setAssigneeFilter(normalizeAssigneeFilter(savedAssignee, validAssignees));
+        } else {
+            setAssigneeFilter(migrateLegacyAgentFilter(savedAgent, validAssignees.agentIds));
+        }
+        if (savedAgent) localStorage.removeItem("projects-board-agent-filter");
+        if (savedCustomer && (savedCustomer === "All Customers" || customers.some((customer) => customer.id === savedCustomer))) {
+            setCustomerFilter(savedCustomer);
+        }
         if (savedSearch) setSearchQuery(savedSearch);
         // Only override the default (true) if user explicitly chose to show all
         if (savedHideCompleted === "0") setHideCompletedProjects(false);
-    }, [searchParams]);
+        setFiltersHydrated(true);
+    }, [agents, customers, members, projects, searchParams]);
 
     // Save to localStorage when filters change
     useEffect(() => {
+        if (!filtersHydrated) return;
         localStorage.setItem("projects-board-project-filter", projectFilter);
         localStorage.setItem("projects-board-assignee-filter", assigneeFilter);
         localStorage.setItem("projects-board-customer-filter", customerFilter);
         localStorage.setItem("projects-board-search-query", searchQuery);
-    }, [projectFilter, assigneeFilter, customerFilter, searchQuery]);
+    }, [filtersHydrated, projectFilter, assigneeFilter, customerFilter, searchQuery]);
 
     // Persist hide-completed preference
     useEffect(() => {
@@ -423,6 +440,19 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             description: agent.role || "Agent",
         })),
     ];
+    const hasBoardFilters =
+        projectFilter !== "All Projects" ||
+        assigneeFilter !== "all" ||
+        customerFilter !== "All Customers" ||
+        Boolean(searchQuery.trim());
+
+    const clearBoardFilters = () => {
+        setProjectFilter("All Projects");
+        setAssigneeFilter("all");
+        setCustomerFilter("All Customers");
+        setSearchQuery("");
+        if (searchParams.has("assignee")) router.replace("/projects");
+    };
 
     const openCreateProject = () => {
         setMutationError(null);
@@ -751,6 +781,15 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             onChange={setProjectFilter}
                             className="min-w-[280px]"
                         />
+                        {hasBoardFilters && (
+                            <button
+                                type="button"
+                                onClick={clearBoardFilters}
+                                className="h-10 cursor-pointer rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100"
+                            >
+                                Clear filters
+                            </button>
+                        )}
                     </div>
                     <details className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2">
                         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">

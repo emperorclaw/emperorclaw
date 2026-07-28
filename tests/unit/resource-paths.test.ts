@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildResourceChildPath,
   buildResourceFolderTree,
   DEFAULT_CONTEXT_MAX_CHARS_PER_RESOURCE,
   normalizeResourcePath,
@@ -9,6 +10,17 @@ import {
   resourcePathAncestors,
   RESOURCE_PATH_MAX_DEPTH,
 } from "../../src/lib/resources";
+
+test("buildResourceChildPath keeps the selected parent out of the name field", () => {
+  assert.equal(buildResourceChildPath("Company/Operations", "Runbooks"), "Company/Operations/Runbooks");
+  assert.equal(buildResourceChildPath("", "Fundraising"), "Fundraising");
+  assert.equal(buildResourceChildPath(" Company / Operations ", "  Weekly   reviews  "), "Company/Operations/Weekly reviews");
+});
+
+test("buildResourceChildPath accepts one folder name only", () => {
+  assert.equal(buildResourceChildPath("Company", ""), "");
+  assert.equal(buildResourceChildPath("Company", "Nested/Again"), "");
+});
 
 test("normalizeResourcePath accepts the shapes people actually type", () => {
   assert.equal(normalizeResourcePath("Company/Fundraising"), "Company/Fundraising");

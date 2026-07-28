@@ -32,7 +32,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
 
     useEffect(() => {
         if (open) {
-            fetch("/api/mcp/pricing").then(r => r.json()).then(d => {
+            fetch("/api/ui/pricing").then(r => r.json()).then(d => {
                 setPricingOptions(d.pricing || []);
             }).catch(() => {});
         }
@@ -112,6 +112,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
         setName("");
         setMonthlyBudget("");
         setLlmProvider("");
+        setLlmModel("");
         setError(null);
     };
 
@@ -192,7 +193,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
                             <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">⚡ Before you continue</span>
                             <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
-                                Hermes requires a running bridge on your machine. You'll need Python 3.10+, the Hermes CLI, and an LLM API key.
+                                Hermes requires a running bridge on your machine. You&apos;ll need Python 3.10+, the Hermes CLI, and an LLM API key.
                                 The setup guide appears right after creation — no terminal expertise needed.
                             </p>
                         </div>
@@ -202,7 +203,7 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 mb-2">
                             <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">🔑 API Keys</span>
                             <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
-                                Hermes reads keys from ~/.hermes/.env or your environment. EmperorClaw only stores the provider choice as metadata — the bridge reads it to auto-detect which LLM you're using.
+                                Hermes reads keys from ~/.hermes/.env or your environment. EmperorClaw only stores the provider choice as metadata — the bridge reads it to auto-detect which LLM you&apos;re using.
                             </p>
                         </div>
                         )}
@@ -330,7 +331,12 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                             </p>
                             <select
                                 value={llmProvider}
-                                onChange={(e) => setLlmProvider(e.target.value)}
+                                onChange={(event) => {
+                                    const nextProvider = event.target.value;
+                                    setLlmProvider(nextProvider);
+                                    const selectedModel = pricingOptions.find((option) => option.model === llmModel);
+                                    if (selectedModel && selectedModel.provider !== nextProvider) setLlmModel("");
+                                }}
                                 className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-400 mt-1"
                             >
                                 <option value="">None</option>
@@ -353,8 +359,11 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
                             <ModelSearchSelect
                                 options={pricingOptions}
                                 value={llmModel}
-                                onChange={setLlmModel}
-                                placeholder="Not set"
+                                provider={llmProvider}
+                                onChange={(selection) => {
+                                    setLlmProvider(selection.provider);
+                                    setLlmModel(selection.model);
+                                }}
                             />
                         </div>
                         )}

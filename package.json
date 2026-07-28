@@ -1,13 +1,13 @@
 {
   "name": "emperor-claw",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "npx tsx server.ts",
-    "build": "next build && cp -r .next/static .next/standalone/.next/static 2>/dev/null; cp -r public .next/standalone/public 2>/dev/null; echo 'Static assets copied to standalone'",
+    "build": "next build && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && echo 'Static assets copied to standalone'",
     "start": "npx tsx server.ts",
     "lint": "eslint",
     "db:push-dev": "drizzle-kit push",

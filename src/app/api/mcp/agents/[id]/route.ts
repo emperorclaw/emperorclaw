@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
+import { agents, llmPricing } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 
 const updateAgentSchema = z.object({
     name: z.string().min(1).optional(),
@@ -69,8 +70,20 @@ export async function PATCH(
         if (typeof body.monthlyCostCents === "number" && body.monthlyCostCents >= 0) updateData.monthlyCostCents = Math.round(body.monthlyCostCents);
         if (typeof body.monthlyTokenUsage === "number" && body.monthlyTokenUsage >= 0) updateData.monthlyTokenUsage = Math.round(body.monthlyTokenUsage);
         if (typeof body.budgetStatus === "string" && ["active", "warning", "paused"].includes(body.budgetStatus)) updateData.budgetStatus = body.budgetStatus;
-        if (typeof body.llmProvider === "string") updateData.llmProvider = body.llmProvider || null;
-        if (typeof body.llmModel === "string") updateData.llmModel = body.llmModel || null;
+        if (hasLLM) {
+            const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
+            const resolved = resolveAgentModelConfiguration({
+                current: {
+                    llmProvider: existing.llmProvider,
+                    llmModel: existing.llmModel,
+                },
+                provider: typeof body.llmProvider === "string" ? body.llmProvider : undefined,
+                model: typeof body.llmModel === "string" ? body.llmModel : undefined,
+                pricing,
+            });
+            updateData.llmProvider = resolved.llmProvider;
+            updateData.llmModel = resolved.llmModel;
+        }
 
         const [updatedAgent] = await db.update(agents).set(updateData).where(eq(agents.id, agentId)).returning();
 

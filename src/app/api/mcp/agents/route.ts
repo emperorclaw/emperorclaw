@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { agents } from "@/db/schema";
+import { agents, llmPricing } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 
 const registerAgentSchema = z.object({
     name: z.string().min(1, "name is required"),
@@ -15,6 +16,8 @@ const registerAgentSchema = z.object({
     memory: optionalString,
     modelPolicyJson: z.record(z.string(), z.unknown()).nullish(),
     concurrencyLimit: z.number().int().min(0).nullish(),
+    llmProvider: optionalString,
+    llmModel: optionalString,
 }).loose();
 
 export async function GET(req: NextRequest) {
@@ -63,7 +66,14 @@ export async function POST(req: NextRequest) {
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = parsed.data;
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, llmProvider, llmModel } = parsed.data;
+        const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
+        const llmConfiguration = resolveAgentModelConfiguration({
+            current: { llmProvider: null, llmModel: null },
+            provider: llmProvider,
+            model: llmModel,
+            pricing,
+        });
 
         const [agent] = await db.insert(agents).values({
             companyId,
@@ -77,6 +87,8 @@ export async function POST(req: NextRequest) {
             status: "online",
             lastSeenAt: new Date(),
             currentLoad: 0,
+            llmProvider: llmConfiguration.llmProvider,
+            llmModel: llmConfiguration.llmModel,
         }).returning();
 
         await logAudit(companyId, "agent", null, "register_agent", "agent", agent.id, { name, role });

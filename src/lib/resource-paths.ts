@@ -33,6 +33,19 @@ export function normalizeResourcePath(input: unknown): string {
     .join("/");
 }
 
+/**
+ * Build a folder path from navigation context plus a single folder name.
+ *
+ * The parent is controlled by the folder the operator invoked the action from;
+ * it should never need to be typed into the name field again.
+ */
+export function buildResourceChildPath(parentPath: string, folderName: string): string {
+  const parent = normalizeResourcePath(parentPath);
+  const name = normalizeResourcePath(folderName);
+  if (!name || name.includes("/")) return "";
+  return normalizeResourcePath(parent ? `${parent}/${name}` : name);
+}
+
 /** Ancestor paths of a folder, excluding itself. "A/B/C" -> ["A", "A/B"]. */
 export function resourcePathAncestors(path: string): string[] {
   const segments = normalizeResourcePath(path).split("/").filter(Boolean);

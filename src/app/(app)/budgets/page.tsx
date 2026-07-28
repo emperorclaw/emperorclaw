@@ -24,7 +24,9 @@ export default async function BudgetsPage() {
         and(eq(agents.companyId, companyId), isNull(agents.deletedAt))
     ).orderBy(sql`${agents.monthlyCostCents} DESC`);
 
-    const pricing = await db.select().from(llmPricing).where(eq(llmPricing.active, true))
+    // Include disabled rows so an agent's existing selection remains visible
+    // and can be identified as unavailable instead of appearing unset.
+    const pricing = await db.select().from(llmPricing)
         .orderBy(llmPricing.provider, llmPricing.model);
 
     // 7-day spend

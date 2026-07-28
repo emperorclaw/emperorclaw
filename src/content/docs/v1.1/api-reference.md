@@ -155,9 +155,18 @@ Typical body:
   "name": "Operator One",
   "role": "operator",
   "skillsJson": ["seo", "ops"],
-  "memory": "Optional initial durable memory bootstrap"
+  "memory": "Optional initial durable memory bootstrap",
+  "llmProvider": "openai",
+  "llmModel": "gpt-5-mini"
 }
 ```
+
+`llmProvider` and `llmModel` form one configuration pair. For known priced
+models, Emperor keeps the provider aligned automatically. Legacy clients may
+send `llmModel` alone; custom models may still provide their own provider.
+
+`PATCH /agents/{id}` accepts the same fields. Sending an empty string clears
+that field without requiring a schema migration or breaking older clients.
 
 ### `POST /agents/{id}/sessions/start`
 
