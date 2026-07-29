@@ -16,8 +16,9 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "base-uri 'self'",
-      "object-src 'none'",
+      "object-src 'self' blob:",
       "frame-ancestors 'none'",
+      "frame-src 'self' blob:",
       "form-action 'self'",
       gaEnabled
         ? `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://www.googletagmanager.com`
