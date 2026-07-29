@@ -172,6 +172,7 @@ type PreviewState =
     | { state: "csv"; rows: string[][]; text: string }
     | { state: "image"; url: string }
     | { state: "pdf"; url: string }
+    | { state: "office"; url: string; name: string }
     | { state: "unsupported"; message: string };
 
 const ROOT_ID = "root";
@@ -548,14 +549,20 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     return;
                 }
 
-                if (previewMode === "image" || previewMode === "pdf") {
+                if (previewMode === "image" || previewMode === "pdf" || previewMode === "office") {
                     const blob = await fetchArtifactBlob(activeArtifact.id);
                     if (previewRequestRef.current !== requestId) {
                         return;
                     }
                     const objectUrl = URL.createObjectURL(blob);
                     previewUrlRef.current = objectUrl;
-                    setPreview(previewMode === "image" ? { state: "image", url: objectUrl } : { state: "pdf", url: objectUrl });
+                    if (previewMode === "image") {
+                        setPreview({ state: "image", url: objectUrl });
+                    } else if (previewMode === "pdf") {
+                        setPreview({ state: "pdf", url: objectUrl });
+                    } else {
+                        setPreview({ state: "office", url: objectUrl, name: activeArtifact.originalFilename || deriveDisplayName(activeArtifact) });
+                    }
                     return;
                 }
 
@@ -672,10 +679,6 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     async function handleUpload() {
         if (!uploadFile) {
             toast.error("Choose a file to upload");
-            return;
-        }
-        if (!uploadProjectId && !uploadCustomerId) {
-            toast.error("Choose a customer or project");
             return;
         }
 
@@ -2192,7 +2195,7 @@ function UploadDialog(props: {
                 <DialogHeader>
                     <DialogTitle>Upload file</DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        Upload a file into the current folder. Customer is required; project is optional.
+                        Upload a file into the current folder. Customer and project are optional — leave both empty for company-level storage.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -2210,7 +2213,7 @@ function UploadDialog(props: {
                                 className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
                                 disabled={Boolean(props.uploadProjectId)}
                             >
-                                <option value="">Select customer</option>
+                                <option value="">Company (no customer)</option>
                                 {props.customers.map((customer) => (
                                     <option key={customer.id} value={customer.id}>{customer.name}</option>
                                 ))}
@@ -2507,7 +2510,12 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
         return <div className="min-h-80 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-200">{preview.message}</div>;
     }
     if (preview.state === "unsupported") {
-        return <div className="min-h-80 rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-400">{preview.message}</div>;
+        return (
+            <div className="flex min-h-60 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/80 p-6 text-center">
+                <p className="text-sm text-zinc-400">{preview.message}</p>
+                <p className="text-xs text-zinc-500">Download the file to view it with your default application.</p>
+            </div>
+        );
     }
     if (preview.state === "markdown") {
         return <div className="min-h-80"><MarkdownRenderer content={preview.text} className="prose-sm" /></div>;
@@ -2542,6 +2550,19 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
     }
     if (preview.state === "pdf") {
         return <iframe src={preview.url} title="PDF preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />;
+    }
+    if (preview.state === "office") {
+        return (
+            <div className="space-y-3">
+                <iframe src={preview.url} title="Office document preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />
+                <p className="text-xs text-zinc-500">
+                    If the preview is blank, your browser may not support embedded Office documents.{" "}
+                    <a href={preview.url} download={preview.name} className="text-blue-400 underline hover:text-blue-300">
+                        Click here to download {preview.name}
+                    </a>.
+                </p>
+            </div>
+        );
     }
     return null;
 }
@@ -2681,6 +2702,18 @@ function getPreviewMode(artifact: Pick<ArtifactDetail, "contentType" | "original
     if (contentType === "application/pdf" || name.endsWith(".pdf")) return "pdf";
     if (contentType.startsWith("image/")) return "image";
     if (contentType.startsWith("text/")) return "text";
+    // Office / OpenDocument formats
+    if (
+        contentType.includes("spreadsheet") || contentType.includes("excel") ||
+        name.endsWith(".xls") || name.endsWith(".xlsx") || name.endsWith(".ods") ||
+        contentType.includes("word") || contentType.includes("document") &&
+        !contentType.includes("pdf") ||
+        name.endsWith(".doc") || name.endsWith(".docx") || name.endsWith(".odt") ||
+        contentType.includes("presentation") || contentType.includes("powerpoint") ||
+        name.endsWith(".ppt") || name.endsWith(".pptx") || name.endsWith(".odp")
+    ) {
+        return "office";
+    }
     return "unsupported";
 }
 
