@@ -5,6 +5,12 @@ import { eq, and, asc } from "drizzle-orm";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+    return UUID_RE.test(value);
+}
+
 type TaskHandoff = {
     fromRole: string;
     toRole: string;
@@ -22,6 +28,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id: taskId } = await params;
     const companyId = auth.companyToken!.companyId;
+
+    if (!isUuid(taskId)) {
+        return NextResponse.json({ error: "Invalid task ID format" }, { status: 400 });
+    }
 
     try {
         const events = await db.select().from(taskEvents).where(
@@ -64,6 +74,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const resolvedParams = await params;
     const companyId = auth.companyToken!.companyId;
     const taskId = resolvedParams.id;
+
+    if (!isUuid(taskId)) {
+        return NextResponse.json({ error: "Invalid task ID format" }, { status: 400 });
+    }
+
     const endpoint = `/api/mcp/tasks/${taskId}/notes`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
@@ -103,14 +118,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         let memoryItem = null;
         if (handoff) {
-            const memoryText = `[HANDOFF][task:${taskId}] ${handoff.fromRole} -> ${handoff.toRole} | ${handoff.summary} | next: ${handoff.nextStep}`;
-            [memoryItem] = await db.insert(projectMemory).values({
-                companyId: task.companyId,
-                projectId: task.projectId,
-                content: memoryText,
-                tags: ["handoff", "task-context", handoff.fromRole, handoff.toRole],
-                createdByAgentId: internalAgentId,
-            }).returning();
+            if (!task.projectId) {
+                console.error(`Task ${taskId} has no projectId — cannot persist handoff memory`);
+            } else {
+                const memoryText = `[HANDOFF][task:${taskId}] ${handoff.fromRole} -> ${handoff.toRole} | ${handoff.summary} | next: ${handoff.nextStep}`;
+                [memoryItem] = await db.insert(projectMemory).values({
+                    companyId: task.companyId,
+                    projectId: task.projectId,
+                    content: memoryText,
+                    tags: ["handoff", "task-context", handoff.fromRole, handoff.toRole],
+                    createdByAgentId: internalAgentId,
+                }).returning();
+            }
         }
 
         await broadcastMcpEvent(companyId, {
