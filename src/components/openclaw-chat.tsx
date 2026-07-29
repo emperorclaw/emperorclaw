@@ -194,8 +194,17 @@ export function OpenClawChat() {
     useEffect(() => {
         if (isOpen) {
             setUnreadCount(0);
+            // Also mark the team thread as read on the server so the sidebar
+            // unread badge clears immediately — not just when new messages arrive.
+            if (threadId) {
+                void fetch("/api/chat/status", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ threadId, markRead: true }),
+                });
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, threadId]);
 
     const handleTyping = (text: string) => {
         setMessage(text);
