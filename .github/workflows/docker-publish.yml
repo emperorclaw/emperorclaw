@@ -52,9 +52,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Multi-arch so Apple Silicon (arm64) users can pull the image.
-          # arm64 builds via QEMU emulation — slower, but cached across runs.
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
 
       - name: Extract release notes from CHANGELOG
         id: notes
