@@ -2,11 +2,80 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifactFolders, projects, customers } from "@/db/schema";
-import { and, eq, isNull, type InferModel } from "drizzle-orm";
+import { and, eq, isNull, ilike, or, desc, type InferModel, type SQL } from "drizzle-orm";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 
 const CREATED_BY_TYPE = "mcp";
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
+
+export async function GET(req: NextRequest) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const companyId = auth.companyToken!.companyId;
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
+    const parentFolderId = searchParams.get("parentFolderId");
+    const projectId = searchParams.get("projectId");
+    const customerId = searchParams.get("customerId");
+    const agentId = searchParams.get("agentId");
+    const search = searchParams.get("search");
+
+    try {
+        const conditions: SQL<unknown>[] = [
+            eq(artifactFolders.companyId, companyId),
+            isNull(artifactFolders.deletedAt),
+        ];
+
+        if (parentFolderId) {
+            conditions.push(eq(artifactFolders.parentFolderId, parentFolderId));
+        }
+        if (projectId) {
+            conditions.push(eq(artifactFolders.projectId, projectId));
+        }
+        if (customerId) {
+            conditions.push(eq(artifactFolders.customerId, customerId));
+        }
+        if (agentId) {
+            conditions.push(eq(artifactFolders.agentId, agentId));
+        }
+        if (search) {
+            const likeValue = `%${search}%`;
+            const searchCondition = or(
+                ilike(artifactFolders.name, likeValue),
+                ilike(artifactFolders.path, likeValue)
+            );
+            if (searchCondition) {
+                conditions.push(searchCondition);
+            }
+        }
+
+        const rows = await db.select({
+            id: artifactFolders.id,
+            name: artifactFolders.name,
+            path: artifactFolders.path,
+            parentFolderId: artifactFolders.parentFolderId,
+            kind: artifactFolders.kind,
+            customerId: artifactFolders.customerId,
+            projectId: artifactFolders.projectId,
+            agentId: artifactFolders.agentId,
+            createdAt: artifactFolders.createdAt,
+            updatedAt: artifactFolders.updatedAt,
+        })
+            .from(artifactFolders)
+            .where(and(...conditions))
+            .orderBy(desc(artifactFolders.createdAt))
+            .limit(limit);
+
+        return NextResponse.json({ folders: rows });
+    } catch (e: unknown) {
+        console.error("MCP Folders GET Error:", e);
+        const details = e instanceof Error ? e.message : "Unknown error";
+        return NextResponse.json({ error: "Internal server error", details }, { status: 500 });
+    }
+}
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -47,7 +116,11 @@ export async function POST(req: NextRequest) {
             .limit(1);
 
         if (existing.length > 0) {
-            return NextResponse.json({ error: "Folder already exists at this path" }, { status: 409 });
+            const [dup] = existing;
+            return NextResponse.json({
+                error: "Folder already exists at this path",
+                existingFolder: { id: dup.id, name: dup.name, path: dup.path },
+            }, { status: 409 });
         }
 
         const inserted = await db.insert(artifactFolders).values({
