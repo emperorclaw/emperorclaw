@@ -257,6 +257,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const previewUrlRef = useRef<string | null>(null);
     const previewRequestRef = useRef(0);
     const deferredSearch = useDeferredValue(searchValue);
+    const requestedFolderIdsRef = useRef<Set<string>>(new Set());
 
     const currentContents = folderCache[currentFolderId];
     const isSearchMode = Boolean(
@@ -319,6 +320,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const isCsvDirty = normalizeTextForCompare(csvRawDraft) !== normalizeTextForCompare(csvSourceText);
 
     async function loadFolder(folderId: string, options?: { silent?: boolean }) {
+        requestedFolderIdsRef.current.add(folderId);
         if (!options?.silent) {
             setLoadingFolderId(folderId);
         }
@@ -411,10 +413,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     }, []);
 
     useEffect(() => {
-        if (!folderCache[currentFolderId]) {
+        if (!requestedFolderIdsRef.current.has(currentFolderId)) {
             void loadFolder(currentFolderId);
         }
-    }, [currentFolderId, folderCache]);
+    }, [currentFolderId]);
 
     useEffect(() => {
         if (!selectedEntry && currentFolderId === ROOT_ID && folderCache[ROOT_ID]) {
