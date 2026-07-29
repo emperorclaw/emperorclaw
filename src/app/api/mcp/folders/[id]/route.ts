@@ -67,6 +67,23 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
         const safeNewName = typeof newName === "string" ? newName : "";
         const newPath = buildFolderPath(parentFolderPath, safeNewName);
         const pathChanged = newPath !== folderPathValue;
+
+        if (pathChanged) {
+            const [collision] = await db.select({ id: artifactFolders.id })
+                .from(artifactFolders)
+                .where(and(
+                    eq(artifactFolders.companyId, companyId),
+                    eq(artifactFolders.path, newPath),
+                    isNull(artifactFolders.deletedAt),
+                ))
+                .limit(1);
+            if (collision) {
+                return NextResponse.json({
+                    error: "A folder already exists at this path",
+                    existingFolder: { id: collision.id, path: newPath },
+                }, { status: 409 });
+            }
+        }
         const affectedArtifacts = pathChanged
             ? await db.select({
                 id: artifacts.id,
