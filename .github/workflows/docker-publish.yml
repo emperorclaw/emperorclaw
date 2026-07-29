@@ -50,8 +50,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache disabled temporarily to clear stale CSP headers
+          no-cache: true
           platforms: linux/amd64
 
       - name: Extract release notes from CHANGELOG
