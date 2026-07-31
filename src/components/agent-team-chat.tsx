@@ -269,27 +269,27 @@ export function AgentTeamChat({
 
     return (
         <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-zinc-800/80 p-4">
-                <div className="flex items-center space-x-3">
-                    <h2 className="text-lg font-medium text-zinc-200">Agent Team Chat</h2>
+            <div className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800/80 px-3 py-2 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2 sm:space-x-3">
+                    <h2 className="hidden text-sm font-medium text-zinc-300 lg:block">Agent Team Chat</h2>
                     {unreadCount > 0 && (
                         <span className="rounded-full border border-rose-500/30 bg-rose-500/20 px-2 py-0.5 text-[10px] text-rose-300">
                             {unreadCount} new
                         </span>
                     )}
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:space-x-2">
                     {offlineAgents.length > 0 && (
-                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                        <span className="truncate rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
                             {offlineAgents.length} agent{offlineAgents.length !== 1 ? "s" : ""} offline
                         </span>
                     )}
                     <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500" />
-                    <span className="text-xs font-medium uppercase tracking-tight text-zinc-500">Live Feed</span>
+                    <span className="hidden text-xs font-medium uppercase tracking-tight text-zinc-500 xs:inline sm:inline">Live Feed</span>
                 </div>
             </div>
 
-            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3">
+            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-sm italic text-zinc-600">No communications yet.</div>
                 ) : (
@@ -365,7 +365,7 @@ export function AgentTeamChat({
                                         </div>
 
                                         {/* Bubble + read receipts */}
-                                        <div className={cn("flex min-w-0 max-w-[75%] flex-col", isHuman ? "items-end" : "items-start")}>
+                                        <div className={cn("flex min-w-0 max-w-[86%] flex-col sm:max-w-[78%]", isHuman ? "items-end" : "items-start")}>
                                             {/* Sender name — group-start only, agents only */}
                                             {!isContinuation && !isHuman && (
                                                 <span className="text-[10px] font-medium text-cyan-400 mb-1 ml-1">{getAgentName(senderId)}</span>
@@ -442,7 +442,7 @@ export function AgentTeamChat({
             )}
 
             {sendable ? (
-                <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-3">
+                <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-2 sm:p-3">
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
@@ -451,7 +451,7 @@ export function AgentTeamChat({
                                 requestAnimationFrame(() => teamTextareaRef.current?.focus());
                             }}
                             title="Mention an agent"
-                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700 hover:border-cyan-500/50 hover:text-cyan-400 text-zinc-500 transition-colors"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                         >
                             <IconAt className="h-4 w-4" />
                         </button>
@@ -464,12 +464,13 @@ export function AgentTeamChat({
                             onSubmit={sendMessage}
                             placeholder="Message the team… (@ to mention)"
                             rows={1}
-                            className="w-full resize-none bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 max-h-32 overflow-y-auto"
+                            className="min-h-11 w-full resize-none overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/70 sm:px-4"
                         />
                         <button
                             type="submit"
                             disabled={!draft.trim() || isSending}
-                            className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Send message"
+                            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-cyan-600 transition-colors hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                             <IconSend className="h-4 w-4 text-white" />
                         </button>

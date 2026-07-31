@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { artifactFolders, projects, customers } from "@/db/schema";
 import { and, eq, isNull, ilike, or, desc, type InferModel, type SQL } from "drizzle-orm";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
+import { storageAdapter } from "@/lib/storage";
 
 const CREATED_BY_TYPE = "mcp";
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
@@ -122,6 +123,8 @@ export async function POST(req: NextRequest) {
                 existingFolder: { id: dup.id, name: dup.name, path: dup.path },
             }, { status: 409 });
         }
+
+        await storageAdapter.ensureDirectory({ companyId, logicalPath: folderPath });
 
         const inserted = await db.insert(artifactFolders).values({
             companyId,

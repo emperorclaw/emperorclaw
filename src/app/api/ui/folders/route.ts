@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
+import { storageAdapter } from "@/lib/storage";
 
 type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
@@ -36,6 +37,10 @@ export async function POST(req: NextRequest) {
         if (existing.length > 0) {
             return NextResponse.json({ error: "Folder already exists at this path" }, { status: 409 });
         }
+
+        // Local storage materializes empty directories so optional filesystem
+        // mirrors preserve the same folder tree. Object stores no-op here.
+        await storageAdapter.ensureDirectory({ companyId, logicalPath: folderPath });
 
         const inserted = await db.insert(artifactFolders).values({
             companyId,

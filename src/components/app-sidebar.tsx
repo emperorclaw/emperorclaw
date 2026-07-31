@@ -97,7 +97,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
 
     return (
         <>
-        <aside className={cn("flex h-full shrink-0 flex-col border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-300 ease-in-out overflow-hidden", collapsed ? "w-20" : "w-20 md:w-64")}>
+        <aside className={cn("flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
             <div className={cn("border-b border-white/10", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
                 <div className={cn(
                     "flex items-center",
@@ -107,8 +107,8 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                 )}>
                     {collapsed ? (
                         /* Collapsed: show only the emblem, centered */
-                        <div className="grid h-10 w-10 shrink-0 place-items-center">
-                            <CustomLogo className="h-10 w-10" />
+                        <div className="grid h-9 w-9 shrink-0 place-items-center sm:h-10 sm:w-10">
+                            <CustomLogo className="h-9 w-9 sm:h-10 sm:w-10" />
                         </div>
                     ) : (
                         /* Expanded: show only the text */
@@ -119,7 +119,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                 </div>
             </div>
 
-            <nav className="flex-1 space-y-0.5 sm:space-y-1 overflow-y-auto overflow-x-visible px-2 py-4 sm:px-4 sm:py-5">
+            <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-visible px-1.5 py-3 sm:space-y-1 sm:px-4 sm:py-5">
                 {links.map((link) => {
                     const Icon = link.icon;
                     const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));

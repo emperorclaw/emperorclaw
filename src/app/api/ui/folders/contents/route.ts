@@ -4,6 +4,8 @@ import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/sch
 import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { findActiveFolder } from "@/lib/artifact-folders";
+import { discoverDirectStorageEntries, isStorageDiscoveryEnabled } from "@/lib/storage/discovery";
+import { reconcileTrackedLocalArtifacts } from "@/lib/storage/artifact-reconciliation";
 
 type FolderDto = {
     id: string;
@@ -118,11 +120,35 @@ export async function GET(req: NextRequest) {
             .orderBy(desc(artifacts.createdAt))
             .limit(limit);
 
+        const reconciled = isStorageDiscoveryEnabled()
+            ? await reconcileTrackedLocalArtifacts(companyId, artifactRows.map((artifact) => ({
+                id: artifact.id,
+                path: artifact.path,
+                sizeBytes: artifact.sizeBytes,
+                sha256: artifact.sha256,
+                updatedAt: artifact.updatedAt,
+            })))
+            : new Map();
+        const reconciledArtifactRows = artifactRows.map((artifact) => {
+            const updated = reconciled.get(artifact.id);
+            return updated ? { ...artifact, ...updated } : artifact;
+        });
+        const registeredPaths = new Set([
+            ...folders.map((child) => child.path),
+            ...reconciledArtifactRows.map((artifact) => artifact.path).filter((value): value is string => Boolean(value)),
+        ]);
+        const discoveredEntries = (await discoverDirectStorageEntries({
+            companyId,
+            folderPath: folderDto.path,
+        })).filter((entry) => !registeredPaths.has(entry.logicalPath));
+
         return NextResponse.json({
             folder: folderDto,
             ancestors,
             folders,
-            artifacts: artifactRows,
+            artifacts: reconciledArtifactRows,
+            discoveredEntries,
+            discoveryEnabled: isStorageDiscoveryEnabled(),
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";

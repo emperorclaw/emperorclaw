@@ -32,10 +32,20 @@ Write-Host ""
 
 # ── Docker mode ──────────────────────────────────────────────────
 if ($Docker) {
+    # The Compose file is versioned with the release. Fetch it before pulling
+    # the image so upgrades can add optional services and volumes.
+    if (Test-Path ".git") {
+        Write-Host "Updating release configuration..." -ForegroundColor Yellow
+        git pull --ff-only origin main
+    }
+
+    $driveWasRunning = docker compose --profile drive ps --status running -q drive-sync 2>$null
+    $profileArgs = @()
+    if ($driveWasRunning) { $profileArgs = @("--profile", "drive") }
     Write-Host "Pulling latest Docker image..." -ForegroundColor Yellow
-    docker compose pull app
+    docker compose @profileArgs pull app
     Write-Host "Recreating containers..." -ForegroundColor Yellow
-    docker compose up -d --remove-orphans
+    docker compose @profileArgs up -d --remove-orphans
     Write-Host "✓ EmperorClaw updated via Docker" -ForegroundColor Green
     Write-Host "  Check logs: docker compose logs -f app"
     exit 0

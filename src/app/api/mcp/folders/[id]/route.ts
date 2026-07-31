@@ -99,6 +99,13 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
                 isNull(artifacts.deletedAt),
             ))
             : [];
+        const descendantFolders = pathChanged
+            ? await db.select({ path: artifactFolders.path }).from(artifactFolders).where(and(
+                eq(artifactFolders.companyId, companyId),
+                like(artifactFolders.path, `${folderPathValue}/%`),
+                isNull(artifactFolders.deletedAt),
+            ))
+            : [];
         const movedArtifacts = pathChanged
             ? await moveFolderArtifactBlobs({
                 companyId,
@@ -158,6 +165,17 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
 
             return updatedFolder;
         });
+
+        if (pathChanged) {
+            const oldPaths = [folderPathValue, ...descendantFolders.map((item) => item.path)];
+            const newPaths = oldPaths.map((oldPath) => `${newPath}${oldPath.slice(folderPathValue.length)}`);
+            for (const logicalPath of newPaths) {
+                await storageAdapter.ensureDirectory({ companyId, logicalPath });
+            }
+            for (const logicalPath of oldPaths.sort((a, b) => b.length - a.length)) {
+                await storageAdapter.removeDirectoryIfEmpty({ companyId, logicalPath });
+            }
+        }
 
         return NextResponse.json({ folder: result }, { status: 200 });
     } catch (error) {

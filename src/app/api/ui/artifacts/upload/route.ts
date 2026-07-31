@@ -55,10 +55,6 @@ export async function POST(req: NextRequest) {
         if (customerId && !customer) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
-        if (!project && !customer) {
-            return NextResponse.json({ error: "Select a customer or project" }, { status: 400 });
-        }
-
         const folderId = getFormStringValue(form, "folderId");
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
         if (folderId && !folder) {
