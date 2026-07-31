@@ -200,7 +200,7 @@ type PreviewState =
     | { state: "csv"; rows: string[][]; text: string }
     | { state: "image"; url: string }
     | { state: "pdf"; url: string }
-    | { state: "office"; url: string; name: string }
+    | { state: "office"; url: string; name: string; id: string; isEditable: boolean }
     | { state: "unsupported"; message: string };
 
 const ROOT_ID = "root";
@@ -670,7 +670,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     } else if (previewMode === "pdf") {
                         setPreview({ state: "pdf", url: objectUrl });
                     } else {
-                        setPreview({ state: "office", url: objectUrl, name: activeArtifact.originalFilename || deriveDisplayName(activeArtifact) });
+                        setPreview({
+                            state: "office",
+                            url: objectUrl,
+                            name: activeArtifact.originalFilename || deriveDisplayName(activeArtifact),
+                            id: activeArtifact.id,
+                            isEditable: canEditOfficeArtifact(activeArtifact),
+                        });
                     }
                     return;
                 }
@@ -3337,15 +3343,33 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
         return <iframe src={preview.url} title="PDF preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />;
     }
     if (preview.state === "office") {
+        const isExcel = preview.name.endsWith(".xls") || preview.name.endsWith(".xlsx") || preview.name.endsWith(".ods");
+        const Icon = isExcel ? IconFileSpreadsheet : IconFileText;
         return (
-            <div className="space-y-3">
-                <iframe src={preview.url} title="Office document preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />
-                <p className="text-xs text-zinc-500">
-                    If the preview is blank, your browser may not support embedded Office documents.{" "}
-                    <a href={preview.url} download={preview.name} className="text-blue-400 underline hover:text-blue-300">
-                        Click here to download {preview.name}
-                    </a>.
-                </p>
+            <div className="flex min-h-60 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/80 p-6 text-center">
+                <Icon className={cn("size-12", isExcel ? "text-emerald-300" : "text-blue-300")} />
+                <div>
+                    <h3 className="text-sm font-medium text-zinc-200">{preview.name}</h3>
+                    <p className="mt-1 text-xs text-zinc-500">
+                        {isExcel ? "Spreadsheet File" : "Word Document"}
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    {preview.isEditable && (
+                        <Button asChild size="sm">
+                            <a href={`/artifacts/${preview.id}/edit`}>
+                                <IconPencil className="mr-2 size-4" />
+                                Edit Document
+                            </a>
+                        </Button>
+                    )}
+                    <Button asChild variant="outline" size="sm">
+                        <a href={preview.url} download={preview.name}>
+                            <IconArrowDown className="mr-2 size-4" />
+                            Download
+                        </a>
+                    </Button>
+                </div>
             </div>
         );
     }
