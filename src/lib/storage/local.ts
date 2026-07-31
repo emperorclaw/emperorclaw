@@ -12,6 +12,7 @@ import type {
     StorageUploadResult,
 } from "./types";
 import { sanitizeLogicalPath } from "./path-sanitizer";
+import { enqueueDriveMirrorDeletion } from "./drive-deletion-queue";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
@@ -85,6 +86,12 @@ export class LocalStorageAdapter implements StorageAdapter {
             const code = (err as NodeJS.ErrnoException)?.code;
             if (code !== "ENOENT") throw err;
         }
+
+        await enqueueDriveMirrorDeletion({
+            companyId: params.companyId,
+            logicalPath: params.logicalPath,
+            entryType: "file",
+        });
     }
 
     async download(params: StorageDownloadParams): Promise<StorageDownloadResult> {
@@ -139,11 +146,21 @@ export class LocalStorageAdapter implements StorageAdapter {
         if (!fullPath.startsWith(storageRoot + path.sep)) {
             throw new Error("Path traversal rejected");
         }
+        let removed = false;
         try {
             await fs.rmdir(fullPath);
+            removed = true;
         } catch (error) {
             const code = (error as NodeJS.ErrnoException).code;
-            if (code !== "ENOENT" && code !== "ENOTEMPTY" && code !== "EEXIST") throw error;
+            if (code === "ENOENT") removed = true;
+            else if (code !== "ENOTEMPTY" && code !== "EEXIST") throw error;
+        }
+        if (removed) {
+            await enqueueDriveMirrorDeletion({
+                companyId: params.companyId,
+                logicalPath: params.logicalPath,
+                entryType: "directory",
+            });
         }
     }
 

@@ -280,7 +280,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [isSavingFolder, setIsSavingFolder] = useState(false);
     const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
     const [previewDialogTab, setPreviewDialogTab] = useState("preview");
-    const [deleteConfirm, setDeleteConfirm] = useState<null | { type: "folder" | "file"; id: string; title: string; description: string }>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<null | {
+        type: "folder" | "file" | "external";
+        id: string;
+        entryType?: "file" | "folder";
+        title: string;
+        description: string;
+    }>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [csvEditorRows, setCsvEditorRows] = useState<string[][]>([]);
     const [csvRawDraft, setCsvRawDraft] = useState("");
@@ -759,7 +765,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             type: "folder",
             id: folderId,
             title: "Delete folder?",
-            description: "This archives the folder and hides everything inside it from Storage and agent context.",
+            description: "This archives the folder, removes its tracked files from Storage and agent context, and sends its Google Drive mirror to Trash when Drive sync is enabled.",
         });
     }
 
@@ -1064,7 +1070,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             type: "file",
             id: artifactId,
             title: "Delete file?",
-            description: "This archives the file from Storage. Agents will no longer receive it as available evidence.",
+            description: "This archives the file from Storage. Agents will no longer receive it as evidence, and its Google Drive mirror will be sent to Trash when Drive sync is enabled.",
         });
     }
 
@@ -1087,12 +1093,41 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         }
     }
 
+    function requestDeleteExternal(entry: DiscoveredStorageEntry) {
+        setDeleteConfirm({
+            type: "external",
+            id: entry.logicalPath,
+            entryType: entry.entryType,
+            title: `Remove untracked ${entry.entryType}?`,
+            description: "This removes the untracked item from local Storage and sends the mirrored Google Drive copy to Trash. Tracked files are protected.",
+        });
+    }
+
+    async function deleteExternal(logicalPath: string, entryType: "file" | "folder") {
+        try {
+            const response = await fetch("/api/ui/storage/discovered", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ logicalPath, entryType }),
+            });
+            if (!response.ok) {
+                throw new Error(await readError(response, "Unable to remove untracked item"));
+            }
+            await reloadWorkspace(currentFolderId);
+            toast.success("Untracked item queued for removal from Drive");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Unable to remove untracked item");
+        }
+    }
+
     async function handleConfirmDelete() {
         if (!deleteConfirm || isDeleting) return;
         setIsDeleting(true);
         try {
             if (deleteConfirm.type === "folder") {
                 await deleteFolder(deleteConfirm.id);
+            } else if (deleteConfirm.type === "external") {
+                await deleteExternal(deleteConfirm.id, deleteConfirm.entryType || "file");
             } else {
                 await deleteArtifact(deleteConfirm.id);
             }
@@ -1718,18 +1753,25 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         onClick={() => beginTrackExternal(entry)}
                                         onDoubleClick={() => beginTrackExternal(entry)}
                                         onInspect={() => beginTrackExternal(entry)}
-                                        actions={entry.entryType === "file" ? (
-                                            <Button
-                                                variant="outline"
-                                                size="icon-sm"
-                                                aria-label={`Add metadata for ${entry.name}`}
-                                                title="Add metadata"
-                                                className="border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
-                                                onClick={(event) => { event.stopPropagation(); beginTrackExternal(entry); }}
-                                            >
-                                                <IconPlus className="size-4" />
-                                            </Button>
-                                        ) : null}
+                                        contextMenuContent={(
+                                            <>
+                                                {entry.entryType === "file" && <ContextMenuItem onClick={() => beginTrackExternal(entry)}>Add metadata</ContextMenuItem>}
+                                                <ContextMenuItem variant="destructive" onClick={() => requestDeleteExternal(entry)}>Remove from storage and Drive</ContextMenuItem>
+                                            </>
+                                        )}
+                                        actions={(
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${entry.name}`} className="text-amber-100 hover:bg-amber-500/10 hover:text-amber-50">
+                                                        <IconDots className="size-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-56 border-zinc-800 bg-zinc-950 text-zinc-100">
+                                                    {entry.entryType === "file" && <DropdownMenuItem onClick={() => beginTrackExternal(entry)}><IconPlus className="size-4" />Add metadata</DropdownMenuItem>}
+                                                    <DropdownMenuItem variant="destructive" onClick={() => requestDeleteExternal(entry)}><IconTrash className="size-4" />Remove from storage and Drive</DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
                                     />
                                 ))}
                                 {loadingFolderId === currentFolderId && !isSearchMode && (
