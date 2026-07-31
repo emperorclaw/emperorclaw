@@ -1437,15 +1437,15 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                 <IconRefresh className="size-4" />
                                 Refresh
                             </Button>
-                            <Button variant="outline" onClick={beginCreateFolder} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
+                            <Button variant="outline" onClick={beginCreateFolder} className="cursor-pointer border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
                                 <IconFolderPlus className="size-4" />
                                 New Folder
                             </Button>
-                            <Button variant="outline" onClick={beginCreateFile} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
+                            <Button variant="outline" onClick={beginCreateFile} className="cursor-pointer border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
                                 <IconFilePlus className="size-4" />
                                 New File
                             </Button>
-                            <Button onClick={beginUpload} className="bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
+                            <Button onClick={beginUpload} className="cursor-pointer bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
                                 <IconUpload className="size-4" />
                                 Upload
                             </Button>
@@ -2624,7 +2624,7 @@ function NewFileDialog(props: {
                                             name: replaceKnownFileExtension(current.name, option.extension),
                                         }))}
                                         className={cn(
-                                            "min-h-24 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
+                                            "min-h-24 cursor-pointer rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
                                             selected
                                                 ? "border-cyan-500/60 bg-cyan-500/10"
                                                 : "border-zinc-800 bg-zinc-900/70 hover:border-zinc-700 hover:bg-zinc-900"
@@ -2690,7 +2690,7 @@ function NewFileDialog(props: {
                     <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isCreating} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">
                         Cancel
                     </Button>
-                    <Button onClick={props.onSubmit} disabled={props.isCreating || !props.draft.name.trim()}>
+                    <Button className="cursor-pointer disabled:cursor-not-allowed" onClick={props.onSubmit} disabled={props.isCreating || !props.draft.name.trim()}>
                         {props.isCreating ? <IconLoader2 className="size-4 animate-spin" /> : <IconFilePlus className="size-4" />}
                         Create and edit
                     </Button>
