@@ -13,8 +13,18 @@ import {
     type ChangeEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
+
+const XlsxViewer = dynamic(
+    () => import("@extend-ai/react-xlsx").then((mod) => mod.XlsxViewer),
+    { ssr: false, loading: () => <div className="text-xs text-zinc-500 p-4">Loading spreadsheet preview...</div> }
+);
+const ReactDocxViewer = dynamic(
+    () => import("@extend-ai/react-docx").then((mod) => mod.ReactDocxViewer),
+    { ssr: false, loading: () => <div className="text-xs text-zinc-500 p-4">Loading document preview...</div> }
+);
 import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Badge } from "@/components/ui/badge";
@@ -201,6 +211,8 @@ type PreviewState =
     | { state: "image"; url: string }
     | { state: "pdf"; url: string }
     | { state: "office"; url: string; name: string; id: string; isEditable: boolean }
+    | { state: "xlsx-preview"; bytes: ArrayBuffer; name: string; id: string }
+    | { state: "docx-preview"; bytes: ArrayBuffer; name: string; id: string }
     | { state: "unsupported"; message: string };
 
 const ROOT_ID = "root";
@@ -670,13 +682,36 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     } else if (previewMode === "pdf") {
                         setPreview({ state: "pdf", url: objectUrl });
                     } else {
-                        setPreview({
-                            state: "office",
-                            url: objectUrl,
-                            name: activeArtifact.originalFilename || deriveDisplayName(activeArtifact),
-                            id: activeArtifact.id,
-                            isEditable: canEditOfficeArtifact(activeArtifact),
-                        });
+                        const name = activeArtifact.originalFilename || deriveDisplayName(activeArtifact);
+                        const isXlsx = name.toLowerCase().endsWith(".xlsx");
+                        const isDocx = name.toLowerCase().endsWith(".docx");
+                        if (isXlsx) {
+                            const bytes = await blob.arrayBuffer();
+                            if (previewRequestRef.current !== requestId) return;
+                            setPreview({
+                                state: "xlsx-preview",
+                                bytes,
+                                name,
+                                id: activeArtifact.id,
+                            });
+                        } else if (isDocx) {
+                            const bytes = await blob.arrayBuffer();
+                            if (previewRequestRef.current !== requestId) return;
+                            setPreview({
+                                state: "docx-preview",
+                                bytes,
+                                name,
+                                id: activeArtifact.id,
+                            });
+                        } else {
+                            setPreview({
+                                state: "office",
+                                url: objectUrl,
+                                name,
+                                id: activeArtifact.id,
+                                isEditable: false,
+                            });
+                        }
                     }
                     return;
                 }
@@ -3341,6 +3376,52 @@ function PreviewPanel({ preview }: { preview: PreviewState }) {
     }
     if (preview.state === "pdf") {
         return <iframe src={preview.url} title="PDF preview" className="h-[32rem] w-full rounded-xl border border-zinc-800 bg-white" />;
+    }
+    if (preview.state === "xlsx-preview") {
+        return (
+            <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-xs text-zinc-400 font-medium">Spreadsheet Preview (Read-Only)</span>
+                    <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                        <a href={`/artifacts/${preview.id}/edit`}>
+                            <IconPencil className="mr-1.5 size-3.5" />
+                            Open Editor
+                        </a>
+                    </Button>
+                </div>
+                <div className="h-[32rem] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+                    <XlsxViewer
+                        file={preview.bytes}
+                        readOnly={true}
+                        height="100%"
+                        rounded={false}
+                        showDefaultToolbar={false}
+                        isDark={true}
+                    />
+                </div>
+            </div>
+        );
+    }
+    if (preview.state === "docx-preview") {
+        return (
+            <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-xs text-zinc-400 font-medium">Document Preview (Read-Only)</span>
+                    <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                        <a href={`/artifacts/${preview.id}/edit`}>
+                            <IconPencil className="mr-1.5 size-3.5" />
+                            Open Editor
+                        </a>
+                    </Button>
+                </div>
+                <div className="h-[32rem] overflow-auto rounded-xl border border-zinc-800 bg-[#1e1e22] p-4 text-zinc-100">
+                    <ReactDocxViewer
+                        file={preview.bytes}
+                        className="h-full w-full"
+                    />
+                </div>
+            </div>
+        );
     }
     if (preview.state === "office") {
         const isExcel = preview.name.endsWith(".xls") || preview.name.endsWith(".xlsx") || preview.name.endsWith(".ods");
