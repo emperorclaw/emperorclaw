@@ -24,6 +24,11 @@ export interface StorageDownloadParams {
     logicalPath: string;
 }
 
+export interface StorageDirectoryParams {
+    companyId: string;
+    logicalPath: string;
+}
+
 export interface StorageDownloadResult {
     buffer: Buffer;
     contentType?: string;
@@ -42,4 +47,11 @@ export interface StorageAdapter {
     stat(params: StorageDownloadParams): Promise<StorageStatResult>;
     getDownloadUrl(params: StorageDownloadParams): string;
     buildStorageKey(companyId: string, logicalPath: string): string;
+    /**
+     * Materialize an empty directory when the backend has real directories.
+     * Object stores intentionally implement this as a no-op.
+     */
+    ensureDirectory(params: StorageDirectoryParams): Promise<void>;
+    /** Remove a materialized directory only when it is empty. */
+    removeDirectoryIfEmpty(params: StorageDirectoryParams): Promise<void>;
 }

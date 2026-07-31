@@ -12,7 +12,8 @@ import {
     type SetStateAction,
     type ChangeEvent,
 } from "react";
-import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
+import { useRouter } from "next/navigation";
+import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -128,6 +129,17 @@ type FolderContentsResponse = {
     ancestors: Array<Pick<FolderSummary, "id" | "name" | "path">>;
     folders: FolderSummary[];
     artifacts: ArtifactSummary[];
+    discoveredEntries: DiscoveredStorageEntry[];
+    discoveryEnabled: boolean;
+};
+
+type DiscoveredStorageEntry = {
+    name: string;
+    logicalPath: string;
+    entryType: "file" | "folder";
+    sizeBytes: number | null;
+    modifiedAt: string;
+    contentType: string | null;
 };
 
 type SelectedEntry =
@@ -160,6 +172,22 @@ type FolderDraft = {
     projectId: string;
     customerId: string;
     metadataJson: string;
+};
+
+type CreatableFileType = "xlsx" | "docx" | "csv" | "markdown" | "text" | "json";
+
+type NewFileDraft = {
+    name: string;
+    type: CreatableFileType;
+    projectId: string;
+    customerId: string;
+};
+
+type RenameFileDraft = {
+    artifactId: string;
+    baseName: string;
+    extension: string;
+    folderId: string;
 };
 
 type PreviewState =
@@ -204,6 +232,23 @@ const DEFAULT_FOLDER_DRAFT: FolderDraft = {
     metadataJson: "{}",
 };
 
+const CREATABLE_FILE_TYPES: Array<{
+    value: CreatableFileType;
+    label: string;
+    description: string;
+    extension: string;
+    contentType: string;
+    initialContent: string | null;
+    editor: "office" | "csv" | "text";
+}> = [
+    { value: "xlsx", label: "Excel workbook", description: "Start with a blank worksheet in the spreadsheet editor.", extension: ".xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", initialContent: null, editor: "office" },
+    { value: "docx", label: "Word document", description: "Start with a blank page in the document editor.", extension: ".docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", initialContent: null, editor: "office" },
+    { value: "csv", label: "CSV spreadsheet", description: "Edit cells in a grid or as raw CSV.", extension: ".csv", contentType: "text/csv;charset=utf-8", initialContent: "", editor: "csv" },
+    { value: "markdown", label: "Markdown", description: "Write formatted notes and documents.", extension: ".md", contentType: "text/markdown;charset=utf-8", initialContent: "", editor: "text" },
+    { value: "text", label: "Plain text", description: "Create a simple text document.", extension: ".txt", contentType: "text/plain;charset=utf-8", initialContent: "", editor: "text" },
+    { value: "json", label: "JSON", description: "Create structured data with validation.", extension: ".json", contentType: "application/json;charset=utf-8", initialContent: "{}\n", editor: "text" },
+];
+
 type Props = {
     projects: ProjectOption[];
     tasks: TaskOption[];
@@ -211,6 +256,7 @@ type Props = {
 };
 
 export default function ArtifactsManager({ projects, tasks, customers }: Props) {
+    const router = useRouter();
     const [currentFolderId, setCurrentFolderId] = useState(ROOT_ID);
     const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
     const [folderCache, setFolderCache] = useState<Record<string, FolderContentsResponse>>({});
@@ -240,9 +286,19 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const [csvRawDraft, setCsvRawDraft] = useState("");
     const [csvSourceText, setCsvSourceText] = useState("");
     const [csvRawError, setCsvRawError] = useState<string | null>(null);
+    const [textEditorDraft, setTextEditorDraft] = useState("");
+    const [textSourceText, setTextSourceText] = useState("");
+    const [textEditorError, setTextEditorError] = useState<string | null>(null);
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+    const [isNewFileOpen, setIsNewFileOpen] = useState(false);
+    const [newFileDraft, setNewFileDraft] = useState<NewFileDraft>({ name: "untitled.csv", type: "csv", projectId: "", customerId: "" });
+    const [newFileFolderId, setNewFileFolderId] = useState(ROOT_ID);
+    const [isCreatingFile, setIsCreatingFile] = useState(false);
+    const [renameFileDraft, setRenameFileDraft] = useState<RenameFileDraft | null>(null);
+    const [isRenamingFile, setIsRenamingFile] = useState(false);
     const [isInspectorOpen, setIsInspectorOpen] = useState(false);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
+    const [externalToTrack, setExternalToTrack] = useState<DiscoveredStorageEntry | null>(null);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [uploadTitle, setUploadTitle] = useState("");
     const [uploadKind, setUploadKind] = useState("report");
@@ -256,6 +312,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     const replaceInputRef = useRef<HTMLInputElement | null>(null);
     const previewUrlRef = useRef<string | null>(null);
     const previewRequestRef = useRef(0);
+    const pendingEditorTabRef = useRef<"table" | "edit" | null>(null);
     const deferredSearch = useDeferredValue(searchValue);
     const requestedFolderIdsRef = useRef<Set<string>>(new Set());
 
@@ -277,6 +334,8 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
     const visibleFolders = isSearchMode ? [] : currentContents?.folders ?? [];
     const visibleArtifacts = isSearchMode ? globalArtifacts : currentContents?.artifacts ?? [];
+    const visibleDiscoveredEntries = isSearchMode ? [] : currentContents?.discoveredEntries ?? [];
+    const selectedArtifactUpdatedAt = artifactDetail?.updatedAt;
     const selectedFolder = selectedEntry?.type === "folder"
         ? findFolderById(folderCache, selectedEntry.id)
         : null;
@@ -316,8 +375,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             artifactLocationDraft.folderId !== (artifactDetail.folderId ?? ROOT_ID)
         )
     );
-    const isCsvArtifact = preview.state === "csv";
     const isCsvDirty = normalizeTextForCompare(csvRawDraft) !== normalizeTextForCompare(csvSourceText);
+    const isTextArtifact = preview.state === "markdown" || preview.state === "json" || preview.state === "text";
+    const isTextDirty = normalizeTextForCompare(textEditorDraft) !== normalizeTextForCompare(textSourceText);
 
     async function loadFolder(folderId: string, options?: { silent?: boolean }) {
         requestedFolderIdsRef.current.add(folderId);
@@ -419,6 +479,23 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     }, [currentFolderId]);
 
     useEffect(() => {
+        if (!currentContents?.discoveryEnabled) return;
+        const timer = window.setInterval(() => {
+            if (document.visibilityState === "visible") {
+                void loadFolder(currentFolderId, { silent: true }).then((payload) => {
+                    if (selectedEntry?.type !== "artifact") return;
+                    const refreshedArtifact = payload.artifacts.find((artifact) => artifact.id === selectedEntry.id);
+                    if (!refreshedArtifact) return;
+                    if (!selectedArtifactUpdatedAt || String(refreshedArtifact.updatedAt) !== String(selectedArtifactUpdatedAt)) {
+                        void fetchArtifactDetail(selectedEntry.id);
+                    }
+                });
+            }
+        }, 5000);
+        return () => window.clearInterval(timer);
+    }, [currentFolderId, currentContents?.discoveryEnabled, selectedEntry?.type, selectedEntry?.id, selectedArtifactUpdatedAt]);
+
+    useEffect(() => {
         if (!selectedEntry && currentFolderId === ROOT_ID && folderCache[ROOT_ID]) {
             setSelectedEntry({ type: "folder", id: ROOT_ID });
         }
@@ -473,6 +550,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             setCsvRawDraft("");
             setCsvSourceText("");
             setCsvRawError(null);
+            setTextEditorDraft("");
+            setTextSourceText("");
+            setTextEditorError(null);
             return;
         }
         setArtifactDraft({
@@ -511,7 +591,28 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         setCsvRawDraft(preview.text);
         setCsvSourceText(preview.text);
         setCsvRawError(null);
-    }, [artifactDetail?.id, preview.state === "csv" ? preview.text : ""]);
+        if (pendingEditorTabRef.current === "table") {
+            setPreviewDialogTab("table");
+            pendingEditorTabRef.current = null;
+        }
+    }, [artifactDetail?.id, preview]);
+
+    useEffect(() => {
+        if (preview.state !== "markdown" && preview.state !== "json" && preview.state !== "text") {
+            setTextEditorDraft("");
+            setTextSourceText("");
+            setTextEditorError(null);
+            return;
+        }
+
+        setTextEditorDraft(preview.text);
+        setTextSourceText(preview.text);
+        setTextEditorError(null);
+        if (pendingEditorTabRef.current === "edit") {
+            setPreviewDialogTab("edit");
+            pendingEditorTabRef.current = null;
+        }
+    }, [artifactDetail?.id, preview]);
 
     useEffect(() => {
         if (!artifactDetail) {
@@ -926,6 +1027,38 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         }
     }
 
+    async function handleSaveTextDraft() {
+        if (!artifactDetail || !isTextArtifact) {
+            return;
+        }
+
+        let nextText = textEditorDraft;
+        if (preview.state === "json") {
+            try {
+                nextText = JSON.stringify(JSON.parse(textEditorDraft), null, 2);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "JSON is not valid";
+                setTextEditorError(message);
+                return;
+            }
+        }
+
+        const fileName = artifactLocationDraft.name.trim() || artifactDetail.originalFilename || deriveDisplayName(artifactDetail);
+        const contentType = preview.state === "json"
+            ? "application/json;charset=utf-8"
+            : preview.state === "markdown"
+                ? "text/markdown;charset=utf-8"
+                : "text/plain;charset=utf-8";
+        const file = new window.File([nextText], fileName, { type: contentType });
+        const didReplace = await handleReplaceArtifact(file);
+        if (didReplace) {
+            setTextEditorDraft(nextText);
+            setTextSourceText(nextText);
+            setTextEditorError(null);
+            setPreviewDialogTab("preview");
+        }
+    }
+
     function requestDeleteArtifact(artifactId: string) {
         setDeleteConfirm({
             type: "file",
@@ -971,6 +1104,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
     function handleDownloadArtifact(artifactId: string) {
         window.open(`/api/ui/artifacts/${artifactId}/download`, "_blank", "noopener,noreferrer");
+    }
+
+    function openArtifactEditor(artifactId: string) {
+        window.location.assign(`/artifacts/${artifactId}/edit`);
     }
 
     function openFolder(folderId: string) {
@@ -1020,6 +1157,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         return (
             <>
                 {!isRootFolder && <ContextMenuItem onClick={() => openFolder(folder.id)}>Open</ContextMenuItem>}
+                <ContextMenuItem onClick={() => beginCreateFileAt(folder)}>New File Here</ContextMenuItem>
                 <ContextMenuItem onClick={() => {
                     setSelectedEntry({ type: "folder", id: folder.id });
                     beginCreateFolderAt({
@@ -1050,6 +1188,11 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
     function renderArtifactMenu(artifact: ArtifactSummary) {
         return (
             <>
+                {canEditOfficeArtifact(artifact) && (
+                    <ContextMenuItem onClick={() => openArtifactEditor(artifact.id)}>
+                        Edit in Emperor
+                    </ContextMenuItem>
+                )}
                 <ContextMenuItem onClick={() => {
                     setSelectedEntry({ type: "artifact", id: artifact.id });
                     setInspectorTab("preview");
@@ -1057,6 +1200,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                     Preview
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</ContextMenuItem>
+                <ContextMenuItem onClick={() => beginRenameArtifact(artifact)}>Rename</ContextMenuItem>
                 <ContextMenuItem onClick={() => {
                     setSelectedEntry({ type: "artifact", id: artifact.id });
                     setInspectorTab("properties");
@@ -1084,6 +1228,119 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         setIsUploadOpen(true);
     }
 
+    function beginCreateFile() {
+        beginCreateFileAt(currentContents?.folder ?? null);
+    }
+
+    function beginCreateFileAt(folder: Pick<FolderSummary, "id" | "projectId" | "customerId"> | null) {
+        const folderId = folder?.id ?? ROOT_ID;
+        const defaultProjectId = projectFilter || folder?.projectId || "";
+        const defaultCustomerId =
+            folder?.customerId ||
+            customerFilter ||
+            findProjectCustomerId(projects, defaultProjectId) ||
+            "";
+        setNewFileFolderId(folderId);
+        setNewFileDraft({
+            name: "untitled.csv",
+            type: "csv",
+            projectId: defaultProjectId,
+            customerId: defaultProjectId ? findProjectCustomerId(projects, defaultProjectId) || defaultCustomerId : defaultCustomerId,
+        });
+        setIsNewFileOpen(true);
+    }
+
+    function beginRenameArtifact(artifact: ArtifactSummary) {
+        const currentName = artifact.originalFilename || deriveDisplayName(artifact);
+        const { baseName, extension } = splitFileNameExtension(currentName);
+        setSelectedEntry({ type: "artifact", id: artifact.id });
+        setRenameFileDraft({
+            artifactId: artifact.id,
+            baseName,
+            extension,
+            folderId: artifact.folderId ?? ROOT_ID,
+        });
+    }
+
+    async function handleRenameFile() {
+        if (!renameFileDraft) return;
+        const baseName = renameFileDraft.baseName.trim();
+        const nextName = `${baseName}${renameFileDraft.extension}`;
+        if (!baseName || !isValidStorageFileName(nextName)) {
+            toast.error("Enter a file name without folders or path characters");
+            return;
+        }
+
+        setIsRenamingFile(true);
+        try {
+            const response = await fetch(`/api/ui/artifacts/${renameFileDraft.artifactId}/move`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    folderId: renameFileDraft.folderId === ROOT_ID ? null : renameFileDraft.folderId,
+                    name: nextName,
+                }),
+            });
+            if (!response.ok) throw new Error(await readError(response, "Unable to rename file"));
+            setRenameFileDraft(null);
+            await reloadWorkspace(currentFolderId);
+            if (isSearchMode) await fetchSearchResults();
+            toast.success(`Renamed to ${nextName}`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Unable to rename file");
+        } finally {
+            setIsRenamingFile(false);
+        }
+    }
+
+    async function handleCreateFile() {
+        const fileType = getCreatableFileType(newFileDraft.type);
+        const fileName = ensureFileExtension(newFileDraft.name, fileType.extension);
+        if (!isValidStorageFileName(fileName)) {
+            toast.error("Enter a file name without folders or path characters");
+            return;
+        }
+
+        setIsCreatingFile(true);
+        try {
+            const initialContent = await createInitialFileContent(fileType);
+            const file = new window.File([initialContent], fileName, { type: fileType.contentType });
+            const formData = new FormData();
+            formData.set("file", file);
+            formData.set("title", fileName);
+            formData.set("kind", newFileDraft.type === "csv" || newFileDraft.type === "xlsx" ? "export" : "document");
+            formData.set("artifactClass", DEFAULT_ARTIFACT_CLASS);
+            formData.set("importance", DEFAULT_ARTIFACT_IMPORTANCE);
+            formData.set("metadataJson", "{}");
+            if (newFileDraft.projectId) formData.set("projectId", newFileDraft.projectId);
+            if (newFileDraft.customerId) formData.set("customerId", newFileDraft.customerId);
+            if (newFileFolderId !== ROOT_ID) formData.set("folderId", newFileFolderId);
+
+            const response = await fetch("/api/ui/artifacts/upload", { method: "POST", body: formData });
+            if (!response.ok) {
+                throw new Error(await readError(response, "Unable to create file"));
+            }
+            const payload = await response.json() as { artifact: ArtifactSummary };
+            setIsNewFileOpen(false);
+            if (fileType.editor === "office") {
+                toast.success(`${fileName} created`);
+                router.push(`/artifacts/${payload.artifact.id}/edit`);
+                return;
+            }
+            pendingEditorTabRef.current = fileType.editor === "csv" ? "table" : "edit";
+            setPreview({ state: "loading" });
+            setSelectedEntry({ type: "artifact", id: payload.artifact.id });
+            setInspectorTab("preview");
+            setIsPreviewDialogOpen(true);
+            await reloadWorkspace(newFileFolderId);
+            toast.success(`${fileName} created`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Unable to create file");
+        } finally {
+            setIsCreatingFile(false);
+        }
+    }
+
     function handleReplaceInput(event: ChangeEvent<HTMLInputElement>) {
         const file = event.target.files?.[0];
         if (!file) {
@@ -1098,6 +1355,60 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
         setUploadFile(file);
         if (file) {
             setUploadTitle(file.name);
+        }
+    }
+
+    function beginTrackExternal(entry: DiscoveredStorageEntry) {
+        if (entry.entryType !== "file") {
+            toast.info("Create this folder in Emperor before tracking files inside it.");
+            return;
+        }
+        setExternalToTrack(entry);
+        setUploadTitle(entry.name);
+        setUploadKind("document");
+        setUploadArtifactClass(DEFAULT_ARTIFACT_CLASS);
+        setUploadImportance(DEFAULT_ARTIFACT_IMPORTANCE);
+        setUploadProjectId("");
+        setUploadTaskId("");
+        setUploadCustomerId("");
+        setUploadMetadataJson("{}");
+    }
+
+    async function handleTrackExternal() {
+        if (!externalToTrack) return;
+        if (!uploadProjectId && !uploadCustomerId) {
+            toast.error("Select a customer or project before tracking this file.");
+            return;
+        }
+        setIsUploading(true);
+        try {
+            const response = await fetch("/api/ui/artifacts/finalize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    logicalPath: externalToTrack.logicalPath,
+                    filename: externalToTrack.name,
+                    title: uploadTitle || externalToTrack.name,
+                    kind: uploadKind,
+                    contentType: externalToTrack.contentType || "application/octet-stream",
+                    folderId: currentFolderId === ROOT_ID ? null : currentFolderId,
+                    projectId: uploadProjectId || null,
+                    taskId: uploadTaskId || null,
+                    customerId: uploadCustomerId || null,
+                    artifactClass: uploadArtifactClass,
+                    importance: uploadImportance,
+                    metadataJson: parseJsonInput(uploadMetadataJson),
+                }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Unable to track file");
+            setExternalToTrack(null);
+            await reloadWorkspace(currentFolderId);
+            toast.success("File is now tracked by Emperor");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Unable to track file");
+        } finally {
+            setIsUploading(false);
         }
     }
 
@@ -1129,6 +1440,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                             <Button variant="outline" onClick={beginCreateFolder} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
                                 <IconFolderPlus className="size-4" />
                                 New Folder
+                            </Button>
+                            <Button variant="outline" onClick={beginCreateFile} className="border-zinc-800 bg-zinc-950 text-zinc-200 hover:bg-zinc-900">
+                                <IconFilePlus className="size-4" />
+                                New File
                             </Button>
                             <Button onClick={beginUpload} className="bg-zinc-100 text-zinc-950 hover:bg-zinc-200">
                                 <IconUpload className="size-4" />
@@ -1295,8 +1610,13 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                     {visibleFolders.length} folders
                                 </Badge>
                                 <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-                                    {visibleArtifacts.length} files
+                                    {visibleArtifacts.length} tracked
                                 </Badge>
+                                {visibleDiscoveredEntries.length > 0 && (
+                                    <Badge variant="outline" className="border-amber-500/40 text-amber-200">
+                                        {visibleDiscoveredEntries.length} needs metadata
+                                    </Badge>
+                                )}
                             </div>
                         </div>
                     </CardHeader>
@@ -1336,6 +1656,10 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                     <DropdownMenuItem onClick={() => openFolder(folder.id)}>Open</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => {
                                                         setSelectedEntry({ type: "folder", id: folder.id });
+                                                        beginCreateFileAt(folder);
+                                                    }}>New File Here</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        setSelectedEntry({ type: "folder", id: folder.id });
                                                         beginCreateFolderAt(folder);
                                                     }}>New Folder Here</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "folder", id: folder.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
@@ -1368,13 +1692,44 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
+                                                    {canEditOfficeArtifact(artifact) && <DropdownMenuItem onClick={() => openArtifactEditor(artifact.id)}>Edit in Emperor</DropdownMenuItem>}
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("preview"); setIsInspectorOpen(true); }}>Preview</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleDownloadArtifact(artifact.id)}>Download</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => beginRenameArtifact(artifact)}>Rename</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => { setSelectedEntry({ type: "artifact", id: artifact.id }); setInspectorTab("properties"); setIsInspectorOpen(true); }}>Edit Properties</DropdownMenuItem>
                                                     <DropdownMenuItem variant="destructive" onClick={() => requestDeleteArtifact(artifact.id)}>Delete File</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
+                                    />
+                                ))}
+                                {visibleDiscoveredEntries.map((entry) => (
+                                    <BrowserRow
+                                        key={`external-${entry.logicalPath}`}
+                                        icon={entry.entryType === "folder"
+                                            ? <IconFolder className="size-4 text-amber-300" />
+                                            : <span className="flex size-5 items-center justify-center rounded-full border border-amber-400/50 bg-amber-400/10"><IconQuestionMark className="size-3 text-amber-200" /></span>}
+                                        title={entry.name}
+                                        subtitle={entry.logicalPath}
+                                        context={entry.entryType === "folder" ? "External folder" : "Missing metadata"}
+                                        sizeLabel={entry.sizeBytes === null ? "Folder" : formatBytes(entry.sizeBytes)}
+                                        dateLabel={formatRelativeDate(entry.modifiedAt)}
+                                        selected={false}
+                                        onClick={() => beginTrackExternal(entry)}
+                                        onDoubleClick={() => beginTrackExternal(entry)}
+                                        onInspect={() => beginTrackExternal(entry)}
+                                        actions={entry.entryType === "file" ? (
+                                            <Button
+                                                variant="outline"
+                                                size="icon-sm"
+                                                aria-label={`Add metadata for ${entry.name}`}
+                                                title="Add metadata"
+                                                className="border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
+                                                onClick={(event) => { event.stopPropagation(); beginTrackExternal(entry); }}
+                                            >
+                                                <IconPlus className="size-4" />
+                                            </Button>
+                                        ) : null}
                                     />
                                 ))}
                                 {loadingFolderId === currentFolderId && !isSearchMode && (
@@ -1389,7 +1744,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         Searching storage...
                                     </div>
                                 )}
-                                {!loadingFolderId && !isSearchLoading && visibleFolders.length === 0 && visibleArtifacts.length === 0 && (
+                                {!loadingFolderId && !isSearchLoading && visibleFolders.length === 0 && visibleArtifacts.length === 0 && visibleDiscoveredEntries.length === 0 && (
                                     <div className="mx-2 mt-2 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/80 px-6 py-14 text-center">
                                         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
                                             <IconFolderOpen className="size-6 text-zinc-500" />
@@ -1416,6 +1771,25 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onOpenChange={setIsCreateFolderOpen}
                 onDraftChange={setFolderDraft}
                 onSubmit={() => void handleCreateFolder()}
+            />
+
+            <NewFileDialog
+                open={isNewFileOpen}
+                draft={newFileDraft}
+                projects={projects}
+                customers={customers}
+                isCreating={isCreatingFile}
+                onOpenChange={setIsNewFileOpen}
+                onDraftChange={setNewFileDraft}
+                onSubmit={() => void handleCreateFile()}
+            />
+
+            <RenameFileDialog
+                draft={renameFileDraft}
+                isRenaming={isRenamingFile}
+                onDraftChange={setRenameFileDraft}
+                onOpenChange={(open) => { if (!open && !isRenamingFile) setRenameFileDraft(null); }}
+                onSubmit={() => void handleRenameFile()}
             />
 
             <UploadDialog
@@ -1449,6 +1823,32 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onSubmit={() => void handleUpload()}
             />
 
+            <TrackExternalDialog
+                entry={externalToTrack}
+                title={uploadTitle}
+                kind={uploadKind}
+                artifactClass={uploadArtifactClass}
+                importance={uploadImportance}
+                projectId={uploadProjectId}
+                customerId={uploadCustomerId}
+                metadataJson={uploadMetadataJson}
+                projects={projects}
+                customers={customers}
+                isSaving={isUploading}
+                onOpenChange={(open) => { if (!open && !isUploading) setExternalToTrack(null); }}
+                onTitleChange={setUploadTitle}
+                onKindChange={setUploadKind}
+                onArtifactClassChange={setUploadArtifactClass}
+                onImportanceChange={setUploadImportance}
+                onProjectChange={(value) => {
+                    setUploadProjectId(value);
+                    setUploadCustomerId(findProjectCustomerId(projects, value) || "");
+                }}
+                onCustomerChange={setUploadCustomerId}
+                onMetadataJsonChange={setUploadMetadataJson}
+                onSubmit={() => void handleTrackExternal()}
+            />
+
             <PreviewDialog
                 open={isPreviewDialogOpen}
                 onOpenChange={setIsPreviewDialogOpen}
@@ -1461,6 +1861,9 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 csvRawError={csvRawError}
                 isSavingCsv={isSavingArtifact}
                 isCsvDirty={isCsvDirty}
+                textDraft={textEditorDraft}
+                textError={textEditorError}
+                isTextDirty={isTextDirty}
                 onCsvCellChange={handleCsvCellChange}
                 onAddCsvRow={handleAddCsvRow}
                 onDeleteCsvRow={handleDeleteCsvRow}
@@ -1473,6 +1876,15 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 onApplyRawCsvToGrid={handleApplyRawCsvToGrid}
                 onResetCsvDraft={handleResetCsvDraft}
                 onSaveCsvDraft={() => void handleSaveCsvDraft()}
+                onTextDraftChange={(value) => {
+                    setTextEditorDraft(value);
+                    setTextEditorError(null);
+                }}
+                onResetTextDraft={() => {
+                    setTextEditorDraft(textSourceText);
+                    setTextEditorError(null);
+                }}
+                onSaveTextDraft={() => void handleSaveTextDraft()}
             />
 
             <Dialog open={isInspectorOpen} onOpenChange={setIsInspectorOpen}>
@@ -1524,6 +1936,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                         onSaveProperties={() => void handleSaveArtifactProperties()}
                                         onSaveLocation={() => void handleSaveArtifactLocation()}
                                         onReplace={() => replaceInputRef.current?.click()}
+                                        onEdit={canEditOfficeArtifact(artifactDetail) ? () => openArtifactEditor(artifactDetail.id) : undefined}
                                         onDownload={() => handleDownloadArtifact(artifactDetail.id)}
                                         onDelete={() => requestDeleteArtifact(artifactDetail.id)}
                                         onOpenLargePreview={() => {
@@ -1859,6 +2272,7 @@ function ArtifactInspector(props: {
     onSaveProperties: () => void;
     onSaveLocation: () => void;
     onReplace: () => void;
+    onEdit?: () => void;
     onDownload: () => void;
     onDelete: () => void;
     onOpenLargePreview: () => void;
@@ -1891,6 +2305,12 @@ function ArtifactInspector(props: {
                         <PreviewPanel preview={props.preview} />
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        {props.onEdit && (
+                            <Button className="bg-cyan-300 text-zinc-950 hover:bg-cyan-200" onClick={props.onEdit}>
+                                <IconPencil className="size-4" />
+                                Edit in Emperor
+                            </Button>
+                        )}
                         <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800" onClick={props.onDownload}>
                             <IconArrowDown className="size-4" />
                             Download
@@ -2165,6 +2585,176 @@ function FolderDialog(props: {
     );
 }
 
+function NewFileDialog(props: {
+    open: boolean;
+    draft: NewFileDraft;
+    projects: ProjectOption[];
+    customers: CustomerOption[];
+    isCreating: boolean;
+    onOpenChange: (open: boolean) => void;
+    onDraftChange: Dispatch<SetStateAction<NewFileDraft>>;
+    onSubmit: () => void;
+}) {
+    return (
+        <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+            <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-xl">
+                <DialogHeader>
+                    <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10">
+                        <IconFilePlus className="size-5 text-cyan-200" />
+                    </div>
+                    <DialogTitle>Create a file</DialogTitle>
+                    <DialogDescription className="text-zinc-400">
+                        Create it in the current folder and start editing immediately. No Office service is required.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-5">
+                    <div className="space-y-2">
+                        <div className="text-sm font-medium text-zinc-300">File type</div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {CREATABLE_FILE_TYPES.map((option) => {
+                                const selected = props.draft.type === option.value;
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        aria-pressed={selected}
+                                        onClick={() => props.onDraftChange((current) => ({
+                                            ...current,
+                                            type: option.value,
+                                            name: replaceKnownFileExtension(current.name, option.extension),
+                                        }))}
+                                        className={cn(
+                                            "min-h-24 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
+                                            selected
+                                                ? "border-cyan-500/60 bg-cyan-500/10"
+                                                : "border-zinc-800 bg-zinc-900/70 hover:border-zinc-700 hover:bg-zinc-900"
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="text-sm font-medium text-zinc-100">{option.label}</div>
+                                            <span className="rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-400">
+                                                {option.extension.slice(1)}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-xs leading-5 text-zinc-500">{option.description}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                    <Field label="Filename">
+                        <Input
+                            autoFocus
+                            value={props.draft.name}
+                            onChange={(event) => props.onDraftChange((current) => ({ ...current, name: event.target.value }))}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter" && props.draft.name.trim() && !props.isCreating) props.onSubmit();
+                            }}
+                            placeholder={`untitled${getCreatableFileType(props.draft.type).extension}`}
+                            className="border-zinc-800 bg-zinc-900 text-zinc-100"
+                        />
+                        <span className="text-xs text-zinc-500">The correct extension is added automatically.</span>
+                    </Field>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Customer">
+                            <select
+                                value={props.draft.customerId}
+                                onChange={(event) => props.onDraftChange((current) => ({ ...current, customerId: event.target.value }))}
+                                disabled={Boolean(props.draft.projectId)}
+                                className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <option value="">Company (no customer)</option>
+                                {props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                            </select>
+                        </Field>
+                        <Field label="Project">
+                            <select
+                                value={props.draft.projectId}
+                                onChange={(event) => {
+                                    const projectId = event.target.value;
+                                    props.onDraftChange((current) => ({
+                                        ...current,
+                                        projectId,
+                                        customerId: projectId ? findProjectCustomerId(props.projects, projectId) : current.customerId,
+                                    }));
+                                }}
+                                className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                            >
+                                <option value="">None</option>
+                                {props.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                            </select>
+                        </Field>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isCreating} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">
+                        Cancel
+                    </Button>
+                    <Button onClick={props.onSubmit} disabled={props.isCreating || !props.draft.name.trim()}>
+                        {props.isCreating ? <IconLoader2 className="size-4 animate-spin" /> : <IconFilePlus className="size-4" />}
+                        Create and edit
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function RenameFileDialog(props: {
+    draft: RenameFileDraft | null;
+    isRenaming: boolean;
+    onDraftChange: Dispatch<SetStateAction<RenameFileDraft | null>>;
+    onOpenChange: (open: boolean) => void;
+    onSubmit: () => void;
+}) {
+    return (
+        <Dialog open={Boolean(props.draft)} onOpenChange={props.onOpenChange}>
+            <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+                <DialogHeader>
+                    <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10">
+                        <IconPencil className="size-5 text-cyan-200" />
+                    </div>
+                    <DialogTitle>Rename file</DialogTitle>
+                    <DialogDescription className="text-zinc-400">
+                        Change the file name without moving it or changing its format.
+                    </DialogDescription>
+                </DialogHeader>
+                <Field label="File name">
+                    <div className="flex min-h-11 items-center rounded-md border border-zinc-800 bg-zinc-900 focus-within:ring-2 focus-within:ring-cyan-400/70">
+                        <Input
+                            autoFocus
+                            value={props.draft?.baseName ?? ""}
+                            onChange={(event) => props.onDraftChange((current) => current ? { ...current, baseName: event.target.value } : current)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter" && props.draft?.baseName.trim() && !props.isRenaming) props.onSubmit();
+                            }}
+                            aria-describedby="rename-file-extension-hint"
+                            className="h-10 min-w-0 flex-1 border-0 bg-transparent text-zinc-100 shadow-none focus-visible:ring-0"
+                        />
+                        {props.draft?.extension && (
+                            <span className="shrink-0 border-l border-zinc-800 px-3 font-mono text-sm text-zinc-400">
+                                {props.draft.extension}
+                            </span>
+                        )}
+                    </div>
+                    <span id="rename-file-extension-hint" className="text-xs text-zinc-500">
+                        The extension stays fixed so the file continues opening in the correct editor.
+                    </span>
+                </Field>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isRenaming} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">
+                        Cancel
+                    </Button>
+                    <Button onClick={props.onSubmit} disabled={props.isRenaming || !props.draft?.baseName.trim()}>
+                        {props.isRenaming ? <IconLoader2 className="size-4 animate-spin" /> : <IconPencil className="size-4" />}
+                        Rename
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function UploadDialog(props: {
     open: boolean;
     uploadFile: File | null;
@@ -2277,6 +2867,103 @@ function UploadDialog(props: {
     );
 }
 
+function TrackExternalDialog(props: {
+    entry: DiscoveredStorageEntry | null;
+    title: string;
+    kind: string;
+    artifactClass: string;
+    importance: string;
+    projectId: string;
+    customerId: string;
+    metadataJson: string;
+    projects: ProjectOption[];
+    customers: CustomerOption[];
+    isSaving: boolean;
+    onOpenChange: (open: boolean) => void;
+    onTitleChange: (value: string) => void;
+    onKindChange: (value: string) => void;
+    onArtifactClassChange: (value: string) => void;
+    onImportanceChange: (value: string) => void;
+    onProjectChange: (value: string) => void;
+    onCustomerChange: (value: string) => void;
+    onMetadataJsonChange: (value: string) => void;
+    onSubmit: () => void;
+}) {
+    return (
+        <Dialog open={Boolean(props.entry)} onOpenChange={props.onOpenChange}>
+            <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-lg">
+                <DialogHeader>
+                    <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10">
+                        <IconQuestionMark className="size-5 text-amber-200" />
+                    </div>
+                    <DialogTitle>Add metadata to track this file</DialogTitle>
+                    <DialogDescription className="text-zinc-400">
+                        This file exists in synchronized storage but is not visible to agents or artifact APIs yet.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                    <div className="truncate text-sm font-medium text-zinc-100">{props.entry?.name}</div>
+                    <div className="truncate text-xs text-zinc-500">{props.entry?.logicalPath}</div>
+                </div>
+                <div className="space-y-4">
+                    <Field label="Title">
+                        <Input value={props.title} onChange={(event) => props.onTitleChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
+                    </Field>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Customer">
+                            <select
+                                value={props.customerId}
+                                onChange={(event) => props.onCustomerChange(event.target.value)}
+                                disabled={Boolean(props.projectId)}
+                                className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <option value="">Select customer</option>
+                                {props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                            </select>
+                        </Field>
+                        <Field label="Project">
+                            <select value={props.projectId} onChange={(event) => props.onProjectChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                <option value="">None</option>
+                                {props.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                            </select>
+                        </Field>
+                    </div>
+                    <details className="rounded-xl border border-zinc-800 bg-zinc-950/70">
+                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-300">Classification & advanced</summary>
+                        <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
+                            <Field label="Kind">
+                                <Input value={props.kind} onChange={(event) => props.onKindChange(event.target.value)} className="border-zinc-800 bg-zinc-900 text-zinc-100" />
+                            </Field>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <Field label="File role">
+                                    <select value={props.artifactClass} onChange={(event) => props.onArtifactClassChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                        {ARTIFACT_CLASS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                    </select>
+                                </Field>
+                                <Field label="Lifecycle">
+                                    <select value={props.importance} onChange={(event) => props.onImportanceChange(event.target.value)} className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200">
+                                        {ARTIFACT_IMPORTANCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                    </select>
+                                </Field>
+                            </div>
+                            <Field label="Metadata JSON">
+                                <Textarea value={props.metadataJson} onChange={(event) => props.onMetadataJsonChange(event.target.value)} className="min-h-24 border-zinc-800 bg-zinc-900 font-mono text-xs text-zinc-100" />
+                            </Field>
+                        </div>
+                    </details>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => props.onOpenChange(false)} disabled={props.isSaving} className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">Cancel</Button>
+                    <Button onClick={props.onSubmit} disabled={props.isSaving || (!props.projectId && !props.customerId)}>
+                        {props.isSaving && <IconLoader2 className="size-4 animate-spin" />}
+                        Track file
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function PreviewDialog(props: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -2289,6 +2976,9 @@ function PreviewDialog(props: {
     csvRawError: string | null;
     isSavingCsv: boolean;
     isCsvDirty: boolean;
+    textDraft: string;
+    textError: string | null;
+    isTextDirty: boolean;
     onCsvCellChange: (rowIndex: number, columnIndex: number, value: string) => void;
     onAddCsvRow: () => void;
     onDeleteCsvRow: (rowIndex: number) => void;
@@ -2298,8 +2988,12 @@ function PreviewDialog(props: {
     onApplyRawCsvToGrid: () => void;
     onResetCsvDraft: () => void;
     onSaveCsvDraft: () => void;
+    onTextDraftChange: (value: string) => void;
+    onResetTextDraft: () => void;
+    onSaveTextDraft: () => void;
 }) {
     const isCsvPreview = props.preview.state === "csv";
+    const isTextPreview = props.preview.state === "markdown" || props.preview.state === "json" || props.preview.state === "text";
     const title = props.artifact ? deriveDisplayName(props.artifact) : "File preview";
 
     return (
@@ -2311,7 +3005,9 @@ function PreviewDialog(props: {
                         <DialogDescription className="text-zinc-400">
                             {isCsvPreview
                                 ? "Review the file in a larger workspace and edit CSV content without leaving the storage panel."
-                                : "Expanded preview for comfortable reading and verification."}
+                                : isTextPreview
+                                    ? "Preview and edit this lightweight file directly in Storage."
+                                    : "Expanded preview for comfortable reading and verification."}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -2365,6 +3061,34 @@ function PreviewDialog(props: {
                                     </div>
                                 </TabsContent>
                             </Tabs>
+                        ) : isTextPreview ? (
+                            <Tabs value={props.activeTab} onValueChange={props.onTabChange} className="flex h-full min-h-0 flex-col">
+                                <TabsList variant="line" className="mb-4 border-b border-zinc-800 pb-1">
+                                    <TabsTrigger value="preview">Preview</TabsTrigger>
+                                    <TabsTrigger value="edit">Editor</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="preview" className="min-h-0 flex-1">
+                                    <div className="h-full overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+                                        <PreviewPanel preview={props.preview} />
+                                    </div>
+                                </TabsContent>
+                                <TabsContent value="edit" className="min-h-0 flex-1">
+                                    <div className="flex h-full min-h-0 flex-col gap-3">
+                                        <Textarea
+                                            value={props.textDraft}
+                                            onChange={(event) => props.onTextDraftChange(event.target.value)}
+                                            spellCheck={props.preview.state !== "json"}
+                                            aria-label="File contents"
+                                            className="min-h-[50vh] flex-1 resize-none border-zinc-800 bg-zinc-900 font-mono text-sm leading-6 text-zinc-100"
+                                        />
+                                        {props.textError && (
+                                            <div role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                                                {props.textError}
+                                            </div>
+                                        )}
+                                    </div>
+                                </TabsContent>
+                            </Tabs>
                         ) : (
                             <div className="h-full overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
                                 <PreviewPanel preview={props.preview} />
@@ -2374,8 +3098,8 @@ function PreviewDialog(props: {
 
                     <DialogFooter className="border-t border-zinc-800 px-6 py-4 sm:justify-between">
                         <div className="text-xs text-zinc-500">
-                            {isCsvPreview
-                                ? "Saving replaces the current CSV file while keeping the storage record."
+                            {isCsvPreview || isTextPreview
+                                ? "Saving updates the file content while keeping its metadata and storage record."
                                 : "Downloads and replacements still happen through the file actions."}
                         </div>
                         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
@@ -2393,6 +3117,23 @@ function PreviewDialog(props: {
                                     <Button onClick={props.onSaveCsvDraft} disabled={props.isSavingCsv || !props.isCsvDirty}>
                                         {props.isSavingCsv ? <IconLoader2 className="size-4 animate-spin" /> : <IconDeviceFloppy className="size-4" />}
                                         Save CSV
+                                    </Button>
+                                </>
+                            )}
+                            {isTextPreview && (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        className="border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+                                        onClick={props.onResetTextDraft}
+                                        disabled={props.isSavingCsv || !props.isTextDirty}
+                                    >
+                                        <IconRefresh className="size-4" />
+                                        Reset
+                                    </Button>
+                                    <Button onClick={props.onSaveTextDraft} disabled={props.isSavingCsv || !props.isTextDirty}>
+                                        {props.isSavingCsv ? <IconLoader2 className="size-4 animate-spin" /> : <IconDeviceFloppy className="size-4" />}
+                                        Save file
                                     </Button>
                                 </>
                             )}
@@ -2621,6 +3362,11 @@ function deriveDisplayName(artifact: Pick<ArtifactSummary, "title" | "originalFi
     return artifact.originalFilename || artifact.title || artifact.path?.split("/").pop() || artifact.kind;
 }
 
+function canEditOfficeArtifact(artifact: Pick<ArtifactSummary, "originalFilename" | "title">) {
+    const name = (artifact.originalFilename || artifact.title || "").toLowerCase();
+    return name.endsWith(".xlsx") || name.endsWith(".docx");
+}
+
 function buildKnownFolders(cache: Record<string, FolderContentsResponse>) {
     const folders = new Map<string, { id: string; pathLabel: string }>();
     folders.set(ROOT_ID, { id: ROOT_ID, pathLabel: "Root" });
@@ -2749,6 +3495,54 @@ function formatJsonSafely(value: string) {
     } catch {
         return value;
     }
+}
+
+async function createInitialFileContent(fileType: (typeof CREATABLE_FILE_TYPES)[number]): Promise<string | ArrayBuffer> {
+    if (fileType.initialContent !== null) return fileType.initialContent;
+
+    const { strToU8, zipSync } = await import("fflate");
+    const entries: Record<string, Uint8Array> = fileType.value === "xlsx" ? {
+        "[Content_Types].xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`),
+        "_rels/.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
+        "xl/workbook.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+        "xl/_rels/workbook.xml.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`),
+        "xl/worksheets/sheet1.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>`),
+        "xl/styles.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`),
+    } : {
+        "[Content_Types].xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`),
+        "_rels/.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`),
+        "word/document.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`),
+        "word/styles.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>`),
+        "word/_rels/document.xml.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`),
+    };
+    const bytes = zipSync(entries, { level: 6 });
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function getCreatableFileType(type: CreatableFileType) {
+    return CREATABLE_FILE_TYPES.find((option) => option.value === type) ?? CREATABLE_FILE_TYPES[0];
+}
+
+function replaceKnownFileExtension(name: string, extension: string) {
+    const trimmed = name.trim() || "untitled";
+    const knownExtension = CREATABLE_FILE_TYPES.find((option) => trimmed.toLowerCase().endsWith(option.extension));
+    const baseName = knownExtension ? trimmed.slice(0, -knownExtension.extension.length) : trimmed;
+    return `${baseName || "untitled"}${extension}`;
+}
+
+function ensureFileExtension(name: string, extension: string) {
+    const trimmed = name.trim();
+    return trimmed.toLowerCase().endsWith(extension) ? trimmed : `${trimmed}${extension}`;
+}
+
+function splitFileNameExtension(name: string) {
+    const lastDot = name.lastIndexOf(".");
+    if (lastDot <= 0 || lastDot === name.length - 1) return { baseName: name, extension: "" };
+    return { baseName: name.slice(0, lastDot), extension: name.slice(lastDot) };
+}
+
+function isValidStorageFileName(name: string) {
+    return Boolean(name.trim()) && name !== "." && name !== ".." && !/[\\/\0]/.test(name);
 }
 
 function parseCsvPreview(value: string) {

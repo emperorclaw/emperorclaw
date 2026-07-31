@@ -9,6 +9,53 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.0] — 2026-07-31
+
+### Added
+
+- **Storage now has a real filesystem hierarchy.** Artifact folders are
+  reflected beneath the existing storage root instead of existing only in the
+  database, while stable artifact metadata remains in PostgreSQL. The additive
+  `0035_storage-mirrors` migration and reconciliation tooling preserve existing
+  installations and safely move legacy flat objects into their logical paths.
+- **Optional Google Drive mirroring for self-hosted installations.** A pinned
+  `rclone` sidecar can synchronize the same Docker storage volume at short
+  intervals, with documented OAuth setup, health state, conflict behavior, and
+  no effect on installations that leave the feature disabled. Files added
+  directly through Drive appear as untracked candidates and can be explicitly
+  imported into EmperorClaw metadata.
+- **Native document and spreadsheet editing.** Users can create, open, edit,
+  and save DOCX and XLSX files without leaving Storage. CSV, text, and Markdown
+  editing remain lightweight, while the MIT-licensed Extend editors are
+  pinned, lazy-loaded, and attributed in `THIRD_PARTY_NOTICES.md`.
+- **Storage creation and organization actions.** New-file creation and rename
+  are available from the explorer and right-click menus, including empty DOCX,
+  XLSX, CSV, Markdown, JSON, and text files.
+
+### Changed
+
+- **Messages is now a responsive chat workspace.** Phones use a full-height
+  inbox-to-conversation flow instead of stacking both panes. Desktop users can
+  collapse the inbox into focus mode, switch agents from the chat header, and
+  retain both their active conversation and focus preference across visits.
+- The mobile application rail is narrower, chat composers use accessible touch
+  targets, and the duplicate floating team-chat launcher no longer covers the
+  Messages composer.
+- Self-hosting and upgrade documentation now explains release configuration
+  updates, automatic migrations, storage reconciliation, rollback behavior,
+  Drive setup, and native editor requirements. The shell and PowerShell update
+  scripts fetch the versioned Compose configuration before restarting.
+
+### Compatibility
+
+- Existing installations require no destructive migration. Database changes
+  are additive, existing artifact IDs and APIs remain valid, and local storage
+  reconciliation is idempotent.
+- Google Drive remains fully opt-in. Without its Compose profile and OAuth
+  configuration, storage behavior is unchanged.
+- Office editors are loaded only when an editable Office file is opened, so
+  installations that do not use them do not pay their runtime cost.
+
 ## [0.7.1] — 2026-07-28
 
 ### Changed

@@ -37,6 +37,7 @@ COPY --from=builder /app/src/db/migrations ./src/db/migrations
 COPY --from=builder /app/src/db/migrate.ts ./src/db/migrate.ts
 COPY --from=builder /app/src/db/index.ts ./src/db/index.ts
 COPY --from=builder /app/src/db/schema.ts ./src/db/schema.ts
+COPY --from=builder /app/scripts/reconcile-artifact-storage.ts ./scripts/reconcile-artifact-storage.ts
 COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv
 COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm

@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import type {
     StorageAdapter,
     StorageDeleteParams,
+    StorageDirectoryParams,
     StorageDownloadParams,
     StorageDownloadResult,
     StorageStatResult,
@@ -162,6 +163,15 @@ export class BunnyStorageAdapter implements StorageAdapter {
             contentType: response.headers.get("Content-Type") ?? undefined,
             sizeBytes: Number.isFinite(parsedLength) && parsedLength >= 0 ? parsedLength : 0,
         };
+    }
+
+    async ensureDirectory(params: StorageDirectoryParams): Promise<void> {
+        // Object storage directories are implicit in object keys.
+        void params;
+    }
+
+    async removeDirectoryIfEmpty(params: StorageDirectoryParams): Promise<void> {
+        void params;
     }
 
     private buildObjectUrl(storageKey: string): string {

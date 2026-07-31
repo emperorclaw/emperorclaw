@@ -44,10 +44,22 @@ echo ""
 
 # ── Docker mode ──────────────────────────────────────────────────
 if [[ "$MODE" == "--docker" ]]; then
+    # The Compose file is part of the release contract. Pull it before the
+    # image so upgrades can add optional services, volumes, or healthchecks.
+    # --ff-only refuses to overwrite local operator changes.
+    if [[ -d ".git" ]]; then
+        echo -e "${YELLOW}Updating release configuration...${NC}"
+        git pull --ff-only origin main
+    fi
+
+    COMPOSE_PROFILE_ARGS=()
+    if docker compose --profile drive ps --status running -q drive-sync 2>/dev/null | grep -q .; then
+        COMPOSE_PROFILE_ARGS+=(--profile drive)
+    fi
     echo -e "${YELLOW}Pulling latest Docker image...${NC}"
-    docker compose pull app
+    docker compose "${COMPOSE_PROFILE_ARGS[@]}" pull app
     echo -e "${YELLOW}Recreating containers...${NC}"
-    docker compose up -d --remove-orphans
+    docker compose "${COMPOSE_PROFILE_ARGS[@]}" up -d --remove-orphans
     echo -e "${GREEN}✓ EmperorClaw updated via Docker${NC}"
     echo -e "  Check logs: docker compose logs -f app"
     exit 0

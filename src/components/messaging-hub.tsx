@@ -1,8 +1,25 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { IconUsers, IconSearch } from "@tabler/icons-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+    IconArrowLeft,
+    IconCheck,
+    IconChevronDown,
+    IconLayoutSidebarLeftCollapse,
+    IconLayoutSidebarLeftExpand,
+    IconMessages,
+    IconSearch,
+    IconUsers,
+} from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
 
@@ -35,6 +52,10 @@ type DirectThreadSummary = {
     lastMessageAt: string | null;
 };
 
+const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
+const FOCUS_MODE_KEY = "emperor-messages-focus-mode";
+const TEAM_CONVERSATION = "team";
+
 function formatRelativeMessageTime(value: string | null) {
     if (!value) return "No messages yet";
     const timestamp = new Date(value).getTime();
@@ -65,6 +86,8 @@ export function MessagingHub({
 }) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
+    const [mobileChatOpen, setMobileChatOpen] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
 
     const filteredThreads = useMemo(() => {
         return directThreads.filter((thread) =>
@@ -76,11 +99,67 @@ export function MessagingHub({
         return agents.find(a => a.id === selectedAgentId);
     }, [agents, selectedAgentId]);
 
+    useEffect(() => {
+        const savedConversation = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+        const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
+
+        if (savedConversation === TEAM_CONVERSATION) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setSelectedAgentId(null);
+            setMobileChatOpen(true);
+        } else if (savedConversation && agents.some((agent) => agent.id === savedConversation)) {
+            setSelectedAgentId(savedConversation);
+            setMobileChatOpen(true);
+        } else if (savedConversation) {
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, TEAM_CONVERSATION);
+        }
+
+        if (savedFocusMode) setIsFocused(true);
+    }, [agents]);
+
+    const openTeamChannel = () => {
+        setSelectedAgentId(null);
+        setMobileChatOpen(true);
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, TEAM_CONVERSATION);
+    };
+
+    const openDirectThread = (agentId: string) => {
+        setSelectedAgentId(agentId);
+        setMobileChatOpen(true);
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, agentId);
+    };
+
+    const toggleFocusMode = () => {
+        setIsFocused((value) => {
+            const nextValue = !value;
+            localStorage.setItem(FOCUS_MODE_KEY, nextValue ? "1" : "0");
+            return nextValue;
+        });
+    };
+
+    const conversationTitle = activeAgent?.name || "Team Channel";
+    const conversationDescription = activeAgent
+        ? activeAgent.role || "Direct agent conversation"
+        : "Everyone can see and reply";
+
     return (
-        <div className="flex-1 flex flex-col sm:flex-row overflow-hidden">
+        <div className="flex min-w-0 flex-1 overflow-hidden">
             {/* Sidebar */}
-            <div className="flex w-full sm:w-72 lg:w-80 shrink-0 flex-col border-b sm:border-b-0 sm:border-r border-zinc-800/80 bg-zinc-950/70 max-h-[40vh] sm:max-h-none">
-                <div className="p-4 border-b border-zinc-800">
+            <aside className={cn(
+                "min-w-0 flex-1 flex-col border-zinc-800/80 bg-zinc-950/70 sm:flex-none sm:border-r",
+                mobileChatOpen ? "hidden sm:flex" : "flex",
+                isFocused ? "sm:hidden" : "sm:w-64 lg:w-72 xl:w-80"
+            )}>
+                <div className="flex h-16 items-center gap-3 border-b border-zinc-800/80 px-4 sm:hidden">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-cyan-300">
+                        <IconMessages className="h-4 w-4" />
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-semibold tracking-tight text-zinc-100">Messages</h1>
+                        <p className="text-[11px] text-zinc-500">Team and direct conversations</p>
+                    </div>
+                </div>
+                <div className="border-b border-zinc-800/80 p-3 sm:p-4">
                     <div className="relative">
                         <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <input
@@ -88,7 +167,8 @@ export function MessagingHub({
                             placeholder="Filter agents..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                            aria-label="Filter conversations"
+                            className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/70"
                         />
                     </div>
                 </div>
@@ -97,9 +177,9 @@ export function MessagingHub({
                     <div className="p-2 space-y-1">
                         {/* Team Channel */}
                         <button
-                            onClick={() => setSelectedAgentId(null)}
+                            onClick={openTeamChannel}
                             className={cn(
-                                "w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all group",
+                                "group flex min-h-14 w-full items-center gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
                                 selectedAgentId === null
                                     ? "border border-cyan-400/30 bg-cyan-400/10"
                                     : "border border-transparent hover:bg-zinc-900/70"
@@ -131,9 +211,9 @@ export function MessagingHub({
                         {filteredThreads.map((thread) => (
                             <button
                                 key={thread.agentId}
-                                onClick={() => setSelectedAgentId(thread.agentId)}
+                                onClick={() => openDirectThread(thread.agentId)}
                                 className={cn(
-                                    "w-full text-left p-3 rounded-xl flex items-start gap-3 transition-all group",
+                                    "group flex min-h-16 w-full items-start gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
                                     selectedAgentId === thread.agentId
                                         ? "border border-cyan-400/30 bg-cyan-400/10"
                                         : "border border-transparent hover:bg-zinc-900/70"
@@ -188,22 +268,116 @@ export function MessagingHub({
                         )}
                     </div>
                 </div>
-            </div>
+            </aside>
 
             {/* Chat Content */}
-            <div className="relative flex flex-1 flex-col overflow-hidden bg-zinc-950/60">
+            <section className={cn(
+                "relative min-w-0 flex-1 flex-col overflow-hidden bg-zinc-950/60",
+                mobileChatOpen ? "flex" : "hidden sm:flex"
+            )}>
+                <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-zinc-800/80 bg-zinc-950/70 px-3 sm:px-4">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setMobileChatOpen(false)}
+                            aria-label="Back to conversations"
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:hidden"
+                        >
+                            <IconArrowLeft className="h-5 w-5" />
+                        </button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label={`Switch conversation. Current: ${conversationTitle}`}
+                                    title="Switch conversation"
+                                    className="group flex min-w-0 items-center gap-2.5 rounded-xl px-1.5 py-1 transition-colors hover:bg-zinc-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:pr-2"
+                                >
+                                    {activeAgent ? (
+                                        <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-zinc-800">
+                                            <img
+                                                src={activeAgent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(activeAgent.id)}`}
+                                                className="h-full w-full object-cover"
+                                                alt=""
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-cyan-300">
+                                            <IconUsers className="h-4 w-4" />
+                                        </div>
+                                    )}
+                                    <div className="min-w-0 text-left">
+                                        <h2 className="truncate text-sm font-semibold text-zinc-100 sm:text-base">{conversationTitle}</h2>
+                                        <p className="truncate text-[11px] text-zinc-500">{conversationDescription}</p>
+                                    </div>
+                                    <IconChevronDown className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-400" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="start"
+                                className="w-72 rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-200 shadow-2xl shadow-black/50"
+                            >
+                                <DropdownMenuLabel className="px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+                                    Switch conversation
+                                </DropdownMenuLabel>
+                                <DropdownMenuItem
+                                    onSelect={openTeamChannel}
+                                    className="min-h-12 cursor-pointer rounded-lg px-2.5 py-2 focus:bg-cyan-400/10 focus:text-zinc-100"
+                                >
+                                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
+                                        <IconUsers className="h-4 w-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-medium">Team Channel</div>
+                                        <div className="text-[10px] text-zinc-500">Everyone</div>
+                                    </div>
+                                    {selectedAgentId === null && <IconCheck className="h-4 w-4 text-cyan-400" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1.5 bg-zinc-800" />
+                                <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+                                    Direct messages
+                                </DropdownMenuLabel>
+                                {directThreads.map((thread) => (
+                                    <DropdownMenuItem
+                                        key={thread.agentId}
+                                        onSelect={() => openDirectThread(thread.agentId)}
+                                        className="min-h-12 cursor-pointer rounded-lg px-2.5 py-2 focus:bg-cyan-400/10 focus:text-zinc-100"
+                                    >
+                                        <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg border border-zinc-800">
+                                            <img
+                                                src={thread.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(thread.agentId)}`}
+                                                className="h-full w-full object-cover"
+                                                alt=""
+                                            />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-medium">{thread.agentName}</div>
+                                            <div className="truncate text-[10px] text-zinc-500">{thread.agentRole || "Operator"}</div>
+                                        </div>
+                                        {thread.unreadCount > 0 && (
+                                            <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
+                                                {thread.unreadCount}
+                                            </span>
+                                        )}
+                                        {selectedAgentId === thread.agentId && <IconCheck className="h-4 w-4 text-cyan-400" />}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={toggleFocusMode}
+                        aria-label={isFocused ? "Show conversations" : "Focus on conversation"}
+                        title={isFocused ? "Show conversations" : "Focus mode"}
+                        className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl border border-zinc-800 text-zinc-500 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:grid"
+                    >
+                        {isFocused ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
+                    </button>
+                </header>
                 {selectedAgentId === null ? (
-                    <div className="h-full flex flex-col">
-                        <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/70 p-5">
-                            <div>
-                                <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
-                                    <IconUsers className="w-5 h-5 text-cyan-400" />
-                                    Team Channel
-                                </h1>
-                                <p className="mt-0.5 text-xs font-medium text-zinc-500">Shared channel — everyone on the team sees and can reply here.</p>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-hidden relative">
+                    <div className="flex min-h-0 flex-1 flex-col">
+                        <div className="relative min-h-0 flex-1 overflow-hidden">
                             <div className="h-full">
                                 <AgentTeamChat
                                     initialMessages={initialTeamMessages}
@@ -216,11 +390,11 @@ export function MessagingHub({
                         </div>
                     </div>
                 ) : (
-                    <div className="h-full flex flex-col flex-1 overflow-hidden">
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                         <AgentDirectChat key={selectedAgentId} agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} />
                     </div>
                 )}
-            </div>
+            </section>
         </div>
     );
 }

@@ -469,7 +469,7 @@ export function AgentDirectChat({
                 </div>
             )}
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))]">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))] p-3 sm:p-5">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         Loading direct thread...
@@ -529,7 +529,7 @@ export function AgentDirectChat({
                                         `flex ${isHuman ? "justify-end" : "justify-start"}`,
                                         isContinuation ? "mt-0.5" : "mt-3"
                                     )}>
-                                        <div className={cn("flex min-w-0 max-w-[80%] flex-col", isHuman ? "items-end" : "items-start")}>
+                                        <div className={cn("flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]", isHuman ? "items-end" : "items-start")}>
                                             {/* Agent name label — only on group-start agent messages */}
                                             {!isHuman && !isContinuation && (
                                                 <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{agentName}</span>
@@ -594,7 +594,7 @@ export function AgentDirectChat({
                 )}
             </div>
 
-            <div className="border-t border-zinc-800 bg-zinc-950/80 p-4 space-y-2">
+            <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {micError && (
                     <div className="flex items-start gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
                         <IconMicrophone className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
@@ -653,29 +653,32 @@ export function AgentDirectChat({
                 {/* State: normal text input */}
                 {!isRecording && !audioPreviewUrl && (
                 <form onSubmit={handleSend}>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                     <input
                         type="text"
                         value={draft}
                         onChange={(event) => handleTyping(event.target.value)}
                         placeholder={`Message ${agentName} directly...`}
-                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 py-2.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        aria-label={`Message ${agentName}`}
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 sm:rounded-full sm:px-4"
                     />
                     <button
                         type="button"
                         onClick={startRecording}
                         title="Record voice message"
-                        className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 hover:border-emerald-500/50 hover:text-emerald-400 text-zinc-400 transition-colors shrink-0"
+                        aria-label="Record voice message"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 sm:rounded-full"
                     >
                         <IconMicrophone className="w-4 h-4" />
                     </button>
                     <button
                         type="submit"
                         disabled={!draft.trim() || isSending}
-                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                        aria-label="Send message"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:gap-2 sm:rounded-full sm:px-4"
                     >
                         <IconSend className="w-4 h-4" />
-                        {isSending ? "Sending" : "Send"}
+                        <span className="hidden sm:inline">{isSending ? "Sending" : "Send"}</span>
                     </button>
                 </div>
             </form>

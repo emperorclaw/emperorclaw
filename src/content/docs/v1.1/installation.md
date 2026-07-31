@@ -2,6 +2,10 @@
 
 The supported public path is now the **OpenClaw plugin**, not the old skill installer.
 
+Installing or upgrading the self-hosted EmperorClaw server is a separate
+operation. See [Self-Hosting, Upgrades & Google Drive](/docs/v1.1/self-hosting-upgrades)
+for Docker, bare-metal, database migration, and optional Drive-mirror steps.
+
 If you are connecting Hermes Agent instead of OpenClaw, use the dedicated [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) guide. Hermes needs one profile per Emperor agent plus the Emperor Hermes plugin and bridge service.
 
 If you want the shortest product pitch:

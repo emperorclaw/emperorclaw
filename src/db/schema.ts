@@ -497,6 +497,52 @@ export const artifacts = pgTable("artifacts", {
       deletedAt: timestamp("deleted_at"),
   });
 
+/**
+ * Optional external mirrors (for example an rclone-managed Google Drive).
+ *
+ * These tables are deliberately additive and separate from artifacts. A file
+ * discovered on a mirror is not an artifact, and therefore is not visible to
+ * agents or artifact APIs, until a human explicitly supplies its metadata.
+ */
+export const storageMirrors = pgTable("storage_mirrors", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("rclone"),
+    remoteName: text("remote_name").notNull(),
+    remoteRoot: text("remote_root").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    mode: text("mode").notNull().default("bidirectional_content"),
+    pollIntervalSeconds: integer("poll_interval_seconds").notNull().default(5),
+    lastScanAt: timestamp("last_scan_at"),
+    lastSuccessAt: timestamp("last_success_at"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+    uniqueIndex("storage_mirrors_company_provider_idx").on(t.companyId, t.provider),
+]);
+
+export const storageMirrorEntries = pgTable("storage_mirror_entries", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mirrorId: uuid("mirror_id").notNull().references(() => storageMirrors.id, { onDelete: "cascade" }),
+    artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "set null" }),
+    remoteId: text("remote_id"),
+    remotePath: text("remote_path").notNull(),
+    entryType: text("entry_type").notNull().default("file"),
+    state: text("state").notNull().default("untracked"),
+    lastSyncedSha256: text("last_synced_sha256"),
+    remoteSizeBytes: integer("remote_size_bytes"),
+    remoteModifiedAt: timestamp("remote_modified_at"),
+    discoveredAt: timestamp("discovered_at").defaultNow().notNull(),
+    ignoredAt: timestamp("ignored_at"),
+    lastError: text("last_error"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+    uniqueIndex("storage_mirror_entries_mirror_path_idx").on(t.mirrorId, t.remotePath),
+    index("storage_mirror_entries_artifact_idx").on(t.artifactId),
+    index("storage_mirror_entries_state_idx").on(t.mirrorId, t.state),
+]);
+
 export const proofs = pgTable("proofs", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),

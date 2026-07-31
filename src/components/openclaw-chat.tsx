@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { IconMessage, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
@@ -59,6 +60,7 @@ function dateSeparatorLabel(date: string | Date) {
 }
 
 export function OpenClawChat() {
+    const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState("");
     const [history, setHistory] = useState<TeamMessage[]>([]);
@@ -279,6 +281,10 @@ export function OpenClawChat() {
     });
 
     const onlineAgentCount = agents.length;
+
+    // Messages already provides the full team-channel experience. Keeping the
+    // floating duplicate here steals composer space, especially on phones.
+    if (pathname === "/messages") return null;
 
     return (
         <>

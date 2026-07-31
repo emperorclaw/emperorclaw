@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
     StorageAdapter,
     StorageDeleteParams,
+    StorageDirectoryParams,
     StorageDownloadParams,
     StorageDownloadResult,
     StorageStatResult,
@@ -14,7 +15,7 @@ import { sanitizeLogicalPath } from "./path-sanitizer";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
-function getStorageRoot(): string {
+export function getLocalStorageRoot(): string {
     return (process.env.STORAGE_LOCAL_DIR || "./.data/storage").replace(/\\/g, "/");
 }
 
@@ -26,7 +27,7 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     getDownloadUrl(params: StorageDownloadParams): string {
         const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
-        const storageRoot = path.resolve(getStorageRoot());
+        const storageRoot = path.resolve(getLocalStorageRoot());
         const fullPath = path.resolve(storageRoot, storageKey);
 
         if (!fullPath.startsWith(storageRoot + path.sep) && fullPath !== storageRoot) {
@@ -37,7 +38,7 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     async upload(params: StorageUploadParams): Promise<StorageUploadResult> {
         const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
-        const storageRoot = getStorageRoot();
+        const storageRoot = getLocalStorageRoot();
         const fullPath = path.resolve(storageRoot, storageKey);
 
         // Double-check containment after resolution
@@ -69,7 +70,7 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     async delete(params: StorageDeleteParams): Promise<void> {
         const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
-        const storageRoot = getStorageRoot();
+        const storageRoot = getLocalStorageRoot();
         const fullPath = path.resolve(storageRoot, storageKey);
 
         if (!fullPath.startsWith(path.resolve(storageRoot) + path.sep) &&
@@ -88,7 +89,7 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     async download(params: StorageDownloadParams): Promise<StorageDownloadResult> {
         const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
-        const storageRoot = getStorageRoot();
+        const storageRoot = getLocalStorageRoot();
         const fullPath = path.resolve(storageRoot, storageKey);
 
         if (!fullPath.startsWith(path.resolve(storageRoot) + path.sep) &&
@@ -106,7 +107,7 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     async stat(params: StorageDownloadParams): Promise<StorageStatResult> {
         const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
-        const storageRoot = getStorageRoot();
+        const storageRoot = getLocalStorageRoot();
         const fullPath = path.resolve(storageRoot, storageKey);
 
         if (!fullPath.startsWith(path.resolve(storageRoot) + path.sep) &&
@@ -119,6 +120,31 @@ export class LocalStorageAdapter implements StorageAdapter {
             contentType: DEFAULT_CONTENT_TYPE,
             sizeBytes: fileStat.size,
         };
+    }
+
+    async ensureDirectory(params: StorageDirectoryParams): Promise<void> {
+        const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
+        const storageRoot = path.resolve(getLocalStorageRoot());
+        const fullPath = path.resolve(storageRoot, storageKey);
+        if (!fullPath.startsWith(storageRoot + path.sep)) {
+            throw new Error("Path traversal rejected");
+        }
+        await fs.mkdir(fullPath, { recursive: true });
+    }
+
+    async removeDirectoryIfEmpty(params: StorageDirectoryParams): Promise<void> {
+        const storageKey = this.buildStorageKey(params.companyId, params.logicalPath);
+        const storageRoot = path.resolve(getLocalStorageRoot());
+        const fullPath = path.resolve(storageRoot, storageKey);
+        if (!fullPath.startsWith(storageRoot + path.sep)) {
+            throw new Error("Path traversal rejected");
+        }
+        try {
+            await fs.rmdir(fullPath);
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code !== "ENOENT" && code !== "ENOTEMPTY" && code !== "EEXIST") throw error;
+        }
     }
 
     private computeChecksum(buffer: Buffer): string {

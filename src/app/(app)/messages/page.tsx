@@ -4,7 +4,6 @@ import { db } from "@/db";
 import { agents, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { and, count, eq, gt, inArray, isNull } from "drizzle-orm";
 import { MessagingHub } from "@/components/messaging-hub";
-import { PageHeader } from "@/components/page-header";
 import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
 
 export const dynamic = "force-dynamic";
@@ -130,13 +129,17 @@ export default async function MessagesPage() {
     const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
 
     return (
-        <div className="mx-auto flex h-[calc(100vh-6rem)] sm:h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <PageHeader
-                eyebrow="Messages"
-                title="Team & Direct Messages"
-                description="Chat with the whole agent team, or open a private thread with a specific agent."
-            />
-            <div className="flex min-h-0 flex-1 overflow-hidden rounded-[2rem] emperor-panel">
+        <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-[1800px] flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 sm:h-[calc(100dvh-2.5rem)]">
+            <div className="hidden shrink-0 items-end justify-between gap-6 sm:flex">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-300">Messages</p>
+                    <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-zinc-100">Team & Direct Messages</h1>
+                </div>
+                <p className="max-w-xl pb-0.5 text-right text-xs leading-5 text-zinc-500">
+                    Coordinate with the team or open a private agent thread.
+                </p>
+            </div>
+            <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl emperor-panel sm:rounded-[2rem]">
                 <MessagingHub
                     agents={allAgents}
                     directThreads={directThreadSummaries}

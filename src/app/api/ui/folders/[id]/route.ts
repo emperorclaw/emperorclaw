@@ -5,6 +5,7 @@ import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
+import { storageAdapter } from "@/lib/storage";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
@@ -56,6 +57,13 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
                 eq(artifacts.companyId, companyId),
                 like(artifacts.path, `${folderPathValue}/%`),
                 isNull(artifacts.deletedAt),
+            ))
+            : [];
+        const descendantFolders = pathChanged
+            ? await db.select({ path: artifactFolders.path }).from(artifactFolders).where(and(
+                eq(artifactFolders.companyId, companyId),
+                like(artifactFolders.path, `${folderPathValue}/%`),
+                isNull(artifactFolders.deletedAt),
             ))
             : [];
         const movedArtifacts = pathChanged
@@ -116,6 +124,17 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
 
             return folderRow;
         });
+
+        if (pathChanged) {
+            const oldPaths = [folderPathValue, ...descendantFolders.map((item) => item.path)];
+            const newPaths = oldPaths.map((oldPath) => `${newPath}${oldPath.slice(folderPathValue.length)}`);
+            for (const logicalPath of newPaths) {
+                await storageAdapter.ensureDirectory({ companyId, logicalPath });
+            }
+            for (const logicalPath of oldPaths.sort((a, b) => b.length - a.length)) {
+                await storageAdapter.removeDirectoryIfEmpty({ companyId, logicalPath });
+            }
+        }
 
         return NextResponse.json({ folder: updatedFolder }, { status: 200 });
     } catch (error) {

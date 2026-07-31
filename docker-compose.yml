@@ -45,6 +45,34 @@ services:
       postgres:
         condition: service_healthy
 
+  # Optional near-real-time Google Drive mirror. Configure rclone first, then
+  # start with: docker compose --profile drive up -d
+  drive-sync:
+    profiles: ["drive"]
+    image: rclone/rclone:1.74.4
+    entrypoint: ["/bin/sh", "/scripts/rclone-drive-sync.sh"]
+    environment:
+      - DRIVE_RCLONE_REMOTE=${DRIVE_RCLONE_REMOTE:-gdrive}
+      - DRIVE_ROOT=${DRIVE_ROOT:-Emperor-Claw}
+      - DRIVE_POLL_INTERVAL_SECONDS=${DRIVE_POLL_INTERVAL_SECONDS:-5}
+      - DRIVE_LOCAL_ROOT=/storage/companies
+    volumes:
+      - app-storage:/storage
+      - rclone-config:/config/rclone
+      - ./scripts/rclone-drive-sync.sh:/scripts/rclone-drive-sync.sh:ro
+    restart: unless-stopped
+
+  # One-shot interactive helper. It shares the same rclone configuration
+  # volume as drive-sync but never starts with the normal drive profile.
+  drive-config:
+    profiles: ["drive-setup"]
+    image: rclone/rclone:1.74.4
+    command: ["config"]
+    volumes:
+      - rclone-config:/config/rclone
+    stdin_open: true
+    tty: true
+
   # ---- Auto-update via Watchtower (uncomment to enable) ----
   # Checks for new GHCR images every 5 min and updates automatically.
   # Without Watchtower, use the Update button in /ops to pull + restart manually.
@@ -58,3 +86,4 @@ services:
 volumes:
   pgdata:
   app-storage:
+  rclone-config:

@@ -16,6 +16,7 @@ export const versions: DocVersion[] = [
       { slug: 'company-brain', title: 'Company Brain', file: 'company-brain.md' },
       { slug: 'project-architecture', title: 'Project & Runtime Architecture', file: 'project-architecture.md' },
       { slug: 'installation', title: 'Installation Guide', file: 'installation.md' },
+      { slug: 'self-hosting-upgrades', title: 'Self-Hosting, Upgrades & Google Drive', file: 'self-hosting-upgrades.md' },
       { slug: 'activation', title: 'Activation Protocol', file: 'activation.md' },
       { slug: 'openclaw-agents', title: 'OpenClaw Agent Runtime', file: 'openclaw-agents.md' },
       { slug: 'hermes-runtime', title: 'Hermes Agent Runtime', file: 'hermes-runtime.md' },

@@ -340,11 +340,23 @@ pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql
 
 ```bash
 cd ~/emperorclaw
-git pull --ff-only origin main
-docker compose up -d --build
+./scripts/update.sh --docker
 ```
 
-Migrations run automatically on startup. The `--build` flag rebuilds the app image with the latest code.
+The updater fetches the current release configuration, pulls the image, and
+recreates the containers. Migrations run automatically before the new app
+starts. Fetching the release configuration matters because an image pull alone
+cannot add new optional Compose services or volumes.
+
+On Windows PowerShell:
+
+```powershell
+.\scripts\update.ps1 -Docker
+```
+
+If this installation is not a Git checkout, replace its `docker-compose.yml`
+and `scripts/` directory with the files from the new release before running
+`docker compose pull app && docker compose up -d`.
 
 ### Manual upgrade (without Docker)
 
@@ -501,6 +513,101 @@ Local storage streams downloads through the authenticated app route. Bunny stora
 
 The `StorageAdapter` interface at `src/lib/storage/types.ts` supports additional backends. An S3-compatible adapter (AWS S3, MinIO, Cloudflare R2, Backblaze B2) is an excellent first contribution — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+### Optional Google Drive mirror
+
+Local-storage installations can mirror the existing Docker `app-storage`
+volume to Google Drive with the optional rclone profile. The feature is off by
+default and does not change existing artifact records or storage paths.
+
+1. Create a Google OAuth client ID for rclone by following the official
+   [rclone Drive client-ID guide](https://rclone.org/drive/#making-your-own-client-id).
+   Do not leave the client ID blank: rclone's shared built-in client ID is
+   being retired during 2026.
+
+2. Connect an rclone remote named `gdrive` (the helper persists its token in a
+   private Docker volume). Enter your client ID and client secret when the
+   wizard asks for them, and select full Drive access so files uploaded outside
+   Emperor can be discovered:
+
+   ```bash
+   docker compose --profile drive-setup run --rm drive-config
+   ```
+
+3. Enable discovery in `.env`:
+
+   ```env
+   DRIVE_SYNC_ENABLED=true
+   STORAGE_DISCOVERY_ENABLED=true
+   DRIVE_RCLONE_REMOTE=gdrive
+   DRIVE_ROOT=Emperor-Claw
+   DRIVE_POLL_INTERVAL_SECONDS=5
+   ```
+
+4. Preview the existing local layout without changing files:
+
+   ```bash
+   npm run storage:reconcile
+   ```
+
+   After reviewing the report, materialize missing folder directories or move
+   legacy path-keyed files with `npm run storage:reconcile -- --apply`.
+
+5. Start the optional profile:
+
+   ```bash
+   docker compose --profile drive up -d
+   ```
+
+The mirror copies in both directions without propagating deletions. With the
+default five-second Drive poll and five-second visible-page discovery poll, a
+change normally appears within a few seconds and can take about ten seconds in
+the worst timing case. Files
+created directly in Drive appear in Storage with a question-mark state and are
+excluded from artifact APIs and agent context until a user supplies customer or
+project metadata. Renames, moves, and deletes should be performed in Emperor;
+Drive is intended for content editing and sharing. The first release supports
+ordinary files such as DOCX/XLSX/PPTX, not Google-native Docs/Sheets/Slides.
+
+For an existing Docker installation, run the reconciliation command inside the
+application container so it sees the named storage volume:
+
+```bash
+docker compose exec app npm run storage:reconcile
+```
+
+Upgrading the app does not enable Drive automatically. Existing storage keeps
+working at its recorded paths; the database migration only adds mirror state.
+See [Self-Hosting, Upgrades & Google Drive](./src/content/docs/v1.1/self-hosting-upgrades.md)
+for the complete rollout, rollback, and verification checklist.
+
+### Built-in file creation and lightweight editing
+
+Storage can create XLSX, DOCX, CSV, Markdown, plain-text, and JSON files without
+any optional service. Choose **New File**, select a format, and Emperor creates
+the artifact in the current physical folder before opening the matching editor.
+CSV has a grid and raw-data view; JSON is validated before saving. Saving
+preserves the artifact ID, metadata, permissions, and mirror path.
+Right-click a folder to create a file inside it, or right-click a file to
+rename it without changing its format or storage context.
+
+### Built-in Office editing (Beta)
+
+Modern `.xlsx` spreadsheets and `.docx` documents can be edited directly in
+Storage with **Edit in Emperor**, or created from **New File** and opened
+immediately. There is no editor container, cloud account, OAuth flow, or feature
+flag to configure; the MIT-licensed editor code is lazy-loaded only when a
+supported file is opened. Save uses Emperor's normal authenticated artifact
+replacement path, preserving the artifact ID, metadata, folder, permissions,
+and optional Drive mirror.
+
+The upstream Extend editor components are experimental, so this surface is
+marked Beta. Legacy `.xls` and `.doc` formats are not offered, and XLSX browser
+editing is limited to 25 MB. Keep backups and verify complex layouts, macros,
+or uncommon embedded objects after editing. See
+[Self-Hosting, Upgrades & Google Drive](./src/content/docs/v1.1/self-hosting-upgrades.md)
+for operator details and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for
+the included MIT notice.
+
 ---
 
 ## Configuration
@@ -514,6 +621,9 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `EMPEROR_CLAW_MASTER_KEY` | Recommended | Encrypts integration secrets at rest (generate: `openssl rand -hex 32`) |
 | `DEPLOYMENT_MODE` | No | `self-hosted` (default) or `cloud` |
 | `STORAGE_BACKEND` | No | `local` (default) or `bunny` |
+| `DRIVE_SYNC_ENABLED` | No | Enable local shared-volume Drive discovery; requires the optional `drive` Compose profile |
+| `DRIVE_RCLONE_REMOTE` | No | Configured rclone remote name (default `gdrive`) |
+| `DRIVE_ROOT` | No | Destination folder in Drive (default `Emperor-Claw`) |
 | `SMTP_HOST` | No | SMTP server for email (invitations, password reset — disabled if unset) |
 | `EMPEROR_PLATFORM_ADMIN_EMAILS` | No | Comma-separated emails for `/ops` platform admin access |
 
@@ -580,7 +690,7 @@ EmperorClaw is founder-led and open to contributors. The project uses a BDFL gov
 
 ## Roadmap
 
-EmperorClaw is under active development. The current version is **0.1.2**.
+EmperorClaw is under active development. The current version is **0.8.0**.
 
 ### Available now
 
