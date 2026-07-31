@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
 import { db } from "@/db";
-import { and, eq, isNull, like, sql } from "drizzle-orm";
+import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
@@ -173,6 +173,11 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/fo
             like(artifacts.path, matchPattern),
             isNull(artifacts.deletedAt),
         ));
+        const foldersToDelete = await db.select({ path: artifactFolders.path }).from(artifactFolders).where(and(
+            eq(artifactFolders.companyId, companyId),
+            or(eq(artifactFolders.path, folder.path), like(artifactFolders.path, matchPattern)),
+            isNull(artifactFolders.deletedAt),
+        ));
 
         await db.transaction(async (tx) => {
             await tx.update(artifactFolders).set({ deletedAt: now }).where(and(
@@ -209,6 +214,13 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/fo
                     } catch (err) {
                         console.warn("Unable to delete blob for artifact during folder deletion:", err);
                     }
+                }
+            }
+            for (const item of foldersToDelete.sort((a, b) => b.path.length - a.path.length)) {
+                try {
+                    await storageAdapter.removeDirectoryIfEmpty({ companyId, logicalPath: item.path });
+                } catch (err) {
+                    console.warn("Unable to remove folder from storage during folder deletion:", err);
                 }
             }
         }

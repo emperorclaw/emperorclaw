@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
-import { and, eq, isNull, like, sql } from "drizzle-orm";
+import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { buildFolderPath, isDescendantPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 import { storageAdapter } from "@/lib/storage";
@@ -207,6 +207,14 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
             like(artifacts.path, matchPattern),
             isNull(artifacts.deletedAt),
         ));
+    const foldersToDelete = await db
+        .select({ path: artifactFolders.path })
+        .from(artifactFolders)
+        .where(and(
+            eq(artifactFolders.companyId, companyId),
+            or(eq(artifactFolders.path, folder.path), like(artifactFolders.path, matchPattern)),
+            isNull(artifactFolders.deletedAt),
+        ));
 
     // Purge blobs from Bunny. Failures are logged but never block the DB delete.
     await Promise.allSettled(
@@ -218,6 +226,13 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
                 )
             )
     );
+    for (const item of foldersToDelete.sort((a, b) => b.path.length - a.path.length)) {
+        try {
+            await storageAdapter.removeDirectoryIfEmpty({ companyId, logicalPath: item.path });
+        } catch (error) {
+            console.warn(`Failed to remove storage folder ${item.path}:`, error);
+        }
+    }
 
     const now = new Date();
     await db.transaction(async (tx) => {

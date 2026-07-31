@@ -152,18 +152,29 @@ docker compose --profile drive up -d
 docker compose --profile drive logs --tail=100 drive-sync
 ```
 
-The sidecar copies changes in both directions every few seconds without
-propagating deletions. With both defaults enabled, the Drive poll takes up to
-five seconds and the visible Storage page takes up to another five seconds to
-discover the change. A changed DOCX, XLSX, PPTX, PDF, or other ordinary file
-therefore normally appears within a few seconds and can take about ten seconds
-in the worst timing case.
+The sidecar copies content changes in both directions every few seconds. A
+tracked file or folder deleted in Emperor creates a persistent deletion marker
+inside the shared volume. The sidecar processes those markers before its inbound
+copy and sends only the corresponding Drive item to Google Drive Trash. A
+deletion performed directly in Drive does not delete the canonical local copy;
+the next outbound pass restores it.
+
+With both defaults enabled, the Drive poll takes up to five seconds and the
+visible Storage page takes up to another five seconds to discover a change. A
+changed DOCX, XLSX, PPTX, PDF, or other ordinary file therefore normally appears
+within a few seconds and can take about ten seconds in the worst timing case.
 
 Files created directly in Drive are visible in Storage with a question-mark
 state. They are not exposed through artifact APIs or agent context until a user
 supplies customer or project metadata in Emperor. Google-native Docs, Sheets,
 and Slides are not ordinary files and are not synchronized in the first
 release; use uploaded Office-format files when round-trip editing is required.
+
+To clean up a stale item left by an older sidecar, open its untracked row menu
+and choose **Remove from storage and Drive**. The server verifies that no active
+artifact or folder owns that path before removing the local copy and queueing
+the Drive item for Trash. This is intentionally explicit so a legitimate new
+file uploaded in Drive is never mistaken for an old deletion.
 
 ## Disable Or Roll Back Drive
 

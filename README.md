@@ -558,14 +558,19 @@ default and does not change existing artifact records or storage paths.
    docker compose --profile drive up -d
    ```
 
-The mirror copies in both directions without propagating deletions. With the
-default five-second Drive poll and five-second visible-page discovery poll, a
-change normally appears within a few seconds and can take about ten seconds in
-the worst timing case. Files
+The mirror copies content in both directions. Deleting or moving a tracked item
+in Emperor writes a durable marker into the shared volume; the sidecar consumes
+that marker before the next inbound pass and sends only the matching Drive item
+to Google Drive Trash. Deleting an item directly in Drive never deletes the
+canonical Emperor copy. With the default five-second Drive poll and five-second
+visible-page discovery poll, a change normally appears within a few seconds and
+can take about ten seconds in the worst timing case. Files
 created directly in Drive appear in Storage with a question-mark state and are
 excluded from artifact APIs and agent context until a user supplies customer or
-project metadata. Renames, moves, and deletes should be performed in Emperor;
-Drive is intended for content editing and sharing. The first release supports
+project metadata. Untracked items can also be explicitly removed from the row
+menu; Emperor refuses that action if the path contains tracked data. Renames,
+moves, and deletes should be performed in Emperor; Drive is intended for content
+editing and sharing. The first release supports
 ordinary files such as DOCX/XLSX/PPTX, not Google-native Docs/Sheets/Slides.
 
 For an existing Docker installation, run the reconciliation command inside the

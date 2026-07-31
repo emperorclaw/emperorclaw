@@ -47,3 +47,13 @@ test("a selected artifact preview refreshes after mirrored content changes", () 
     assert.match(manager, /refreshedArtifact\.updatedAt/);
     assert.match(manager, /fetchArtifactDetail\(selectedEntry\.id\)/);
 });
+
+test("Emperor deletions propagate without enabling broad Drive-side deletion", () => {
+    const syncScript = fs.readFileSync(path.join(root, "scripts/rclone-drive-sync.sh"), "utf8");
+    const localAdapter = fs.readFileSync(path.join(root, "src/lib/storage/local.ts"), "utf8");
+    assert.match(syncScript, /process_delete_markers/);
+    assert.match(syncScript, /--files-from-raw/);
+    assert.ok(syncScript.indexOf("process_delete_markers") < syncScript.indexOf('rclone copy "$remote_path" "$local_root"'));
+    assert.doesNotMatch(syncScript, /rclone sync/);
+    assert.match(localAdapter, /enqueueDriveMirrorDeletion/);
+});
