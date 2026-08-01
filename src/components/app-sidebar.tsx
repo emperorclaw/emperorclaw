@@ -175,7 +175,6 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                         {collapsed ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
                         <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>{collapsed ? "" : "Collapse"}</span>
                     </button>
-                    <ThemeToggle collapsed={collapsed} />
                     <Link
                         href="/docs"
                         onMouseEnter={(e) => {
@@ -229,11 +228,14 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    {appVersion && (
-                        <p className={cn("text-center text-[10px] text-muted-foreground transition-opacity duration-200", collapsed ? "opacity-0" : "md:opacity-100")}>
-                            v{appVersion} · emperorclaw.com
-                        </p>
-                    )}
+                    <div className={cn("flex items-center justify-between gap-2 px-1 text-[10px] text-muted-foreground", collapsed ? "justify-center" : "")}>
+                        {!collapsed && (
+                            <span className="truncate transition-opacity duration-200">
+                                v{appVersion || "0.8.7"} · emperorclaw.com
+                            </span>
+                        )}
+                        <ThemeToggle collapsed={collapsed} mini={true} />
+                    </div>
                 </div>
         </aside>
         {hoveredNav && tooltipPos && typeof document !== "undefined" && createPortal(
