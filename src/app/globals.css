@@ -39,6 +39,22 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-zinc-50: var(--zinc-50);
+  --color-zinc-100: var(--zinc-100);
+  --color-zinc-200: var(--zinc-200);
+  --color-zinc-300: var(--zinc-300);
+  --color-zinc-400: var(--zinc-400);
+  --color-zinc-500: var(--zinc-500);
+  --color-zinc-600: var(--zinc-600);
+  --color-zinc-700: var(--zinc-700);
+  --color-zinc-800: var(--zinc-800);
+  --color-zinc-900: var(--zinc-900);
+  --color-zinc-950: var(--zinc-950);
+  --color-cyan-100: var(--cyan-100);
+  --color-cyan-200: var(--cyan-200);
+  --color-cyan-300: var(--cyan-300);
+  --color-cyan-400: var(--cyan-400);
+  --color-cyan-500: var(--cyan-500);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -50,37 +66,57 @@
 
 :root {
   --radius: 0.875rem;
-  --background: oklch(0.105 0.004 286);
-  --foreground: oklch(0.985 0.002 286);
-  --card: oklch(0.155 0.006 286);
-  --card-foreground: oklch(0.985 0.002 286);
-  --popover: oklch(0.145 0.006 286);
-  --popover-foreground: oklch(0.985 0.002 286);
-  --primary: oklch(0.72 0.15 232);
-  --primary-foreground: oklch(0.115 0.006 286);
-  --secondary: oklch(0.205 0.012 286);
-  --secondary-foreground: oklch(0.94 0.006 286);
-  --muted: oklch(0.205 0.012 286);
-  --muted-foreground: oklch(0.72 0.014 286);
-  --accent: oklch(0.24 0.04 286);
-  --accent-foreground: oklch(0.985 0.002 286);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.72 0.15 232);
+  --background: oklch(0.985 0.002 286);
+  --foreground: oklch(0.15 0.004 286);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.004 286);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.004 286);
+  --primary: oklch(0.55 0.15 232);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.93 0.005 260);
+  --secondary-foreground: oklch(0.18 0.004 286);
+  --muted: oklch(0.945 0.004 260);
+  --muted-foreground: oklch(0.42 0.005 286);
+  --accent: oklch(0.91 0.02 240);
+  --accent-foreground: oklch(0.18 0.02 260);
+  --destructive: oklch(0.55 0.25 27);
+  --border: oklch(0 0 0 / 0.14);
+  --input: oklch(0 0 0 / 0.16);
+  --ring: oklch(0.55 0.15 232);
   --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-2: oklch(0.55 0.15 232);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.12 0.006 286);
-  --sidebar-foreground: oklch(0.9 0.006 286);
-  --sidebar-primary: oklch(0.72 0.15 232);
-  --sidebar-primary-foreground: oklch(0.115 0.006 286);
-  --sidebar-accent: oklch(0.2 0.012 286);
-  --sidebar-accent-foreground: oklch(0.985 0.002 286);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.975 0.003 286);
+  --sidebar-foreground: oklch(0.20 0.004 286);
+  --sidebar-primary: oklch(0.55 0.15 232);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.93 0.005 260);
+  --sidebar-accent-foreground: oklch(0.18 0.004 286);
+  --sidebar-border: oklch(0 0 0 / 0.12);
+  --sidebar-ring: oklch(0.55 0.15 232);
+
+  /* Light mode inverts zinc: 950 is white, 50 is dark */
+  --zinc-50: oklch(0.15 0.004 286);
+  --zinc-100: oklch(0.20 0.004 286);
+  --zinc-200: oklch(0.25 0.004 286);
+  --zinc-300: oklch(0.35 0.005 286);
+  --zinc-400: oklch(0.45 0.005 286);
+  --zinc-500: oklch(0.55 0.005 286);
+  --zinc-600: oklch(0.65 0.005 286);
+  --zinc-700: oklch(0.85 0.004 286);
+  --zinc-800: oklch(0.92 0.004 286);
+  --zinc-900: oklch(0.965 0.003 286);
+  --zinc-950: oklch(1 0 0);
+
+  /* Light mode cyan: higher contrast, darker and rich */
+  --cyan-100: oklch(0.20 0.04 215);
+  --cyan-200: oklch(0.28 0.06 215);
+  --cyan-300: oklch(0.40 0.10 215);
+  --cyan-400: oklch(0.55 0.15 215);
+  --cyan-500: oklch(0.50 0.16 215);
 }
 
 .dark {
@@ -115,6 +151,26 @@
   --sidebar-accent-foreground: oklch(0.985 0.002 286);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.72 0.15 232);
+
+  /* Dark mode keeps standard zinc scale */
+  --zinc-50: oklch(0.985 0.002 286);
+  --zinc-100: oklch(0.965 0.003 286);
+  --zinc-200: oklch(0.92 0.004 286);
+  --zinc-300: oklch(0.87 0.006 286);
+  --zinc-400: oklch(0.70 0.01 286);
+  --zinc-500: oklch(0.55 0.01 286);
+  --zinc-600: oklch(0.40 0.01 286);
+  --zinc-700: oklch(0.30 0.01 286);
+  --zinc-800: oklch(0.22 0.01 286);
+  --zinc-900: oklch(0.15 0.01 286);
+  --zinc-950: oklch(0.10 0.01 286);
+
+  /* Dark mode keeps bright cyan scale */
+  --cyan-100: oklch(0.88 0.04 215);
+  --cyan-200: oklch(0.82 0.06 215);
+  --cyan-300: oklch(0.70 0.10 215);
+  --cyan-400: oklch(0.64 0.15 215);
+  --cyan-500: oklch(0.58 0.16 215);
 }
 
 /* Custom Blob Animations for Auth Background */
@@ -163,21 +219,36 @@
 
 @layer base {
   html {
+    color-scheme: light;
+    background: oklch(0.985 0.002 286);
+  }
+
+  .dark html,
+  html.dark {
     color-scheme: dark;
     background: #050507;
   }
 
   body {
     min-height: 100vh;
-    background:
-      radial-gradient(circle at 18% 0%, rgba(34, 211, 238, 0.08), transparent 28rem),
-      radial-gradient(circle at 88% 6%, rgba(124, 58, 237, 0.10), transparent 32rem),
-      linear-gradient(135deg, #050507 0%, #08080b 45%, #0b0b10 100%);
+    background: oklch(0.985 0.002 286);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     text-rendering: geometricPrecision;
   }
 
+  .dark body {
+    background:
+      radial-gradient(circle at 18% 0%, rgba(34, 211, 238, 0.08), transparent 28rem),
+      radial-gradient(circle at 88% 6%, rgba(124, 58, 237, 0.10), transparent 32rem),
+      linear-gradient(135deg, #050507 0%, #08080b 45%, #0b0b10 100%);
+  }
+
   ::selection {
+    background: rgba(34, 211, 238, 0.28);
+    color: white;
+  }
+
+  .dark ::selection {
     background: rgba(34, 211, 238, 0.28);
     color: white;
   }
@@ -216,6 +287,10 @@
 
 @layer components {
   .emperor-app-shell {
+    background: oklch(0.985 0.002 286);
+  }
+
+  .dark .emperor-app-shell {
     background:
       radial-gradient(circle at 16% -8%, rgba(34, 211, 238, 0.10), transparent 32rem),
       radial-gradient(circle at 92% 0%, rgba(168, 85, 247, 0.12), transparent 34rem),
@@ -223,6 +298,10 @@
   }
 
   .emperor-main {
+    background: transparent;
+  }
+
+  .dark .emperor-main {
     background:
       linear-gradient(180deg, rgba(255,255,255,0.018), transparent 16rem),
       radial-gradient(circle at 50% 0%, rgba(255,255,255,0.045), transparent 42rem);
@@ -232,13 +311,28 @@
   }
 
   .emperor-panel {
-    border: 1px solid rgba(63, 63, 70, 0.72);
-    background: linear-gradient(180deg, rgba(24, 24, 27, 0.82), rgba(9, 9, 11, 0.78));
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.26);
+    border: 1px solid oklch(0 0 0 / 0.12);
+    background: oklch(1 0 0);
+    box-shadow:
+      0 1px 2px oklch(0 0 0 / 0.04),
+      0 4px 16px oklch(0 0 0 / 0.06),
+      0 0 0 0.5px oklch(0 0 0 / 0.06);
     backdrop-filter: blur(18px);
   }
 
+  .dark .emperor-panel {
+    border: 1px solid rgba(63, 63, 70, 0.72);
+    background: linear-gradient(180deg, rgba(24, 24, 27, 0.82), rgba(9, 9, 11, 0.78));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.26);
+  }
+
   .emperor-chip {
+    border: 1px solid oklch(0 0 0 / 0.12);
+    background: oklch(0.97 0.003 260);
+    color: oklch(0.35 0.005 286);
+  }
+
+  .dark .emperor-chip {
     border: 1px solid rgba(63, 63, 70, 0.78);
     background: rgba(24, 24, 27, 0.72);
     color: rgb(212, 212, 216);
@@ -246,21 +340,25 @@
 
   .emperor-subtle-grid {
     background-image:
+      linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+
+  .dark .emperor-subtle-grid {
+    background-image:
       linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
     background-size: 34px 34px;
   }
 
   .emperor-main .text-zinc-400 {
-    color: rgb(212, 212, 216);
   }
 
   .emperor-main .text-zinc-500 {
-    color: rgb(181, 181, 190);
   }
 
   .emperor-main .text-zinc-600 {
-    color: rgb(145, 145, 155);
   }
 
   .emperor-main .font-medium {
@@ -304,27 +402,27 @@
 .emperor-mdx-editor {
   --font-size: 0.9375rem;
   background: transparent;
-  color: rgb(212, 212, 216);
+  color: var(--foreground);
 }
 
 .emperor-mdx-editor .mdxeditor-toolbar {
   border-radius: 0.75rem;
-  border: 1px solid rgba(63, 63, 70, 0.6);
-  background: rgba(24, 24, 27, 0.7);
+  border: 1px solid var(--border);
+  background: var(--card);
 }
 
 .emperor-mdx-content {
-  color: rgb(212, 212, 216);
+  color: var(--foreground);
   line-height: 1.7;
 }
 
 .emperor-mdx-content h1 {
   margin: 1.5rem 0 1rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid rgb(39, 39, 42);
+  border-bottom: 1px solid var(--border);
   font-size: 1.5rem;
   font-weight: 700;
-  color: rgb(244, 244, 245);
+  color: var(--foreground);
 }
 
 .emperor-mdx-content h1:first-child { margin-top: 0; }
@@ -333,14 +431,14 @@
   margin: 1.25rem 0 0.75rem;
   font-size: 1.25rem;
   font-weight: 700;
-  color: rgb(244, 244, 245);
+  color: var(--foreground);
 }
 
 .emperor-mdx-content h3 {
   margin: 1rem 0 0.5rem;
   font-size: 1.125rem;
   font-weight: 700;
-  color: rgb(244, 244, 245);
+  color: var(--foreground);
 }
 
 .emperor-mdx-content h4,
@@ -349,7 +447,7 @@
   margin: 1rem 0 0.5rem;
   font-size: 1rem;
   font-weight: 600;
-  color: rgb(228, 228, 231);
+  color: var(--foreground);
 }
 
 .emperor-mdx-content p {
@@ -378,71 +476,93 @@
 .emperor-mdx-content blockquote {
   margin: 0 0 1rem;
   padding: 0.25rem 0 0.25rem 1rem;
-  border-left: 4px solid rgba(99, 102, 241, 0.5);
-  background: rgba(99, 102, 241, 0.05);
-  color: rgb(161, 161, 170);
+  border-left: 4px solid var(--primary);
+  background: oklch(0.55 0.15 232 / 0.06);
+  color: var(--muted-foreground);
   font-style: italic;
 }
 
 .emperor-mdx-content code {
   border-radius: 0.25rem;
-  background: rgb(39, 39, 42);
+  background: var(--muted);
   padding: 0.125rem 0.375rem;
   font-family: var(--font-mono);
   font-size: 0.875em;
-  color: rgb(165, 180, 252);
+  color: oklch(0.55 0.15 232);
 }
 
 .emperor-mdx-content pre {
   margin: 0 0 1rem;
   overflow-x: auto;
   border-radius: 0.5rem;
-  border: 1px solid rgb(39, 39, 42);
-  background: rgba(24, 24, 27, 0.8);
+  border: 1px solid var(--border);
+  background: var(--muted);
   padding: 1rem;
 }
 
 .emperor-mdx-content pre code {
   background: transparent;
   padding: 0;
-  color: rgb(212, 212, 216);
+  color: var(--foreground);
 }
 
 .emperor-mdx-content table {
   margin: 0 0 1.5rem;
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid rgb(39, 39, 42);
+  border: 1px solid var(--border);
 }
 
 .emperor-mdx-content th,
 .emperor-mdx-content td {
-  border: 1px solid rgb(39, 39, 42);
+  border: 1px solid var(--border);
   padding: 0.5rem;
   text-align: left;
   font-size: 0.875rem;
 }
 
 .emperor-mdx-content th {
-  background: rgba(39, 39, 42, 0.8);
+  background: var(--muted);
   font-weight: 600;
-  color: rgb(228, 228, 231);
+  color: var(--foreground);
 }
 
 .emperor-mdx-content a {
-  color: rgb(129, 140, 248);
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .emperor-mdx-content a:hover {
-  color: rgb(165, 180, 252);
+  color: oklch(0.65 0.15 232);
 }
 
 .emperor-mdx-content hr {
   margin: 2rem 0;
   border: none;
-  border-top: 1px solid rgb(39, 39, 42);
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Force-dark container for overlay components ────────── */
+.force-dark {
+  --background: oklch(0.105 0.004 286);
+  --foreground: oklch(0.985 0.002 286);
+  --card: oklch(0.155 0.006 286);
+  --card-foreground: oklch(0.985 0.002 286);
+  --popover: oklch(0.145 0.006 286);
+  --popover-foreground: oklch(0.985 0.002 286);
+  --primary: oklch(0.72 0.15 232);
+  --primary-foreground: oklch(0.115 0.006 286);
+  --secondary: oklch(0.205 0.012 286);
+  --secondary-foreground: oklch(0.94 0.006 286);
+  --muted: oklch(0.205 0.012 286);
+  --muted-foreground: oklch(0.72 0.014 286);
+  --accent: oklch(0.24 0.04 286);
+  --accent-foreground: oklch(0.985 0.002 286);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.72 0.15 232);
+  color-scheme: dark;
 }
 
 /* ─── Premium login page keyframes ──────────────────────── */
