@@ -417,6 +417,16 @@
   background: var(--card);
 }
 
+.emperor-mdx-editor .mdxeditor-toolbar button,
+.emperor-mdx-editor .mdxeditor-toolbar select,
+.emperor-mdx-editor .mdxeditor-toolbar svg {
+  color: var(--foreground) !important;
+}
+
+.emperor-mdx-editor .mdxeditor-toolbar button:hover {
+  background-color: var(--accent) !important;
+}
+
 .emperor-mdx-content {
   color: var(--foreground) !important;
   line-height: 1.7;
