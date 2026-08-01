@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
 import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconTerminal2, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconWallet } from "@tabler/icons-react";
+import { ThemeToggle } from "./theme-toggle";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -97,13 +98,13 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
 
     return (
         <>
-        <aside className={cn("flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-zinc-950/72 shadow-2xl shadow-black/30 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
-            <div className={cn("border-b border-white/10", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
+        <aside className={cn("flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar shadow-2xl shadow-black/10 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
+            <div className={cn("border-b border-border", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
                 <div className={cn(
                     "flex items-center",
                     collapsed
                         ? "justify-center"
-                        : "gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 sm:p-3"
+                        : "gap-3 rounded-2xl border border-border bg-muted/40 p-2.5 sm:p-3"
                 )}>
                     {collapsed ? (
                         /* Collapsed: show only the emblem, centered */
@@ -113,7 +114,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                     ) : (
                         /* Expanded: show only the text */
                         <div className={cn("min-w-0 flex-1 transition-opacity duration-200", collapsed ? "opacity-0" : "hidden md:block")}>
-                            <div className="truncate text-base tracking-[0.15em] text-white" style={{ fontFamily: "var(--font-silkscreen)" }}>EMPEROR<span className="text-cyan-400">CLAW</span></div>
+                            <div className="truncate text-base tracking-[0.15em] text-foreground" style={{ fontFamily: "var(--font-silkscreen)" }}>EMPEROR<span className="text-primary">CLAW</span></div>
                         </div>
                     )}
                 </div>
@@ -139,12 +140,12 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                                 "relative flex items-center rounded-xl px-2.5 py-2.5 text-sm font-medium transition-all duration-200",
                                 collapsed ? "justify-center gap-0" : "gap-3",
                                 isActive
-                                    ? "border border-cyan-400/20 bg-cyan-400/10 text-white shadow-sm shadow-cyan-950/20"
-                                    : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
+                                    ? "border border-primary/20 bg-primary/10 text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                             )}
                         >
                             <span className="relative shrink-0">
-                                <Icon className={cn("h-4 w-4", isActive ? "text-cyan-300" : "text-zinc-500 group-hover:text-zinc-300")} />
+                                <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
                                 {showUnread && collapsed && (
                                     <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-rose-500" />
                                 )}
@@ -160,20 +161,21 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                 })}
             </nav>
 
-            <div className={cn("border-t border-white/10", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
+            <div className={cn("border-t border-border", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
                     {/* Collapse / Expand toggle */}
                     <button
                         type="button"
                         onClick={toggleCollapsed}
                         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                         className={cn(
-                            "flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-zinc-400 transition-all duration-200 hover:bg-white/[0.045] hover:text-zinc-100",
+                            "flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground",
                             collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
                         )}
                     >
                         {collapsed ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
                         <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>{collapsed ? "" : "Collapse"}</span>
                     </button>
+                    <ThemeToggle collapsed={collapsed} />
                     <Link
                         href="/docs"
                         onMouseEnter={(e) => {
@@ -187,48 +189,48 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                             "relative flex items-center rounded-xl text-sm font-medium transition-all duration-200",
                             collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
                             pathname?.startsWith("/docs")
-                                ? "border border-cyan-400/20 bg-cyan-400/10 text-white"
-                                : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
+                                ? "border border-cyan-400/20 bg-cyan-400/10 text-foreground"
+                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
                         )}
                     >
-                        <IconBook className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-zinc-500")} />
+                        <IconBook className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-400" : "text-muted-foreground")} />
                         <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>Documentation</span>
                     </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className={cn(
-                                "group relative flex w-full cursor-pointer items-center rounded-2xl border border-white/10 bg-white/[0.035] text-left transition-colors hover:border-white/15 hover:bg-white/[0.055]",
+                                "group relative flex w-full cursor-pointer items-center rounded-2xl border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent",
                                 collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 sm:gap-3 px-2.5 py-2.5 sm:px-3 sm:py-3"
                             )}
                                 title={collapsed ? `${userName}\n${userEmail}` : undefined}
                             >
-                                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200">
+                                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-border bg-muted text-xs font-bold text-foreground">
                                     {userInitial}
                                 </div>
                                 <div className={cn("min-w-0 flex-1 flex-col transition-opacity duration-200", collapsed ? "hidden" : "md:flex")}>
-                                    <span className="truncate text-sm font-medium text-zinc-100">{userName}</span>
-                                    <span className="text-xs text-zinc-500">{userEmail}</span>
+                                    <span className="truncate text-sm font-medium text-foreground">{userName}</span>
+                                    <span className="text-xs text-muted-foreground">{userEmail}</span>
                                 </div>
                             </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-56 border-zinc-800 bg-zinc-950 text-zinc-200 shadow-2xl shadow-black/40">
-                            <DropdownMenuItem asChild className="gap-2 text-zinc-200 focus:bg-zinc-900">
+                        <DropdownMenuContent align="start" className="w-56 border-border bg-popover text-foreground shadow-2xl shadow-black/20">
+                            <DropdownMenuItem asChild className="gap-2 text-foreground focus:bg-accent">
                                 <Link href="/settings">
-                                    <IconUser className="h-4 w-4 text-zinc-400" />
+                                    <IconUser className="h-4 w-4 text-muted-foreground" />
                                     <span>Workspace Settings</span>
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                                className="gap-2 text-zinc-200 focus:bg-zinc-900"
+                                className="gap-2 text-foreground focus:bg-accent"
                                 onClick={() => signOut({ callbackUrl: "/login" })}
                             >
-                                <IconLogout className="h-4 w-4 text-zinc-400" />
+                                <IconLogout className="h-4 w-4 text-muted-foreground" />
                                 <span>Logout</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                     {appVersion && (
-                        <p className={cn("text-center text-[10px] text-zinc-600 transition-opacity duration-200", collapsed ? "opacity-0" : "md:opacity-100")}>
+                        <p className={cn("text-center text-[10px] text-muted-foreground transition-opacity duration-200", collapsed ? "opacity-0" : "md:opacity-100")}>
                             v{appVersion} · emperorclaw.com
                         </p>
                     )}
@@ -236,7 +238,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
         </aside>
         {hoveredNav && tooltipPos && typeof document !== "undefined" && createPortal(
             <div
-                className="pointer-events-none fixed whitespace-nowrap rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-100 shadow-lg ring-1 ring-white/10 z-[9999]"
+                className="pointer-events-none fixed whitespace-nowrap rounded-lg bg-popover px-3 py-1.5 text-xs font-medium text-foreground shadow-lg ring-1 ring-border z-[9999]"
                 style={{
                     top: tooltipPos.top,
                     left: tooltipPos.left,
