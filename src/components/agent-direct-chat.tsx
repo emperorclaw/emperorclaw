@@ -261,18 +261,7 @@ export function AgentDirectChat({
         }
     }, [messages, rowVirtualizer]);
 
-    useEffect(() => {
-        if (!navigator.permissions) return;
-        navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
-            if (result.state === "denied") {
-                setMicError("blocked");
-            }
-            result.onchange = () => {
-                if (result.state === "denied") setMicError("blocked");
-                else if (result.state === "granted") setMicError(null);
-            };
-        }).catch(() => {/* permissions API not supported */});
-    }, []);
+
 
     const startRecording = async () => {
         setMicError(null);
@@ -469,7 +458,7 @@ export function AgentDirectChat({
                 </div>
             )}
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))] p-3 sm:p-5">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         Loading direct thread...

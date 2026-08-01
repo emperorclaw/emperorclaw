@@ -117,6 +117,9 @@
   --cyan-300: oklch(0.40 0.10 215);
   --cyan-400: oklch(0.55 0.15 215);
   --cyan-500: oklch(0.50 0.16 215);
+
+  --chat-gradient-start: rgba(255, 255, 255, 0.55);
+  --chat-gradient-end: rgba(244, 244, 245, 0.95);
 }
 
 .dark {
@@ -171,6 +174,9 @@
   --cyan-300: oklch(0.70 0.10 215);
   --cyan-400: oklch(0.64 0.15 215);
   --cyan-500: oklch(0.58 0.16 215);
+
+  --chat-gradient-start: rgba(24, 24, 27, 0.55);
+  --chat-gradient-end: rgba(9, 9, 11, 0.95);
 }
 
 /* Custom Blob Animations for Auth Background */

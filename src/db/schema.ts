@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, uuid, integer, uniqueIndex, index, check, doublePrecision } from "drizzle-orm/pg-core";
 
 // --- Auth Tables ---
 export const users = pgTable("users", {
@@ -186,7 +186,7 @@ export const agents = pgTable("agents", {
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
-    monthlyCostCents: integer("monthly_cost_cents").default(0).notNull(), // calculated spend in cents
+    monthlyCostCents: doublePrecision("monthly_cost_cents").default(0).notNull(), // calculated spend in cents
     lastResetMonth: text("last_reset_month"), // "2026-07" — resets counters when month changes
     budgetStatus: text("budget_status").default("active").notNull(), // active | warning | paused
     status: text("status").notNull().default('offline'),
@@ -218,7 +218,7 @@ export const tokenUsageLog = pgTable("token_usage_log", {
     model: text("model").notNull(),           // which model was used
     inputTokens: integer("input_tokens").default(0).notNull(),
     outputTokens: integer("output_tokens").default(0).notNull(),
-    costCents: integer("cost_cents").default(0).notNull(), // calculated cost in cents × 100
+    costCents: doublePrecision("cost_cents").default(0).notNull(), // calculated cost in cents
     reportedAt: timestamp("reported_at").defaultNow().notNull(),
 }, (t) => [
     index("token_usage_agent_date_idx").on(t.agentId, t.reportedAt),

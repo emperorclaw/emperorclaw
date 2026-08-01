@@ -1972,7 +1972,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
             <Dialog open={isInspectorOpen} onOpenChange={setIsInspectorOpen}>
                 <DialogContent className="max-h-[92vh] w-[95vw] overflow-hidden border-zinc-800 bg-zinc-950 p-0 text-zinc-100 sm:max-w-4xl lg:max-w-6xl xl:max-w-[1200px]">
-                    <div className="flex h-[calc(100vh-4rem)] min-h-[500px] flex-col">
+                    <div className="flex h-[85vh] min-h-[500px] flex-col">
                         <DialogHeader className="flex flex-row items-center justify-between border-b border-zinc-800 px-6 py-4 pr-14">
                             <DialogTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Inspector</DialogTitle>
                             {selectedEntry?.type === "artifact" && (

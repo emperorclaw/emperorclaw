@@ -54,9 +54,9 @@ export function DocsMarkdownRenderer({ content }: DocsMarkdownRendererProps) {
           h1: ({ children }) => <h1 className="text-4xl font-bold mb-10 mt-0 text-foreground tracking-tight">{children}</h1>,
           h2: ({ children }) => <h2 className="text-2xl font-semibold mb-6 mt-16 text-foreground border-b border-border pb-3">{children}</h2>,
           h3: ({ children }) => <h3 className="text-xl font-semibold mb-4 mt-10 text-foreground">{children}</h3>,
-          p: ({ children }) => <p className="mb-6 text-muted-foreground leading-relaxed text-[16px]">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc pl-6 space-y-3 mb-8 text-muted-foreground">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-6 space-y-3 mb-8 text-muted-foreground">{children}</ol>,
+          p: ({ children }) => <p className="mb-6 text-zinc-800 dark:text-zinc-300 leading-relaxed text-[16px]">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc pl-6 space-y-3 mb-8 text-zinc-800 dark:text-zinc-300">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-6 space-y-3 mb-8 text-zinc-800 dark:text-zinc-300">{children}</ol>,
           li: ({ children }) => <li className="pl-1">{children}</li>,
           code: ({ children, className }) => {
             const isInline = !className;
@@ -101,7 +101,7 @@ export function DocsMarkdownRenderer({ content }: DocsMarkdownRendererProps) {
                   {icon}
                   <span>{label}</span>
                 </div>
-                <div className="text-muted-foreground italic leading-relaxed">
+                <div className="text-zinc-800 dark:text-zinc-300 italic leading-relaxed">
                   {cleanChildren}
                 </div>
               </div>
