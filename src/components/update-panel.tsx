@@ -93,11 +93,11 @@ export function UpdatePanel() {
     const isDocker = version?.mode === "docker";
 
     return (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-5">
+        <div className="rounded-xl border border-border bg-card p-5 force-dark">
             <div className="flex items-center justify-between mb-3">
                 <div>
-                    <h3 className="text-sm font-semibold text-zinc-200">EmperorClaw Update</h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <h3 className="text-sm font-semibold text-foreground">EmperorClaw Update</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
                         {version
                             ? version.updateAvailable
                                 ? `v${version.current} → v${version.latest} available`

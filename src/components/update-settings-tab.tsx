@@ -43,7 +43,7 @@ export function UpdateSettingsTab() {
             <section className="space-y-4">
                 <div className="emperor-panel rounded-2xl sm:rounded-3xl p-8 text-center">
                     <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
-                    <p className="mt-4 text-sm text-zinc-400">Checking for updates...</p>
+                    <p className="mt-4 text-sm text-muted-foreground">Checking for updates...</p>
                 </div>
             </section>
         );
@@ -65,7 +65,7 @@ export function UpdateSettingsTab() {
             <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className="flex items-center text-lg font-semibold text-zinc-100">
+                        <h2 className="flex items-center text-lg font-semibold text-foreground">
                             <IconServer className="mr-2 h-5 w-5 text-cyan-300" /> Instance version
                         </h2>
                         <p className="mt-1 text-sm text-zinc-400">
@@ -79,9 +79,9 @@ export function UpdateSettingsTab() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-black/25 p-4">
-                        <div className="text-xs uppercase tracking-wider text-zinc-500">Installed</div>
-                        <div className="mt-1 font-mono text-2xl font-bold text-white">
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Installed</div>
+                        <div className="mt-1 font-mono text-2xl font-bold text-foreground">
                             v{data.currentVersion}
                         </div>
                     </div>
@@ -91,11 +91,11 @@ export function UpdateSettingsTab() {
                             ? "border-cyan-400/20 bg-cyan-400/8"
                             : "border-emerald-500/20 bg-emerald-500/8",
                     )}>
-                        <div className="text-xs uppercase tracking-wider text-zinc-500">Latest</div>
-                        <div className="mt-1 font-mono text-2xl font-bold text-white">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Latest</div>
+                        <div className="mt-1 font-mono text-2xl font-bold text-foreground">
                             v{data.latestVersion}
                         </div>
-                        <div className="mt-1 text-xs text-zinc-500">
+                        <div className="mt-1 text-xs text-muted-foreground">
                             {data.isUpdateAvailable
                                 ? `Released ${publishedDate}`
                                 : "You're up to date"}

@@ -73,18 +73,18 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
       href={`/docs/${currentVersion}/${page.slug}`}
       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group ${
         currentPage.slug === page.slug
-          ? 'bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]'
-          : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-transparent'
+          ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-medium border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent'
       }`}
     >
-      <IconFileText className={`w-4 h-4 ${currentPage.slug === page.slug ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
+      <IconFileText className={`w-4 h-4 ${currentPage.slug === page.slug ? 'text-indigo-400' : 'text-muted-foreground group-hover:text-foreground'}`} />
       {page.title}
     </Link>
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 selection:bg-indigo-500/30">
-      <header className="sticky top-0 z-50 w-full border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl">
+    <div className="min-h-screen bg-background text-foreground selection:bg-indigo-500/30">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-3 group">
@@ -93,21 +93,21 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               </div>
               <span className="font-semibold text-lg tracking-tight hidden sm:block">Emperor Claw</span>
             </Link>
-            <div className="h-4 w-px bg-zinc-800 mx-2 hidden sm:block" />
-            <span className="text-zinc-400 font-medium text-sm">Documentation</span>
+            <div className="h-4 w-px bg-border mx-2 hidden sm:block" />
+            <span className="text-muted-foreground font-medium text-sm">Documentation</span>
           </div>
 
           <div className="flex items-center gap-3">
             <Link 
               href="/"
-              className="hidden md:flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-900 border border-transparent hover:border-zinc-800"
+              className="hidden md:flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-accent border border-transparent hover:border-border"
             >
               <IconArrowLeft className="w-4 h-4" />
               Back to Dashboard
             </Link>
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900 rounded-lg border border-zinc-800"
+              className="lg:hidden p-2 text-muted-foreground hover:text-foreground bg-accent rounded-lg border border-border"
             >
               {mobileMenuOpen ? <IconX className="w-5 h-5" /> : <IconMenu2 className="w-5 h-5" />}
             </button>
@@ -129,7 +129,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                   </label>
                   <div className="relative group">
                     <select
-                      className="w-full appearance-none px-3 py-2 border border-zinc-800 rounded-xl bg-zinc-900/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
+                      className="w-full appearance-none px-3 py-2 border border-border rounded-xl bg-muted/50 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
                       value={currentVersion}
                       onChange={(e) => handleVersionChange(e.target.value)}
                     >
@@ -137,20 +137,20 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                         <option key={v.id} value={v.id}>{v.label}</option>
                       ))}
                     </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
                       <IconChevronRight className="w-4 h-4 rotate-90" />
                     </div>
                   </div>
                 </div>
 
                 <div className="relative group">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-muted-foreground group-focus-within:text-indigo-400 transition-colors">
                     <IconMenu2 className="w-4 h-4" />
                   </div>
                   <input
                     type="text"
                     placeholder="Search docs..."
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder:text-zinc-600"
+                    className="w-full bg-muted/50 border border-border rounded-xl py-2 pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder:text-muted-foreground"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -160,20 +160,20 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
               <nav className="space-y-8">
                 {searchQuery ? (
                   <div>
-                    <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
                       Search Results
                     </h3>
                     <div className="space-y-1">
                       {filteredPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
                       {filteredPages.length === 0 && (
-                        <p className="px-3 py-2 text-xs text-zinc-600 italic">No pages found</p>
+                        <p className="px-3 py-2 text-xs text-muted-foreground italic">No pages found</p>
                       )}
                     </div>
                   </div>
                 ) : (
                   <>
                     <div>
-                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
                         Getting Started
                       </h3>
                       <div className="space-y-1">
@@ -182,7 +182,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                     </div>
 
                     <div>
-                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
                         Operator Manual
                       </h3>
                       <div className="space-y-1">
@@ -191,7 +191,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                     </div>
 
                     <div>
-                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
                         Runtime Setup
                       </h3>
                       <div className="space-y-1">
@@ -200,7 +200,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                     </div>
 
                     <div>
-                      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4 px-1">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
                         References
                       </h3>
                       <div className="space-y-1">
@@ -214,7 +214,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
           </aside>
 
           <main className="flex-1 min-w-0">
-            <div className="mb-8 flex items-center gap-2 text-xs text-zinc-500 font-medium uppercase tracking-wider">
+            <div className="mb-8 flex items-center gap-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">
               <Link href="/docs" className="hover:text-indigo-400 transition-colors">Documentation</Link>
               <IconChevronRight className="w-3 h-3" />
               <span>{selectedVersion.label}</span>
