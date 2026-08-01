@@ -193,7 +193,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                                 : "text-muted-foreground hover:bg-accent hover:text-foreground"
                         )}
                     >
-                        <IconBook className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-400" : "text-muted-foreground")} />
+                        <IconBook className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-muted-foreground")} />
                         <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>Documentation</span>
                     </Link>
                     <DropdownMenu>

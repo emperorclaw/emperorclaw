@@ -44,7 +44,7 @@ export const MarkdownLiveEditor = forwardRef<MDXEditorMethods, {
       onChange={onChange}
       placeholder={placeholder}
       suppressHtmlProcessing
-      className={`dark-theme dark-editor emperor-mdx-editor ${className || ""}`}
+      className={`emperor-mdx-editor ${className || ""}`}
       contentEditableClassName="emperor-mdx-content"
       plugins={[
         headingsPlugin(),

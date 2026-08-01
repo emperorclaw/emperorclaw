@@ -33,7 +33,7 @@ export function ExpandablePanel({
     return (
         <>
             {expanded ? (
-                <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" onClick={() => setExpanded(false)} />
+                <div className="fixed inset-0 z-40 bg-black/50 dark:bg-black/70 backdrop-blur-sm" onClick={() => setExpanded(false)} />
             ) : null}
             <div className={cn("relative", expanded ? cn("fixed inset-4 z-50 flex flex-col", expandedClassName) : className)}>
                 <button

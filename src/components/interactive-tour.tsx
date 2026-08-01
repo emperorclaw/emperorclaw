@@ -122,37 +122,37 @@ export function InteractiveTour() {
 
     return createPortal(
         <div className="fixed inset-0 z-50 flex items-end justify-center pointer-events-none">
-            <div className="pointer-events-auto mb-6 mx-4 w-full max-w-lg animate-in slide-in-from-bottom-4 fade-in duration-300">
-                <div className="relative rounded-2xl border border-cyan-400/20 bg-zinc-950/95 shadow-2xl shadow-black/60 backdrop-blur-xl">
+            <div className="pointer-events-auto mb-6 mx-4 w-full max-w-lg animate-in slide-in-from-bottom-4 fade-in duration-300 force-dark">
+                <div className="relative rounded-2xl border border-cyan-400/20 bg-card shadow-2xl shadow-black/60 backdrop-blur-xl">
                     {/* Progress */}
-                    <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl bg-white/5">
+                    <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl bg-muted">
                         <div className="h-full rounded-t-2xl bg-cyan-400/60 transition-all duration-300" style={{ width: `${((step + 1) / steps.length) * 100}%` }} />
                     </div>
 
                     <div className="flex items-start gap-4 px-5 pt-5 pb-3">
                         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10">
-                            <Icon className="h-5 w-5 text-cyan-300" />
+                            <Icon className="h-5 w-5 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                                <h2 className="text-base font-semibold text-white">{s.title}</h2>
-                                <button onClick={close} className="shrink-0 cursor-pointer rounded-lg p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-300" aria-label="Close tour">
+                                <h2 className="text-base font-semibold text-foreground">{s.title}</h2>
+                                <button onClick={close} className="shrink-0 cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Close tour">
                                     <IconX className="h-4 w-4" />
                                 </button>
                             </div>
-                            <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">{s.body}</p>
+                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{s.body}</p>
                         </div>
                     </div>
 
                     <div className="flex items-center justify-between gap-3 px-5 pb-5 pt-1">
-                        <span className="text-xs text-zinc-600 tabular-nums">{step + 1} / {steps.length}</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{step + 1} / {steps.length}</span>
                         <div className="flex items-center gap-2">
                             {!first && (
-                                <button onClick={() => goTo(step - 1)} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900">
+                                <button onClick={() => goTo(step - 1)} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground hover:border-ring hover:bg-accent">
                                     <IconArrowLeft className="h-3.5 w-3.5" /> Back
                                 </button>
                             )}
-                            <button onClick={close} className="cursor-pointer rounded-xl px-3 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-300">Skip</button>
+                            <button onClick={close} className="cursor-pointer rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Skip</button>
                             <button onClick={() => last ? close() : goTo(step + 1)} className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-cyan-400/10 border border-cyan-400/25 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15">
                                 {last ? "Done" : "Next"}
                                 {!last && <IconArrowRight className="h-3.5 w-3.5" />}

@@ -18,6 +18,7 @@ import {
 import ELK from "elkjs/lib/elk.bundled.js";
 import { IconRobot, IconCircleCheck, IconClock, IconCopy, IconDatabase, IconFileText, IconStack2, IconArrowsMaximize, IconArrowsMinimize, IconPlayerPlay, IconRepeat, IconSearch, IconSparkles, IconTrash, IconArrowsSplit } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { useTheme } from "next-themes";
 import { PageHeader } from "@/components/page-header";
 
 type PipelineStep = {
@@ -340,6 +341,7 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
   const graph = useMemo(() => buildPipelineGraph(pipeline, runs), [pipeline, runs]);
   const { nodes, edges } = useElkLayout(graph.nodes, graph.edges);
   const [expanded, setExpanded] = useState(false);
+  const { resolvedTheme } = useTheme();
 
   const steps = parseSteps(pipeline.stepsJson);
   const latestRun = runs.find((run) => run.pipelineId === pipeline.id);
@@ -381,7 +383,7 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          colorMode="dark"
+          colorMode={resolvedTheme === "dark" ? "dark" : "light"}
           fitView
           minZoom={0.15}
           maxZoom={1.75}
@@ -391,11 +393,11 @@ function PipelineFlowMap({ pipeline, runs, agentsMap }: { pipeline: PipelineRow;
           proOptions={{ hideAttribution: true }}
         >
           <Background color="rgba(148,163,184,0.18)" gap={28} />
-          <MiniMap pannable zoomable className="!border !border-zinc-800 !bg-zinc-950/90" nodeColor={(node) => toneHex[(node.data as PipelineNodeData).tone]} />
-          <Controls className="!border !border-zinc-800 !bg-zinc-950/90 !text-zinc-100" />
+          <MiniMap pannable zoomable className="!border !border-border !bg-card" nodeColor={(node) => toneHex[(node.data as PipelineNodeData).tone]} />
+          <Controls className="!border !border-border !bg-card !text-foreground" />
         </ReactFlow>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-xs text-zinc-500">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-card px-4 py-2 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT_STYLES[pipeline.status] || "bg-zinc-600"}`} />{pipeline.status}</span>
         <span>{steps.length || 0} step{steps.length === 1 ? "" : "s"}</span>
         <span>Owner: {ownerName}</span>

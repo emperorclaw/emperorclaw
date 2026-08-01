@@ -78,11 +78,11 @@ export function GoalHub() {
         <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/20 via-emerald-500/20 to-purple-500/20 rounded-2xl blur-lg opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200" />
             
-            <div className="relative bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="p-1 px-4 bg-zinc-900/50 border-b border-zinc-800 flex items-center justify-between">
+            <div className="relative bg-card border border-border rounded-2xl overflow-hidden shadow-2xl force-dark">
+                <div className="p-1 px-4 bg-muted/50 border-b border-border flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <IconSparkles className="w-3 h-3 text-amber-500 animate-pulse" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Autonomous Mission Control</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Autonomous Mission Control</span>
                     </div>
                 </div>
 
@@ -90,8 +90,8 @@ export function GoalHub() {
                     {!suggestion ? (
                         <div className="space-y-6">
                             <div className="space-y-2">
-                                <h2 className="text-xl font-semibold text-white tracking-tight">What is the mission for today?</h2>
-                                <p className="text-sm text-zinc-500">Describe your high-level goal. The Emperor Claw Orchestrator will break it down into projects, tasks, and assign them to the best-suited agents.</p>
+                                <h2 className="text-xl font-semibold text-foreground tracking-tight">What is the mission for today?</h2>
+                                <p className="text-sm text-muted-foreground">Describe your high-level goal. The Emperor Claw Orchestrator will break it down into projects, tasks, and assign them to the best-suited agents.</p>
                             </div>
 
                             <form onSubmit={handleBrainstorm} className="relative">
@@ -100,7 +100,7 @@ export function GoalHub() {
                                     value={goal}
                                     onChange={(e) => setGoal(e.target.value)}
                                     placeholder="e.g. Audit our main landing page for SEO and launch a basic Twitter campaign"
-                                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-4 pr-32 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
+                                    className="w-full bg-muted border border-border rounded-xl px-4 py-4 pr-32 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium"
                                 />
                                 <div className="absolute right-2 top-2 bottom-2">
                                     <button

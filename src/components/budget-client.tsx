@@ -66,14 +66,14 @@ function BudgetCell({ agentId, value, updateAgent }: { agentId: string; value: n
             setSaving(false);
         }
     };
-    if (!editing) return <button onClick={() => setEditing(true)} className="text-zinc-300 font-mono text-xs hover:text-cyan-300">{value > 0 ? `$${(value / 100).toFixed(2)}` : <span className="text-zinc-600">∞</span>}</button>;
+    if (!editing) return <button onClick={() => setEditing(true)} className="text-foreground/70 font-mono text-xs hover:text-primary">{value > 0 ? `$${(value / 100).toFixed(2)}` : <span className="text-muted-foreground">∞</span>}</button>;
     return (
         <span className="inline-flex items-center gap-1">
-            <span className="text-zinc-400 text-xs">$</span>
-            <input type="number" min="0" step="0.01" autoFocus className="w-16 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none focus:border-cyan-400"
+            <span className="text-muted-foreground text-xs">$</span>
+            <input type="number" min="0" step="0.01" autoFocus className="w-16 bg-muted border border-border rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary"
                 value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }} />
             <button onClick={() => void save()} disabled={saving} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50">{saving ? "…" : "✓"}</button>
-            <button onClick={() => setEditing(false)} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-white">✕</button>
+            <button onClick={() => setEditing(false)} className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-foreground">✕</button>
         </span>
     );
 }
@@ -142,20 +142,20 @@ function PricingRow({ p, onSaved }: { p: PricingRow; onSaved: () => void }) {
         }
     };
     if (!editing) return (
-        <tr className={cn("text-xs group hover:bg-zinc-900/30", !p.active && "opacity-40")}>
-            <td className="px-5 py-1.5 text-zinc-400 capitalize">{p.provider}</td>
-            <td className="px-5 py-1.5 text-zinc-300 font-mono">{p.model}</td>
-            <td className="px-5 py-1.5 text-right text-zinc-400 font-mono"><button onClick={() => setEditing(true)} className="hover:text-cyan-300">${(p.inputPricePer1k / 100).toFixed(2)}</button></td>
-            <td className="px-5 py-1.5 text-right text-zinc-400 font-mono"><button onClick={() => setEditing(true)} className="hover:text-cyan-300">${(p.outputPricePer1k / 100).toFixed(2)}</button></td>
-            <td className="px-3 py-1.5 text-center"><button onClick={toggle} className="text-[10px] text-zinc-600 hover:text-emerald-400" title={p.active ? "Disable" : "Enable"}>{p.active ? "✓" : "—"}</button></td>
+        <tr className={cn("text-xs group hover:bg-accent/50", !p.active && "opacity-40")}>
+            <td className="px-5 py-1.5 text-muted-foreground capitalize">{p.provider}</td>
+            <td className="px-5 py-1.5 text-foreground font-mono">{p.model}</td>
+            <td className="px-5 py-1.5 text-right text-muted-foreground font-mono"><button onClick={() => setEditing(true)} className="hover:text-primary">${(p.inputPricePer1k / 100).toFixed(2)}</button></td>
+            <td className="px-5 py-1.5 text-right text-muted-foreground font-mono"><button onClick={() => setEditing(true)} className="hover:text-primary">${(p.outputPricePer1k / 100).toFixed(2)}</button></td>
+            <td className="px-3 py-1.5 text-center"><button onClick={toggle} className="text-[10px] text-muted-foreground hover:text-emerald-400" title={p.active ? "Disable" : "Enable"}>{p.active ? "✓" : "—"}</button></td>
         </tr>
     );
     return (
-        <tr className="text-xs bg-cyan-500/5">
-            <td className="px-5 py-1.5 text-zinc-400 capitalize">{p.provider}</td>
-            <td className="px-5 py-1.5 text-zinc-300 font-mono">{p.model}</td>
-            <td className="px-5 py-1.5 text-right"><input type="number" step="0.01" min="0" autoFocus className="w-16 bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5 text-[10px] text-zinc-100 text-right outline-none focus:border-cyan-400" value={inP} onChange={e => setInP(e.target.value)} onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }} /></td>
-            <td className="px-5 py-1.5 text-right"><span className="inline-flex items-center gap-1"><input type="number" step="0.01" min="0" className="w-16 bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5 text-[10px] text-zinc-100 text-right outline-none focus:border-cyan-400" value={outP} onChange={e => setOutP(e.target.value)} onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }} /><button onClick={save} disabled={saving} className="text-[10px] px-1 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white">✓</button><button onClick={() => setEditing(false)} className="text-[10px] px-1 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-white">✕</button></span></td>
+        <tr className="text-xs bg-primary/5">
+            <td className="px-5 py-1.5 text-muted-foreground capitalize">{p.provider}</td>
+            <td className="px-5 py-1.5 text-foreground font-mono">{p.model}</td>
+            <td className="px-5 py-1.5 text-right"><input type="number" step="0.01" min="0" autoFocus className="w-16 bg-muted border border-border rounded px-1 py-0.5 text-[10px] text-foreground text-right outline-none focus:border-primary" value={inP} onChange={e => setInP(e.target.value)} onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }} /></td>
+            <td className="px-5 py-1.5 text-right"><span className="inline-flex items-center gap-1"><input type="number" step="0.01" min="0" className="w-16 bg-muted border border-border rounded px-1 py-0.5 text-[10px] text-foreground text-right outline-none focus:border-primary" value={outP} onChange={e => setOutP(e.target.value)} onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }} /><button onClick={save} disabled={saving} className="text-[10px] px-1 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white">✓</button><button onClick={() => setEditing(false)} className="text-[10px] px-1 py-0.5 rounded bg-muted hover:bg-accent text-foreground">✕</button></span></td>
             <td className="px-3" />
         </tr>
     );

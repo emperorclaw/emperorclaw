@@ -84,28 +84,28 @@ export default function DocxArtifactEditor(props: OfficeEditorProps) {
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#25262b]">
-            <div className="flex min-h-12 flex-wrap items-center gap-1 border-b border-white/10 bg-[#17181c] px-3 py-2">
+        <div className="flex h-full min-h-0 flex-col bg-[#1e1e22] force-dark">
+            <div className="flex min-h-12 flex-wrap items-center gap-1 border-b border-border bg-[#141417] px-3 py-2">
                 <ToolbarButton label="Undo" disabled={!editor.canUndo} onClick={editor.undo}><IconArrowBackUp /></ToolbarButton>
                 <ToolbarButton label="Redo" disabled={!editor.canRedo} onClick={editor.redo}><IconArrowForwardUp /></ToolbarButton>
                 <Divider />
-                <select aria-label="Paragraph style" className="h-8 rounded-md border border-white/10 bg-black/20 px-2 text-xs text-zinc-200" value={editor.selectedParagraphStyleId || "Normal"} onChange={(event) => editor.setParagraphStyle(event.target.value)}>
+                <select aria-label="Paragraph style" className="h-8 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedParagraphStyleId || "Normal"} onChange={(event) => editor.setParagraphStyle(event.target.value)}>
                     <option value="Normal">Body</option>
                     <option value="Heading1">Heading 1</option>
                     <option value="Heading2">Heading 2</option>
                     <option value="Heading3">Heading 3</option>
                 </select>
-                <select aria-label="Font family" className="h-8 w-32 rounded-md border border-white/10 bg-black/20 px-2 text-xs text-zinc-200" value={editor.selectedRunStyle?.fontFamily || "Calibri"} onChange={(event) => editor.setFontFamily(event.target.value)}>
+                <select aria-label="Font family" className="h-8 w-32 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={editor.selectedRunStyle?.fontFamily || "Calibri"} onChange={(event) => editor.setFontFamily(event.target.value)}>
                     {['Calibri', 'Arial', 'Times New Roman', 'Georgia', 'Courier New'].map((font) => <option key={font} value={font}>{font}</option>)}
                 </select>
-                <select aria-label="Font size" className="h-8 w-16 rounded-md border border-white/10 bg-black/20 px-2 text-xs text-zinc-200" value={String(editor.selectedRunStyle?.fontSizePt || 11)} onChange={(event) => editor.setFontSize(Number(event.target.value))}>
+                <select aria-label="Font size" className="h-8 w-16 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground" value={String(editor.selectedRunStyle?.fontSizePt || 11)} onChange={(event) => editor.setFontSize(Number(event.target.value))}>
                     {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map((size) => <option key={size} value={size}>{size}</option>)}
                 </select>
                 <ToolbarButton label="Bold" onClick={editor.toggleBold}><IconBold /></ToolbarButton>
                 <ToolbarButton label="Italic" onClick={editor.toggleItalic}><IconItalic /></ToolbarButton>
                 <ToolbarButton label="Underline" onClick={editor.toggleUnderline}><IconUnderline /></ToolbarButton>
-                <label className="relative flex size-8 cursor-pointer items-center justify-center rounded-md text-zinc-300 hover:bg-white/10" title="Text color">
-                    <span className="h-4 w-4 rounded-full border border-white/40" style={{ backgroundColor: editor.selectedRunStyle?.color || '#f4f4f5' }} />
+                <label className="relative flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent" title="Text color">
+                    <span className="h-4 w-4 rounded-full border border-border" style={{ backgroundColor: editor.selectedRunStyle?.color || '#f4f4f5' }} />
                     <input type="color" aria-label="Text color" className="absolute inset-0 opacity-0" value={editor.selectedRunStyle?.color || '#f4f4f5'} onChange={(event) => editor.setTextColor(event.target.value)} />
                 </label>
                 <ToolbarButton label="Highlight" onClick={() => editor.setHighlight(editor.selectedRunStyle?.highlight ? undefined : "yellow")}><IconHighlight /></ToolbarButton>

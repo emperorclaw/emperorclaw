@@ -67,18 +67,18 @@ export default function XlsxArtifactEditor(props: OfficeEditorProps) {
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#101114]">
-            <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b border-white/10 bg-[#17181c] px-3 py-2">
+        <div className="flex h-full min-h-0 flex-col bg-[#101114] force-dark">
+            <div className="flex min-h-12 flex-wrap items-center gap-1.5 border-b border-border bg-[#141417] px-3 py-2">
                 <ToolbarButton label="Undo" disabled={!controller.canUndo} onClick={controller.undo}><IconArrowBackUp /></ToolbarButton>
                 <ToolbarButton label="Redo" disabled={!controller.canRedo} onClick={controller.redo}><IconArrowForwardUp /></ToolbarButton>
-                <div className="mx-1 h-6 w-px bg-white/10" />
+                <div className="mx-1 h-6 w-px bg-border" />
                 <ToolbarButton label="Zoom out" disabled={!controller.canZoomOut} onClick={controller.zoomOut}><IconMinus /></ToolbarButton>
-                <span className="min-w-12 text-center text-xs tabular-nums text-zinc-400">{Math.round(controller.zoomScale)}%</span>
+                <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">{Math.round(controller.zoomScale)}%</span>
                 <ToolbarButton label="Zoom in" disabled={!controller.canZoomIn} onClick={controller.zoomIn}><IconPlus /></ToolbarButton>
-                <div className="mx-1 h-6 w-px bg-white/10" />
+                <div className="mx-1 h-6 w-px bg-border" />
                 <ToolbarButton label="Add worksheet" onClick={() => controller.addSheet()}><IconFilePlus /></ToolbarButton>
                 <div className="ml-1 flex min-w-[280px] flex-1 items-center gap-2">
-                    <span className="w-12 truncate rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-center text-xs font-medium text-zinc-300">
+                    <span className="w-12 truncate rounded-md border border-border bg-muted/30 px-2 py-1.5 text-center text-xs font-medium text-foreground">
                         {controller.activeCellAddress || "—"}
                     </span>
                     <FormulaInput
@@ -119,14 +119,14 @@ function FormulaInput(props: { initialValue: string; disabled: boolean; onApply:
             onBlur={() => props.onApply(value)}
             disabled={props.disabled}
             placeholder="Select a cell to edit its value or formula"
-            className="h-8 border-white/10 bg-black/20 font-mono text-xs"
+            className="h-8 border-border bg-muted/30 font-mono text-xs"
         />
     );
 }
 
 function ToolbarButton(props: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactElement }) {
     return (
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={props.label} title={props.label} disabled={props.disabled} onClick={props.onClick} className="text-zinc-300 hover:bg-white/10 hover:text-white [&_svg]:size-4">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={props.label} title={props.label} disabled={props.disabled} onClick={props.onClick} className="text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4">
             {props.children}
         </Button>
     );

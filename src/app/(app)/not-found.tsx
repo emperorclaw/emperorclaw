@@ -5,8 +5,8 @@ export default function NotFound() {
         <div className="flex h-screen items-center justify-center">
             <div className="emperor-panel max-w-md text-center space-y-4">
                 <h1 className="text-4xl font-bold text-cyan-400">404</h1>
-                <p className="text-lg font-semibold text-white">Page not found</p>
-                <p className="text-sm text-white/60">
+                <p className="text-lg font-semibold text-foreground">Page not found</p>
+                <p className="text-sm text-muted-foreground">
                     The page you&apos;re looking for doesn&apos;t exist or has been moved.
                 </p>
                 <Link

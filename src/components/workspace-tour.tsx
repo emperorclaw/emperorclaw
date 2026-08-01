@@ -67,23 +67,23 @@ export function WorkspaceTour() {
             <button
                 type="button"
                 onClick={() => setOpen(true)}
-                className="flex w-full cursor-pointer items-center space-x-3 rounded-md px-3 py-2 text-left text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="flex w-full cursor-pointer items-center space-x-3 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             >
-                <IconPlayerPlay className="h-4 w-4 text-zinc-500" />
+                <IconPlayerPlay className="h-4 w-4 text-muted-foreground" />
                 <span>Start Tour</span>
             </button>
 
             {open && createPortal(
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-                    <div className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl">
-                        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-6 py-5">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 px-4 py-6 backdrop-blur-sm force-dark">
+                    <div className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
                             <div className="flex gap-3">
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
                                     <IconBook className="h-5 w-5" />
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-semibold tracking-tight">Emperor Claw workspace tour</h2>
-                                    <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
+                                    <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
                                         A quick map of where work, context, files, and agent operations live.
                                     </p>
                                 </div>
@@ -91,7 +91,7 @@ export function WorkspaceTour() {
                             <button
                                 type="button"
                                 onClick={closeTour}
-                                className="cursor-pointer rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                className="cursor-pointer rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                                 aria-label="Close workspace tour"
                             >
                                 <IconX className="h-4 w-4" />
@@ -105,26 +105,26 @@ export function WorkspaceTour() {
                                         key={step.href}
                                         href={step.href}
                                         onClick={closeTour}
-                                        className="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                        className="group rounded-lg border border-border bg-muted/40 p-4 transition-colors hover:border-ring hover:bg-accent focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                                     >
                                         <div className="flex flex-col gap-3 min-[380px]:flex-row min-[380px]:items-start">
-                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-400 transition-colors group-hover:text-indigo-300">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors group-hover:text-indigo-300">
                                                 <Icon className="h-4 w-4" />
                                             </div>
                                             <div className="min-w-0">
-                                                <h3 className="text-sm font-semibold text-zinc-100">{step.title}</h3>
-                                                <p className="mt-1 text-sm leading-5 text-zinc-500">{step.body}</p>
+                                                <h3 className="text-sm font-semibold text-foreground">{step.title}</h3>
+                                                <p className="mt-1 text-sm leading-5 text-muted-foreground">{step.body}</p>
                                             </div>
                                         </div>
                                     </Link>
                                 );
                             })}
                         </div>
-                        <div className="flex justify-end border-t border-zinc-800 px-6 py-4">
+                        <div className="flex justify-end border-t border-border px-6 py-4">
                             <button
                                 type="button"
                                 onClick={closeTour}
-                                className="cursor-pointer rounded-md bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                className="cursor-pointer rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                             >
                                 Done
                             </button>
