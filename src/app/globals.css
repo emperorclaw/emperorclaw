@@ -418,8 +418,13 @@
 }
 
 .emperor-mdx-content {
-  color: var(--foreground);
+  color: var(--foreground) !important;
   line-height: 1.7;
+}
+
+.emperor-mdx-content p,
+.emperor-mdx-content li {
+  color: var(--foreground) !important;
 }
 
 .emperor-mdx-content h1 {
