@@ -140,7 +140,7 @@ export function MessagingHub({
     const conversationTitle = activeAgent?.name || "Team Channel";
     const conversationDescription = activeAgent
         ? activeAgent.role || "Direct agent conversation"
-        : "Everyone can see and reply";
+        : "Everyone can see & reply. @mention an agent to get replies.";
 
     return (
         <div className="flex min-w-0 flex-1 overflow-hidden">
@@ -308,7 +308,7 @@ export function MessagingHub({
                                     )}
                                     <div className="min-w-0 text-left">
                                         <h2 className="truncate text-sm font-semibold text-zinc-100 sm:text-base">{conversationTitle}</h2>
-                                        <p className="truncate text-[11px] text-zinc-500">{conversationDescription}</p>
+                                        <p className="text-[11px] text-zinc-500 line-clamp-1">{conversationDescription}</p>
                                     </div>
                                     <IconChevronDown className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-400" />
                                 </button>

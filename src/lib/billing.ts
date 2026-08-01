@@ -34,7 +34,7 @@ export function priceUsageCents(args: {
     const outputTokens = Math.max(0, args.outputTokens || 0);
     const inputCentsPer1M = Math.max(0, args.inputCentsPer1M || 0);
     const outputCentsPer1M = Math.max(0, args.outputCentsPer1M || 0);
-    return Math.round((inputTokens * inputCentsPer1M + outputTokens * outputCentsPer1M) / 1_000_000);
+    return (inputTokens * inputCentsPer1M + outputTokens * outputCentsPer1M) / 1_000_000;
 }
 
 /**

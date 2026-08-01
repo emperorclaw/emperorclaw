@@ -272,24 +272,24 @@ export default function SettingsClient({
                         </article>
                     ))}
                     <article className="rounded-2xl sm:rounded-3xl border border-amber-500/20 bg-amber-500/[0.06] p-4 sm:p-6 lg:col-span-2">
-                        <h2 className="text-sm font-semibold text-amber-100">Operator rule</h2>
-                        <p className="mt-2 text-sm leading-6 text-amber-100/75">
+                        <h2 className="text-sm font-semibold text-amber-800 dark:text-amber-100">Operator rule</h2>
+                        <p className="mt-2 text-sm leading-6 text-amber-700 dark:text-amber-100/75">
                             Create the agent profile in Emperor first, then connect exactly one local runtime profile or workspace to that agent. The runtime can be Hermes or OpenClaw; Emperor should stay runtime-neutral.
                         </p>
                     </article>
                     <article className="rounded-2xl sm:rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 sm:p-6 lg:col-span-2">
                         <div className="flex items-center gap-3">
                             <span className="text-2xl">🤖</span>
-                            <h2 className="text-lg font-semibold text-emerald-100">Quick Setup — Let your own LLM configure it</h2>
+                            <h2 className="text-lg font-semibold text-emerald-800 dark:text-emerald-100">Quick Setup — Let your own LLM configure it</h2>
                         </div>
-                        <p className="mt-2 text-sm leading-6 text-emerald-100/75">
+                        <p className="mt-2 text-sm leading-6 text-emerald-700 dark:text-emerald-100/75">
                             Don&apos;t want to configure everything manually? Copy a prompt below, paste it into <strong>Claude, ChatGPT, Codex, or any LLM</strong>, and it will walk you through the entire setup — installing the runtime, configuring the bridge, writing bootstrap files, and tailoring the agent to your role.
                         </p>
                         <div className="mt-4 grid gap-4 sm:grid-cols-2">
                             {/* Hermes prompt */}
                             <div className="rounded-xl border border-emerald-500/30 bg-black/30 overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">Hermes agent</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">Hermes agent</span>
                                     <CopyPromptButton text={`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
 
 Repo & docs: https://github.com/emperorclaw/emperorclaw
@@ -307,7 +307,7 @@ Please read the relevant docs and guide me step by step through:
 
 Ask me for any info you need along the way.`} />
                                 </div>
-                                <pre className="p-4 text-xs text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
+                                <pre className="p-4 text-xs text-emerald-700 dark:text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
 
 Repo & docs: https://github.com/emperorclaw/emperorclaw
 Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install.sh
@@ -328,7 +328,7 @@ Ask me for any info you need along the way.`}</pre>
                             {/* OpenClaw prompt */}
                             <div className="rounded-xl border border-emerald-500/30 bg-black/30 overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">OpenClaw agent</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">OpenClaw agent</span>
                                     <CopyPromptButton text={`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
 
 Repo & docs: https://github.com/emperorclaw/emperorclaw
@@ -353,7 +353,7 @@ Also give me the plugin install command and bridge config needed to connect to m
 
 Walk me through step by step.`} />
                                 </div>
-                                <pre className="p-4 text-xs text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
+                                <pre className="p-4 text-xs text-emerald-700 dark:text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
 
 Repo & docs: https://github.com/emperorclaw/emperorclaw
 OpenClaw agent docs: see docs/v1.1/openclaw-agents.md in the repo
@@ -378,8 +378,8 @@ Also give me the plugin install command and bridge config needed to connect to m
 Walk me through step by step.`}</pre>
                             </div>
                         </div>
-                        <p className="mt-3 text-xs text-emerald-100/60">
-                            Replace <code className="bg-emerald-500/15 px-1 rounded text-emerald-200">[DESCRIBE YOUR ROLE HERE]</code> with your agent&apos;s actual role — e.g. &quot;SEO Specialist&quot;, &quot;Lead Generation Agent&quot;, &quot;Technical Implementation Agent&quot;. The more specific you are, the better the result.
+                        <p className="mt-3 text-xs text-emerald-700/80 dark:text-emerald-100/60">
+                            Replace <code className="bg-emerald-500/15 px-1 rounded text-emerald-800 dark:text-emerald-200">[DESCRIBE YOUR ROLE HERE]</code> with your agent&apos;s actual role — e.g. &quot;SEO Specialist&quot;, &quot;Lead Generation Agent&quot;, &quot;Technical Implementation Agent&quot;. The more specific you are, the better the result.
                         </p>
                     </article>
                 </section>
@@ -421,10 +421,10 @@ Walk me through step by step.`}</pre>
                         {activeSecret && (
                             <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
                                 <div className="flex items-start gap-3">
-                                    <IconAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+                                    <IconAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
                                     <div>
-                                        <h3 className="font-medium text-emerald-200">Token created</h3>
-                                        <p className="mt-1 text-sm text-emerald-100/75">Copy it now. Emperor will not show this secret again.</p>
+                                        <h3 className="font-medium text-emerald-800 dark:text-emerald-200">Token created</h3>
+                                        <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-100/75">Copy it now. Emperor will not show this secret again.</p>
                                     </div>
                                 </div>
                                 <div className="mt-4 flex overflow-hidden rounded-xl border border-white/10 bg-black/35">

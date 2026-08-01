@@ -253,6 +253,13 @@
       "when": 1785492000000,
       "tag": "0035_storage-mirrors",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785581182226,
+      "tag": "0036_wild_sersi",
+      "breakpoints": true
     }
   ]
 }
