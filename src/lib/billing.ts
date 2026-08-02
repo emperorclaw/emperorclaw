@@ -19,10 +19,10 @@ export function splitLegacyTokens(total: number): { inputTokens: number; outputT
 }
 
 /**
- * Cost in whole cents for a usage sample.
+ * Cost in cents for a usage sample, preserving fractional cents.
  *
  * Prices are stored as **cents per 1,000,000 tokens** (e.g. 250 = $2.50 / 1M).
- * costCents = round((inputTokens * inputCentsPer1M + outputTokens * outputCentsPer1M) / 1e6)
+ * costCents = (inputTokens * inputCentsPer1M + outputTokens * outputCentsPer1M) / 1e6
  */
 export function priceUsageCents(args: {
     inputTokens: number;

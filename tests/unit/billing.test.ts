@@ -18,10 +18,10 @@ test("priceUsageCents matches cents-per-1M pricing (gpt-4o: 250/1000 → $2.50/$
     assert.equal(priceUsageCents({ inputTokens: 1_000_000, outputTokens: 0, inputCentsPer1M: 250, outputCentsPer1M: 1000 }), 250);
     // 1M output tokens at 1000 cents/1M = 1000 cents ($10.00)
     assert.equal(priceUsageCents({ inputTokens: 0, outputTokens: 1_000_000, inputCentsPer1M: 250, outputCentsPer1M: 1000 }), 1000);
-    // Combined + rounding
+    // Combined usage
     assert.equal(priceUsageCents({ inputTokens: 500_000, outputTokens: 250_000, inputCentsPer1M: 250, outputCentsPer1M: 1000 }), 375);
-    // Sub-cent usage rounds to 0
-    assert.equal(priceUsageCents({ inputTokens: 100, outputTokens: 100, inputCentsPer1M: 14, outputCentsPer1M: 28 }), 0);
+    // Sub-cent usage preserves precision
+    assert.equal(priceUsageCents({ inputTokens: 100, outputTokens: 100, inputCentsPer1M: 14, outputCentsPer1M: 28 }), 0.0042);
     // Negative/garbage inputs are clamped, never NaN
     assert.equal(priceUsageCents({ inputTokens: -5, outputTokens: 0, inputCentsPer1M: 250, outputCentsPer1M: 1000 }), 0);
 });
