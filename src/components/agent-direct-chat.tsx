@@ -77,6 +77,8 @@ export function AgentDirectChat({
     const [isRecording, setIsRecording] = useState(false);
     const [hasOlderMessages, setHasOlderMessages] = useState(false);
     const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+    const [isAtBottom, setIsAtBottom] = useState(true);
+    const [unreadCount, setUnreadCount] = useState(0);
     const [recordingSecs, setRecordingSecs] = useState(0);
     const audioBlobRef = useRef<Blob | null>(null);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
@@ -88,6 +90,8 @@ export function AgentDirectChat({
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastSeenAtRef = useRef<string | null>(null);
     const preserveScrollHeightRef = useRef<number | null>(null);
+    const forceScrollToBottomRef = useRef(true);
+    const isAtBottomRef = useRef(true);
 
     const rowVirtualizer = useVirtualizer({
         count: messages.length,
@@ -131,9 +135,12 @@ export function AgentDirectChat({
                     const prepended = nextMessages.filter((message) => !existingIds.has(message.id));
                     return prepended.length > 0 ? [...prepended, ...prev] : prev;
                 }
-                if (!since) return nextMessages;
+                if (!since && prev.length === 0) return nextMessages;
                 const existingIds = new Set(prev.map((message) => message.id));
                 const appended = nextMessages.filter((message) => !existingIds.has(message.id));
+                if (appended.length > 0 && !isAtBottomRef.current && since) {
+                    setUnreadCount((count) => count + appended.length);
+                }
                 return appended.length > 0 ? [...prev, ...appended] : prev;
             });
 
@@ -210,6 +217,10 @@ export function AgentDirectChat({
             setThread(null);
             setParticipants([]);
             lastSeenAtRef.current = null;
+            forceScrollToBottomRef.current = true;
+            isAtBottomRef.current = true;
+            setIsAtBottom(true);
+            setUnreadCount(0);
 
             try {
                 await loadMessages();
@@ -234,15 +245,9 @@ export function AgentDirectChat({
             });
         }, 3000);
 
-        // Safety net: full reload every 15s to catch any missed messages
-        const fullReloadInterval = setInterval(() => {
-            void loadMessages({}).catch(() => {});
-        }, 15000);
-
         return () => {
             active = false;
             clearInterval(interval);
-            clearInterval(fullReloadInterval);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         };
     }, [loadMessages]);
@@ -255,11 +260,32 @@ export function AgentDirectChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            if (messages.length > 0) {
-                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+            if ((isAtBottom || forceScrollToBottomRef.current) && messages.length > 0) {
+                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: forceScrollToBottomRef.current ? "auto" : "smooth" });
+                forceScrollToBottomRef.current = false;
+                setUnreadCount(0);
             }
         }
-    }, [messages, rowVirtualizer]);
+    }, [isAtBottom, messages, rowVirtualizer]);
+
+    const handleScroll = () => {
+        const element = scrollRef.current;
+        if (!element) return;
+        const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 48;
+        isAtBottomRef.current = atBottom;
+        setIsAtBottom(atBottom);
+        if (atBottom) setUnreadCount(0);
+    };
+
+    const scrollToLatest = () => {
+        forceScrollToBottomRef.current = true;
+        isAtBottomRef.current = true;
+        setIsAtBottom(true);
+        setUnreadCount(0);
+        if (messages.length > 0) {
+            rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "smooth" });
+        }
+    };
 
 
 
@@ -389,6 +415,9 @@ export function AgentDirectChat({
 
         setIsSending(true);
         setDraft("");
+        forceScrollToBottomRef.current = true;
+        isAtBottomRef.current = true;
+        setIsAtBottom(true);
 
         try {
             const res = await fetch("/api/chat", {
@@ -435,7 +464,7 @@ export function AgentDirectChat({
     const agentLastReadAt = participants.find(p => p.participantType === 'agent')?.lastReadAt;
 
     return (
-        <div className={cn("bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
+        <div className={cn("relative bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
             {!hideHeader && (
                 <div className="flex items-center justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/40">
                     <div>
@@ -458,7 +487,7 @@ export function AgentDirectChat({
                 </div>
             )}
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
+            <div ref={scrollRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         Loading direct thread...
@@ -583,6 +612,16 @@ export function AgentDirectChat({
                 )}
             </div>
 
+            {unreadCount > 0 && !isAtBottom && (
+                <button
+                    type="button"
+                    onClick={scrollToLatest}
+                    className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-emerald-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                >
+                    {unreadCount} new message{unreadCount === 1 ? "" : "s"} · Jump to latest
+                </button>
+            )}
+
             <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {micError && (
                     <div className="flex items-start gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
@@ -643,13 +682,20 @@ export function AgentDirectChat({
                 {!isRecording && !audioPreviewUrl && (
                 <form onSubmit={handleSend}>
                 <div className="flex items-center gap-2 sm:gap-3">
-                    <input
-                        type="text"
+                    <textarea
                         value={draft}
                         onChange={(event) => handleTyping(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                                event.preventDefault();
+                                event.currentTarget.form?.requestSubmit();
+                            }
+                        }}
                         placeholder={`Message ${agentName} directly...`}
                         aria-label={`Message ${agentName}`}
-                        className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 sm:rounded-full sm:px-4"
+                        aria-describedby="direct-message-shortcut"
+                        rows={1}
+                        className="max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 sm:px-4"
                     />
                     <button
                         type="button"
@@ -670,6 +716,9 @@ export function AgentDirectChat({
                         <span className="hidden sm:inline">{isSending ? "Sending" : "Send"}</span>
                     </button>
                 </div>
+                <p id="direct-message-shortcut" className="mt-1.5 px-1 text-[10px] text-zinc-600">
+                    Enter to send · Shift+Enter for a new line
+                </p>
             </form>
                 )}
             </div>

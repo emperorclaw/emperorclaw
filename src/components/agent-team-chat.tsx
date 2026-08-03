@@ -99,6 +99,7 @@ export function AgentTeamChat({
         initialMessages.length > 0 ? messageCursor(initialMessages[initialMessages.length - 1].createdAt) : null
     );
     const [isAtBottom, setIsAtBottom] = useState(true);
+    const forceScrollToBottomRef = useRef(true);
 
     const rowVirtualizer = useVirtualizer({
         count: messages.length,
@@ -159,6 +160,9 @@ export function AgentTeamChat({
                         const existingIds = new Set(prev.map((m) => m.id));
                         const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
                         if (newMessages.length === 0) return prev;
+                        if (!isAtBottom) {
+                            setUnreadCount((count) => count + newMessages.length);
+                        }
                         return [...prev, ...newMessages];
                     });
                     const latest = nextMessages[nextMessages.length - 1];
@@ -168,9 +172,6 @@ export function AgentTeamChat({
                             ? latestCreatedAt
                             : prevLast;
                     });
-                    if (!isAtBottom) {
-                        setUnreadCount((c) => c + nextMessages.length);
-                    }
                 }
             } catch (err) {
                 console.error("Failed to poll agent chat", err);
@@ -189,8 +190,9 @@ export function AgentTeamChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            if (isAtBottom && messages.length > 0) {
-                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+            if ((isAtBottom || forceScrollToBottomRef.current) && messages.length > 0) {
+                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: forceScrollToBottomRef.current ? "auto" : "smooth" });
+                forceScrollToBottomRef.current = false;
                 setUnreadCount(0);
             }
         }
@@ -199,9 +201,18 @@ export function AgentTeamChat({
     const handleScroll = () => {
         if (!scrollRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-        const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - 48;
         setIsAtBottom(atBottom);
         if (atBottom) setUnreadCount(0);
+    };
+
+    const scrollToLatest = () => {
+        forceScrollToBottomRef.current = true;
+        setIsAtBottom(true);
+        setUnreadCount(0);
+        if (messages.length > 0) {
+            rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "smooth" });
+        }
     };
 
     // Mark the shared team thread read whenever we're scrolled to the
@@ -221,6 +232,8 @@ export function AgentTeamChat({
         if (!text || isSending) return;
         setIsSending(true);
         setDraft("");
+        forceScrollToBottomRef.current = true;
+        setIsAtBottom(true);
         try {
             const res = await fetch("/api/chat", {
                 method: "POST",
@@ -268,7 +281,7 @@ export function AgentTeamChat({
     }
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="relative flex h-full flex-col">
             <div className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800/80 px-3 py-2 sm:px-4">
                 <div className="flex min-w-0 items-center gap-2 sm:space-x-3">
                     <h2 className="hidden text-sm font-medium text-zinc-300 lg:block">Agent Team Chat</h2>
@@ -288,6 +301,16 @@ export function AgentTeamChat({
                     <span className="hidden text-xs font-medium uppercase tracking-tight text-zinc-500 xs:inline sm:inline">Live Feed</span>
                 </div>
             </div>
+
+            {unreadCount > 0 && !isAtBottom && (
+                <button
+                    type="button"
+                    onClick={scrollToLatest}
+                    className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-cyan-500/30 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-cyan-300 shadow-lg transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                >
+                    {unreadCount} new message{unreadCount === 1 ? "" : "s"} · Jump to latest
+                </button>
+            )}
 
             <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {messages.length === 0 ? (
@@ -475,6 +498,7 @@ export function AgentTeamChat({
                             <IconSend className="h-4 w-4 text-white" />
                         </button>
                     </div>
+                    <p className="mt-1.5 px-1 text-[10px] text-zinc-600">Enter to send · Shift+Enter for a new line</p>
                 </form>
             ) : (
                 <div className="flex items-center justify-center space-x-2 border-t border-zinc-800/80 bg-zinc-900/30 p-3">
