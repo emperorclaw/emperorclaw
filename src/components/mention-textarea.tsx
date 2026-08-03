@@ -106,7 +106,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                 setHighlightIndex((i) => (i - 1 + filteredAgents.length) % filteredAgents.length);
                 return;
             }
-            if (event.key === "Enter" || event.key === "Tab") {
+            if ((event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) || event.key === "Tab") {
                 event.preventDefault();
                 selectMention(filteredAgents[highlightIndex]);
                 return;
@@ -118,7 +118,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                 return;
             }
         }
-        if (event.key === "Enter" && !event.shiftKey) {
+        if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             onSubmit?.();
         }
