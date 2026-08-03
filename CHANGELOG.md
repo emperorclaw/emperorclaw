@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.10] — 2026-08-03
+
+### Changed
+
+- New direct and team chat messages now merge into the live conversation
+  without repeatedly replacing the message list or forcing readers back to the
+  bottom while they are reviewing older messages.
+- Conversations smoothly follow incoming messages when already near the latest
+  message and show a new-message control when the reader has scrolled away.
+- Message composers support multiline drafts: Enter sends, while Shift+Enter
+  inserts a new line. Mention selection and composed-language input remain
+  keyboard-safe.
+
 ## [0.8.0] — 2026-07-31
 
 ### Added
