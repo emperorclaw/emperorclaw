@@ -4,6 +4,11 @@ import { promisify } from "util";
 import { requirePlatformAdminSession } from "@/lib/platform-admin";
 import fs from "fs";
 import http from "http";
+import { and, isNotNull, isNull } from "drizzle-orm";
+import { DOCKER_SOCKET, isDocker, dockerCall, dockerPull, getOwnContainerId } from "@/lib/docker";
+import { db } from "@/db";
+import { agents } from "@/db/schema";
+import { HERMES_IMAGE, recreateHermesContainer } from "@/lib/hermes-provisioning";
 
 export const dynamic = "force-dynamic";
 const execAsync = promisify(exec);
@@ -13,87 +18,13 @@ const execAsync = promisify(exec);
 // installer uses $HOME/emperorclaw); override with EMPEROR_UPDATE_DIR if needed.
 const PROJECT_DIR = process.env.EMPEROR_UPDATE_DIR || process.cwd();
 const GITHUB_RELEASES_API = "https://api.github.com/repos/emperorclaw/emperorclaw/releases/latest";
-const DOCKER_SOCKET = "/var/run/docker.sock";
 const IMAGE = "ghcr.io/emperorclaw/emperorclaw:latest";
-
-function isDocker(): boolean {
-    try { return fs.existsSync("/.dockerenv"); } catch { return false; }
-}
 
 type UpdateStep = {
     step: string;
     status: "running" | "ok" | "error";
     output: string;
 };
-
-// ---- Docker Engine API over Unix socket ----
-
-function dockerCall(method: string, path: string, body?: unknown): Promise<{ code: number; data: unknown }> {
-    return new Promise((resolve, reject) => {
-        const opts: http.RequestOptions = {
-            socketPath: DOCKER_SOCKET,
-            method,
-            path,
-            headers: { "Content-Type": "application/json" },
-            timeout: method === "POST" && path.includes("/images/create") ? 300_000 : 30_000,
-        };
-        if (method === "POST" && path.includes("/images/create")) {
-            (opts as Record<string, unknown>).agent = false;
-        }
-        const req = http.request(opts, (res) => {
-            const chunks: Buffer[] = [];
-            res.on("data", (c: Buffer) => chunks.push(c));
-            res.on("end", () => {
-                const raw = Buffer.concat(chunks).toString("utf-8");
-                try { resolve({ code: res.statusCode ?? 500, data: JSON.parse(raw) }); }
-                catch { resolve({ code: res.statusCode ?? 500, data: raw }); }
-            });
-            res.on("error", reject);
-        });
-        req.on("error", reject);
-        if (body !== undefined) req.write(JSON.stringify(body));
-        req.end();
-    });
-}
-
-async function dockerPull(): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const req = http.request({
-            socketPath: DOCKER_SOCKET,
-            method: "POST",
-            path: `/images/create?fromImage=${encodeURIComponent(IMAGE)}`,
-            timeout: 300_000,
-            agent: false,
-        }, (res) => {
-            const chunks: Buffer[] = [];
-            res.on("data", (c: Buffer) => chunks.push(c));
-            res.on("end", () => {
-                if (res.statusCode !== 200) {
-                    return reject(new Error(`Pull failed: HTTP ${res.statusCode}`));
-                }
-                const lines = Buffer.concat(chunks).toString("utf-8").trim().split("\n");
-                const last = JSON.parse(lines[lines.length - 1] || "{}");
-                resolve(last.status || last.error || "Image pulled");
-            });
-            res.on("error", reject);
-        });
-        req.on("error", reject);
-        req.end();
-    });
-}
-
-async function getOwnContainerId(): Promise<string> {
-    try {
-        const cgroup = fs.readFileSync("/proc/self/cgroup", "utf-8");
-        const match = cgroup.match(/[0-9a-f]{64}/);
-        if (match) return match[0];
-    } catch { /* fall through */ }
-    try {
-        const h = fs.readFileSync("/etc/hostname", "utf-8").trim();
-        if (h.length === 12) return h;
-    } catch { /* fall through */ }
-    throw new Error("Cannot determine container ID");
-}
 
 // ---- Pre-update DB backup (Docker path) ----
 // Migrations run on the new container's startup and are effectively
@@ -251,7 +182,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
 
     // 4. Pull latest image
     try {
-        const msg = await dockerPull();
+        const msg = await dockerPull(IMAGE);
         steps.push({ step: "pull-image", status: "ok", output: msg });
     } catch (e) {
         steps.push({ step: "pull-image", status: "error", output: (e as Error).message });
@@ -319,6 +250,46 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
 
     // 8. Cleanup old
     try { await dockerCall("DELETE", `/containers/${cid}?force=true`); } catch { /* best effort */ }
+
+    // 9. Roll Hermes sibling containers onto the latest image. Fail-open per
+    // agent — one agent's recreate failing must never undo the already-
+    // completed app update above, nor block reporting on the other agents.
+    try {
+        const hermesAgents = await db.select({ id: agents.id, name: agents.name }).from(agents).where(
+            and(isNull(agents.deletedAt), isNotNull(agents.containerId))
+        );
+
+        if (hermesAgents.length > 0) {
+            try {
+                const msg = await dockerPull(HERMES_IMAGE);
+                steps.push({ step: "pull-hermes-image", status: "ok", output: msg });
+            } catch (e) {
+                // Recreate calls below will still attempt their own pull per
+                // agent (provisionHermesContainer), so a failed shared pull
+                // here is reported but not fatal to the loop.
+                steps.push({ step: "pull-hermes-image", status: "error", output: (e as Error).message });
+            }
+
+            for (const agent of hermesAgents) {
+                try {
+                    const result = await recreateHermesContainer(agent.id);
+                    steps.push({
+                        step: `recreate-hermes-${agent.name}`,
+                        status: result.success ? "ok" : "error",
+                        output: result.message,
+                    });
+                } catch (e) {
+                    steps.push({
+                        step: `recreate-hermes-${agent.name}`,
+                        status: "error",
+                        output: (e as Error).message,
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        steps.push({ step: "recreate-hermes-agents", status: "error", output: (e as Error).message });
+    }
 
     return steps;
 }

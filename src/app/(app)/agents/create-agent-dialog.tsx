@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { agentRoleTemplates, getAgentTemplate, type AgentRoleTemplate } from "@/lib/agent-templates";
+import { RoleTemplatePicker } from "./role-template-picker";
+import { getAgentTemplate, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/agent-providers";
 import { ModelSearchSelect } from "@/components/model-search-select";
 import { cn } from "@/lib/utils";
@@ -15,9 +16,41 @@ const providers = getAvailableProviders();
 
 type PricingOption = { provider: string; model: string; label: string; inputPricePer1k: number; outputPricePer1k: number };
 
-export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentId: string) => void }) {
+export function CreateAgentDialog({
+    onAgentCreated,
+    open: controlledOpen,
+    onOpenChange,
+    triggerVariant = "default",
+    hideTrigger = false,
+}: {
+    onAgentCreated?: (agentId: string) => void;
+    /**
+     * Optional controlled-mode props. Omit both for the original self-contained
+     * (uncontrolled) usage — the dialog manages its own open state via its
+     * built-in trigger button, exactly as before. Passed by `agents-client.tsx`
+     * so `EasySetupDialog`'s "Advanced" option can open this dialog
+     * programmatically without duplicating any of its logic.
+     */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    /** Visual demotion when Easy Setup is the primary action — no behavior change. */
+    triggerVariant?: "default" | "outline";
+    /**
+     * Suppress the built-in "Hire Agent" trigger button entirely — used when
+     * EasySetupDialog is the sole entry point (its own "Advanced" option opens
+     * this dialog programmatically via `open`). Avoids showing two buttons
+     * that both lead to the same Advanced flow.
+     */
+    hideTrigger?: boolean;
+}) {
     const router = useRouter();
-    const [open, setOpen] = useState(false);
+    const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : uncontrolledOpen;
+    const setOpen = (o: boolean) => {
+        if (!isControlled) setUncontrolledOpen(o);
+        onOpenChange?.(o);
+    };
     const [step, setStep] = useState<Step>("role");
     const [selectedRole, setSelectedRole] = useState<AgentRoleTemplate | null>(null);
     const [selectedProvider, setSelectedProvider] = useState<AgentProvider>(providers[0]);
@@ -120,9 +153,11 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
 
     return (
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
-            <DialogTrigger asChild>
-                <Button variant="default" className="shadow-sm">Hire Agent</Button>
-            </DialogTrigger>
+            {!hideTrigger && (
+                <DialogTrigger asChild>
+                    <Button variant={triggerVariant} className="shadow-sm">Hire Agent</Button>
+                </DialogTrigger>
+            )}
             <DialogContent className="sm:max-w-[580px] bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">
@@ -139,39 +174,19 @@ export function CreateAgentDialog({ onAgentCreated }: { onAgentCreated?: (agentI
 
                 {/* Step 1: Role Selection */}
                 {step === "role" && (
-                    <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto py-2">
-                        {agentRoleTemplates.map((template) => (
-                            <button
-                                key={template.id}
-                                type="button"
-                                onClick={() => handleRoleSelect(template.id)}
-                                className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 text-left transition-colors hover:border-cyan-500/40 hover:bg-cyan-500/5 group"
-                            >
-                                <span className="text-2xl shrink-0">{template.emoji}</span>
-                                <div className="min-w-0">
-                                    <span className="block text-sm font-medium text-zinc-100 group-hover:text-cyan-200 transition-colors">
-                                        {template.title}
-                                    </span>
-                                    <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5 line-clamp-2">
-                                        {template.description}
-                                    </span>
-                                </div>
-                            </button>
-                        ))}
-                        <button
-                            type="button"
-                            onClick={() => { setSelectedRole(null); setName(""); setStep("provider"); }}
-                            className="flex items-center gap-3 rounded-xl border border-dashed border-zinc-700 bg-zinc-900/40 p-3 text-left transition-colors hover:border-zinc-500 hover:bg-zinc-900/70"
-                        >
-                            <span className="text-2xl shrink-0">✨</span>
-                            <div className="min-w-0">
-                                <span className="block text-sm font-medium text-zinc-400">Custom Role</span>
-                                <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">
-                                    Blank slate
-                                </span>
-                            </div>
-                        </button>
-                    </div>
+                    <RoleTemplatePicker
+                        selectedId={selectedRole?.id ?? null}
+                        allowCustom
+                        onSelect={(roleId) => {
+                            if (roleId) {
+                                handleRoleSelect(roleId);
+                            } else {
+                                setSelectedRole(null);
+                                setName("");
+                                setStep("provider");
+                            }
+                        }}
+                    />
                 )}
 
                 {/* Step 2: Provider Selection */}
