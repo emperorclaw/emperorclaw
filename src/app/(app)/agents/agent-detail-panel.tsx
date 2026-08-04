@@ -15,6 +15,7 @@ import {
     IconLoader,
     IconAlertTriangle,
     IconPencil,
+    IconRefresh,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
@@ -23,6 +24,7 @@ import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
 import { getAgentTemplate } from "@/lib/agent-templates";
 import { ModelSearchSelect } from "@/components/model-search-select";
+import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -52,6 +54,7 @@ type AgentDetailData = {
         monthlyBudgetCents?: number;
         monthlyTokenUsage?: number;
         budgetStatus?: string;
+        containerId?: string | null;
     };
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
@@ -121,6 +124,8 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
     const [editingLlm, setEditingLlm] = useState(false);
     const [saving, setSaving] = useState(false);
     const editingLlmProviderRef = useRef("");
+    const [recreating, setRecreating] = useState(false);
+    const [recreateResult, setRecreateResult] = useState<{ success: boolean; message: string; outputs: SetupOutputEntry[] } | null>(null);
     const [pricingOpts, setPricingOpts] = useState<{ model: string; label: string; provider: string; inputPricePer1k: number; outputPricePer1k: number; active: boolean }[]>([]);
 
     useEffect(() => {
@@ -178,6 +183,33 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
         }
     };
 
+    const handleRecreateRuntime = async () => {
+        setRecreating(true);
+        setRecreateResult(null);
+        try {
+            const res = await fetch(`/api/agents/${agent.id}/recreate-runtime`, { method: "POST" });
+            const result = await res.json().catch(() => ({}));
+            setRecreateResult({
+                success: !!result.success,
+                message: result.message || (result.success ? "Runtime recreated." : "Could not recreate runtime."),
+                outputs: result.outputs || [],
+            });
+            if (result.success) {
+                toast.success(result.message || "Runtime recreated");
+                const refreshed = await fetch(`/api/agents/${agent.id}`).then((r) => r.json()).catch(() => null);
+                if (refreshed) setData(refreshed);
+            } else {
+                toast.error(result.message || "Could not recreate runtime");
+            }
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Network error";
+            setRecreateResult({ success: false, message, outputs: [] });
+            toast.error(message);
+        } finally {
+            setRecreating(false);
+        }
+    };
+
     return (
         <main className="emperor-panel rounded-2xl overflow-hidden">
             {/* Header */}
@@ -215,6 +247,17 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {agent.containerId && (
+                        <button
+                            type="button"
+                            disabled={recreating}
+                            onClick={handleRecreateRuntime}
+                            title="Recreate Runtime — stop, remove, and re-provision this agent's Hermes container"
+                            className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors disabled:opacity-50"
+                        >
+                            {recreating ? <IconLoader className="h-4 w-4 animate-spin" /> : <IconRefresh className="h-4 w-4" />}
+                        </button>
+                    )}
                     <Link
                         href={`/agents/${agent.id}`}
                         className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
@@ -225,6 +268,20 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
                 </div>
             </div>
+
+            {/* Recreate Runtime result — shown inline after the action runs */}
+            {recreateResult && (
+                <div className={cn(
+                    "border-b p-3 sm:p-4 space-y-2",
+                    recreateResult.success ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-rose-500/20 bg-rose-500/[0.04]"
+                )}>
+                    <div className="flex items-center gap-2">
+                        {recreateResult.success ? <IconCircleCheck className="h-4 w-4 text-emerald-400" /> : <IconAlertTriangle className="h-4 w-4 text-rose-400" />}
+                        <span className={cn("text-xs", recreateResult.success ? "text-emerald-200" : "text-rose-200")}>{recreateResult.message}</span>
+                    </div>
+                    <SetupOutputLog outputs={recreateResult.outputs} />
+                </div>
+            )}
 
             {/* Setup banner — only for offline agents that need configuration */}
             {agent.status === "offline" && (
@@ -684,15 +741,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                                 <span className={setupResult.success ? "text-emerald-200" : "text-rose-200"}>{setupResult.message}</span>
                             </div>
                             {setupResult.outputs && setupResult.outputs.length > 0 && (
-                                <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
-                                    {setupResult.outputs.map((o: any, i: number) => (
-                                        <div key={i} className={`rounded px-2 py-1 font-mono text-[10px] ${o.exitCode === 0 ? "bg-black/30 text-emerald-100/60" : "bg-black/30 text-rose-100/60"}`}>
-                                            <div className="text-zinc-500 mb-0.5">$ {o.command}</div>
-                                            {o.stdout && <div className="text-zinc-300">{o.stdout}</div>}
-                                            {o.stderr && <div className="text-rose-300/70">{o.stderr}</div>}
-                                        </div>
-                                    ))}
-                                </div>
+                                <SetupOutputLog outputs={setupResult.outputs} />
                             )}
                         </div>
                     )}

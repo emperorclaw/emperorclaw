@@ -1,0 +1,6 @@
+# integrations/hermes/emperor-claw is its own git checkout (plugin repo) —
+# keep its .git history and Python cache out of the runtime image.
+emperor-claw/.git
+emperor-claw/__pycache__
+**/__pycache__
+**/*.pyc

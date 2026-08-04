@@ -72,18 +72,25 @@ export async function POST(req: NextRequest) {
         const totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0) || tokensUsed || 0;
         if (totalTokens <= 0) return NextResponse.json({ ok: true, agentId, monthlyTokenUsage: 0 });
 
-        // Model: ALWAYS use agent's configured llmModel from DB.
-        // The bridge may send a stale/wrong model name — the admin's choice in Emperor UI is authoritative.
+        // Model: prefer the agent's configured llmModel from DB (admin's choice
+        // in Emperor UI is authoritative), falling back to whatever real model
+        // name the bridge reports. NEVER fall back to the provider name here —
+        // "openai" is not a model, and persisting it as one (see llmModel below)
+        // used to corrupt the agent's own config: the next container recreate
+        // reads llmModel back out and tries to run Hermes against a model
+        // literally named "openai", which fails outright. The provider is only
+        // used as a last-resort PRICING lookup key, never persisted as a model.
         const [agentCfg] = await db.select({ m: agents.llmModel, p: agents.llmProvider })
             .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
-        const resolvedModel = agentCfg?.m || agentCfg?.p || model || "deepseek-chat";
+        const persistedModel = agentCfg?.m || model || null;
+        const pricingLookupModel = persistedModel || agentCfg?.p || "deepseek-chat";
 
         const split = splitLegacyTokens(totalTokens);
         const inputT = inputTokens ?? split.inputTokens;
         const outputT = outputTokens ?? split.outputTokens;
 
         // Prices are cents per 1M tokens (e.g. 14 = $0.14/1M). See src/lib/billing.ts.
-        const pricing = await lookupPricing(resolvedModel);
+        const pricing = await lookupPricing(pricingLookupModel);
         const costCents = pricing
             ? priceUsageCents({
                 inputTokens: inputT,
@@ -96,14 +103,14 @@ export async function POST(req: NextRequest) {
         const [updated] = await db.update(agents).set({
             monthlyTokenUsage: sql`COALESCE(monthly_token_usage, 0) + ${totalTokens}`,
             monthlyCostCents: sql`COALESCE(monthly_cost_cents, 0) + ${costCents}`,
-            llmModel: resolvedModel,
+            ...(persistedModel ? { llmModel: persistedModel } : {}),
         }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt)))
             .returning({ id: agents.id, monthlyTokenUsage: agents.monthlyTokenUsage, monthlyCostCents: agents.monthlyCostCents, monthlyBudgetCents: agents.monthlyBudgetCents, budgetStatus: agents.budgetStatus });
 
         if (!updated) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
         // Log
-        await db.insert(tokenUsageLog).values({ companyId, agentId, model: resolvedModel, inputTokens: inputT, outputTokens: outputT, costCents });
+        await db.insert(tokenUsageLog).values({ companyId, agentId, model: pricingLookupModel, inputTokens: inputT, outputTokens: outputT, costCents });
 
         // Budget enforcement (single source of truth: src/lib/billing.ts)
         const bs = nextBudgetStatus({
@@ -115,7 +122,7 @@ export async function POST(req: NextRequest) {
             await db.update(agents).set({ budgetStatus: bs }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
         }
 
-        return NextResponse.json({ ok: true, agentId: updated.id, monthlyTokenUsage: updated.monthlyTokenUsage, monthlyCostCents: updated.monthlyCostCents, budgetStatus: bs, model: resolvedModel, costCents });
+        return NextResponse.json({ ok: true, agentId: updated.id, monthlyTokenUsage: updated.monthlyTokenUsage, monthlyCostCents: updated.monthlyCostCents, budgetStatus: bs, model: pricingLookupModel, costCents });
     } catch (error) {
         console.error("report-usage error:", error);
         return NextResponse.json({ error: "Internal error" }, { status: 500 });

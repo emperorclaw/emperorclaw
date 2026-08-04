@@ -9,6 +9,8 @@ import path from "path";
 import os from "os";
 import fs from "fs";
 import crypto from "crypto";
+import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
+import { provisionHermesContainer } from "@/lib/hermes-provisioning";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +71,28 @@ export async function POST(
 
     // ── Hermes: full local setup ────────────────────────────────────
     if (provider.id === "hermes") {
+        // Docker sibling-container path takes over entirely when the app is
+        // itself running in Docker with the socket mounted — a bare exec/spawn
+        // inside this container would die on the next self-update/restart and
+        // Hermes isn't even installed in the app image. Falls through to the
+        // existing bare-metal logic below, byte-for-byte, when Docker isn't
+        // available (true bare metal, or an install that hasn't mounted the
+        // socket yet).
+        const dockerAvailable = isDocker() && fs.existsSync(DOCKER_SOCKET);
+        if (dockerAvailable) {
+            const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
+            if (result.success && result.containerId) {
+                await db.update(agents).set({
+                    containerId: result.containerId,
+                    containerName: result.containerName,
+                    status: "online",
+                    lastSeenAt: new Date(),
+                }).where(eq(agents.id, agent.id));
+            }
+            if (!result.success) return fail(outputs.concat(result.outputs), result.message, agent.id);
+            return NextResponse.json({ success: true, message: result.message, token: rawToken, outputs: outputs.concat(result.outputs) });
+        }
+
         // 1. Create profile (skip if exists — idempotent)
         const createCmd = `hermes profile create ${safeName} --clone --description "${role.replace(/"/g, '\\"')}" --no-alias`;
         const r1 = await runCmd(createCmd, 30_000);

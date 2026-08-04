@@ -5,6 +5,7 @@ import { getCompanyId } from "@/lib/auth";
 import { and, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { encryptSecretPayload } from "@/lib/secrets";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
 
+        const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
+        let llmApiKeyEncrypted: string | null = null;
+        let llmApiKeyVersion: string | null = null;
+        if (llmApiKey) {
+            const encrypted = encryptSecretPayload({ apiKey: llmApiKey });
+            if (!encrypted) {
+                return NextResponse.json(
+                    { error: "EMPEROR_CLAW_MASTER_KEY is not configured; cannot store LLM API keys." },
+                    { status: 500 }
+                );
+            }
+            llmApiKeyEncrypted = encrypted.encryptedSecret;
+            llmApiKeyVersion = encrypted.keyVersion;
+        }
+
         const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
         const llmConfiguration = resolveAgentModelConfiguration({
             current: { llmProvider: null, llmModel: null },
@@ -86,6 +102,8 @@ export async function POST(req: NextRequest) {
             currentLoad: 0,
             llmProvider: llmConfiguration.llmProvider,
             llmModel: llmConfiguration.llmModel,
+            llmApiKeyEncrypted,
+            llmApiKeyVersion,
         }).returning();
 
         if (memory) {
@@ -99,7 +117,11 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        return NextResponse.json({ agent }, { status: 201 });
+        const { llmApiKeyEncrypted: _redactedEncrypted, llmApiKeyVersion: _redactedVersion, ...safeAgent } = agent;
+        void _redactedEncrypted;
+        void _redactedVersion;
+
+        return NextResponse.json({ agent: safeAgent }, { status: 201 });
     } catch (error: unknown) {
         console.error("Agent create error:", error);
         const message = error instanceof Error ? error.message : "Internal Server Error";
