@@ -9,6 +9,25 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.12] — 2026-08-05
+
+### Added
+
+- **A real, spec-compliant MCP server at `/mcp`.** External clients like
+  Claude Desktop or Codex can now connect and discover 19 typed tools
+  across agents, tasks, projects, Knowledge & Rules, and messaging — with
+  a per-company `instructions` field carrying operating doctrine and
+  business rules automatically, instead of seeing nothing usable.
+- Every Hermes agent now also connects to this same MCP server
+  automatically, alongside its existing tools — no behavior change, just
+  a second, richer toolset available on top of what was already there.
+
+### Fixed
+
+- Agent reads (REST and the new MCP tools) no longer return the encrypted
+  LLM API key ciphertext/IV/tag — it was being included in agent list/get
+  responses with no legitimate reader for it.
+
 ## [0.8.11] — 2026-08-05
 
 ### Added
