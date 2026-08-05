@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { RoleTemplatePicker } from "./role-template-picker";
 import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
 import { getAgentTemplate } from "@/lib/agent-templates";
@@ -16,13 +17,16 @@ const MAX_EASY_SETUP_AGENTS = 10;
 
 // Same 6-provider whitelist used by create-agent-dialog.tsx and
 // agent-detail-panel.tsx's LLM provider selects.
-const LLM_PROVIDER_OPTIONS: { id: string; label: string }[] = [
-    { id: "openai", label: "OpenAI" },
-    { id: "anthropic", label: "Anthropic" },
-    { id: "google", label: "Google Gemini" },
-    { id: "openrouter", label: "OpenRouter" },
-    { id: "grok", label: "Grok" },
-    { id: "deepseek", label: "DeepSeek" },
+// `verified: false` mirrors integrations/hermes/entrypoint.sh — only OpenAI
+// and DeepSeek have been live-verified end-to-end with a real key and a
+// real reply; the rest are registry-confirmed but best-effort.
+const LLM_PROVIDER_OPTIONS: { id: string; label: string; verified: boolean }[] = [
+    { id: "openai", label: "OpenAI", verified: true },
+    { id: "anthropic", label: "Anthropic", verified: false },
+    { id: "google", label: "Google Gemini", verified: false },
+    { id: "openrouter", label: "OpenRouter", verified: false },
+    { id: "grok", label: "Grok", verified: false },
+    { id: "deepseek", label: "DeepSeek", verified: true },
 ];
 
 type EasyStep = "mode" | "count-and-roles" | "provider-key" | "review" | "provisioning" | "done";
@@ -145,20 +149,20 @@ export function EasySetupDialog({
     return (
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild>
-                <Button variant="default" className="shadow-sm">⚡ Easy Setup</Button>
+                <Button variant="default" className="shadow-sm">➕ Hire an Agent</Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[580px] bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">
-                        {step === "mode" && "How do you want to set up agents?"}
+                        {step === "mode" && "Where should this agent run?"}
                         {step === "count-and-roles" && "How many agents, and what roles?"}
                         {step === "provider-key" && "Connect an LLM provider"}
                         {step === "review" && "Review & create"}
                         {step === "provisioning" && "Provisioning agents…"}
-                        {step === "done" && "Easy Setup complete"}
+                        {step === "done" && "Agents hired"}
                     </DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        {step === "mode" && "Easy Setup runs Hermes agents as sibling Docker containers on this machine — no CLI required."}
+                        {step === "mode" && "Using Hermes as the runtime — pick where it lives."}
                         {step === "count-and-roles" && `Pick a role for each agent. Up to ${MAX_EASY_SETUP_AGENTS} per batch.`}
                         {step === "provider-key" && "This key will be used to run every agent in this batch."}
                         {step === "review" && "Confirm the agents you're about to create."}
@@ -167,19 +171,22 @@ export function EasySetupDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* Step: mode */}
+                {/* Step: mode — the local/remote choice up front, before anything else,
+                    so it's never ambiguous which one you're picking. Icons/wording match
+                    CreateAgentDialog's own "Where will this agent run?" step so the two
+                    dialogs speak one consistent visual language instead of two. */}
                 {step === "mode" && (
                     <div className="grid grid-cols-1 gap-3 py-2">
                         <button
                             type="button"
                             onClick={() => setStep("count-and-roles")}
-                            className="flex items-start gap-3 rounded-xl border border-cyan-500/30 bg-cyan-500/[0.06] p-4 text-left transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/10"
+                            className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 text-left transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/10"
                         >
-                            <span className="text-2xl shrink-0">⚡</span>
+                            <span className="text-2xl shrink-0">🖥️</span>
                             <div>
-                                <span className="block text-sm font-medium text-cyan-100">Easy Setup (Hermes, this machine)</span>
-                                <span className="block text-[11px] leading-relaxed text-cyan-100/60 mt-0.5">
-                                    Pick roles, provide one LLM key, and EmperorClaw provisions isolated Hermes containers for you automatically.
+                                <span className="block text-sm font-medium text-emerald-100">Local — this machine</span>
+                                <span className="block text-[11px] leading-relaxed text-emerald-100/60 mt-0.5">
+                                    Pick roles, provide one LLM key, and EmperorClaw provisions isolated Hermes Docker containers here automatically. No CLI required.
                                 </span>
                             </div>
                         </button>
@@ -188,11 +195,11 @@ export function EasySetupDialog({
                             onClick={handleAdvanced}
                             className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-900"
                         >
-                            <span className="text-2xl shrink-0">🛠️</span>
+                            <span className="text-2xl shrink-0">🌐</span>
                             <div>
-                                <span className="block text-sm font-medium text-zinc-100">Advanced</span>
+                                <span className="block text-sm font-medium text-zinc-100">Remote — another machine</span>
                                 <span className="block text-[11px] leading-relaxed text-zinc-400 mt-0.5">
-                                    Manual setup, OpenClaw, or Hermes on a separate machine — full control over runtime and provider.
+                                    Hermes on a VPS/Raspberry Pi/dedicated worker, OpenClaw, or manual setup — full control over runtime and provider.
                                 </span>
                             </div>
                         </button>
@@ -268,15 +275,31 @@ export function EasySetupDialog({
                     <div className="space-y-4 py-2">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">LLM Provider</label>
-                            <select
-                                value={llmProvider}
-                                onChange={(e) => setLlmProvider(e.target.value)}
-                                className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400"
-                            >
+                            <div className="grid grid-cols-2 gap-2">
                                 {LLM_PROVIDER_OPTIONS.map((p) => (
-                                    <option key={p.id} value={p.id}>{p.label}</option>
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => setLlmProvider(p.id)}
+                                        className={cn(
+                                            "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                                            llmProvider === p.id
+                                                ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
+                                                : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600"
+                                        )}
+                                    >
+                                        {p.label}
+                                        {!p.verified && (
+                                            <Badge variant="outline" className="text-[9px] px-1.5 py-0">Beta</Badge>
+                                        )}
+                                    </button>
                                 ))}
-                            </select>
+                            </div>
+                            {!LLM_PROVIDER_OPTIONS.find((p) => p.id === llmProvider)?.verified && (
+                                <p className="text-[10px] text-zinc-500">
+                                    Beta: this provider is registry-confirmed but not yet live-verified end-to-end for Easy Setup.
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">API Key</label>

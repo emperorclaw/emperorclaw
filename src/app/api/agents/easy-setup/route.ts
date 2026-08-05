@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const { companyId } = ctx;
 
     if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) {
-        return NextResponse.json({ error: "Easy Setup requires a Docker install with the Docker socket mounted." }, { status: 400 });
+        return NextResponse.json({ error: "Hiring a local agent requires a Docker install with the Docker socket mounted." }, { status: 400 });
     }
 
     const body = await req.json().catch(() => ({}));

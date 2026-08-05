@@ -55,6 +55,7 @@ type AgentDetailData = {
         monthlyTokenUsage?: number;
         budgetStatus?: string;
         containerId?: string | null;
+        containerName?: string | null;
     };
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
@@ -247,6 +248,9 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {agent.containerId && (
+                        <ContainerNameDisplay containerName={agent.containerName ?? null} containerId={agent.containerId} />
+                    )}
                     {agent.containerId && (
                         <button
                             type="button"
@@ -590,6 +594,34 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 </TabsContent>
             </Tabs>
         </main>
+    );
+}
+
+function ContainerNameDisplay({ containerName, containerId }: { containerName: string | null; containerId: string }) {
+    const [copied, setCopied] = useState(false);
+    const display = containerName || containerId.slice(0, 12);
+
+    const handleCopy = async () => {
+        await navigator.clipboard.writeText(display);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <span
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/60 px-2.5 py-1 text-[10px] text-zinc-500"
+            title="Docker container backing this agent's Hermes runtime"
+        >
+            <span className="font-mono text-zinc-400 truncate max-w-[180px]">{display}</span>
+            <button
+                type="button"
+                onClick={handleCopy}
+                title="Copy container name"
+                className="text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+                {copied ? <IconCircleCheck className="h-3 w-3 text-emerald-400" /> : <IconCopy className="h-3 w-3" />}
+            </button>
+        </span>
     );
 }
 
