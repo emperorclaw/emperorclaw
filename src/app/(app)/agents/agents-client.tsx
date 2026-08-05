@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { IconRobot, IconSearch } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
+import { EasySetupDialog } from "./easy-setup-dialog";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
 import { PageHeader } from "@/components/page-header";
@@ -26,6 +27,17 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState("all");
     const [selectedId, setSelectedId] = useState(agents[0]?.id || "");
+    const [easySetupAvailable, setEasySetupAvailable] = useState(false);
+    const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch("/api/agents/easy-setup")
+            .then((r) => r.json())
+            .then((d) => { if (!cancelled) setEasySetupAvailable(!!d.available); })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, []);
 
     const filteredAgents = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -44,7 +56,37 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 eyebrow="Agents"
                 title="Agent Directory"
                 description="Find agents, inspect workload, and jump into the durable profile when you need details."
-                actions={<CreateAgentDialog onAgentCreated={(id) => setSelectedId(id)} />}
+                actions={
+                    easySetupAvailable ? (
+                        <div className="flex items-center gap-2">
+                            <EasySetupDialog
+                                onAgentCreated={(id) => setSelectedId(id)}
+                                onSwitchToAdvanced={() => setAdvancedDialogOpen(true)}
+                            />
+                            {/* No visible trigger here — EasySetupDialog's own
+                                "Advanced" option is the only way in, so this
+                                dialog stays mounted for that programmatic
+                                open without a second, redundant button. */}
+                            <CreateAgentDialog
+                                onAgentCreated={(id) => setSelectedId(id)}
+                                open={advancedDialogOpen}
+                                onOpenChange={setAdvancedDialogOpen}
+                                hideTrigger
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-end gap-1">
+                            <CreateAgentDialog onAgentCreated={(id) => setSelectedId(id)} />
+                            <span className="text-[10px] text-zinc-500" title="Local one-click setup requires the Docker install path">
+                                Local one-click setup requires the Docker install path — see{" "}
+                                <Link href="/docs/v1.1/hermes-runtime#accessing-a-locally-provisioned-hermes-container" target="_blank" className="underline underline-offset-2 hover:text-zinc-300">
+                                    docs
+                                </Link>
+                                .
+                            </span>
+                        </div>
+                    )
+                }
             />
 
             {agents.length === 0 ? (

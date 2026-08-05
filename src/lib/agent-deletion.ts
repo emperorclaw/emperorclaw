@@ -25,6 +25,7 @@ import {
     threadParticipants,
 } from "@/db/schema";
 import { logAudit } from "@/lib/mcp";
+import { removeContainer, stopContainer } from "@/lib/docker";
 
 export async function deleteAgentAndData(input: {
     companyId: string;
@@ -133,6 +134,18 @@ export async function deleteAgentAndData(input: {
         name: existing.name,
         role: existing.role,
     });
+
+    // Container removal isn't transactional with Postgres, so this runs
+    // post-commit and best-effort: a Docker hiccup must never block the
+    // DB-level deletion that already succeeded above.
+    if (existing.containerId) {
+        try {
+            await stopContainer(existing.containerId).catch(() => {});
+            await removeContainer(existing.containerId, true).catch(() => {});
+        } catch {
+            // best effort — DB deletion already committed, nothing further to do
+        }
+    }
 
     return existing;
 }

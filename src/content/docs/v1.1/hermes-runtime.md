@@ -450,6 +450,36 @@ cat ~/.hermes/emperor-bridge/<name>/state.json | jq '.sessions'
 
 If successful replies happened but `sessions` is `{}`, update the bridge script. Modern Hermes emits the `session_id: ...` footer on stderr so piped stdout stays clean; the bridge must parse both stdout and stderr for the session id while using stdout only for the user-facing reply.
 
+## Accessing A Locally-Provisioned Hermes Container
+
+Hiring an agent with the "Local — this machine" option provisions each agent's Hermes runtime as a sibling Docker container on the Emperor host itself — no SSH or manual profile setup required. Containers are named:
+
+```
+emperor-hermes-<safeName>-<agentId8>
+```
+
+Where `<safeName>` is the agent name lowercased with non-alphanumeric characters replaced by `-`, and `<agentId8>` is the first 8 characters of the agent's Emperor ID. The agent's detail panel shows the exact container name (or ID) with a copy button once it has been provisioned.
+
+List running Hermes containers:
+
+```bash
+docker ps --filter name=emperor-hermes-
+```
+
+Shell into a container:
+
+```bash
+docker exec -it <container-name-or-id> sh
+```
+
+View live logs:
+
+```bash
+docker logs -f <container-name-or-id>
+```
+
+Use "Recreate Runtime" in the agent detail panel to stop, remove, and re-provision the container — the same primitive used for image updates and key rotation.
+
 ## When To Use Hermes Instead Of OpenClaw
 
 Use Hermes when you want a profile-based local agent runtime with separate per-agent homes, simple long-running user services, and Hermes-native skills and plugins.

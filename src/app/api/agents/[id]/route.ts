@@ -16,6 +16,14 @@ import {
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { encryptSecretPayload } from "@/lib/secrets";
+
+function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
+    const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
+    void _e;
+    void _v;
+    return safe;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +56,18 @@ export async function PATCH(
     }
     if (typeof body.budgetStatus === "string" && ["active", "warning", "paused"].includes(body.budgetStatus)) {
         updates.budgetStatus = body.budgetStatus;
+    }
+    const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
+    if (llmApiKey) {
+        const encrypted = encryptSecretPayload({ apiKey: llmApiKey });
+        if (!encrypted) {
+            return NextResponse.json(
+                { error: "EMPEROR_CLAW_MASTER_KEY is not configured; cannot store LLM API keys." },
+                { status: 500 }
+            );
+        }
+        updates.llmApiKeyEncrypted = encrypted.encryptedSecret;
+        updates.llmApiKeyVersion = encrypted.keyVersion;
     }
     const llmProviderProvided =
         typeof body.llmProvider === "string" &&
@@ -83,7 +103,7 @@ export async function PATCH(
 
     if (!updated) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
-    return NextResponse.json({ agent: updated });
+    return NextResponse.json({ agent: redactAgent(updated) });
 }
 
 export async function GET(
@@ -150,7 +170,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-        agent,
+        agent: redactAgent(agent),
         latestSnapshot,
         memoryEntries,
         sessions,
