@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/db";
-import { agents, llmPricing } from "@/db/schema";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
-import { and, desc, eq, isNull } from "drizzle-orm";
-import { writeAgentMemory } from "@/lib/control-plane";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { parseJsonBody, optionalString } from "@/lib/validation";
-import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
 
 const registerAgentSchema = z.object({
     name: z.string().min(1, "name is required"),
@@ -28,15 +24,10 @@ export async function GET(req: NextRequest) {
 
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+    const limit = parseInt(searchParams.get("limit") || "100", 10);
 
     try {
-        const rows = await db.select()
-            .from(agents)
-            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)))
-            .orderBy(desc(agents.createdAt))
-            .limit(limit);
-
+        const rows = await listAgentsForCompany({ companyId, limit });
         return NextResponse.json({ agents: rows });
     } catch (err) {
         console.error("Error fetching agents:", err);
@@ -67,42 +58,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
         const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, llmProvider, llmModel } = parsed.data;
-        const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
-        const llmConfiguration = resolveAgentModelConfiguration({
-            current: { llmProvider: null, llmModel: null },
-            provider: llmProvider,
-            model: llmModel,
-            pricing,
-        });
-
-        const [agent] = await db.insert(agents).values({
+        const agent = await createAgentForCompany({
             companyId,
             name,
-            role: role || "operator",
-            avatarUrl: avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name)}`,
-            skillsJson: Array.isArray(skillsJson) ? skillsJson : [],
-            memory: memory || null,
-            modelPolicyJson: modelPolicyJson || {},
-            concurrencyLimit: typeof concurrencyLimit === "number" ? concurrencyLimit : 1,
-            status: "online",
-            lastSeenAt: new Date(),
-            currentLoad: 0,
-            llmProvider: llmConfiguration.llmProvider,
-            llmModel: llmConfiguration.llmModel,
-        }).returning();
-
-        await logAudit(companyId, "agent", null, "register_agent", "agent", agent.id, { name, role });
-
-        if (memory) {
-            await writeAgentMemory({
-                companyId,
-                agentId: agent.id,
-                kind: "context",
-                content: memory,
-                summary: `Initial memory bootstrap for ${name}`,
-                snapshot: memory,
-            });
-        }
+            role,
+            avatarUrl,
+            skillsJson: skillsJson ?? undefined,
+            memory,
+            modelPolicyJson: modelPolicyJson ?? undefined,
+            concurrencyLimit: concurrencyLimit ?? undefined,
+            llmProvider,
+            llmModel,
+            actorType: "agent",
+        });
 
         const responseObj = { message: "Agent registered", agent };
         await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, responseObj);
