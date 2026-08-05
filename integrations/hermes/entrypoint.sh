@@ -80,6 +80,23 @@ if [ -n "$EMPEROR_CLAW_LLM_PROVIDER" ]; then
     hermes -p "$PROFILE_NAME" config set agent.reasoning_effort none || true
 fi
 
+# Connect this profile to Emperor's own real MCP server (/mcp) as an
+# additional MCP connection — alongside, not instead of, the emperor-claw
+# plugin's REST-backed tools above. `hermes mcp add --auth header` always
+# prompts interactively for the token (no scriptable flag for it), so this
+# writes the same config it would produce directly: a `${VAR}`-templated
+# header in config.yaml (hermes_cli/mcp_config.py's _bearer_auth_headers
+# format) plus the actual secret in the profile's .env — confirmed live
+# against a running container that `hermes mcp test emperorclaw` connects
+# and discovers all 19 tools, and that a real chat turn actually calls one
+# (list_agents) and gets a correct answer, with zero HERMES_TOOLSETS change.
+if [ -n "$EMPEROR_CLAW_API_URL" ] && [ -n "$EMPEROR_CLAW_API_TOKEN" ]; then
+    echo "[entrypoint] connecting profile to Emperor's MCP server"
+    hermes -p "$PROFILE_NAME" config set mcp_servers.emperorclaw.url "${EMPEROR_CLAW_API_URL}/mcp" || true
+    hermes -p "$PROFILE_NAME" config set 'mcp_servers.emperorclaw.headers.Authorization' 'Bearer ${MCP_EMPERORCLAW_API_KEY}' || true
+    echo "MCP_EMPERORCLAW_API_KEY=${EMPEROR_CLAW_API_TOKEN}" >> "$HOME/.hermes/profiles/$PROFILE_NAME/.env"
+fi
+
 # Point the bridge's `hermes` subprocess calls at this agent's own profile.
 # `hermes profile create` generates a per-profile wrapper at
 # ~/.local/bin/<profile> that execs `hermes -p <profile> "$@"` (verified by
