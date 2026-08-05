@@ -128,6 +128,28 @@ else
     fi
 fi
 
+# ── Docker socket group detection ────────────────────────────────
+# Lets the app container (runs as a non-root user) access the mounted
+# /var/run/docker.sock for Easy Setup (sibling Hermes containers) and
+# self-update. Detect the host socket's GID and persist it so `docker
+# compose up` can pass it via group_add. Safe to skip on failure — those
+# two features just won't work until DOCKER_GID is set by hand in .env.
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null || echo "")
+    if [ -n "$DOCKER_GID" ]; then
+        if grep -q '^DOCKER_GID=' .env 2>/dev/null; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s|^DOCKER_GID=.*|DOCKER_GID=$DOCKER_GID|" .env
+            else
+                sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$DOCKER_GID|" .env
+            fi
+        else
+            echo "DOCKER_GID=$DOCKER_GID" >> .env
+        fi
+        echo -e "${GREEN}✓ Docker socket group detected (GID $DOCKER_GID)${NC}"
+    fi
+fi
+
 # ── Domain configuration ─────────────────────────────────────────
 if [ -n "$DOMAIN" ]; then
     echo -e "Configuring for domain: ${GREEN}$DOMAIN${NC}"

@@ -183,6 +183,10 @@ export const agents = pgTable("agents", {
     deploymentMode: text("deployment_mode").notNull().default("remote"),
     llmProvider: text("llm_provider"),
     llmModel: text("llm_model"), // specific model name (e.g. "deepseek-chat", "gpt-4o")
+    containerId: text("container_id"), // Docker container ID backing this agent's Hermes sibling container (Easy Setup)
+    containerName: text("container_name"), // Docker container name backing this agent's Hermes sibling container
+    llmApiKeyEncrypted: text("llm_api_key_encrypted"), // AES-256-GCM ciphertext, encryptSecretPayload() (src/lib/secrets.ts)
+    llmApiKeyVersion: text("llm_api_key_version"), // key-rotation version tag paired with llmApiKeyEncrypted
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),

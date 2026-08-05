@@ -511,7 +511,12 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
         result = invoke_hermes(cmd, message)
     if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout or "Hermes failed").strip())
+        # stderr often contains *only* the `session_id: ...` footer Hermes
+        # appends regardless of success/failure — preferring it blindly hides
+        # the real error (e.g. an auth failure reported on stdout). Combine
+        # both streams and strip the footer so the actual failure surfaces.
+        combined = "\n".join(filter(None, [result.stdout, result.stderr]))
+        raise RuntimeError(clean_hermes_output(combined) or combined.strip() or "Hermes failed")
     # Hermes writes the final response to stdout, but the automation-friendly
     # `session_id: ...` footer is emitted on stderr so piped stdout stays clean.
     # Parse both streams; otherwise every Emperor message starts a fresh Hermes
@@ -659,9 +664,19 @@ def main() -> int:
                     send_reply(message, reply)
                     report_token_usage(len(text), len(reply))
                     update_chat_status(message, typing=False, execution_state="resolved")
-                except Exception:
+                except Exception as exc:
+                    # Do NOT re-raise here: that used to skip remember_seen()
+                    # below, so a message that failed once (bad key, Hermes
+                    # crash) was never marked seen and got redispatched every
+                    # poll cycle forever — a silent infinite retry loop with
+                    # no visible failure and, on a real API key, unbounded
+                    # cost. Log it, tell the human, and move on.
                     update_chat_status(message, typing=False, execution_state="seen")
-                    raise
+                    log(f"error processing message {message_id}: {exc}")
+                    try:
+                        send_reply(message, f"{AGENT_NAME}: I hit an error and couldn't reply — check the runtime logs.")
+                    except Exception as reply_exc:
+                        log(f"failed to send error notice for {message_id}: {reply_exc}")
                 finally:
                     send_heartbeat(0)
                 remember_seen(state, message_id)

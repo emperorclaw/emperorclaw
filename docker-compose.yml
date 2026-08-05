@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
   app:
     # Use the pre-built GHCR image for instant startup.
@@ -33,6 +33,12 @@ services:
     volumes:
       - app-storage:/app/.data/storage
       - /var/run/docker.sock:/var/run/docker.sock
+    # Lets the non-root app user actually use the socket above (Easy Setup's
+    # sibling Hermes containers, self-update). install.sh detects and writes
+    # the real DOCKER_GID; 999 (common Debian/Ubuntu docker-group GID) is a
+    # harmless fallback if it's unset or wrong on this host.
+    group_add:
+      - "${DOCKER_GID:-999}"
     healthcheck:
       # Use 127.0.0.1, not localhost: the server binds IPv4 0.0.0.0, but
       # `localhost` resolves to IPv6 ::1 first in the container → refused.
