@@ -75,7 +75,16 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                             />
                         </div>
                     ) : (
-                        <CreateAgentDialog onAgentCreated={(id) => setSelectedId(id)} />
+                        <div className="flex flex-col items-end gap-1">
+                            <CreateAgentDialog onAgentCreated={(id) => setSelectedId(id)} />
+                            <span className="text-[10px] text-zinc-500" title="Local one-click setup requires the Docker install path">
+                                Local one-click setup requires the Docker install path — see{" "}
+                                <Link href="/docs/v1.1/hermes-runtime#accessing-a-locally-provisioned-hermes-container" target="_blank" className="underline underline-offset-2 hover:text-zinc-300">
+                                    docs
+                                </Link>
+                                .
+                            </span>
+                        </div>
                     )
                 }
             />
