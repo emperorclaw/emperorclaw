@@ -9,6 +9,28 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.11] — 2026-08-05
+
+### Added
+
+- **One-click local Hermes agents.** Hiring an agent now offers a "Local —
+  this machine" option that provisions an isolated Hermes Docker container
+  automatically — no CLI, no manual profile setup. "Remote — another
+  machine" (or manual/OpenClaw) remains available for agents you run
+  yourself, unchanged.
+- The agent detail panel now shows the Docker container name for
+  locally-provisioned agents with a one-click copy button, and the docs
+  explain how to `docker exec`/`docker logs` into it directly.
+
+### Fixed
+
+- Self-hosted installs reached over plain HTTP (e.g. a NAS on a LAN with no
+  reverse-proxy TLS in front) rendered every page as unstyled bare HTML.
+  The CSP's `upgrade-insecure-requests` directive was silently force-
+  upgrading every CSS/JS asset request to `https://`, which fails outright
+  with no TLS listener present. Removed — it offered no real protection for
+  this app's same-origin asset architecture.
+
 ## [0.8.10] — 2026-08-03
 
 ### Changed
