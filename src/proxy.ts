@@ -28,6 +28,7 @@ export const config = {
     //   /                    — landing page
     //   /api/auth/*          — signup, login, validate-invite, password reset
     //   /api/mcp/*           — MCP Bearer-token auth
+    //   /mcp                 — real MCP protocol server, MCP Bearer-token auth (see src/app/mcp/route.ts)
     //   /api/webhook/*       — webhook endpoints
     //   /api/skills/*        — public skill registry
     //   /api/docs/*          — public documentation API
@@ -38,5 +39,5 @@ export const config = {
     //   /setup, /install.*   — setup scripts
     //   /downloads/*         — public downloads
     //   /_next/*, favicon    — Next.js internals
-    matcher: ["/((?!$|api/auth|api/mcp|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|emperor-claw-os|icon\\.png).*)"],
+    matcher: ["/((?!$|api/auth|api/mcp|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|emperor-claw-os|icon\\.png|mcp$).*)"],
 };

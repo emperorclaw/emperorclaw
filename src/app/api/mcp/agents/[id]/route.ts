@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
-import { agents, llmPricing } from "@/db/schema";
+import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { writeAgentMemory } from "@/lib/control-plane";
 import { parseJsonBody, optionalString } from "@/lib/validation";
-import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { updateAgentForCompany } from "@/lib/agents-crud";
 
 const updateAgentSchema = z.object({
     name: z.string().min(1).optional(),
@@ -40,8 +39,11 @@ export async function PATCH(
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const body = parsed.data;
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body;
+        const body = parsed.data as Record<string, unknown>;
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body as {
+            name?: string; role?: string; skillsJson?: unknown[]; memory?: string;
+            modelPolicyJson?: Record<string, unknown>; concurrencyLimit?: number; avatarUrl?: string;
+        };
 
         // Ensure we actually have something to update
         const hasBudget = typeof body.monthlyBudgetCents === "number" || typeof body.monthlyCostCents === "number" || typeof body.monthlyTokenUsage === "number" || (typeof body.budgetStatus === "string" && ["active","warning","paused"].includes(body.budgetStatus));
@@ -58,45 +60,23 @@ export async function PATCH(
             return NextResponse.json({ error: "Agent not found or unauthorized." }, { status: 404 });
         }
 
-        const updateData: any = {};
-        if (name !== undefined) updateData.name = name;
-        if (role !== undefined) updateData.role = role;
-        if (skillsJson !== undefined) updateData.skillsJson = skillsJson;
-        if (memory !== undefined) updateData.memory = memory;
-        if (modelPolicyJson !== undefined) updateData.modelPolicyJson = modelPolicyJson;
-        if (concurrencyLimit !== undefined) updateData.concurrencyLimit = concurrencyLimit;
-        if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
-        if (typeof body.monthlyBudgetCents === "number" && body.monthlyBudgetCents >= 0) updateData.monthlyBudgetCents = Math.round(body.monthlyBudgetCents);
-        if (typeof body.monthlyCostCents === "number" && body.monthlyCostCents >= 0) updateData.monthlyCostCents = Math.round(body.monthlyCostCents);
-        if (typeof body.monthlyTokenUsage === "number" && body.monthlyTokenUsage >= 0) updateData.monthlyTokenUsage = Math.round(body.monthlyTokenUsage);
-        if (typeof body.budgetStatus === "string" && ["active", "warning", "paused"].includes(body.budgetStatus)) updateData.budgetStatus = body.budgetStatus;
-        if (hasLLM) {
-            const pricing = await db.select({ provider: llmPricing.provider, model: llmPricing.model }).from(llmPricing);
-            const resolved = resolveAgentModelConfiguration({
-                current: {
-                    llmProvider: existing.llmProvider,
-                    llmModel: existing.llmModel,
-                },
-                provider: typeof body.llmProvider === "string" ? body.llmProvider : undefined,
-                model: typeof body.llmModel === "string" ? body.llmModel : undefined,
-                pricing,
-            });
-            updateData.llmProvider = resolved.llmProvider;
-            updateData.llmModel = resolved.llmModel;
-        }
-
-        const [updatedAgent] = await db.update(agents).set(updateData).where(eq(agents.id, agentId)).returning();
-
-        if (memory !== undefined) {
-            await writeAgentMemory({
-                companyId,
-                agentId,
-                kind: "checkpoint",
-                content: memory || "",
-                summary: "Agent memory updated via legacy MCP patch",
-                snapshot: memory || "",
-            });
-        }
+        const updatedAgent = await updateAgentForCompany({
+            companyId,
+            agentId,
+            name,
+            role,
+            skillsJson,
+            memory,
+            modelPolicyJson,
+            concurrencyLimit,
+            avatarUrl,
+            monthlyBudgetCents: typeof body.monthlyBudgetCents === "number" ? body.monthlyBudgetCents : undefined,
+            monthlyCostCents: typeof body.monthlyCostCents === "number" ? body.monthlyCostCents : undefined,
+            monthlyTokenUsage: typeof body.monthlyTokenUsage === "number" ? body.monthlyTokenUsage : undefined,
+            budgetStatus: typeof body.budgetStatus === "string" ? body.budgetStatus as "active" | "warning" | "paused" : undefined,
+            llmProvider: typeof body.llmProvider === "string" ? body.llmProvider : undefined,
+            llmModel: typeof body.llmModel === "string" ? body.llmModel : undefined,
+        });
 
         const res = { message: `Agent ${agentId} updated successfully`, agent: updatedAgent };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);

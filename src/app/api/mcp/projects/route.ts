@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
-import { db } from "@/db";
-import { projects, customers } from "@/db/schema";
-import { randomUUID } from "crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { listProjectsForCompany, createProjectForCompany } from "@/lib/projects-crud";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -13,32 +10,11 @@ export async function GET(req: NextRequest) {
 
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+    const limit = parseInt(searchParams.get("limit") || "100", 10);
     const status = searchParams.get("status");
 
     try {
-        const conditions = [
-            eq(projects.companyId, companyId),
-            isNull(projects.deletedAt),
-        ];
-        if (status) {
-            conditions.push(eq(projects.status, status));
-        }
-
-        const rows = await db.select({
-            project: projects,
-            customer: customers,
-        }).from(projects)
-            .leftJoin(customers, eq(projects.customerId, customers.id))
-            .where(and(...conditions))
-            .orderBy(desc(projects.createdAt))
-            .limit(limit);
-
-        const result = rows.map((r) => ({
-            ...r.project,
-            customer: r.customer || null,
-        }));
-
+        const result = await listProjectsForCompany({ companyId, limit, status });
         return NextResponse.json({ projects: result });
     } catch (err) {
         console.error("Error fetching projects:", err);
@@ -78,20 +54,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
         }
 
-        const [project] = await db.insert(projects).values({
-            id: randomUUID(),
+        const project = await createProjectForCompany({
             companyId,
-            customerId: customerId || null,
+            customerId,
             goal,
+            status: projectStatus,
             leadAgentId,
-            status: projectStatus || "active",
-            requireApprovalForDone: Boolean(requireApprovalForDone),
-            requireReviewBeforeDone: Boolean(requireReviewBeforeDone),
-            commentRequiredForReview: Boolean(commentRequiredForReview),
-            blockStatusChangesWithPendingApproval: Boolean(blockStatusChangesWithPendingApproval),
-            onlyLeadCanChangeStatus: Boolean(onlyLeadCanChangeStatus),
-            maxActiveAgents: Math.max(1, Number(maxActiveAgents) || 3),
-        }).returning();
+            requireApprovalForDone,
+            requireReviewBeforeDone,
+            commentRequiredForReview,
+            blockStatusChangesWithPendingApproval,
+            onlyLeadCanChangeStatus,
+            maxActiveAgents,
+        });
 
         const res = { message: "Project created", project };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
