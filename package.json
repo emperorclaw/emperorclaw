@@ -36,6 +36,7 @@
     "@extend-ai/react-xlsx": "0.16.0",
     "@hookform/resolvers": "^5.2.2",
     "@mdxeditor/editor": "^4.0.4",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tabler/icons-react": "^3.45.0",
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-virtual": "^3.14.6",

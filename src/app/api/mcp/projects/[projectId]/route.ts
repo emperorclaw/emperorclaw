@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { updateProjectForCompany } from "@/lib/projects-crud";
 
 export async function PATCH(
     req: NextRequest,
@@ -44,26 +45,28 @@ export async function PATCH(
             return NextResponse.json({ error: "Project not found or unauthorized." }, { status: 404 });
         }
 
-        if (newStatus) {
-            const validStatuses = ["active", "paused", "killed", "completed"];
-            if (!validStatuses.includes(newStatus)) {
-                return NextResponse.json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }, { status: 400 });
+        let project;
+        try {
+            project = await updateProjectForCompany({
+                companyId,
+                projectId,
+                status: newStatus,
+                goal,
+                customerId,
+                leadAgentId,
+                requireApprovalForDone,
+                requireReviewBeforeDone,
+                commentRequiredForReview,
+                blockStatusChangesWithPendingApproval,
+                onlyLeadCanChangeStatus,
+                maxActiveAgents,
+            });
+        } catch (e) {
+            if (e instanceof Error && e.message.startsWith("INVALID_STATUS")) {
+                return NextResponse.json({ error: e.message.replace("INVALID_STATUS: ", "Invalid status. Must be one of: ") }, { status: 400 });
             }
+            throw e;
         }
-
-        const [project] = await db.update(projects).set({
-            status: newStatus ?? existing.status,
-            goal: goal ?? existing.goal,
-            customerId: customerId === undefined ? existing.customerId : (customerId || null),
-            leadAgentId: leadAgentId === undefined ? existing.leadAgentId : (leadAgentId || null),
-            requireApprovalForDone: requireApprovalForDone === undefined ? existing.requireApprovalForDone : Boolean(requireApprovalForDone),
-            requireReviewBeforeDone: requireReviewBeforeDone === undefined ? existing.requireReviewBeforeDone : Boolean(requireReviewBeforeDone),
-            commentRequiredForReview: commentRequiredForReview === undefined ? existing.commentRequiredForReview : Boolean(commentRequiredForReview),
-            blockStatusChangesWithPendingApproval: blockStatusChangesWithPendingApproval === undefined ? existing.blockStatusChangesWithPendingApproval : Boolean(blockStatusChangesWithPendingApproval),
-            onlyLeadCanChangeStatus: onlyLeadCanChangeStatus === undefined ? existing.onlyLeadCanChangeStatus : Boolean(onlyLeadCanChangeStatus),
-            maxActiveAgents: maxActiveAgents === undefined ? existing.maxActiveAgents : Math.max(1, Number(maxActiveAgents) || existing.maxActiveAgents),
-            updatedAt: new Date(),
-        }).where(eq(projects.id, projectId)).returning();
 
         const res = { message: "Project updated", project };
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
