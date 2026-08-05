@@ -31,7 +31,16 @@ const securityHeaders = [
         : "connect-src 'self' wss: https://api.github.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
-      "upgrade-insecure-requests",
+      // Deliberately NOT including `upgrade-insecure-requests`: it applies
+      // regardless of the delivering response's own scheme, so on a
+      // self-hosted plain-HTTP install (e.g. a NAS reached at
+      // http://192.168.x.x:3000, the default docker-compose.yml setup) it
+      // silently force-upgrades every CSS/JS subresource fetch to https://,
+      // which fails outright and leaves the page rendering as unstyled bare
+      // HTML. EmperorClaw's own assets are all same-origin relative URLs
+      // (standard Next.js output), so a real HTTPS deployment behind a
+      // reverse proxy never needed this directive to avoid mixed content in
+      // the first place — there's no http:// asset link to force-upgrade.
     ].join("; "),
   },
   {
