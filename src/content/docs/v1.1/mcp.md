@@ -1,8 +1,40 @@
 # MCP Endpoints
 
-Emperor exposes a Model Context Protocol (MCP) API for programmatic access. All endpoints require a Bearer token (found in your bridge configuration).
+Emperor exposes two different things under the "MCP" name — read this section first so you connect the right one.
 
-## Base URL
+## Connecting an MCP Client (Claude, Codex, etc.)
+
+Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not under `/api/mcp` — that's the legacy REST API documented below). Point any MCP-capable client at it and it discovers agent, task, project, Knowledge & Rules, and messaging tools automatically, plus a company-specific `instructions` block with your operating doctrine — no per-client setup needed beyond the token.
+
+**You need:**
+1. An **Agent access** token — generate one from **Settings → Tokens** in the app.
+2. The server URL: `https://<your-emperorclaw-host>/mcp`
+3. A client that sends it as `Authorization: Bearer <token>`.
+
+**Claude Desktop** — edit `claude_desktop_config.json` directly (the claude.ai web "Connectors" screen requires a server implementing full OAuth, which Emperor does not support — using it redirects to a nonexistent `/authorize` page):
+
+```json
+{
+  "mcpServers": {
+    "emperorclaw": {
+      "url": "https://your-emperorclaw-host/mcp",
+      "headers": {
+        "Authorization": "Bearer <your token>"
+      }
+    }
+  }
+}
+```
+
+**Codex CLI, or any other MCP client** — same three pieces (URL, Streamable HTTP transport, Bearer header); syntax varies by client.
+
+**Hermes agents** connect to this same server automatically during provisioning — see [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) — so this section is mainly for external clients like Claude or Codex.
+
+## Legacy REST API (`/api/mcp/*`)
+
+Everything below this point documents the plain REST API under `/api/mcp/*`, used by the Hermes plugin's `emperor_request` tool and OpenClaw bridges — not the real MCP protocol above. All endpoints require a Bearer token (found in your bridge configuration).
+
+### Base URL
 
 ```
 https://emperorclaw.example.com/api/mcp
