@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { getAppUrl } from "@/lib/env";
+import { getOAuthIssuerUrl } from "@/lib/env";
 
 // RFC 8414 — lets an MCP client discover our OAuth endpoints instead of
 // guessing conventional paths (see src/lib/oauth.ts for why this whole
 // server exists: to mint a normal company_tokens Bearer token for /mcp).
 export async function GET(req: NextRequest) {
-    const origin = getAppUrl(req);
+    const origin = getOAuthIssuerUrl(req);
     return Response.json({
         issuer: origin,
         authorization_endpoint: `${origin}/authorize`,

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { verifyMcpToken } from "@/lib/mcp";
 import { buildMcpServer } from "@/lib/mcp-server";
-import { getAppUrl } from "@/lib/env";
+import { getOAuthIssuerUrl } from "@/lib/env";
 
 // The real, spec-compliant MCP endpoint (initialize/tools/list/tools/call) —
 // distinct from the legacy bespoke JSON-RPC sync endpoint at /api/mcp, and
@@ -21,7 +21,7 @@ function unauthorized(req: NextRequest, message: string, status: number) {
     if (status === 401) {
         // RFC 9728 discovery hint — lets a spec-compliant client find the
         // OAuth flow instead of guessing conventional paths.
-        const origin = getAppUrl(req);
+        const origin = getOAuthIssuerUrl(req);
         headers["WWW-Authenticate"] = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
     }
     return Response.json(
