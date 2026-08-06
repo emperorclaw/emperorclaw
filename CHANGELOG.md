@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.13] — 2026-08-06
+
+### Added
+
+- **Connect Claude, Codex, and other AI clients directly to your company's brain.** EmperorClaw's MCP server now supports a real OAuth 2.1 + PKCE flow (RFC 7591/8414/9728) — add a custom connector in claude.ai's web UI and paste just your instance URL. No manual Client ID/Secret, no separate token: EmperorClaw registers the client automatically and you approve the connection while logged in. Claude Desktop, Codex CLI, and anything else can still connect with a manual Bearer token from Settings → Tokens, unchanged.
+- Once connected, an AI client can pull real data and take real actions against your account — the same 19 agent/task/project/Knowledge & Rules/messaging tools introduced in 0.8.12, plus your company's operating doctrine — instead of you having to paste context into every conversation by hand.
+
+> [!IMPORTANT]
+> The OAuth connector path requires your instance to be served over **HTTPS** (a reverse proxy with a real certificate — Caddy, nginx, Cloudflare Tunnel). Self-hosted installs on plain HTTP should use the manual Bearer token method instead — it works everywhere. The `/authorize` screen shows a warning if it detects this.
+
 ## [0.8.12] — 2026-08-05
 
 ### Added
