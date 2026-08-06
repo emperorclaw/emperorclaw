@@ -74,6 +74,40 @@ export const companyTokens = pgTable("company_tokens", {
     tokenHashUnique: uniqueIndex("company_tokens_token_hash_unique").on(table.tokenHash),
 }));
 
+// OAuth 2.1 + PKCE authorization server for /mcp — lets a remote MCP client
+// (e.g. claude.ai's web Connectors screen) register itself and complete a
+// standard auth-code flow. The end product is always a normal companyTokens
+// row (see exchangeCodeForToken in src/lib/oauth.ts) — these two tables only
+// exist to get there; /mcp itself never reads them.
+export const oauthClients = pgTable("oauth_clients", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clientId: text("client_id").notNull(),
+    clientName: text("client_name"),
+    // Public/PKCE-only clients (RFC 7591 dynamic registration, no secret) —
+    // redirect_uri is the actual security boundary, so it must be an exact
+    // match at both /authorize and /token, not a prefix/pattern match.
+    redirectUris: jsonb("redirect_uris").notNull().$type<string[]>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    clientIdUnique: uniqueIndex("oauth_clients_client_id_unique").on(table.clientId),
+}));
+
+export const oauthAuthorizationCodes = pgTable("oauth_authorization_codes", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    codeHash: text("code_hash").notNull(),
+    clientId: text("client_id").notNull(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    redirectUri: text("redirect_uri").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    codeChallengeMethod: text("code_challenge_method").notNull().default("S256"),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    codeHashUnique: uniqueIndex("oauth_authorization_codes_code_hash_unique").on(table.codeHash),
+}));
+
 export const customers = pgTable("customers", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
