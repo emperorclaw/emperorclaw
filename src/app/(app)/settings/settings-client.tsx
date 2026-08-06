@@ -503,6 +503,9 @@ Walk me through step by step.`}</pre>
                             <p className="mt-3 text-xs leading-5 text-zinc-500">
                                 Add a custom connector and paste just the URL above — no manual Client ID/Secret needed. Emperor registers Claude automatically and you&apos;ll be asked to approve the connection while logged in here; no separate token is required for this path.
                             </p>
+                            <p className="mt-2 text-xs leading-5 text-amber-300/80">
+                                Requires this instance to be served over HTTPS (a reverse proxy with a real certificate — Caddy, nginx, Cloudflare Tunnel). Self-hosted installs on plain HTTP (e.g. a LAN IP with no proxy) should use the manual token method above instead.
+                            </p>
                         </details>
                     </div>
                 </section>

@@ -1,5 +1,6 @@
 import { getOAuthClient, validateRedirectUri } from "@/lib/oauth";
 import { getValidatedServerSession, getCompanyId } from "@/lib/auth";
+import { getAppUrl } from "@/lib/env";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -32,6 +33,16 @@ export default async function AuthorizePage({
         errors.push("redirect_uri does not match what this client registered.");
     }
 
+    // Non-blocking, not a hard error: a reverse proxy terminating TLS in
+    // front of a plain-HTTP app container would correctly report https via
+    // APP_URL, so this can't be certain in every deployment topology — but
+    // OAuth 2.1 requires TLS on every authorization-server endpoint, and
+    // claude.ai's client will very likely reject (or the browser will warn
+    // hard on) a plain-HTTP issuer. Self-hosted installs default to plain
+    // HTTP (docker-compose.yml's APP_URL=http://localhost:3000), so this is
+    // a real, common case, not a hypothetical one.
+    const isHttps = getAppUrl().startsWith("https://");
+
     const session = await getValidatedServerSession();
     const companyId = await getCompanyId();
     const [company] = companyId ? await db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1) : [];
@@ -40,6 +51,12 @@ export default async function AuthorizePage({
         <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4">
             <div className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-900/70 p-8 shadow-2xl">
                 <div className="mb-6 flex justify-center"><CustomLogo /></div>
+
+                {!isHttps && (
+                    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
+                        This instance isn&apos;t served over HTTPS. OAuth requires TLS on every step — claude.ai will likely fail to complete this even if you approve below. Put a reverse proxy (Caddy, nginx, Cloudflare Tunnel) in front with a real certificate, or use a manually-created Bearer token instead (Settings → Tokens) — that works over plain HTTP fine.
+                    </div>
+                )}
 
                 {errors.length > 0 ? (
                     <div className="space-y-3">
