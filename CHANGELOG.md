@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.14] — 2026-08-06
+
+### Fixed
+
+- OAuth discovery (`.well-known/oauth-authorization-server`) advertised `http://localhost:3000` instead of your instance's real public URL on reverse-proxied self-hosted installs — breaking claude.ai connector registration entirely with an opaque "couldn't register" error, even though the underlying endpoints worked fine. Discovery now derives its origin from the actual request instead of trusting a possibly-stale `APP_URL`.
+
 ## [0.8.13] — 2026-08-06
 
 ### Added
