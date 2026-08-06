@@ -6,12 +6,14 @@ Emperor exposes two different things under the "MCP" name — read this section 
 
 Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not under `/api/mcp` — that's the legacy REST API documented below). Point any MCP-capable client at it and it discovers agent, task, project, Knowledge & Rules, and messaging tools automatically, plus a company-specific `instructions` block with your operating doctrine — no per-client setup needed beyond the token.
 
-**You need:**
-1. An **Agent access** token — generate one from **Settings → Tokens** in the app.
-2. The server URL: `https://<your-emperorclaw-host>/mcp`
-3. A client that sends it as `Authorization: Bearer <token>`.
+**Claude.ai web (Connectors)** — add a custom connector and paste just the server URL (`https://<your-emperorclaw-host>/mcp`). Emperor implements OAuth 2.1 + PKCE with dynamic client registration (RFC 7591/8414/9728), so Claude registers itself automatically and you approve the connection while logged in — no manual Client ID/Secret, no separate token.
 
-**Claude Desktop** — edit `claude_desktop_config.json` directly (the claude.ai web "Connectors" screen requires a server implementing full OAuth, which Emperor does not support — using it redirects to a nonexistent `/authorize` page):
+> [!IMPORTANT]
+> This requires your EmperorClaw instance to actually be served over **HTTPS** — a reverse proxy with a real certificate (Caddy, nginx, Cloudflare Tunnel, etc.) in front of it. OAuth 2.1 requires TLS on every authorization-server endpoint; a plain-HTTP install (the self-hosted default — `docker-compose.yml` ships `APP_URL=http://localhost:3000`) will very likely fail partway through, even if the consent screen itself loads and you approve. The `/authorize` page will show a warning if it detects this. **If you're self-hosting on plain HTTP (e.g. a LAN IP with no reverse proxy), skip OAuth entirely and use the manual Bearer token method below instead — it works over plain HTTP fine.**
+
+**Claude Desktop, Codex CLI, or any other MCP client without a UI-driven OAuth flow** — use a static Bearer token instead:
+1. Generate an **Agent access** token from **Settings → Tokens**.
+2. Point the client at `https://<your-emperorclaw-host>/mcp` with `Authorization: Bearer <token>`.
 
 ```json
 {
@@ -26,7 +28,7 @@ Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not
 }
 ```
 
-**Codex CLI, or any other MCP client** — same three pieces (URL, Streamable HTTP transport, Bearer header); syntax varies by client.
+Both paths produce the exact same token type (visible and revocable from Settings → Tokens either way) — OAuth is just an automated way to get one without copy-pasting.
 
 **Hermes agents** connect to this same server automatically during provisioning — see [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) — so this section is mainly for external clients like Claude or Codex.
 

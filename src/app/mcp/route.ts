@@ -2,28 +2,38 @@ import { NextRequest } from "next/server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { verifyMcpToken } from "@/lib/mcp";
 import { buildMcpServer } from "@/lib/mcp-server";
+import { getAppUrl } from "@/lib/env";
 
 // The real, spec-compliant MCP endpoint (initialize/tools/list/tools/call) —
 // distinct from the legacy bespoke JSON-RPC sync endpoint at /api/mcp, and
 // from the plain REST API under /api/mcp/**. Point Claude Desktop/Codex/any
-// MCP client here with `Authorization: Bearer <company token>`.
+// MCP client here with `Authorization: Bearer <company token>` (minted by
+// hand in Settings -> Tokens, or automatically via the OAuth flow — see
+// src/lib/oauth.ts — both produce the exact same token type).
 //
 // Stateless: a fresh McpServer + transport is built per request
 // (sessionIdGenerator left unset). Every tool here is a self-contained DB
 // CRUD call — no server-push/subscriptions — so there's no session state
 // worth keeping across requests, and this sidesteps in-memory session
 // bookkeeping surviving Docker restarts.
-function unauthorized(message: string, status: number) {
+function unauthorized(req: NextRequest, message: string, status: number) {
+    const headers: Record<string, string> = {};
+    if (status === 401) {
+        // RFC 9728 discovery hint — lets a spec-compliant client find the
+        // OAuth flow instead of guessing conventional paths.
+        const origin = getAppUrl(req);
+        headers["WWW-Authenticate"] = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
+    }
     return Response.json(
         { jsonrpc: "2.0", error: { code: -32001, message }, id: null },
-        { status },
+        { status, headers },
     );
 }
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
-        return unauthorized(auth.error, auth.status);
+        return unauthorized(req, auth.error, auth.status);
     }
 
     const companyId = auth.companyToken!.companyId;
