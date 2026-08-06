@@ -8,6 +8,9 @@ Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not
 
 **Claude.ai web (Connectors)** — add a custom connector and paste just the server URL (`https://<your-emperorclaw-host>/mcp`). Emperor implements OAuth 2.1 + PKCE with dynamic client registration (RFC 7591/8414/9728), so Claude registers itself automatically and you approve the connection while logged in — no manual Client ID/Secret, no separate token.
 
+> [!IMPORTANT]
+> This requires your EmperorClaw instance to actually be served over **HTTPS** — a reverse proxy with a real certificate (Caddy, nginx, Cloudflare Tunnel, etc.) in front of it. OAuth 2.1 requires TLS on every authorization-server endpoint; a plain-HTTP install (the self-hosted default — `docker-compose.yml` ships `APP_URL=http://localhost:3000`) will very likely fail partway through, even if the consent screen itself loads and you approve. The `/authorize` page will show a warning if it detects this. **If you're self-hosting on plain HTTP (e.g. a LAN IP with no reverse proxy), skip OAuth entirely and use the manual Bearer token method below instead — it works over plain HTTP fine.**
+
 **Claude Desktop, Codex CLI, or any other MCP client without a UI-driven OAuth flow** — use a static Bearer token instead:
 1. Generate an **Agent access** token from **Settings → Tokens**.
 2. Point the client at `https://<your-emperorclaw-host>/mcp` with `Authorization: Bearer <token>`.
