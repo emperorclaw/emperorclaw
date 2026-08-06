@@ -468,6 +468,37 @@ Walk me through step by step.`}</pre>
                             )}
                         </div>
                     </div>
+
+                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:col-span-2">
+                        <h2 className="mb-2 flex items-center text-lg font-semibold text-zinc-100">
+                            <IconPlugConnected className="mr-2 h-5 w-5 text-cyan-300" /> Connect Claude, Codex, or another MCP client
+                        </h2>
+                        <p className="text-sm leading-6 text-zinc-400">
+                            Emperor exposes a real Model Context Protocol server at <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-xs text-zinc-300">/mcp</code> — point any MCP-capable client at it with an <strong>Agent access</strong> token from above to get every agent/task/project/Knowledge &amp; Rules/messaging tool, plus your company&apos;s operating doctrine, automatically.
+                        </p>
+                        <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-zinc-950 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">URL</p>
+                            <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">{`${typeof window !== "undefined" ? window.location.origin : ""}/mcp`}</code>
+                            <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">Header</p>
+                            <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">Authorization: Bearer &lt;your token&gt;</code>
+                        </div>
+                        <details className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Claude Desktop config example</summary>
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-zinc-950 p-4 font-mono text-xs leading-6 text-zinc-300">{`{
+  "mcpServers": {
+    "emperorclaw": {
+      "url": "${typeof window !== "undefined" ? window.location.origin : "https://your-emperorclaw-host"}/mcp",
+      "headers": {
+        "Authorization": "Bearer <your token>"
+      }
+    }
+  }
+}`}</pre>
+                            <p className="mt-3 text-xs leading-5 text-zinc-500">
+                                Edit this in Claude Desktop&apos;s config file directly. The claude.ai web &quot;Connectors&quot; screen requires a server implementing full OAuth (Client ID/Secret fields), which Emperor does not — using it will redirect to a page that doesn&apos;t exist here.
+                            </p>
+                        </details>
+                    </div>
                 </section>
             )}
 
