@@ -495,7 +495,13 @@ Walk me through step by step.`}</pre>
   }
 }`}</pre>
                             <p className="mt-3 text-xs leading-5 text-zinc-500">
-                                Edit this in Claude Desktop&apos;s config file directly. The claude.ai web &quot;Connectors&quot; screen requires a server implementing full OAuth (Client ID/Secret fields), which Emperor does not — using it will redirect to a page that doesn&apos;t exist here.
+                                Edit this in Claude Desktop&apos;s config file directly.
+                            </p>
+                        </details>
+                        <details className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Connect via claude.ai web (Connectors)</summary>
+                            <p className="mt-3 text-xs leading-5 text-zinc-500">
+                                Add a custom connector and paste just the URL above — no manual Client ID/Secret needed. Emperor registers Claude automatically and you&apos;ll be asked to approve the connection while logged in here; no separate token is required for this path.
                             </p>
                         </details>
                     </div>
