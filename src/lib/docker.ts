@@ -93,6 +93,13 @@ export async function inspectContainer(id: string): Promise<Record<string, unkno
     return data as Record<string, unknown>;
 }
 
+export type ContainerMount = {
+    type: "volume" | "bind";
+    source: string;
+    target: string;
+    readOnly?: boolean;
+};
+
 export type CreateContainerOpts = {
     image: string;
     name: string;
@@ -102,6 +109,7 @@ export type CreateContainerOpts = {
     labels?: Record<string, string>;
     memoryBytes?: number;
     nanoCpus?: number;
+    mounts?: ContainerMount[];
 };
 
 export async function createContainer(opts: CreateContainerOpts): Promise<string> {
@@ -114,6 +122,12 @@ export async function createContainer(opts: CreateContainerOpts): Promise<string
             NetworkMode: opts.networkMode,
             Memory: opts.memoryBytes,
             NanoCpus: opts.nanoCpus,
+            Mounts: opts.mounts?.map((mount) => ({
+                Type: mount.type,
+                Source: mount.source,
+                Target: mount.target,
+                ReadOnly: mount.readOnly ?? false,
+            })),
         },
     };
     const { code, data } = await dockerCall(
@@ -125,6 +139,20 @@ export async function createContainer(opts: CreateContainerOpts): Promise<string
         throw new Error(`createContainer HTTP ${code}: ${JSON.stringify(data).slice(0, 200)}`);
     }
     return (data as { Id: string }).Id;
+}
+
+/**
+ * Ensure a named Docker volume exists. Idempotent: Docker returns 409 when
+ * the name is already taken, which we treat as success (we only need the
+ * volume to exist). Named volumes survive container removal, which is what
+ * lets a Hermes agent's profile/session/bridge state persist across
+ * recreate-runtime and image updates.
+ */
+export async function dockerVolumeCreate(name: string): Promise<void> {
+    const { code, data } = await dockerCall("POST", "/volumes/create", { Name: name });
+    if (code !== 201 && code !== 200 && code !== 409) {
+        throw new Error(`dockerVolumeCreate HTTP ${code}: ${JSON.stringify(data).slice(0, 200)}`);
+    }
 }
 
 export async function startContainer(id: string): Promise<void> {

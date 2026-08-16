@@ -6,11 +6,13 @@ import { decryptSecretPayload } from "@/lib/secrets";
 import {
     createContainer,
     dockerPull,
+    dockerVolumeCreate,
     getOwnNetworkAndAppHostname,
     imageExists,
     removeContainer,
     startContainer,
     stopContainer,
+    type ContainerMount,
 } from "@/lib/docker";
 
 export const HERMES_IMAGE = "ghcr.io/emperorclaw/emperorclaw-hermes:latest";
@@ -171,6 +173,26 @@ export async function provisionHermesContainer(
             env.push(`${llmApiKeyEnv}=${llmApiKeyValue}`);
         }
 
+        // Persist the agent's Hermes profile, sessions, and bridge state
+        // across container recreates (recreate-runtime, image updates). A
+        // named volume survives `docker rm`, so a recreated container resumes
+        // the same Hermes session (--resume) and keeps its `seen`/`lastSeenAt`/
+        // `sessions` state instead of re-offering and re-running stale turns
+        // from scratch after a slow-turn timeout. If the volume cannot be
+        // created we degrade to the old ephemeral-home behavior with a
+        // warning rather than failing provisioning.
+        const volumeName = `emperor-hermes-${safeName}-${agent.id.slice(0, 8)}-home`;
+        let mounts: ContainerMount[] = [];
+        try {
+            await dockerVolumeCreate(volumeName);
+            mounts = [{ type: "volume", source: volumeName, target: "/home/hermes/.hermes/profiles" }];
+            env.push(`EMPEROR_CLAW_HERMES_STATE_PATH=/home/hermes/.hermes/profiles/emperor-bridge-state.json`);
+            outputs.push({ command: `docker volume ensure ${volumeName}`, stdout: "Ready", stderr: "", exitCode: 0 });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Unknown error";
+            outputs.push({ command: `docker volume ensure ${volumeName}`, stdout: "", stderr: `Warning: ${msg} — Hermes home will not persist across recreates`, exitCode: 0 });
+        }
+
         let containerId: string;
         try {
             containerId = await createContainer({
@@ -181,6 +203,7 @@ export async function provisionHermesContainer(
                 restartPolicy: { Name: "unless-stopped" },
                 memoryBytes: 512 * 1024 * 1024,
                 nanoCpus: 1_000_000_000,
+                mounts,
             });
             outputs.push({ command: `docker create ${containerName}`, stdout: containerId.slice(0, 12), stderr: "", exitCode: 0 });
         } catch (err) {
