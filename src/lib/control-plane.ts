@@ -13,12 +13,59 @@ import {
     runtimeNodes,
     threadMessages,
     threadParticipants,
+    users,
 } from "@/db/schema";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 
 type SenderType = "human" | "agent" | "system";
+
+/** Compact reference to a file attached to a message (stored in metadataJson). */
+export type ThreadMessageAttachment = {
+    id: string;
+    name: string;
+    contentType: string;
+    sizeBytes: number;
+};
+
+const USER_ID_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolves a human sender's display identity for inclusion in message
+ * metadata. Only succeeds when senderId is a users.id that belongs to the
+ * company — external platform sender ids (e.g. webhook from_user_id) and
+ * cross-company ids resolve to null, so the agent falls back to a generic
+ * label. Never throws.
+ */
+async function resolveHumanSender(companyId: string, senderId: string): Promise<{
+    senderName: string;
+    senderEmail: string | null;
+    senderRole: string | null;
+} | null> {
+    if (!USER_ID_UUID_RE.test(senderId)) return null;
+    try {
+        const [user] = await db.select({
+            name: users.displayName,
+            email: users.email,
+            role: users.roleTitle,
+        }).from(users)
+            .innerJoin(companyMembers, eq(companyMembers.userId, users.id))
+            .where(and(
+                eq(users.id, senderId),
+                eq(companyMembers.companyId, companyId),
+            ))
+            .limit(1);
+        if (!user) return null;
+        return {
+            senderName: user.name || user.email?.split("@")[0] || "User",
+            senderEmail: user.email || null,
+            senderRole: user.role || null,
+        };
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Shared-channel membership: every company member gets their own
@@ -213,11 +260,15 @@ export async function appendThreadMessage(input: {
     targetAgentId?: string | null;
     text: string;
     metadataJson?: Record<string, unknown>;
+    attachments?: ThreadMessageAttachment[];
     platformMessageId?: string | null;
     mirrorToLegacyChat?: boolean;
     createdAt?: Date;
     deliveryState?: ExecutionState;
 }) {
+    const senderIdentity = input.senderType === "human" && input.senderId
+        ? await resolveHumanSender(input.companyId, input.senderId)
+        : null;
     const [threadMessage] = await db.insert(threadMessages).values({
         threadId: input.threadId,
         companyId: input.companyId,
@@ -225,7 +276,13 @@ export async function appendThreadMessage(input: {
         senderId: input.senderId || null,
         targetAgentId: input.targetAgentId || null,
         text: input.text,
-        metadataJson: input.metadataJson || {},
+        metadataJson: {
+            ...(input.metadataJson || {}),
+            ...(senderIdentity || {}),
+            ...(input.attachments && input.attachments.length > 0
+                ? { attachments: input.attachments }
+                : {}),
+        },
         deliveryState: input.deliveryState || (input.senderType === "human" ? "queued" : "resolved"),
         platformMessageId: input.platformMessageId || null,
         createdAt: input.createdAt || new Date(),

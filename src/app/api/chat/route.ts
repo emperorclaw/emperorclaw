@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { threadParticipants } from "@/db/schema";
+import { artifacts, threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
-import { and, eq } from "drizzle-orm";
-import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages, type ThreadMessageAttachment } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
@@ -66,8 +66,38 @@ export async function POST(req: NextRequest) {
     if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        const { text, targetAgentId } = await req.json();
-        if (!text) return NextResponse.json({ error: "Text is required" }, { status: 400 });
+        const { text, targetAgentId, attachments } = await req.json();
+
+        // Resolve attachment artifact ids to compact company-scoped refs.
+        // Unknown/deleted ids are silently dropped — only real company
+        // artifacts travel with the message.
+        let resolvedAttachments: ThreadMessageAttachment[] = [];
+        const attachmentIds = Array.isArray(attachments)
+            ? attachments.filter((a: unknown): a is string => typeof a === "string")
+            : [];
+        if (attachmentIds.length > 0) {
+            const rows = await db.select({
+                id: artifacts.id,
+                title: artifacts.title,
+                originalFilename: artifacts.originalFilename,
+                contentType: artifacts.contentType,
+                sizeBytes: artifacts.sizeBytes,
+            }).from(artifacts).where(and(
+                eq(artifacts.companyId, companyId),
+                inArray(artifacts.id, attachmentIds),
+                isNull(artifacts.deletedAt),
+            ));
+            resolvedAttachments = rows.map((row) => ({
+                id: row.id as string,
+                name: row.originalFilename || row.title || "file",
+                contentType: row.contentType,
+                sizeBytes: row.sizeBytes,
+            }));
+        }
+
+        if (!text && resolvedAttachments.length === 0) {
+            return NextResponse.json({ error: "Text or attachment is required" }, { status: 400 });
+        }
 
         const resolvedTargetAgentId = targetAgentId
             ? await resolveAgentId(companyId, targetAgentId)
@@ -81,7 +111,8 @@ export async function POST(req: NextRequest) {
             senderType: "human",
             senderId: userId,
             targetAgentId: resolvedTargetAgentId,
-            text,
+            text: text || "",
+            attachments: resolvedAttachments,
             mirrorToLegacyChat: !resolvedTargetAgentId,
         });
 

@@ -96,6 +96,53 @@ async function invokeBrain(
   }
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Composes the brain prompt from a raw channel message: an optional sender
+ * identity line (who is speaking), the list of attached artifacts with fetch
+ * instructions, and the message text. The agent fetches attachment bytes
+ * itself via the MCP API — the bridge never downloads or writes files.
+ */
+function buildAgentPrompt(message: Record<string, unknown>): string {
+  const text = String(message?.text || "").trim();
+  const metadata = (message?.metadataJson && typeof message.metadataJson === "object")
+    ? (message.metadataJson as Record<string, unknown>)
+    : {};
+  const senderName = String(metadata.senderName || "").trim();
+  const senderEmail = String(metadata.senderEmail || "").trim();
+  const attachments = Array.isArray(metadata.attachments)
+    ? (metadata.attachments as Array<Record<string, unknown>>)
+        .filter((a) => a && typeof a === "object")
+    : [];
+
+  const lines: string[] = [];
+  if (senderName) {
+    lines.push(`[From ${senderName}${senderEmail ? ` <${senderEmail}>` : ""}]`);
+  }
+  if (attachments.length > 0) {
+    lines.push("Attachments:");
+    for (const a of attachments) {
+      const id = String(a.id || "");
+      const name = String(a.name || "file");
+      const size = Number(a.sizeBytes) || 0;
+      const sizeLabel = size > 0 ? ` (${formatBytes(size)})` : "";
+      lines.push(`- ${name}${sizeLabel}${id ? ` — artifact ${id}` : ""}`);
+    }
+    lines.push(
+      "If you need a file's contents, fetch its bytes with " +
+      "GET /api/mcp/artifacts/{id}/download using the Emperor MCP token " +
+      "(EMPEROR_CLAW_API_TOKEN) — do not guess or invent the contents."
+    );
+  }
+  lines.push(text);
+  return lines.join("\n");
+}
+
 async function dispatchMessage(
   message: Record<string, unknown>,
   account: ReturnType<typeof resolveEmperorChannelAccount>,
@@ -120,6 +167,7 @@ async function dispatchMessage(
   const threadType = String(message?.threadType || "direct");
   const senderId = String(message?.senderId || "");
   const targetAgentId = String(message?.targetAgentId || "") || null;
+  const prompt = buildAgentPrompt(message);
 
   const manifests = loadManifests(paths);
   if (manifests.length === 0) return;
@@ -159,7 +207,7 @@ async function dispatchMessage(
     await previous.catch(() => undefined);
     let reply: string | null = null;
     try {
-      reply = await invokeBrain(runtime, manifest, sessionId, text, ctx);
+      reply = await invokeBrain(runtime, manifest, sessionId, prompt, ctx);
     } finally {
       release();
     }
