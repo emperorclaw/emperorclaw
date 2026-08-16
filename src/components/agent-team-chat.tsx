@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { IconUser, IconSend, IconAt } from "@tabler/icons-react";
+import { useSession } from "next-auth/react";
+import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
+import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { cn } from "@/lib/utils";
 
 const CHAT_PAGE_SIZE = 25;
@@ -23,7 +25,21 @@ type TeamMessage = {
     fromUserId?: string | null;
     text: string;
     createdAt: string | Date;
+    metadataJson?: unknown;
 };
+
+function getMessageAttachments(message: TeamMessage): AttachmentRef[] {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return [];
+    const raw = (message.metadataJson as Record<string, unknown>).attachments;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(isAttachmentRef);
+}
+
+function getMessageSenderName(message: TeamMessage): string | null {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return null;
+    const name = (message.metadataJson as Record<string, unknown>).senderName;
+    return typeof name === "string" && name.trim() ? name : null;
+}
 
 type TeamParticipant = {
     participantType: "human" | "agent" | "system" | string;
@@ -84,6 +100,11 @@ export function AgentTeamChat({
     sendable?: boolean;
     teamThreadId?: string;
 }) {
+    const { data: session } = useSession();
+    // session.user.id is set in the auth session callback at runtime but not
+    // part of next-auth's default user type — access it with the same cast the
+    // rest of the codebase uses for augmented session fields.
+    const currentUserId = (session?.user as { id?: string } | undefined)?.id;
     const scrollRef = useRef<HTMLDivElement>(null);
     const preserveScrollHeightRef = useRef<number | null>(null);
     const [messages, setMessages] = useState<TeamMessage[]>(initialMessages);
@@ -92,7 +113,10 @@ export function AgentTeamChat({
     const [isSending, setIsSending] = useState(false);
     const [hasOlderMessages, setHasOlderMessages] = useState(initialHasMore);
     const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+    const [pendingAttachments, setPendingAttachments] = useState<AttachmentRef[]>([]);
+    const [attachError, setAttachError] = useState<string | null>(null);
     const teamTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [unreadCount, setUnreadCount] = useState(0);
     const [lastSeenAt, setLastSeenAt] = useState<string | null>(
@@ -227,9 +251,37 @@ export function AgentTeamChat({
         });
     }, [teamThreadId, isAtBottom, messages]);
 
+    const handleAttachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || []);
+        event.target.value = "";
+        if (files.length === 0) return;
+        setAttachError(null);
+        for (const file of files) {
+            try {
+                const form = new FormData();
+                form.append("file", file);
+                const uploadRes = await fetch("/api/chat/attachments", { method: "POST", body: form });
+                if (!uploadRes.ok) {
+                    let errMsg = "Upload failed";
+                    try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
+                    setAttachError(errMsg);
+                    continue;
+                }
+                const data = await uploadRes.json() as { id: string; name: string; contentType: string; sizeBytes: number };
+                setPendingAttachments((prev) => [...prev, { id: data.id, name: data.name, contentType: data.contentType, sizeBytes: data.sizeBytes }]);
+            } catch {
+                setAttachError("Upload failed");
+            }
+        }
+    };
+
+    const removePendingAttachment = (id: string) => {
+        setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+    };
+
     const sendMessage = async () => {
         const text = draft.trim();
-        if (!text || isSending) return;
+        if ((!text && pendingAttachments.length === 0) || isSending) return;
         setIsSending(true);
         setDraft("");
         forceScrollToBottomRef.current = true;
@@ -238,7 +290,7 @@ export function AgentTeamChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text }),
+                body: JSON.stringify({ text, attachments: pendingAttachments.map((a) => a.id) }),
             });
             if (!res.ok) throw new Error("Failed to send");
             const data = await res.json() as ChatResponse;
@@ -246,6 +298,7 @@ export function AgentTeamChat({
             if (sentMessage) {
                 setMessages((prev) => prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]);
                 setLastSeenAt(messageCursor(sentMessage.createdAt));
+                setPendingAttachments([]);
             }
         } catch (err) {
             console.error("Failed to send team message", err);
@@ -351,6 +404,8 @@ export function AgentTeamChat({
                             const senderId = msg.fromUserId || msg.senderId || null;
                             const agentObj = !isHuman ? agents.find((a) => a.id === senderId) : null;
                             const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || "agent")}`;
+                            const isOwn = isHuman && senderId === currentUserId;
+                            const messageAttachments = getMessageAttachments(msg);
 
                             return (
                                 <div
@@ -389,9 +444,14 @@ export function AgentTeamChat({
 
                                         {/* Bubble + read receipts */}
                                         <div className={cn("flex min-w-0 max-w-[86%] flex-col sm:max-w-[78%]", isHuman ? "items-end" : "items-start")}>
-                                            {/* Sender name — group-start only, agents only */}
+                                            {/* Sender name — group-start only */}
                                             {!isContinuation && !isHuman && (
                                                 <span className="text-[10px] font-medium text-cyan-400 mb-1 ml-1">{getAgentName(senderId)}</span>
+                                            )}
+                                            {!isContinuation && isHuman && (
+                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 mr-1">
+                                                    {isOwn ? "You" : getMessageSenderName(msg) || "Member"}
+                                                </span>
                                             )}
 
                                             <div className={cn(
@@ -403,6 +463,17 @@ export function AgentTeamChat({
                                                 isLastInGroup && !isHuman && "rounded-tl-none"
                                             )}>
                                                 <ParsedMessage text={msg.text} />
+                                                {messageAttachments.length > 0 && (
+                                                    <div className="mt-2 flex flex-col gap-1.5">
+                                                        {messageAttachments.map((att) => (
+                                                            <AttachmentChip
+                                                                key={att.id}
+                                                                attachment={att}
+                                                                href={`/api/ui/artifacts/${att.id}/download`}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {/* Timestamp bottom-right */}
                                                 <div className={cn(
                                                     "text-[10px] mt-1.5 text-right opacity-50",
@@ -466,7 +537,39 @@ export function AgentTeamChat({
 
             {sendable ? (
                 <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-2 sm:p-3">
+                    {(pendingAttachments.length > 0 || attachError) && (
+                        <div className="mb-2 space-y-2">
+                            {attachError && (
+                                <div className="rounded-lg border border-red-700/40 bg-red-900/40 px-3 py-2 text-xs text-red-300">
+                                    {attachError}
+                                </div>
+                            )}
+                            {pendingAttachments.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {pendingAttachments.map((att) => (
+                                        <AttachmentChip key={att.id} attachment={att} onRemove={() => removePendingAttachment(att.id)} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={handleAttachFiles}
+                            aria-label="Attach files"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            title="Attach files"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                        >
+                            <IconPaperclip className="h-4 w-4" />
+                        </button>
                         <button
                             type="button"
                             onClick={() => {
@@ -491,7 +594,7 @@ export function AgentTeamChat({
                         />
                         <button
                             type="submit"
-                            disabled={!draft.trim() || isSending}
+                            disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
                             aria-label="Send message"
                             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-cyan-600 transition-colors hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
                         >

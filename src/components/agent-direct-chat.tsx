@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
+import { useSession } from "next-auth/react";
+import { IconPaperclip, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -22,7 +24,21 @@ type DirectMessage = {
     fromUserId?: string | null;
     text: string;
     createdAt: string;
+    metadataJson?: unknown;
 };
+
+function getMessageAttachments(message: DirectMessage): AttachmentRef[] {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return [];
+    const raw = (message.metadataJson as Record<string, unknown>).attachments;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(isAttachmentRef);
+}
+
+function getMessageSenderName(message: DirectMessage): string | null {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return null;
+    const name = (message.metadataJson as Record<string, unknown>).senderName;
+    return typeof name === "string" && name.trim() ? name : null;
+}
 
 type DirectParticipant = {
     participantType: "human" | "agent" | "system" | string;
@@ -67,6 +83,11 @@ export function AgentDirectChat({
     agentName: string;
     hideHeader?: boolean;
 }) {
+    const { data: session } = useSession();
+    // session.user.id is set in the auth session callback at runtime but not
+    // part of next-auth's default user type — access it with the same cast the
+    // rest of the codebase uses for augmented session fields.
+    const currentUserId = (session?.user as { id?: string } | undefined)?.id;
     const [thread, setThread] = useState<DirectThread | null>(null);
     const [messages, setMessages] = useState<DirectMessage[]>([]);
     const [participants, setParticipants] = useState<DirectParticipant[]>([]);
@@ -83,6 +104,9 @@ export function AgentDirectChat({
     const audioBlobRef = useRef<Blob | null>(null);
     const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
     const [micError, setMicError] = useState<string | null>(null);
+    const [pendingAttachments, setPendingAttachments] = useState<AttachmentRef[]>([]);
+    const [attachError, setAttachError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordingChunksRef = useRef<Blob[]>([]);
@@ -408,10 +432,38 @@ export function AgentDirectChat({
     };
 
 
+    const handleAttachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || []);
+        event.target.value = "";
+        if (files.length === 0) return;
+        setAttachError(null);
+        for (const file of files) {
+            try {
+                const form = new FormData();
+                form.append("file", file);
+                const uploadRes = await fetch("/api/chat/attachments", { method: "POST", body: form });
+                if (!uploadRes.ok) {
+                    let errMsg = "Upload failed";
+                    try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
+                    setAttachError(errMsg);
+                    continue;
+                }
+                const data = await uploadRes.json() as { id: string; name: string; contentType: string; sizeBytes: number };
+                setPendingAttachments((prev) => [...prev, { id: data.id, name: data.name, contentType: data.contentType, sizeBytes: data.sizeBytes }]);
+            } catch {
+                setAttachError("Upload failed");
+            }
+        }
+    };
+
+    const removePendingAttachment = (id: string) => {
+        setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+    };
+
     const handleSend = async (event: React.FormEvent) => {
         event.preventDefault();
         const text = draft.trim();
-        if (!text || isSending) return;
+        if ((!text && pendingAttachments.length === 0) || isSending) return;
 
         setIsSending(true);
         setDraft("");
@@ -423,7 +475,7 @@ export function AgentDirectChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, targetAgentId: agentId }),
+                body: JSON.stringify({ text, targetAgentId: agentId, attachments: pendingAttachments.map((a) => a.id) }),
             });
 
             if (!res.ok) {
@@ -437,6 +489,7 @@ export function AgentDirectChat({
             if (data.message) {
                 setMessages((prev) => prev.some((message) => message.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
+                setPendingAttachments([]);
                 // Aggressive polling after send: catch agent response fast
                 const schedulePoll = (delay: number, useSince: boolean) => {
                     setTimeout(() => {
@@ -527,6 +580,8 @@ export function AgentDirectChat({
                             const showDaySep = !prev || !isSameDay(prev.createdAt, message.createdAt);
                             const isContinuation = !!prev && isGroupContinuation(message, prev);
                             const isLastInGroup = !next || !isGroupContinuation(next, message);
+                            const messageAttachments = getMessageAttachments(message);
+                            const isOwn = isHuman && message.senderId === currentUserId;
 
                             return (
                                 <div
@@ -568,11 +623,23 @@ export function AgentDirectChat({
                                                             {isHuman ? <IconUser className="w-3 h-3" /> : <IconRobot className="w-3 h-3 text-emerald-400" />}
                                                         </div>
                                                         <span className={cn("text-[10px] uppercase tracking-wider font-bold", isHuman ? "text-emerald-950/70" : "text-zinc-500")}>
-                                                            {isHuman ? "You" : agentName}
+                                                            {isHuman ? (isOwn ? "You" : getMessageSenderName(message) || "Member") : agentName}
                                                         </span>
                                                     </div>
                                                 )}
                                                 <MessageContent text={message.text} isHuman={isHuman} />
+                                                {messageAttachments.length > 0 && (
+                                                    <div className="mt-2 flex flex-col gap-1.5">
+                                                        {messageAttachments.map((att) => (
+                                                            <AttachmentChip
+                                                                key={att.id}
+                                                                attachment={att}
+                                                                tone={isHuman ? "light" : "dark"}
+                                                                href={`/api/ui/artifacts/${att.id}/download`}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {/* Timestamp — bottom-right of bubble, on every message */}
                                                 <div className={cn("text-[10px] mt-1.5 text-right opacity-50", isHuman ? "text-emerald-950" : "text-zinc-400")}>
                                                     {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -681,7 +748,31 @@ export function AgentDirectChat({
                 {/* State: normal text input */}
                 {!isRecording && !audioPreviewUrl && (
                 <form onSubmit={handleSend}>
+                {(pendingAttachments.length > 0 || attachError) && (
+                    <div className="mb-2 space-y-2">
+                        {attachError && (
+                            <div className="rounded-lg border border-red-700/40 bg-red-900/40 px-3 py-2 text-xs text-red-300">
+                                {attachError}
+                            </div>
+                        )}
+                        {pendingAttachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {pendingAttachments.map((att) => (
+                                    <AttachmentChip key={att.id} attachment={att} onRemove={() => removePendingAttachment(att.id)} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="flex items-center gap-2 sm:gap-3">
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={handleAttachFiles}
+                        aria-label="Attach files"
+                    />
                     <textarea
                         value={draft}
                         onChange={(event) => handleTyping(event.target.value)}
@@ -699,6 +790,15 @@ export function AgentDirectChat({
                     />
                     <button
                         type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Attach files"
+                        aria-label="Attach files"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 sm:rounded-full"
+                    >
+                        <IconPaperclip className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
                         onClick={startRecording}
                         title="Record voice message"
                         aria-label="Record voice message"
@@ -708,7 +808,7 @@ export function AgentDirectChat({
                     </button>
                     <button
                         type="submit"
-                        disabled={!draft.trim() || isSending}
+                        disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
                         aria-label="Send message"
                         className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:gap-2 sm:rounded-full sm:px-4"
                     >
