@@ -9,6 +9,36 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.16] — 2026-08-16
+
+### Fixed
+
+- **Hermes agents no longer re-run slow turns forever after a timeout.** When a
+  turn exceeds the bridge's per-turn timeout (typical for browser-heavy work
+  like checking several AI engines), the Hermes subprocess was hard-killed
+  mid-flight — the work was lost, and because the agent's bridge state lived
+  inside the container, a recreate re-offered the same message and restarted
+  the same slow turn from scratch, repeating it without ever completing.
+- The agent's Hermes profile, sessions, and bridge state now live on a **named
+  Docker volume** (`~/.hermes/profiles`), so container recreates
+  (recreate-runtime, image updates) resume the same Hermes session and keep
+  the bridge's `seen`/`lastSeenAt`/`sessions` state. The entrypoint writes the
+  MCP token idempotently so a persisted profile can't carry a stale token.
+  Degrades to the old ephemeral behavior with a warning if the volume can't be
+  created.
+- **Graceful turn timeout**: Hermes now runs in its own process group; on
+  timeout the bridge SIGTERMs the whole tree (including browser tool children),
+  waits a configurable grace window (default 10s,
+  `EMPEROR_CLAW_HERMES_TIMEOUT_GRACE_SECONDS`) for Hermes to checkpoint/save
+  its session, then SIGKILLs. If the killed turn already emitted its session
+  id, the next dispatch resumes it via `--resume` instead of starting over.
+
+> [!NOTE]
+> Existing Hermes agents pick this up when their runtime container is
+> recreated (Settings → agent → recreate runtime). For browser-heavy agents,
+> consider raising `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS` (default 300s) so
+> legitimate long research turns aren't killed.
+
 ## [0.8.15] — 2026-08-16
 
 ### Added
