@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.9
+
+- composed brain prompts now include the human sender's identity (`[From Name <email>]`) when the server provides it, so agents can tell users apart on shared direct threads
+- messages with attachments now surface the attached artifacts (name, size, artifact id) in the prompt and instruct the agent to fetch the bytes itself via `GET /api/mcp/artifacts/{id}/download` — the bridge no longer needs to download or write files
+- gracefully degrades on servers that predate these fields: the prompt is just the message text
+
 ## 0.2.8
 
 - added the Pipelines Registry contract to all seeded agent manuals: register on boot (upsert by name), server-generated diagrams, required documentation before activation, run reporting including failures

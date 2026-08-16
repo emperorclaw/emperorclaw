@@ -9,6 +9,33 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.15] — 2026-08-16
+
+### Added
+
+- **Agents now know who is speaking.** Human message metadata carries
+  `senderName`, `senderEmail`, and `senderRole`, resolved at write time from
+  the company member and persisted on every thread message (no migration —
+  lives in `metadataJson`). The agent bridge injects it into the prompt
+  (`[From Alice <alice@x.com>]`), so when two users share the same agent's
+  direct thread the agent can tell them apart. The chat UI also labels other
+  members by name instead of showing "You" for every human message. External
+  platform senders (webhook `from_user_id`) fall back to a generic label.
+- **Attach files to agent and team chat messages.** A paperclip button uploads
+  files (up to 25 MB, MIME allowlist) into Storage as company artifacts;
+  messages carry compact attachment refs and the UI renders attachment chips
+  on pending and received messages with a download link. The agent bridge
+  lists the attachments in the prompt and tells the agent to fetch the bytes
+  itself via the existing MCP endpoint `GET /api/mcp/artifacts/{id}/download`
+  — the bridge never downloads or writes files. Attaching a file is treated as
+  explicit consent to share it with the company's agents (`visibility:
+  "company"`).
+
+> [!NOTE]
+> Fully backward compatible: old agent bridges ignore the new metadata fields
+> (they only read message text), and new bridges degrade gracefully against
+> servers that predate these fields. No schema migration required.
+
 ## [0.8.14] — 2026-08-06
 
 ### Fixed
