@@ -94,7 +94,14 @@ if [ -n "$EMPEROR_CLAW_API_URL" ] && [ -n "$EMPEROR_CLAW_API_TOKEN" ]; then
     echo "[entrypoint] connecting profile to Emperor's MCP server"
     hermes -p "$PROFILE_NAME" config set mcp_servers.emperorclaw.url "${EMPEROR_CLAW_API_URL}/mcp" || true
     hermes -p "$PROFILE_NAME" config set 'mcp_servers.emperorclaw.headers.Authorization' 'Bearer ${MCP_EMPERORCLAW_API_KEY}' || true
-    echo "MCP_EMPERORCLAW_API_KEY=${EMPEROR_CLAW_API_TOKEN}" >> "$HOME/.hermes/profiles/$PROFILE_NAME/.env"
+    # Idempotent: the profile now lives on a persisted named volume, so a
+    # recreate would otherwise append a SECOND MCP_EMPERORCLAW_API_KEY line and
+    # leave a stale token behind that a "first wins" env loader could pick.
+    # Replace the existing line instead of appending.
+    ENV_FILE="$HOME/.hermes/profiles/$PROFILE_NAME/.env"
+    touch "$ENV_FILE"
+    sed -i "/^MCP_EMPERORCLAW_API_KEY=/d" "$ENV_FILE"
+    echo "MCP_EMPERORCLAW_API_KEY=${EMPEROR_CLAW_API_TOKEN}" >> "$ENV_FILE"
 fi
 
 # Point the bridge's `hermes` subprocess calls at this agent's own profile.

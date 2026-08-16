@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -27,6 +28,10 @@ HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "emperor-claw,web,terminal,code_execution").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
 HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "300"))
+# Grace window after SIGTERM before SIGKILL on a timed-out turn: lets Hermes
+# checkpoint/save its session transcript so the next dispatch can --resume
+# instead of restarting the whole slow turn from scratch.
+HERMES_TIMEOUT_GRACE_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_GRACE_SECONDS", "10"))
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
 DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
 MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "12000"))
@@ -421,18 +426,70 @@ def extract_session_id(output: str) -> str:
     return ""
 
 
+def _terminate_turn(proc: subprocess.Popen[str]) -> None:
+    """Graceful timeout for a turn.
+
+    Hermes runs in its own process group (start_new_session), so a browser or
+    other tool child dies with it. We send SIGTERM first and give the process
+    a short window to checkpoint/save its session transcript to disk, then
+    SIGKILL anything still alive. The next dispatch can then --resume from the
+    saved session instead of re-running the entire slow turn from zero.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    grace_deadline = time.time() + HERMES_TIMEOUT_GRACE_SECONDS
+    while proc.poll() is None and time.time() < grace_deadline:
+        time.sleep(0.25)
+    if proc.poll() is None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+def _persist_killed_session(
+    sessions: Dict[str, str],
+    session_key: str,
+    exc: subprocess.TimeoutExpired,
+) -> None:
+    """Best-effort: if the killed turn already emitted its `session_id:` footer
+    (Hermes prints it on stderr), record it so the next dispatch for this
+    thread resumes with `--resume` instead of starting over. Never raises — a
+    timeout is already a failure; don't turn it into a crash."""
+    try:
+        killed_output = "\n".join(
+            part for part in [getattr(exc, "output", None), getattr(exc, "stderr", None)]
+            if isinstance(part, str)
+        )
+        killed_session = extract_session_id(killed_output)
+        if killed_session:
+            sessions[session_key] = killed_session
+    except Exception:
+        pass
+
+
 def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     # Provider hint: pass EMPEROR_CLAW_LLM_PROVIDER so Hermes skills can auto-detect.
     # The actual API key is configured by the user in ~/.hermes/.env or environment.
     if _agent_llm_provider:
         env["EMPEROR_CLAW_LLM_PROVIDER"] = _agent_llm_provider
-    proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    # start_new_session puts Hermes (and any browser/tool children it spawns)
+    # in their own process group, so a timeout can signal the whole tree.
+    proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, start_new_session=True)
     started = time.time()
     last_status = 0.0
     while proc.poll() is None:
         if time.time() - started > HERMES_TIMEOUT_SECONDS:
-            proc.kill()
+            _terminate_turn(proc)
             stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
         if time.time() - last_status >= 3:
@@ -505,11 +562,19 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     ]
     if resume_id:
         cmd[3:3] = ["--resume", resume_id]
-    result = invoke_hermes(cmd, message)
+    try:
+        result = invoke_hermes(cmd, message)
+    except subprocess.TimeoutExpired as exc:
+        _persist_killed_session(sessions, session_key, exc)
+        raise
     if result.returncode != 0 and resume_id and "Session not found" in (result.stderr or result.stdout):
         sessions.pop(session_key, None)
         cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
-        result = invoke_hermes(cmd, message)
+        try:
+            result = invoke_hermes(cmd, message)
+        except subprocess.TimeoutExpired as exc:
+            _persist_killed_session(sessions, session_key, exc)
+            raise
     if result.returncode != 0:
         # stderr often contains *only* the `session_id: ...` footer Hermes
         # appends regardless of success/failure — preferring it blindly hides
