@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         xz-utils \
+        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Pre-install Node.js 26 (system-wide, as root) so the Hermes installer's own

@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.18] — 2026-08-19
+
+### Fixed
+
+- **Docker Publish (Hermes) build was still broken after v0.8.17**: with
+  Node.js now installed, the Hermes Agent installer's `npm install` failed
+  compiling `node-pty` (a native addon with no prebuilt binary for this
+  platform) because the image had no C/C++ build toolchain. Added
+  `build-essential` to `integrations/hermes/Dockerfile` so `node-gyp` can
+  compile it. Verified locally end-to-end: the installer now reports
+  "Installation Complete!".
+
 ## [0.8.17] — 2026-08-19
 
 ### Fixed
