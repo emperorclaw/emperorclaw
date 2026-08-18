@@ -77,12 +77,14 @@ export function MessagingHub({
     initialTeamMessages = [],
     initialTeamHasMore = false,
     teamThreadId,
+    teamUnreadCount = 0,
 }: {
     agents: Agent[];
     directThreads: DirectThreadSummary[];
     initialTeamMessages?: TeamMessage[];
     initialTeamHasMore?: boolean;
     teamThreadId: string;
+    teamUnreadCount?: number;
 }) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
@@ -193,14 +195,21 @@ export function MessagingHub({
                             )}>
                                 <IconUsers className="w-5 h-5" />
                             </div>
-                            <div className="flex flex-col">
-                                <span className={cn(
-                                    "text-sm font-semibold tracking-tight",
-                                    selectedAgentId === null ? "text-cyan-100" : "text-zinc-300"
-                                )}>
-                                    Team Channel
-                                </span>
-                                <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Everyone</span>
+                            <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                <div className="flex flex-col">
+                                    <span className={cn(
+                                        "text-sm font-semibold tracking-tight",
+                                        selectedAgentId === null ? "text-cyan-100" : "text-zinc-300"
+                                    )}>
+                                        Team Channel
+                                    </span>
+                                    <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Everyone</span>
+                                </div>
+                                {teamUnreadCount > 0 && (
+                                    <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
+                                        {teamUnreadCount}
+                                    </span>
+                                )}
                             </div>
                         </button>
 
@@ -331,6 +340,11 @@ export function MessagingHub({
                                         <div className="truncate text-sm font-medium">Team Channel</div>
                                         <div className="text-[10px] text-zinc-500">Everyone</div>
                                     </div>
+                                    {teamUnreadCount > 0 && (
+                                        <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">
+                                            {teamUnreadCount}
+                                        </span>
+                                    )}
                                     {selectedAgentId === null && <IconCheck className="h-4 w-4 text-cyan-400" />}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="my-1.5 bg-zinc-800" />
