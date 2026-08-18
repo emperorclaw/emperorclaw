@@ -128,6 +128,25 @@ export default async function MessagesPage() {
     const initialTeamHasMore = teamMessageWindow.length > 25;
     const teamMessages = initialTeamHasMore ? teamMessageWindow.slice(1) : teamMessageWindow;
 
+    const [teamHumanParticipant] = await db.select().from(threadParticipants).where(
+        and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.threadId, teamThread.id),
+            eq(threadParticipants.participantType, "human"),
+            eq(threadParticipants.participantRef, userId),
+        )
+    );
+    const teamUnreadConditions = [
+        eq(threadMessages.companyId, companyId),
+        eq(threadMessages.threadId, teamThread.id),
+        eq(threadMessages.senderType, "agent"),
+    ];
+    if (teamHumanParticipant?.lastReadAt) {
+        teamUnreadConditions.push(gt(threadMessages.createdAt, teamHumanParticipant.lastReadAt));
+    }
+    const [teamUnreadRow] = await db.select({ value: count() }).from(threadMessages).where(and(...teamUnreadConditions));
+    const teamUnreadCount = teamUnreadRow?.value || 0;
+
     return (
         <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-[1800px] flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 sm:h-[calc(100dvh-2.5rem)]">
             <div className="hidden shrink-0 items-end justify-between gap-6 sm:flex">
@@ -146,6 +165,7 @@ export default async function MessagesPage() {
                     initialTeamMessages={teamMessages}
                     initialTeamHasMore={initialTeamHasMore}
                     teamThreadId={teamThread.id}
+                    teamUnreadCount={teamUnreadCount}
                 />
             </div>
         </div>

@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.19] — 2026-08-19
+
+### Fixed
+
+- **Team Channel unread messages had no visual indicator.** The sidebar's
+  "Messages" badge counts unread agent messages across every thread,
+  including the Team Channel, but the Messages page only ever rendered
+  unread badges on direct agent threads — the Team Channel button itself
+  never showed one. Unread team messages bumped the sidebar count with
+  no way to tell where they were. The Team Channel now shows its own
+  unread badge (desktop sidebar and mobile conversation switcher), using
+  the same per-participant `lastReadAt` logic direct threads already use.
+
 ## [0.8.18] — 2026-08-19
 
 ### Fixed
