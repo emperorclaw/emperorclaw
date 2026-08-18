@@ -13,6 +13,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Pre-install Node.js 26 (system-wide, as root) so the Hermes installer's own
+# `command -v node` check below finds a working Node/npm already on PATH and
+# skips its bundled auto-download-and-extract-node fallback. That fallback
+# (fetching a tarball from nodejs.org and unpacking it into the non-root
+# hermes user's $HOME) reliably fails during extraction in this image with an
+# unexplained exit 127 and no diagnostic output — installing Node via
+# NodeSource here avoids that broken path entirely.
+RUN curl -fsSL https://deb.nodesource.com/setup_26.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Plugin + bridge are stdlib-only Python — no requirements.txt needed.
 COPY emperor-claw/ /opt/emperor-claw-plugin/
 

@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.17] — 2026-08-19
+
+### Fixed
+
+- **Docker Publish (Hermes) build was broken** for every release since v0.8.14:
+  the `integrations/hermes/Dockerfile` build crashed (exit 127) while the
+  Hermes Agent installer tried to auto-download and extract its own bundled
+  Node.js runtime. The Dockerfile now installs Node.js 26 via NodeSource
+  before running the installer, so its `command -v node` check finds a
+  working Node/npm already on `PATH` and skips that broken fallback path
+  entirely.
+
 ## [0.8.16] — 2026-08-16
 
 ### Fixed
