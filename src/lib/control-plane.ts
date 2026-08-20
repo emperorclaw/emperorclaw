@@ -139,7 +139,13 @@ export async function ensureTeamThread(companyId: string) {
  * used to fork per-user threads, and no participant ref is ever overwritten.
  */
 export async function ensureDirectThread(companyId: string, agentId: string, _userId?: string | null) {
-    // The canonical thread is the one this agent participates in.
+    // The canonical thread is the one this agent participates in. A race between
+    // two concurrent callers that both see "no thread yet" can still create two
+    // — ordering by createdAt makes every caller converge on the same (oldest)
+    // thread instead of an arbitrary one, so the resolved thread stops flip-flopping
+    // between requests (a real message from a duplicate thread was previously able
+    // to "reappear" mid-conversation depending on which row Postgres happened to
+    // return first).
     const [agentParticipant] = await db.select({ threadId: threadParticipants.threadId })
         .from(threadParticipants)
         .innerJoin(messageThreads, and(
@@ -153,6 +159,7 @@ export async function ensureDirectThread(companyId: string, agentId: string, _us
             eq(threadParticipants.participantType, "agent"),
             eq(threadParticipants.participantId, agentId),
         ))
+        .orderBy(messageThreads.createdAt)
         .limit(1);
 
     if (agentParticipant) {

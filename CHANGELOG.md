@@ -9,6 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.20] — 2026-08-20
+
+### Fixed
+
+- **Old messages could randomly "reappear" in an agent's direct chat.**
+  `ensureDirectThread()` looked up an agent's canonical thread with an
+  unordered query — when a race created two direct threads for the same
+  (company, agent) pair, which one resolved as "the" conversation was
+  arbitrary per request, so the app could flip between two different
+  message histories and surface an old message as if it had just arrived.
+  The lookup now orders by `createdAt` so it always converges on the same
+  (oldest) thread.
+- Consolidated the 11 duplicate direct threads this had already produced
+  across 8 agents in production: messages were moved into each agent's
+  oldest thread (original timestamps preserved) and the duplicates
+  archived — no data lost, verified by message-count before/after.
+
 ## [0.8.19] — 2026-08-19
 
 ### Fixed
