@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
             || (markRead ? "seen" : null);
 
         if (derivedState) {
-            const updatedMessage = await updateThreadExecutionState({
+            const updatedMessages = await updateThreadExecutionState({
                 companyId,
                 threadId,
                 actorType: "agent",
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
                 targetState: derivedState,
             });
 
-            if (updatedMessage) {
+            for (const updatedMessage of updatedMessages) {
                 broadcastMcpEvent(companyId, {
                     type: "thread_message",
                     threadId,

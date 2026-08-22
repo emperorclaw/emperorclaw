@@ -1,14 +1,19 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId } from "@/lib/auth";
-import { storageAdapter } from "@/lib/storage";
+import { randomUUID } from "node:crypto";
+import { getCompanyId, getUserId } from "@/lib/auth";
+import { db } from "@/db";
+import { artifacts } from "@/db/schema";
+import { storageAdapter, getStorageProviderName } from "@/lib/storage";
+import { prepareArtifactRecord } from "@/lib/artifacts";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export async function POST(req: NextRequest) {
     const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = await getUserId();
+    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
         const form = await req.formData();
@@ -44,17 +49,63 @@ export async function POST(req: NextRequest) {
         };
         const subtype = contentType.replace("audio/", "");
         const ext = SUBTYPE_EXT[subtype] ?? "webm";
-        const logicalPath = `voice-messages/${crypto.randomUUID()}.${ext}`;
+        const filename = `voice-${Date.now()}.${ext}`;
+        const logicalPath = `voice-messages/${randomUUID()}.${ext}`;
         const buffer = Buffer.from(await file.arrayBuffer());
 
-        const result = await storageAdapter.upload({
-            companyId,
-            logicalPath,
-            data: buffer,
-            contentType,
-        });
+        let uploadCompleted = false;
+        try {
+            const uploadResult = await storageAdapter.upload({
+                companyId,
+                logicalPath,
+                data: buffer,
+                contentType,
+            });
+            uploadCompleted = true;
 
-        return NextResponse.json({ url: result.storageUrl });
+            // Register as a real artifact — without this row neither the UI
+            // download route (/api/ui/artifacts/[id]) nor the agent-facing MCP
+            // one (/api/mcp/artifacts/[id]) can resolve the file, and it never
+            // shows up in the artifact list the agent browses.
+            const preparedArtifact = prepareArtifactRecord({
+                kind: "file",
+                title: filename,
+                contentType: uploadResult.contentType,
+                storageProvider: getStorageProviderName(),
+                storageUrl: uploadResult.storageUrl,
+                storageKey: uploadResult.storageKey,
+                originalFilename: filename,
+                sha256: uploadResult.checksum,
+                sizeBytes: uploadResult.sizeBytes,
+                metadataJson: { source: "voice-message" },
+            });
+
+            const [artifact] = await db.insert(artifacts).values({
+                companyId,
+                path: logicalPath,
+                ...preparedArtifact,
+                createdByType: "human",
+                createdById: userId,
+                visibility: "company",
+                sourceKind: "voice-message",
+            }).returning();
+
+            return NextResponse.json({
+                id: artifact.id as string,
+                name: filename,
+                contentType: uploadResult.contentType,
+                sizeBytes: uploadResult.sizeBytes,
+            }, { status: 201 });
+        } catch (error) {
+            if (uploadCompleted) {
+                try {
+                    await storageAdapter.delete({ companyId, logicalPath });
+                } catch (cleanupError) {
+                    console.warn("Unable to clean up failed voice upload:", cleanupError);
+                }
+            }
+            throw error;
+        }
     } catch (err) {
         console.error("Voice upload error:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

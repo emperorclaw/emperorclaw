@@ -391,17 +391,20 @@ export function AgentDirectChat({
                 try { const body = await uploadRes.json(); if (body.error) errMsg = body.error; } catch {}
                 throw new Error(errMsg);
             }
-            const { url } = await uploadRes.json() as { url: string };
+            const voiceArtifact = await uploadRes.json() as { id: string; name: string; contentType: string; sizeBytes: number };
 
             const secs = recordingSecs;
             const mins = Math.floor(secs / 60);
             const durationLabel = mins > 0 ? `${mins}:${String(secs % 60).padStart(2, "0")}` : `${secs}s`;
-            const text = `🎤 Voice message (${durationLabel})\n[audio:${url}]`;
+            const text = `🎤 Voice message (${durationLabel})`;
 
+            // Sent as a real attachment (same path as file uploads) so the
+            // agent can find and download it via the artifact id — a raw URL
+            // embedded in the text isn't resolvable by the agent's own auth.
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, targetAgentId: agentId }),
+                body: JSON.stringify({ text, targetAgentId: agentId, attachments: [voiceArtifact.id] }),
             });
             if (!res.ok) {
                 let errMsg = "Failed to send message";
@@ -631,12 +634,22 @@ export function AgentDirectChat({
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
                                                         {messageAttachments.map((att) => (
-                                                            <AttachmentChip
-                                                                key={att.id}
-                                                                attachment={att}
-                                                                tone={isHuman ? "light" : "dark"}
-                                                                href={`/api/ui/artifacts/${att.id}/download`}
-                                                            />
+                                                            att.contentType.startsWith("audio/") ? (
+                                                                <audio
+                                                                    key={att.id}
+                                                                    controls
+                                                                    src={`/api/ui/artifacts/${att.id}/download?disposition=inline`}
+                                                                    className="w-full max-w-[220px] h-8"
+                                                                    style={{ colorScheme: "dark", accentColor: isHuman ? "#6ee7b7" : "#6366f1" }}
+                                                                />
+                                                            ) : (
+                                                                <AttachmentChip
+                                                                    key={att.id}
+                                                                    attachment={att}
+                                                                    tone={isHuman ? "light" : "dark"}
+                                                                    href={`/api/ui/artifacts/${att.id}/download`}
+                                                                />
+                                                            )
                                                         ))}
                                                     </div>
                                                 )}
@@ -827,7 +840,11 @@ export function AgentDirectChat({
 }
 
 function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {
-    const audioMatch = text.match(/\[audio:(https?:\/\/[^\]]+)\]/);
+    // Legacy format from before voice messages became real attachments —
+    // matches both absolute URLs and the app's own relative paths (the bug:
+    // this used to only match https?:// and silently fell through to
+    // showing the raw "[audio:/api/...]" tag as plain text).
+    const audioMatch = text.match(/\[audio:(https?:\/\/[^\]]+|\/[^\]]+)\]/);
     if (!audioMatch) {
         return (
             <MarkdownRenderer

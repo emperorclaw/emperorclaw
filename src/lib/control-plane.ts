@@ -15,7 +15,7 @@ import {
     threadParticipants,
     users,
 } from "@/db/schema";
-import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 
@@ -318,28 +318,37 @@ export async function updateThreadExecutionState(input: {
     targetState: ExecutionState;
 }) {
     const targetState = normalizeExecutionState(input.targetState);
-    if (!targetState) return null;
+    if (!targetState) return [];
 
-    const [latestHumanMessage] = await db.select().from(threadMessages).where(and(
+    // Advance every unresolved human message, not just the latest one.
+    // If a second message arrives while the agent is still working the
+    // first, targeting only "the latest" would resolve the wrong message
+    // (the unread one) and orphan the one actually being answered —
+    // making it look already-handled and never getting surfaced again.
+    const outstanding = await db.select().from(threadMessages).where(and(
         eq(threadMessages.companyId, input.companyId),
         eq(threadMessages.threadId, input.threadId),
         eq(threadMessages.senderType, "human"),
-    )).orderBy(desc(threadMessages.createdAt)).limit(1);
+        ne(threadMessages.deliveryState, "resolved"),
+    ));
 
-    if (!latestHumanMessage) return null;
-    if (latestHumanMessage.deliveryState === targetState) return null;
+    const toUpdate = outstanding.filter((m) => m.deliveryState !== targetState);
+    if (toUpdate.length === 0) return [];
 
-    const [updated] = await db.update(threadMessages).set({
-        deliveryState: targetState,
-        metadataJson: {
-            ...(latestHumanMessage.metadataJson as Record<string, unknown> || {}),
-            executionStateUpdatedAt: new Date().toISOString(),
-            executionStateUpdatedBy: input.actorType,
-            executionActorId: input.actorId || null,
-        },
-    }).where(eq(threadMessages.id, latestHumanMessage.id)).returning();
+    const updated = await Promise.all(toUpdate.map(async (m) => {
+        const [row] = await db.update(threadMessages).set({
+            deliveryState: targetState,
+            metadataJson: {
+                ...(m.metadataJson as Record<string, unknown> || {}),
+                executionStateUpdatedAt: new Date().toISOString(),
+                executionStateUpdatedBy: input.actorType,
+                executionActorId: input.actorId || null,
+            },
+        }).where(eq(threadMessages.id, m.id)).returning();
+        return row;
+    }));
 
-    return updated || null;
+    return updated.filter((row): row is typeof threadMessages.$inferSelect => Boolean(row));
 }
 
 export async function getThreadMessages(
