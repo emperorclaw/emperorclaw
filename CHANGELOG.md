@@ -9,6 +9,31 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.21] — 2026-08-22
+
+### Fixed
+
+- **Sending a second message before the agent finished with the first made
+  it vanish.** `updateThreadExecutionState()` always resolved only the
+  single *latest* human message in a thread. If you sent another message
+  while the agent was still working the first one, that new message became
+  "latest" — so when the agent reported it was done, the code marked the
+  unread message as resolved instead of the one it actually answered,
+  orphaning the original and making the new one look already-handled. It
+  now advances every unresolved human message together, so a backlog sent
+  while the agent is busy is no longer silently dropped.
+- **Voice messages were unreadable by the agent, and showed a raw file path
+  in chat.** Voice uploads were never registered as artifacts — just
+  written to storage with a URL stuffed into the message text as
+  `[audio:...]`. That broke two ways: the URL was relative, but the chat
+  renderer's regex only matched `https://` links, so the literal tag
+  printed as text; and with no artifact row, neither the UI download route
+  nor the agent's own artifact tools could resolve the file (404/401),
+  so agents had no way to fetch or transcribe it. Voice notes now go
+  through the same artifact-registration path as file attachments, so
+  they show up in the agent's artifact list, download correctly, and
+  render as an inline player in chat.
+
 ## [0.8.20] — 2026-08-20
 
 ### Fixed
