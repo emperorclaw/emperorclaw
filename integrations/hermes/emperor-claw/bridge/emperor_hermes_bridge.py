@@ -736,14 +736,30 @@ def main() -> int:
                     # poll cycle forever — a silent infinite retry loop with
                     # no visible failure and, on a real API key, unbounded
                     # cost. Log it, tell the human, and move on.
-                    update_chat_status(message, typing=False, execution_state="seen")
+                    #
+                    # Every recovery call below hits the same Emperor API that
+                    # may have just failed (e.g. Emperor Claw mid-deploy) — if
+                    # a recovery call itself throws uncaught, it re-escapes
+                    # this except block and skips remember_seen() below just
+                    # like the original bug, redispatching this message as a
+                    # brand-new Hermes turn on the next poll cycle while the
+                    # first one may still be running: two independent replies
+                    # for the same message. Each call is isolated so one
+                    # failure can't take down the rest.
+                    try:
+                        update_chat_status(message, typing=False, execution_state="seen")
+                    except Exception as status_exc:
+                        log(f"failed to update chat status for {message_id}: {status_exc}")
                     log(f"error processing message {message_id}: {exc}")
                     try:
                         send_reply(message, f"{AGENT_NAME}: I hit an error and couldn't reply — check the runtime logs.")
                     except Exception as reply_exc:
                         log(f"failed to send error notice for {message_id}: {reply_exc}")
                 finally:
-                    send_heartbeat(0)
+                    try:
+                        send_heartbeat(0)
+                    except Exception as heartbeat_exc:
+                        log(f"failed to send heartbeat after {message_id}: {heartbeat_exc}")
                 remember_seen(state, message_id)
                 if ts:
                     state["lastSeenAt"] = ts
