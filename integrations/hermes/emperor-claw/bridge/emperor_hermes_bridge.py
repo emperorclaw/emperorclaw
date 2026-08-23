@@ -414,20 +414,76 @@ def update_chat_status(
 
 
 def format_turn_activity(elapsed_seconds: float, resumed: bool) -> str:
-    """Best-effort "what's happening" text for the typing indicator.
-
-    Hermes exposes no stable machine-readable per-tool-call event stream
-    today (checked: `hermes chat` has no --json/streaming flag; the only
-    outbound-event mechanism, `hermes webhook`, is for inbound triggering,
-    not turn progress). Rather than parse Hermes's human-readable stdout —
-    which is free to change on any release and would silently break — this
-    surfaces telemetry the bridge already owns: elapsed time and whether
-    this turn resumed a prior session.
+    """Fallback "what's happening" text when no tool-call log line is
+    available yet (see latest_tool_activity) — just elapsed time and
+    whether this turn resumed a prior session.
     """
     minutes, seconds = divmod(int(elapsed_seconds), 60)
     elapsed = f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
     prefix = "continuing" if resumed else "working"
     return f"{prefix} ({elapsed})"
+
+
+# `hermes chat` has no --json/streaming flag to subscribe to tool-call events
+# (checked against the installed v0.20.5 CLI's own --help), and `hermes
+# webhook` is for inbound triggering, not turn progress. But Hermes already
+# writes each tool call to <HERMES_HOME>/logs/agent.log via a stable, on-disk
+# `agent.tool_executor` logger — confirmed against live production logs on
+# this fleet. Tailing that (not the interactive stdout, which is free-text
+# and formatted for a human terminal) gives real tool-level activity without
+# depending on anything Hermes hasn't already committed to as durable output.
+_TOOL_LOG_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+(?:INFO|WARNING)\s+"
+    r"(?:\[[^\]]+\]\s+)?agent\.tool_executor:\s+"
+    r"[Tt]ool\s+(\w+)\s+(completed|returned error)\s+\(([\d.]+)s"
+)
+_TOOL_LOG_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def _agent_log_path() -> Path | None:
+    hermes_home = os.environ.get("HERMES_HOME", "").strip()
+    if not hermes_home:
+        return None
+    return Path(hermes_home) / "logs" / "agent.log"
+
+
+def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | None:
+    """Most recent tool-call line in agent.log newer than since_ts, or None
+    if the log is unavailable or nothing tool-related has happened yet this
+    turn. Reads only the tail of the file — cheap enough to call every poll
+    tick without materially adding to the 3s status-ping cadence."""
+    log_path = _agent_log_path()
+    if not log_path:
+        return None
+    try:
+        size = log_path.stat().st_size
+        with log_path.open("rb") as fh:
+            if size > tail_bytes:
+                fh.seek(size - tail_bytes)
+            raw = fh.read()
+    except OSError:
+        return None
+
+    latest: tuple[float, str, str, str] | None = None  # (ts, tool, status, duration)
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        match = _TOOL_LOG_RE.match(line)
+        if not match:
+            continue
+        try:
+            ts = time.mktime(time.strptime(match.group(1), _TOOL_LOG_TS_FORMAT))
+        except ValueError:
+            continue
+        if ts <= since_ts:
+            continue
+        if latest is None or ts >= latest[0]:
+            latest = (ts, match.group(2), match.group(3), match.group(4))
+
+    if not latest:
+        return None
+    _, tool, status, duration = latest
+    if status == "completed":
+        return f"used {tool} ({duration}s)"
+    return f"{tool} failed ({duration}s)"
 
 
 def clean_hermes_output(output: str) -> str:
@@ -514,7 +570,8 @@ def invoke_hermes(cmd: List[str], message: Dict[str, Any], *, resumed: bool = Fa
             stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
         if time.time() - last_status >= 3:
-            update_chat_status(message, typing=True, execution_state="acting", activity=format_turn_activity(elapsed, resumed))
+            activity = latest_tool_activity(started) or format_turn_activity(elapsed, resumed)
+            update_chat_status(message, typing=True, execution_state="acting", activity=activity)
             last_status = time.time()
         time.sleep(0.5)
     stdout, stderr = proc.communicate()
