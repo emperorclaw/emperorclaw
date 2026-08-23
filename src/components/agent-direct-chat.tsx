@@ -25,6 +25,7 @@ type DirectMessage = {
     text: string;
     createdAt: string;
     metadataJson?: unknown;
+    deliveryState?: "queued" | "seen" | "acting" | "resolved" | string | null;
 };
 
 function getMessageAttachments(message: DirectMessage): AttachmentRef[] {
@@ -662,8 +663,23 @@ export function AgentDirectChat({
                                                 </div>
                                             </div>
 
-                                            {/* Read receipt — only on human messages */}
-                                            {isHuman && isLastInGroup && (
+                                            {/* Delivery/read status — per-message while pending (so a batch of
+                                                queued messages each show their own real state), collapsing
+                                                back to the group-level Read/Sent receipt once resolved. */}
+                                            {isHuman && message.deliveryState && message.deliveryState !== "resolved" ? (
+                                                <div className="mt-1 flex items-center gap-1 px-1">
+                                                    <div className={cn(
+                                                        "w-1.5 h-1.5 rounded-full",
+                                                        message.deliveryState === "acting" ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"
+                                                    )} />
+                                                    <span className={cn(
+                                                        "text-[10px] font-medium",
+                                                        message.deliveryState === "acting" ? "text-emerald-500" : "text-zinc-600"
+                                                    )}>
+                                                        {message.deliveryState === "acting" ? "Being handled" : "Queued"}
+                                                    </span>
+                                                </div>
+                                            ) : isHuman && isLastInGroup && (
                                                 <div className="mt-1 flex items-center gap-1 px-1">
                                                     <span className={cn("text-[10px] font-medium transition-colors", isRead ? "text-emerald-500" : "text-zinc-600")}>
                                                         {isRead ? "Read" : "Sent"}

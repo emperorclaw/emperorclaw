@@ -316,20 +316,25 @@ export async function updateThreadExecutionState(input: {
     actorType: "agent" | "human";
     actorId?: string | null;
     targetState: ExecutionState;
+    // When given, only this specific message advances instead of every
+    // unresolved message in the thread. Required for "resolved": that
+    // transition means "a reply now exists for this exact message" —
+    // applying it thread-wide would mark still-unprocessed queued messages
+    // as done the instant an earlier one finishes, before the agent has
+    // even started them. "seen"/"acting" stay thread-wide on purpose — the
+    // agent genuinely is looking at / working the whole thread, not just
+    // one message, so batching those two is accurate, not just convenient.
+    messageId?: string | null;
 }) {
     const targetState = normalizeExecutionState(input.targetState);
     if (!targetState) return [];
 
-    // Advance every unresolved human message, not just the latest one.
-    // If a second message arrives while the agent is still working the
-    // first, targeting only "the latest" would resolve the wrong message
-    // (the unread one) and orphan the one actually being answered —
-    // making it look already-handled and never getting surfaced again.
     const outstanding = await db.select().from(threadMessages).where(and(
         eq(threadMessages.companyId, input.companyId),
         eq(threadMessages.threadId, input.threadId),
         eq(threadMessages.senderType, "human"),
         ne(threadMessages.deliveryState, "resolved"),
+        input.messageId ? eq(threadMessages.id, input.messageId) : undefined,
     ));
 
     const toUpdate = outstanding.filter((m) => m.deliveryState !== targetState);

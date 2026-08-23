@@ -9,6 +9,27 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.24] — 2026-08-24
+
+### Added
+
+- **Chat now shows which of your messages are still queued vs. actually
+  answered.** Each pending message gets its own status: "Queued" or
+  "Being handled" (pulsing), instead of a single group-level Read/Sent
+  receipt that said nothing about a backlog.
+
+### Fixed
+
+- **A queued message could show as "resolved" before the agent had
+  actually processed it.** `updateThreadExecutionState()`'s "resolved"
+  transition applied to every unresolved message in a thread at once —
+  so when message 1 of a 3-message backlog got its reply, messages 2
+  and 3 flipped to "resolved" in the same instant, even though the
+  agent hadn't started them yet. "resolved" is now scoped to the exact
+  message that got a reply; "seen"/"acting" stay thread-wide on purpose
+  (the agent genuinely is looking at/working the whole thread, not just
+  one message, so batching those two was already correct).
+
 ## [0.8.23] — 2026-08-23
 
 ### Added

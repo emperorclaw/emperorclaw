@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { threadId, typing, markRead, agentId, executionState, activity } = body;
+        const { threadId, typing, markRead, agentId, executionState, activity, messageId } = body;
 
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
         if (!agentId) return NextResponse.json({ error: "agentId is required for status updates" }, { status: 400 });
@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
                 actorType: "agent",
                 actorId: resolvedAgentId,
                 targetState: derivedState,
+                // Scope "resolved" to the specific message that got a reply —
+                // batching it thread-wide would mark still-queued messages
+                // done before the agent has actually processed them.
+                messageId: derivedState === "resolved" && typeof messageId === "string" ? messageId : null,
             });
 
             for (const updatedMessage of updatedMessages) {

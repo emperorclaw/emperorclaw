@@ -415,6 +415,13 @@ def update_chat_status(
         body["markRead"] = True
     if execution_state:
         body["executionState"] = execution_state
+        if execution_state == "resolved":
+            # Scope "resolved" to this exact message — batching it
+            # thread-wide would mark other still-queued messages done the
+            # instant this one's reply lands, before they've been touched.
+            message_id = message.get("id")
+            if message_id:
+                body["messageId"] = message_id
     if activity:
         body["activity"] = activity
     api("POST", "/chat/status", body=body)
