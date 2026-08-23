@@ -69,3 +69,4 @@ __pycache__/
 .tmp-openclaw/
 research/
 *.pyc
+.scratch-*
