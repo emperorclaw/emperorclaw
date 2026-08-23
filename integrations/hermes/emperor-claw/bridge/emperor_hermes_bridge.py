@@ -437,7 +437,50 @@ _TOOL_LOG_RE = re.compile(
     r"(?:\[[^\]]+\]\s+)?agent\.tool_executor:\s+"
     r"[Tt]ool\s+(\w+)\s+(completed|returned error)\s+\(([\d.]+)s"
 )
+# conversation_loop lines are logged retroactively (after the call already
+# finished, carrying its latency) — there's no "call started" marker at INFO
+# level, so this can't show a live "thinking" state mid-call. It's only used
+# to label which model is doing the thinking once we've decided (by elapsed
+# time since the last known tool activity) that a thinking phase is likely.
+_MODEL_LOG_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+INFO\s+"
+    r"(?:\[[^\]]+\]\s+)?agent\.conversation_loop:\s+API call #\d+:\s+model=(\S+)"
+)
 _TOOL_LOG_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Raw tool names -> short human phrases. Unmapped tools fall back to
+# "used <raw_name>" so a new/renamed tool degrades gracefully instead of
+# showing nothing.
+_TOOL_LABELS = {
+    "terminal": "running a command",
+    "read_file": "reading a file",
+    "write_file": "writing a file",
+    "edit_file": "editing a file",
+    "search_files": "searching files",
+    "list_directory": "browsing files",
+    "web_search": "searching the web",
+    "fetch_url": "reading a webpage",
+    "browser_navigate": "browsing the web",
+    "browser_click": "clicking on the page",
+    "browser_snapshot": "reading the page",
+    "browser_type": "typing on the page",
+    "browser_screenshot": "taking a screenshot",
+    "emperor_request": "checking Emperor Claw",
+    "emperor_list_projects": "checking projects",
+    "emperor_list_tasks": "checking tasks",
+    "emperor_list_threads": "checking threads",
+    "emperor_get_thread_messages": "reading messages",
+    "emperor_upload_artifact": "uploading a file",
+    "emperor_add_task_note": "writing a task note",
+    "emperor_send_message": "sending a message",
+    "emperor_create_folder": "creating a folder",
+    "emperor_list_folder_contents": "checking Storage",
+    "emperor_create_project": "creating a project",
+}
+
+
+def _tool_label(tool: str) -> str:
+    return _TOOL_LABELS.get(tool, f"used {tool}")
 
 
 def _agent_log_path() -> Path | None:
@@ -447,11 +490,17 @@ def _agent_log_path() -> Path | None:
     return Path(hermes_home) / "logs" / "agent.log"
 
 
+# Once the last known tool activity is older than this, assume we've moved
+# into a thinking/API-call phase rather than continuing to show
+# increasingly stale "used X" text from whatever ran last.
+_THINKING_AFTER_SECONDS = 4.0
+
+
 def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | None:
-    """Most recent tool-call line in agent.log newer than since_ts, or None
-    if the log is unavailable or nothing tool-related has happened yet this
-    turn. Reads only the tail of the file — cheap enough to call every poll
-    tick without materially adding to the 3s status-ping cadence."""
+    """Best-effort "what's happening" text derived from agent.log, or None
+    if the log is unavailable. Reads only the tail of the file — cheap
+    enough to call every poll tick without materially adding to the 3s
+    status-ping cadence."""
     log_path = _agent_log_path()
     if not log_path:
         return None
@@ -464,26 +513,41 @@ def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | Non
     except OSError:
         return None
 
-    latest: tuple[float, str, str, str] | None = None  # (ts, tool, status, duration)
+    latest_tool: tuple[float, str, str, str] | None = None  # (ts, tool, status, duration)
+    latest_model: tuple[float, str] | None = None  # (ts, model)
+    now = time.time()
     for line in raw.decode("utf-8", errors="replace").splitlines():
-        match = _TOOL_LOG_RE.match(line)
-        if not match:
+        tool_match = _TOOL_LOG_RE.match(line)
+        if tool_match:
+            try:
+                ts = time.mktime(time.strptime(tool_match.group(1), _TOOL_LOG_TS_FORMAT))
+            except ValueError:
+                continue
+            if ts > since_ts and (latest_tool is None or ts >= latest_tool[0]):
+                latest_tool = (ts, tool_match.group(2), tool_match.group(3), tool_match.group(4))
             continue
-        try:
-            ts = time.mktime(time.strptime(match.group(1), _TOOL_LOG_TS_FORMAT))
-        except ValueError:
-            continue
-        if ts <= since_ts:
-            continue
-        if latest is None or ts >= latest[0]:
-            latest = (ts, match.group(2), match.group(3), match.group(4))
+        model_match = _MODEL_LOG_RE.match(line)
+        if model_match:
+            try:
+                ts = time.mktime(time.strptime(model_match.group(1), _TOOL_LOG_TS_FORMAT))
+            except ValueError:
+                continue
+            if latest_model is None or ts >= latest_model[0]:
+                latest_model = (ts, model_match.group(2))
 
-    if not latest:
-        return None
-    _, tool, status, duration = latest
-    if status == "completed":
-        return f"used {tool} ({duration}s)"
-    return f"{tool} failed ({duration}s)"
+    if latest_tool and (now - latest_tool[0]) < _THINKING_AFTER_SECONDS:
+        _, tool, status, duration = latest_tool
+        if status == "completed":
+            return f"{_tool_label(tool)} ({duration}s)"
+        return f"{tool} failed ({duration}s)"
+
+    # No fresh tool activity — likely between tool calls, waiting on the
+    # model. Label with the model name if we have a recent-ish hint of it.
+    if latest_model and (now - latest_model[0]) < 120:
+        return f"thinking ({latest_model[1]})"
+    if latest_tool:
+        return "thinking"
+    return None
 
 
 def clean_hermes_output(output: str) -> str:
