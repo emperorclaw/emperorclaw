@@ -44,6 +44,7 @@ type DirectParticipant = {
     participantType: "human" | "agent" | "system" | string;
     typingUntil?: string | null;
     lastReadAt?: string | null;
+    currentActivity?: string | null;
 };
 
 // --- Grouping helpers ---
@@ -511,11 +512,13 @@ export function AgentDirectChat({
         }
     };
 
-    const isAgentTyping = participants.some(p =>
+    const typingAgent = participants.find(p =>
         p.participantType === 'agent' &&
         p.typingUntil &&
         new Date(p.typingUntil).getTime() > Date.now()
     );
+    const isAgentTyping = Boolean(typingAgent);
+    const agentActivity = typingAgent?.currentActivity?.trim() || null;
 
     const agentLastReadAt = participants.find(p => p.participantType === 'agent')?.lastReadAt;
 
@@ -683,7 +686,7 @@ export function AgentDirectChat({
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
                                     </div>
                                     <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                                        {agentName} is typing
+                                        {agentActivity ? `${agentName}: ${agentActivity}` : `${agentName} is typing`}
                                     </span>
                                 </div>
                             </div>

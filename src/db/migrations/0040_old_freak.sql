@@ -1,0 +1,1 @@
+ALTER TABLE "thread_participants" ADD COLUMN "current_activity" text;

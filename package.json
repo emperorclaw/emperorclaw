@@ -1,6 +1,6 @@
 {
   "name": "emperor-claw",
-  "version": "0.8.22",
+  "version": "0.8.23",
   "private": true,
   "engines": {
     "node": ">=20"

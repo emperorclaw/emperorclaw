@@ -233,7 +233,7 @@ export async function updateAgentThreadParticipant(
     companyId: string,
     threadId: string,
     agentId: string,
-    updates: { lastReadAt?: Date; typingUntil?: Date | null },
+    updates: { lastReadAt?: Date; typingUntil?: Date | null; currentActivity?: string | null },
 ) {
     const [existing] = await db.select({ id: threadParticipants.id })
         .from(threadParticipants)

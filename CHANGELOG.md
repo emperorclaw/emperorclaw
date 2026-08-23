@@ -9,6 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.23] — 2026-08-23
+
+### Added
+
+- **The Hermes typing indicator now shows what's actually happening,
+  not just "typing…".** Checked NousResearch's Hermes Agent CLI (latest
+  v0.20.5) for a way to stream real tool-call-level progress — there is
+  no `--json`/event-stream flag on `hermes chat`, and `hermes webhook` is
+  for inbound triggering, not turn progress. Rather than parse Hermes's
+  human-readable stdout (free to change on any release, and would
+  silently break turn handling if it did), the bridge now surfaces
+  telemetry it already owns: elapsed turn time and whether it's
+  continuing a resumed session — e.g. "Viktor: working (42s)" instead of
+  a bare typing dot. New `threadParticipants.currentActivity` column,
+  threaded through `/chat/status`'s existing `activity` param and
+  cleared the instant typing stops so nothing goes stale.
+
 ## [0.8.22] — 2026-08-23
 
 ### Added

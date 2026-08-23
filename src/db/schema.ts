@@ -788,6 +788,12 @@ export const threadParticipants = pgTable("thread_participants", {
     role: text("role").default('member').notNull(),
     lastReadAt: timestamp("last_read_at"),
     typingUntil: timestamp("typing_until"),
+    // Free-text detail shown alongside the typing indicator while typingUntil
+    // is in the future — e.g. "working (42s)" instead of a bare "typing…".
+    // Bridge-supplied telemetry (elapsed time, retry state), not tool-level
+    // detail: no external agent runtime exposes a stable machine-readable
+    // per-tool-call event stream to hook into today.
+    currentActivity: text("current_activity"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

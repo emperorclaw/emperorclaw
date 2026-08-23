@@ -14,17 +14,22 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { threadId, typing, markRead, agentId, executionState } = body;
-        
+        const { threadId, typing, markRead, agentId, executionState, activity } = body;
+
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
         if (!agentId) return NextResponse.json({ error: "agentId is required for status updates" }, { status: 400 });
 
         const resolvedAgentId = await resolveAgentId(companyId, agentId);
 
-        const updates: { lastReadAt?: Date; typingUntil?: Date | null } = {};
+        const updates: { lastReadAt?: Date; typingUntil?: Date | null; currentActivity?: string | null } = {};
         if (markRead) updates.lastReadAt = new Date();
         if (typeof typing === 'boolean') {
             updates.typingUntil = typing ? new Date(Date.now() + 5000) : null;
+            // Clear stale activity text the instant typing stops, so a leftover
+            // "working (42s)" never lingers after the turn actually ends.
+            updates.currentActivity = typing && typeof activity === "string" && activity.trim()
+                ? activity.trim().slice(0, 200)
+                : null;
         }
 
         if (Object.keys(updates).length > 0) {
@@ -37,6 +42,7 @@ export async function POST(req: NextRequest) {
                 participantId: resolvedAgentId,
                 typing: !!typing,
                 lastReadAt: updates.lastReadAt,
+                currentActivity: updates.currentActivity,
             });
         }
 

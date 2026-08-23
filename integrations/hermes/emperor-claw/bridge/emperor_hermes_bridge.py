@@ -393,6 +393,7 @@ def update_chat_status(
     typing: bool | None = None,
     mark_read: bool = False,
     execution_state: str | None = None,
+    activity: str | None = None,
 ) -> None:
     thread_id = message.get("threadId") or message.get("thread_id")
     if not thread_id:
@@ -407,7 +408,26 @@ def update_chat_status(
         body["markRead"] = True
     if execution_state:
         body["executionState"] = execution_state
+    if activity:
+        body["activity"] = activity
     api("POST", "/chat/status", body=body)
+
+
+def format_turn_activity(elapsed_seconds: float, resumed: bool) -> str:
+    """Best-effort "what's happening" text for the typing indicator.
+
+    Hermes exposes no stable machine-readable per-tool-call event stream
+    today (checked: `hermes chat` has no --json/streaming flag; the only
+    outbound-event mechanism, `hermes webhook`, is for inbound triggering,
+    not turn progress). Rather than parse Hermes's human-readable stdout —
+    which is free to change on any release and would silently break — this
+    surfaces telemetry the bridge already owns: elapsed time and whether
+    this turn resumed a prior session.
+    """
+    minutes, seconds = divmod(int(elapsed_seconds), 60)
+    elapsed = f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
+    prefix = "continuing" if resumed else "working"
+    return f"{prefix} ({elapsed})"
 
 
 def clean_hermes_output(output: str) -> str:
@@ -476,7 +496,7 @@ def _persist_killed_session(
         pass
 
 
-def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.CompletedProcess[str]:
+def invoke_hermes(cmd: List[str], message: Dict[str, Any], *, resumed: bool = False) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     # Provider hint: pass EMPEROR_CLAW_LLM_PROVIDER so Hermes skills can auto-detect.
     # The actual API key is configured by the user in ~/.hermes/.env or environment.
@@ -488,12 +508,13 @@ def invoke_hermes(cmd: List[str], message: Dict[str, Any]) -> subprocess.Complet
     started = time.time()
     last_status = 0.0
     while proc.poll() is None:
-        if time.time() - started > HERMES_TIMEOUT_SECONDS:
+        elapsed = time.time() - started
+        if elapsed > HERMES_TIMEOUT_SECONDS:
             _terminate_turn(proc)
             stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
         if time.time() - last_status >= 3:
-            update_chat_status(message, typing=True, execution_state="acting")
+            update_chat_status(message, typing=True, execution_state="acting", activity=format_turn_activity(elapsed, resumed))
             last_status = time.time()
         time.sleep(0.5)
     stdout, stderr = proc.communicate()
@@ -563,7 +584,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     if resume_id:
         cmd[3:3] = ["--resume", resume_id]
     try:
-        result = invoke_hermes(cmd, message)
+        result = invoke_hermes(cmd, message, resumed=bool(resume_id))
     except subprocess.TimeoutExpired as exc:
         _persist_killed_session(sessions, session_key, exc)
         raise
@@ -571,7 +592,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         sessions.pop(session_key, None)
         cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
         try:
-            result = invoke_hermes(cmd, message)
+            result = invoke_hermes(cmd, message, resumed=False)
         except subprocess.TimeoutExpired as exc:
             _persist_killed_session(sessions, session_key, exc)
             raise
