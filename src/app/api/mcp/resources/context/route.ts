@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { resolveCompanyBrainContext } from "@/lib/resources";
+import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -9,6 +10,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const agentParam = searchParams.get("agentId");
   const agentId = agentParam ? await resolveAgentId(companyId, agentParam) : null;
+  const customerIdParam = searchParams.get("customerId");
+  const projectIdParam = searchParams.get("projectId");
+  if (agentId && (customerIdParam || projectIdParam)) {
+    const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, agentId);
+    const allowed =
+      (!projectIdParam || isProjectAllowed(allowedProjectIds, projectIdParam)) &&
+      (!customerIdParam || isCustomerAllowed(allowedCustomerIds, customerIdParam));
+    if (!allowed) {
+      return NextResponse.json({ error: "Scope not found" }, { status: 404 });
+    }
+  }
   const resourceIds = searchParams.getAll("resourceId").flatMap((value) => value.split(",").filter(Boolean));
   const tagFilters = searchParams.getAll("tag").flatMap((value) => value.split(",").filter(Boolean));
   const maxChars = Number(searchParams.get("maxChars") || "12000");
@@ -17,8 +29,8 @@ export async function GET(req: NextRequest) {
   const maxCharsPerResource = Number(searchParams.get("maxCharsPerResource") || "");
   const context = await resolveCompanyBrainContext({
     companyId,
-    customerId: searchParams.get("customerId"),
-    projectId: searchParams.get("projectId"),
+    customerId: customerIdParam,
+    projectId: projectIdParam,
     agentId,
     resourceIds,
     tagFilters,

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
 import { createTaskForProject, listTasksForCompany } from "@/lib/openclaw/tasks";
 import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
 
 const createTaskSchema = z.object({
     projectId: z.string().min(1, "projectId is required"),
@@ -31,6 +32,7 @@ const createTaskSchema = z.object({
     allowUnderspecified: z.boolean().default(false),
     assignee: z.unknown().optional(),
     assignedAgentId: optionalString,
+    agentId: optionalString,
 }).loose();
 
 export async function GET(req: NextRequest) {
@@ -44,13 +46,31 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
     const stateParam = searchParams.get("state");
     const projectId = searchParams.get("projectId");
+    const agentIdParam = searchParams.get("agentId");
 
     try {
+        let resolvedAgentId: string | null = null;
+        if (agentIdParam) {
+            try {
+                resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
+            } catch {
+                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            }
+        }
+        const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        if (projectId) {
+            // Caller explicitly asked for one project — 404 if it's out of scope,
+            // rather than silently returning an empty list for an explicit ask.
+            if (!isProjectAllowed(allowedProjectIds, projectId)) {
+                return NextResponse.json({ error: "Project not found" }, { status: 404 });
+            }
+        }
         const rows = await listTasksForCompany({
             companyId,
             limit,
             state: stateParam,
             projectId,
+            projectIdFilter: projectId ? null : allowedProjectIds,
         });
 
         const approvalSummary = await getPendingApprovalSummaryForTaskIds(
@@ -121,7 +141,20 @@ export async function POST(req: NextRequest) {
         allowUnderspecified,
         assignee,
         assignedAgentId,
+        agentId,
     } = parsed.data;
+
+    if (agentId) {
+        try {
+            const resolvedAgentId = await resolveAgentId(companyId, agentId);
+            const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+            if (!isProjectAllowed(allowedProjectIds, projectId)) {
+                return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
+            }
+        } catch {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+    }
 
     const inputPayload = {
         ...(inputJson && typeof inputJson === "object" ? inputJson : {}),

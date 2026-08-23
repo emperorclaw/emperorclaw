@@ -14,6 +14,7 @@ import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { getStorageProviderName } from "@/lib/storage";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 
 const createArtifactSchema = z.object({
     kind: z.string().min(1, "kind is required"),
@@ -100,6 +101,31 @@ export async function GET(req: NextRequest) {
         }
         if (isCanonical === "true" || isCanonical === "false") {
             conditions.push(eq(artifacts.isCanonical, isCanonical === "true"));
+        }
+
+        // agentId here is also the creator-filter above (pre-existing, unchanged) —
+        // additionally treat it as "the acting agent" for scope enforcement: an
+        // artifact with neither projectId nor customerId is company-wide/general
+        // and stays visible to everyone, same exemption team chat gets.
+        if (agentId) {
+            try {
+                const resolvedCallerId = await resolveAgentId(companyId, agentId);
+                const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedCallerId);
+                if (allowedProjectIds !== null || allowedCustomerIds !== null) {
+                    const scopeOr = or(
+                        and(isNull(artifacts.projectId), isNull(artifacts.customerId)),
+                        allowedProjectIds && allowedProjectIds.size > 0
+                            ? or(...[...allowedProjectIds].map((id) => eq(artifacts.projectId, id)))
+                            : undefined,
+                        allowedCustomerIds && allowedCustomerIds.size > 0
+                            ? or(...[...allowedCustomerIds].map((id) => eq(artifacts.customerId, id)))
+                            : undefined,
+                    );
+                    if (scopeOr) conditions.push(scopeOr);
+                }
+            } catch {
+                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            }
         }
 
         const startDate = startDateParam ? new Date(startDateParam) : null;
@@ -257,6 +283,18 @@ export async function POST(req: NextRequest) {
         }
         if (!project && !customer) {
             return NextResponse.json({ error: "customerId or projectId is required." }, { status: 400 });
+        }
+
+        if (internalAgentId) {
+            const effectiveProjectId = project?.id ?? null;
+            const effectiveCustomerId = project?.customerId ?? customer?.id ?? null;
+            const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, internalAgentId);
+            const allowed =
+                (!effectiveProjectId || isProjectAllowed(allowedProjectIds, effectiveProjectId)) &&
+                (!effectiveCustomerId || isCustomerAllowed(allowedCustomerIds, effectiveCustomerId));
+            if (!allowed) {
+                return NextResponse.json({ error: "Project/customer is outside this agent's scope" }, { status: 403 });
+            }
         }
 
         const finalStorageProvider = storageProvider || getStorageProviderName();

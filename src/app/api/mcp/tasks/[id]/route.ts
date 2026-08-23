@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -7,6 +7,31 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+
+/** Resolves agentId (if given) and checks it against the task's project scope. */
+async function checkTaskScope(
+    companyId: string,
+    agentId: unknown,
+    projectId: string,
+    deniedStatus: 403 | 404,
+): Promise<NextResponse | null> {
+    if (typeof agentId !== "string" || !agentId) return null;
+    let resolvedAgentId: string;
+    try {
+        resolvedAgentId = await resolveAgentId(companyId, agentId);
+    } catch {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+    const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+    if (!isProjectAllowed(allowedProjectIds, projectId)) {
+        return NextResponse.json(
+            { error: deniedStatus === 404 ? "Task not found" : "Task's project is outside this agent's scope" },
+            { status: deniedStatus },
+        );
+    }
+    return null;
+}
 
 export async function GET(
     req: NextRequest,
@@ -25,6 +50,10 @@ export async function GET(
         if (!task) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
+
+        const agentIdParam = req.nextUrl.searchParams.get("agentId");
+        const scopeDenied = await checkTaskScope(companyId, agentIdParam, task.projectId, 404);
+        if (scopeDenied) return scopeDenied;
 
         return NextResponse.json({ task: serializeTaskWithAssignee(task) }, { status: 200 });
     } catch (err) {
@@ -52,6 +81,18 @@ export async function PATCH(
 
     try {
         const body = await req.json();
+
+        if (body.agentId) {
+            const [existingTask] = await db.select({ projectId: tasks.projectId }).from(tasks).where(
+                and(eq(tasks.id, taskId), eq(tasks.companyId, companyId), isNull(tasks.deletedAt))
+            ).limit(1);
+            if (!existingTask) {
+                return NextResponse.json({ error: "Task not found" }, { status: 404 });
+            }
+            const scopeDenied = await checkTaskScope(companyId, body.agentId, existingTask.projectId, 403);
+            if (scopeDenied) return scopeDenied;
+        }
+
         const result = await updateTaskForCompany({
             companyId,
             taskId,
@@ -103,6 +144,15 @@ export async function DELETE(
         if (!existing) {
             return NextResponse.json({ error: "Task not found or already deleted." }, { status: 404 });
         }
+
+        let agentId: unknown;
+        try {
+            agentId = (await req.json())?.agentId;
+        } catch {
+            // No body — DELETE typically has none, treat as unscoped caller.
+        }
+        const scopeDenied = await checkTaskScope(companyId, agentId, existing.projectId, 403);
+        if (scopeDenied) return scopeDenied;
 
         const [deletedTask] = await db.update(tasks).set({
             deletedAt: new Date(),

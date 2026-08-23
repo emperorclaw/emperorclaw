@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { listProjectsForCompany, createProjectForCompany } from "@/lib/projects-crud";
+import { loadAgentScopeContext, isCustomerAllowed } from "@/lib/agent-scope";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -12,9 +13,19 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get("limit") || "100", 10);
     const status = searchParams.get("status");
+    const agentIdParam = searchParams.get("agentId");
 
     try {
-        const result = await listProjectsForCompany({ companyId, limit, status });
+        let resolvedAgentId: string | null = null;
+        if (agentIdParam) {
+            try {
+                resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
+            } catch {
+                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            }
+        }
+        const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        const result = await listProjectsForCompany({ companyId, limit, status, projectIdFilter: allowedProjectIds });
         return NextResponse.json({ projects: result });
     } catch (err) {
         console.error("Error fetching projects:", err);
@@ -48,10 +59,23 @@ export async function POST(req: NextRequest) {
             blockStatusChangesWithPendingApproval = false,
             onlyLeadCanChangeStatus = false,
             maxActiveAgents = 3,
+            agentId,
         } = body;
 
         if (!goal) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
+        }
+
+        if (agentId && customerId) {
+            try {
+                const resolvedAgentId = await resolveAgentId(companyId, agentId);
+                const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+                if (!isCustomerAllowed(allowedCustomerIds, customerId)) {
+                    return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
+                }
+            } catch {
+                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            }
         }
 
         const project = await createProjectForCompany({

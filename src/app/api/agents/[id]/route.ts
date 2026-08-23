@@ -57,6 +57,19 @@ export async function PATCH(
     if (typeof body.budgetStatus === "string" && ["active", "warning", "paused"].includes(body.budgetStatus)) {
         updates.budgetStatus = body.budgetStatus;
     }
+    if (body.scopeJson && typeof body.scopeJson === "object") {
+        const mode = body.scopeJson.mode;
+        if (mode !== "all" && mode !== "restricted") {
+            return NextResponse.json({ error: "scopeJson.mode must be 'all' or 'restricted'" }, { status: 400 });
+        }
+        const asStringArray = (value: unknown): string[] =>
+            Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+        updates.scopeJson = {
+            mode,
+            customerIds: asStringArray(body.scopeJson.customerIds),
+            projectIds: asStringArray(body.scopeJson.projectIds),
+        };
+    }
     const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
     if (llmApiKey) {
         const encrypted = encryptSecretPayload({ apiKey: llmApiKey });

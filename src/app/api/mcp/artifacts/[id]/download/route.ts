@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken } from "@/lib/mcp";
+import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { storageAdapter } from "@/lib/storage";
+import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/artifacts/[id]/download">) {
     const auth = await verifyMcpToken(req);
@@ -21,6 +22,26 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/arti
 
     if (!artifact) {
         return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+    }
+
+    const agentIdParam = req.nextUrl.searchParams.get("agentId");
+    if (agentIdParam) {
+        let resolvedAgentId: string;
+        try {
+            resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
+        } catch {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+        const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        const hasScopeRestriction = allowedProjectIds !== null || allowedCustomerIds !== null;
+        const isCompanyWide = !artifact.projectId && !artifact.customerId;
+        if (hasScopeRestriction && !isCompanyWide) {
+            const projectOk = artifact.projectId ? isProjectAllowed(allowedProjectIds, artifact.projectId) : false;
+            const customerOk = artifact.customerId ? isCustomerAllowed(allowedCustomerIds, artifact.customerId) : false;
+            if (!projectOk && !customerOk) {
+                return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+            }
+        }
     }
 
     if (!artifact.storageKey) {

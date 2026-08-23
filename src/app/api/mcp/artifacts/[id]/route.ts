@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
+
+async function isArtifactOutOfScope(companyId: string, agentIdParam: unknown, artifact: { projectId: string | null; customerId: string | null }): Promise<boolean> {
+    if (typeof agentIdParam !== "string" || !agentIdParam) return false;
+    let resolvedAgentId: string;
+    try {
+        resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
+    } catch {
+        return true;
+    }
+    const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+    if (allowedProjectIds === null && allowedCustomerIds === null) return false;
+    if (!artifact.projectId && !artifact.customerId) return false; // company-wide artifact
+    const projectOk = artifact.projectId ? isProjectAllowed(allowedProjectIds, artifact.projectId) : false;
+    const customerOk = artifact.customerId ? isCustomerAllowed(allowedCustomerIds, artifact.customerId) : false;
+    return !(projectOk || customerOk);
+}
 
 export async function DELETE(
     req: NextRequest,
@@ -28,6 +45,16 @@ export async function DELETE(
 
         if (!existing) {
             return NextResponse.json({ error: "Artifact not found or already deleted." }, { status: 404 });
+        }
+
+        let agentId: unknown;
+        try {
+            agentId = (await req.json())?.agentId;
+        } catch {
+            // No body — DELETE typically has none, treat as unscoped caller.
+        }
+        if (await isArtifactOutOfScope(companyId, agentId, existing)) {
+            return NextResponse.json({ error: "Artifact is outside this agent's scope" }, { status: 403 });
         }
 
         const [deleted] = await db.update(artifacts).set({

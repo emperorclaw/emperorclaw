@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
@@ -14,6 +14,20 @@ async function validateScopedRelation(companyId: string, table: typeof customers
         isNull(table.deletedAt),
     )).limit(1);
     return Boolean(row);
+}
+
+export async function GET() {
+    const companyId = await getCompanyId();
+    if (!companyId) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const rows = await db.select({ id: projects.id, goal: projects.goal, customerId: projects.customerId })
+        .from(projects)
+        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)))
+        .orderBy(desc(projects.createdAt));
+
+    return NextResponse.json({ projects: rows });
 }
 
 export async function POST(req: NextRequest) {

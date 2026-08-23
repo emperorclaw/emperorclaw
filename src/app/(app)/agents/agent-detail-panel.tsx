@@ -20,6 +20,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
 import { AgentInstructionsTab } from "./agent-instructions-tab";
+import { AgentScopeTab } from "./agent-scope-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
 import { getAgentTemplate } from "@/lib/agent-templates";
@@ -51,6 +52,7 @@ type AgentDetailData = {
         llmModel?: string | null;
         lastSeenAt?: string;
         doctrineJson?: Record<string, string>;
+        scopeJson?: { mode?: "all" | "restricted"; customerIds?: string[]; projectIds?: string[] };
         monthlyBudgetCents?: number;
         monthlyTokenUsage?: number;
         budgetStatus?: string;
@@ -475,6 +477,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 <TabsList className="bg-zinc-900 border border-zinc-800">
                     <TabsTrigger value="memory">Memory</TabsTrigger>
                     <TabsTrigger value="instructions">Instructions</TabsTrigger>
+                    <TabsTrigger value="scope">Scope</TabsTrigger>
                     <TabsTrigger value="chat">Direct Chat</TabsTrigger>
                     <TabsTrigger value="threads">Threads</TabsTrigger>
                     <TabsTrigger value="runs">Runs</TabsTrigger>
@@ -519,6 +522,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     <AgentInstructionsTab
                         agentId={agent.id}
                         initialDoctrine={agent.doctrineJson || {}}
+                    />
+                </TabsContent>
+
+                <TabsContent value="scope" className="mt-4">
+                    <AgentScopeTab
+                        agentId={agent.id}
+                        initialScope={agent.scopeJson}
                     />
                 </TabsContent>
 

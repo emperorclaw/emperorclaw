@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -15,6 +15,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeTaskState, TASK_STATES, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
+import { getAgentScope, getAllowedProjectIds } from "@/lib/agent-scope";
 
 type ClaimTaskInput = {
   companyId: string;
@@ -97,6 +98,15 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
     return { message: "No tasks available for this role policy", task: null };
   }
 
+  // Restricted agents may only claim tasks under their scoped projects.
+  const scope = await getAgentScope(input.companyId, internalAgentId);
+  const allowedProjectIds = await getAllowedProjectIds(input.companyId, scope);
+  const projectScopeSql = allowedProjectIds === null
+    ? sql`true`
+    : allowedProjectIds.size === 0
+      ? sql`false`
+      : sql`t.project_id = ANY(ARRAY[${sql.join([...allowedProjectIds].map((id) => sql`${id}::uuid`), sql`, `)}])`;
+
   const result = await db.execute(sql`
     UPDATE tasks
     SET
@@ -121,6 +131,7 @@ export async function claimNextTaskForAgent(input: ClaimTaskInput) {
         AND t.deleted_at IS NULL
         AND t.assigned_member_id IS NULL
         AND (t.assigned_agent_id IS NULL OR t.assigned_agent_id = ${internalAgentId})
+        AND ${projectScopeSql}
         AND (
           ${strictOwnerRole === false} = true
           OR COALESCE(t.input_json->>'ownerRole', '') = ''
@@ -182,6 +193,12 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
 
   if (!existingTask) {
     return { status: 404 as const, error: "Task not found" };
+  }
+
+  const scope = await getAgentScope(input.companyId, internalAgentId);
+  const allowedProjectIds = await getAllowedProjectIds(input.companyId, scope);
+  if (allowedProjectIds !== null && !allowedProjectIds.has(existingTask.projectId)) {
+    return { status: 403 as const, error: "Task's project is outside this agent's scope" };
   }
 
   const state = mode === "claim" ? TASK_STATES.inProgress : existingTask.state;
@@ -479,6 +496,9 @@ export async function listTasksForCompany(input: {
   limit: number;
   state?: string | null;
   projectId?: string | null;
+  // null/undefined = unrestricted; a Set (possibly empty) restricts to those
+  // project ids. Comes from an agent's scope — see src/lib/agent-scope.ts.
+  projectIdFilter?: Set<string> | null;
 }) {
   const conditions = [
     eq(tasks.companyId, input.companyId),
@@ -495,6 +515,14 @@ export async function listTasksForCompany(input: {
 
   if (input.projectId) {
     conditions.push(eq(tasks.projectId, input.projectId));
+  }
+
+  if (input.projectIdFilter) {
+    conditions.push(
+      input.projectIdFilter.size === 0
+        ? sql`false`
+        : inArray(tasks.projectId, [...input.projectIdFilter])
+    );
   }
 
   return db.select().from(tasks)

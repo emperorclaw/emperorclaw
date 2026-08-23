@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { loadAgentScopeContext, isCustomerAllowed } from "@/lib/agent-scope";
+
+async function resolveScopedAgent(companyId: string, agentIdParam: unknown): Promise<
+    { ok: true; allowedCustomerIds: Set<string> | null } | { ok: false; response: NextResponse }
+> {
+    if (typeof agentIdParam !== "string" || !agentIdParam) {
+        return { ok: true, allowedCustomerIds: null };
+    }
+    try {
+        const resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
+        const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        return { ok: true, allowedCustomerIds };
+    } catch {
+        return { ok: false, response: NextResponse.json({ error: "Agent not found" }, { status: 404 }) };
+    }
+}
 
 export async function PATCH(
     req: NextRequest,
@@ -23,7 +39,7 @@ export async function PATCH(
 
     try {
         const body = await req.json();
-        const { name, notes } = body;
+        const { name, notes, agentId } = body;
 
         // Ensure we actually have something to update
         if (name === undefined && notes === undefined) {
@@ -36,6 +52,12 @@ export async function PATCH(
 
         if (!existing) {
             return NextResponse.json({ error: "Customer not found or unauthorized." }, { status: 404 });
+        }
+
+        const scoped = await resolveScopedAgent(companyId, agentId);
+        if (!scoped.ok) return scoped.response;
+        if (!isCustomerAllowed(scoped.allowedCustomerIds, customerId)) {
+            return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
 
         const updateData: any = {};
@@ -78,6 +100,18 @@ export async function DELETE(
 
         if (!existing) {
             return NextResponse.json({ error: "Customer not found or already deleted." }, { status: 404 });
+        }
+
+        let agentId: unknown;
+        try {
+            agentId = (await req.json())?.agentId;
+        } catch {
+            // No body / not JSON — DELETE typically has none, treat as unscoped caller.
+        }
+        const scoped = await resolveScopedAgent(companyId, agentId);
+        if (!scoped.ok) return scoped.response;
+        if (!isCustomerAllowed(scoped.allowedCustomerIds, customerId)) {
+            return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
 
         const [deletedItem] = await db.update(customers).set({

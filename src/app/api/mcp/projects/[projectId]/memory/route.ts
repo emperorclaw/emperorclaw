@@ -4,6 +4,7 @@ import { projectMemory, projects } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { requireProjectInScope, loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
     try {
@@ -20,6 +21,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
         if (!project || project.companyId !== companyId) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
+
+        const scopeDenied = await requireProjectInScope(req, companyId, projectId);
+        if (scopeDenied) return scopeDenied;
 
         const memoryItems = await db.select()
             .from(projectMemory)
@@ -62,6 +66,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
             } catch (error) {
                 const message = error instanceof Error ? error.message : "Agent not found";
                 return NextResponse.json({ error: message }, { status: 404 });
+            }
+            const { allowedProjectIds } = await loadAgentScopeContext(companyId, internalAgentId);
+            if (!isProjectAllowed(allowedProjectIds, projectId)) {
+                return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
             }
         }
 

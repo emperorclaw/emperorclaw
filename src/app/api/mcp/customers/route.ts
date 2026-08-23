@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { randomUUID } from "crypto";
 import { eq, and, desc, isNull } from "drizzle-orm";
+import { loadAgentScopeContext, scopeCondition } from "@/lib/agent-scope";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -14,11 +15,25 @@ export async function GET(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 500);
+    const agentIdParam = searchParams.get("agentId");
 
     try {
+        let resolvedAgentId: string | null = null;
+        if (agentIdParam) {
+            try {
+                resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
+            } catch {
+                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            }
+        }
+        const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        const conditions = [eq(customers.companyId, companyId), isNull(customers.deletedAt)];
+        const scoped = scopeCondition(allowedCustomerIds, customers.id);
+        if (scoped) conditions.push(scoped);
+
         const rows = await db.select()
             .from(customers)
-            .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+            .where(and(...conditions))
             .orderBy(desc(customers.createdAt))
             .limit(limit);
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
 import { scopedResources } from "@/db/schema";
+import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 
 function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
   return {
@@ -31,6 +32,25 @@ export async function GET(req: NextRequest) {
 
   try {
     const internalAgentId = agentId ? await resolveAgentId(companyId, agentId) : null;
+
+    // agentId also doubles as "the acting agent" for restricted-scope checks.
+    // Whatever project/customer the caller explicitly asked to see (via projectId/
+    // customerId, or explicit scopeType+scopeId) must be within its grants — the
+    // agent's own private "agent" scope and the company-wide default are exempt.
+    if (internalAgentId) {
+      const explicitProjectId = projectId || (scopeType === "project" ? scopeId : null);
+      const explicitCustomerId = customerId || (scopeType === "customer" ? scopeId : null);
+      if (explicitProjectId || explicitCustomerId) {
+        const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, internalAgentId);
+        const allowed =
+          (!explicitProjectId || isProjectAllowed(allowedProjectIds, explicitProjectId)) &&
+          (!explicitCustomerId || isCustomerAllowed(allowedCustomerIds, explicitCustomerId));
+        if (!allowed) {
+          return NextResponse.json({ error: "Scope not found" }, { status: 404 });
+        }
+      }
+    }
+
     const resources = await listScopedResources({
       companyId,
       scopeType: internalAgentId ? "agent" : scopeType || (projectId ? "project" : customerId ? "customer" : null),
@@ -118,6 +138,17 @@ export async function POST(req: NextRequest) {
     // Validate agent scope requires a scopeId
     if (finalScopeType === "agent" && !finalScopeId) {
       return NextResponse.json({ error: "scopeId is required for agent scope" }, { status: 400 });
+    }
+
+    if (agentId && (finalScopeType === "project" || finalScopeType === "customer") && finalScopeId) {
+      const actingAgentId = await resolveAgentId(companyId, agentId);
+      const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, actingAgentId);
+      const allowed = finalScopeType === "project"
+        ? isProjectAllowed(allowedProjectIds, finalScopeId)
+        : isCustomerAllowed(allowedCustomerIds, finalScopeId);
+      if (!allowed) {
+        return NextResponse.json({ error: "Scope is outside this agent's scope" }, { status: 403 });
+      }
     }
 
     const resource = await createScopedResource({

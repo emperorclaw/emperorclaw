@@ -9,6 +9,34 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.22] — 2026-08-23
+
+### Added
+
+- **Per-agent data scoping.** Agents can now be restricted to specific
+  customers/projects — a `Scope` tab on the agent detail page lets you set
+  an agent to "Restricted" and pick which customers and projects it may
+  read or act on. Restricted, it gets filtered lists and 404s on
+  out-of-scope customers, projects, tasks, artifacts, and Knowledge &
+  Rules, and 403s on writes/claims targeting anything outside its grant —
+  enforced server-side in the MCP routes themselves, not just the prompt
+  layer, since an agent can always fall back to a raw HTTP request. Team
+  chat and the agent roster stay company-wide by design. Existing agents
+  are fully unaffected by default (unrestricted unless explicitly scoped).
+
+### Fixed
+
+- **`emperor_hermes_bridge.py`: a message could get redispatched as a
+  duplicate reply if Emperor Claw was briefly unreachable during its own
+  bookkeeping calls** (e.g. mid-deploy). The per-message error-recovery
+  path called `update_chat_status()`/`send_heartbeat()` unwrapped; if
+  either failed at that exact moment, the failure escaped before the
+  message was marked locally "seen," so the next poll cycle redispatched
+  it as a brand-new Hermes turn — occasionally after a first attempt had
+  already sent a real reply. Each recovery call is now isolated in its
+  own try/except, so a message is always marked seen exactly once
+  regardless of what else fails around it.
+
 ## [0.8.21] — 2026-08-22
 
 ### Fixed

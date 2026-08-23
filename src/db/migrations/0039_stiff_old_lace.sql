@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "scope_json" jsonb DEFAULT '{}' NOT NULL;

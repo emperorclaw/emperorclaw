@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken } from "@/lib/mcp";
+import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
 import { scopedResources } from "@/db/schema";
+import { requireProjectInScope, loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
 
 function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
   return {
@@ -22,6 +23,8 @@ export async function GET(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId } = await params;
+  const scopeDenied = await requireProjectInScope(req, companyId, projectId);
+  if (scopeDenied) return scopeDenied;
   const { searchParams } = new URL(req.url);
   const resourceType = searchParams.get("resourceType");
   const isSharedParam = searchParams.get("isShared");
@@ -64,6 +67,18 @@ export async function POST(
 
     if (!body.name || !body.resourceType || !body.provider) {
       return NextResponse.json({ error: "name, resourceType, and provider are required" }, { status: 400 });
+    }
+
+    if (body.agentId) {
+      try {
+        const resolvedAgentId = await resolveAgentId(companyId, body.agentId);
+        const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        if (!isProjectAllowed(allowedProjectIds, projectId)) {
+          return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+      }
     }
 
     const resource = await createScopedResource({

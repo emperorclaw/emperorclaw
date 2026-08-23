@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { createProjectAgentProfile, listProjectAgentProfiles } from "@/lib/project-agent-profiles";
+import { requireProjectInScope } from "@/lib/agent-scope";
 
 export async function GET(
   req: NextRequest,
@@ -13,6 +14,8 @@ export async function GET(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId } = await params;
+  const scopeDenied = await requireProjectInScope(req, companyId, projectId);
+  if (scopeDenied) return scopeDenied;
   const profiles = await listProjectAgentProfiles(companyId, projectId);
   return NextResponse.json({ profiles });
 }

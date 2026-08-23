@@ -3,11 +3,15 @@ import { projects, customers } from "@/db/schema";
 import { randomUUID } from "crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { scopeCondition } from "@/lib/agent-scope";
 
 export type ListProjectsInput = {
     companyId: string;
     status?: string | null;
     limit?: number;
+    // null/undefined = unrestricted; a Set (possibly empty) restricts to those project ids.
+    // Comes from an agent's scope — see src/lib/agent-scope.ts.
+    projectIdFilter?: Set<string> | null;
 };
 
 export async function listProjectsForCompany(input: ListProjectsInput) {
@@ -19,6 +23,8 @@ export async function listProjectsForCompany(input: ListProjectsInput) {
     if (input.status) {
         conditions.push(eq(projects.status, input.status));
     }
+    const scoped = scopeCondition(input.projectIdFilter ?? null, projects.id);
+    if (scoped) conditions.push(scoped);
 
     const rows = await db.select({
         project: projects,

@@ -1,9 +1,23 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
+
+export async function GET() {
+    const companyId = await getCompanyId();
+    if (!companyId) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const rows = await db.select({ id: customers.id, name: customers.name })
+        .from(customers)
+        .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+        .orderBy(desc(customers.createdAt));
+
+    return NextResponse.json({ customers: rows });
+}
 
 export async function POST(req: NextRequest) {
     const companyId = await getCompanyId();

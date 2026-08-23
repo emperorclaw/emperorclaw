@@ -222,6 +222,15 @@ export const agents = pgTable("agents", {
     llmApiKeyEncrypted: text("llm_api_key_encrypted"), // AES-256-GCM ciphertext, encryptSecretPayload() (src/lib/secrets.ts)
     llmApiKeyVersion: text("llm_api_key_version"), // key-rotation version tag paired with llmApiKeyEncrypted
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
+    // Data-visibility scope: restricts which customers/projects (and everything under
+    // them — tasks, artifacts, Knowledge & Rules) this agent can read/write via MCP.
+    // mode !== 'restricted' (including the default {}) means fully unrestricted —
+    // see src/lib/agent-scope.ts for the enforcement helpers that read this.
+    scopeJson: jsonb("scope_json").default("{}").$type<{
+        mode?: "all" | "restricted";
+        customerIds?: string[];
+        projectIds?: string[];
+    }>().notNull(),
     monthlyBudgetCents: integer("monthly_budget_cents").default(0).notNull(), // 0 = unlimited
     monthlyTokenUsage: integer("monthly_token_usage").default(0).notNull(),
     monthlyCostCents: doublePrecision("monthly_cost_cents").default(0).notNull(), // calculated spend in cents

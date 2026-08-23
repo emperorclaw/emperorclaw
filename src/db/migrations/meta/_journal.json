@@ -274,6 +274,13 @@
       "when": 1786002684621,
       "tag": "0038_lumpy_ezekiel_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787518267796,
+      "tag": "0039_stiff_old_lace",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { updateProjectForCompany } from "@/lib/projects-crud";
+import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+
+async function checkAgentScopeOrForbidden(companyId: string, agentId: unknown, projectId: string): Promise<NextResponse | null> {
+    if (typeof agentId !== "string" || !agentId) return null;
+    let resolvedAgentId: string;
+    try {
+        resolvedAgentId = await resolveAgentId(companyId, agentId);
+    } catch {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+    const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+    if (!isProjectAllowed(allowedProjectIds, projectId)) {
+        return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
+    }
+    return null;
+}
 
 export async function PATCH(
     req: NextRequest,
@@ -35,6 +51,7 @@ export async function PATCH(
             blockStatusChangesWithPendingApproval,
             onlyLeadCanChangeStatus,
             maxActiveAgents,
+            agentId,
         } = body;
 
         const [existing] = await db.select().from(projects).where(
@@ -44,6 +61,9 @@ export async function PATCH(
         if (!existing) {
             return NextResponse.json({ error: "Project not found or unauthorized." }, { status: 404 });
         }
+
+        const scopeDenied = await checkAgentScopeOrForbidden(companyId, agentId, projectId);
+        if (scopeDenied) return scopeDenied;
 
         let project;
         try {
@@ -103,6 +123,15 @@ export async function DELETE(
         if (!existing) {
             return NextResponse.json({ error: "Project not found or already deleted." }, { status: 404 });
         }
+
+        let agentId: unknown;
+        try {
+            agentId = (await req.json())?.agentId;
+        } catch {
+            // No body — DELETE typically has none, treat as unscoped caller.
+        }
+        const scopeDenied = await checkAgentScopeOrForbidden(companyId, agentId, projectId);
+        if (scopeDenied) return scopeDenied;
 
         const [deleted] = await db.update(projects).set({
             deletedAt: new Date(),
