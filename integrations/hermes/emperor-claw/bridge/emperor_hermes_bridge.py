@@ -35,6 +35,11 @@ HERMES_TIMEOUT_GRACE_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
 DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
 MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "12000"))
+# Per-resource ceiling within that total. Left unset, the server applies its
+# own default (8000 chars) regardless of how high MAX_SHARED_RESOURCE_CHARS
+# is raised — a single long doctrine/playbook note can silently eat that
+# whole per-resource cap and get truncated even with a generous total pool.
+MAX_CHARS_PER_RESOURCE = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS_PER_RESOURCE", "0")) or None
 # Loop guard: the @mention convention (reply once, then go silent) is a prompt
 # convention, not a hard rule — an LLM can still misjudge a "closing" reply as
 # needing another response. This is a mechanical backstop: once this agent has
@@ -252,6 +257,8 @@ def fetch_company_brain_context(message: Dict[str, Any]) -> Dict[str, Any] | Non
             "agentId": AGENT_ID,
             "maxChars": MAX_SHARED_RESOURCE_CHARS,
         }
+        if MAX_CHARS_PER_RESOURCE:
+            query["maxCharsPerResource"] = MAX_CHARS_PER_RESOURCE
         project_id = message.get("projectId") or message.get("project_id")
         customer_id = message.get("customerId") or message.get("customer_id")
         if project_id:
