@@ -24,10 +24,9 @@ test("Drive integration remains opt-in and shares the existing storage volume", 
 });
 
 test("Drive setup documents a dedicated OAuth client and avoids filesystem metadata", () => {
-    const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
     const guide = fs.readFileSync(path.join(root, "src/content/docs/v1.1/self-hosting-upgrades.md"), "utf8");
     const syncScript = fs.readFileSync(path.join(root, "scripts/rclone-drive-sync.sh"), "utf8");
-    assert.match(readme, /shared built-in client ID is\s+being retired during 2026/);
+    assert.match(guide, /shared built-in\s+client ID is being retired during 2026/);
     assert.match(guide, /Select full Drive access/);
     assert.match(syncScript, /rclone mkdir "\$remote_path"/);
     assert.doesNotMatch(syncScript, /--metadata/);

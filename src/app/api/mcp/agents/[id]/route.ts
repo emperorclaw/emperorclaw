@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import { readAgentBudget } from "@/lib/agent-budget";
 import { updateAgentForCompany } from "@/lib/agents-crud";
 
 const updateAgentSchema = z.object({
@@ -16,6 +17,21 @@ const updateAgentSchema = z.object({
     modelPolicyJson: z.record(z.string(), z.unknown()).optional(),
     concurrencyLimit: z.number().int().min(0).optional(),
 }).loose();
+
+/** Runtime preflight: authoritative spend check and monthly rollover. */
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    const auth = await verifyMcpToken(req);
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    try {
+        const { id } = await params;
+        const agent = await readAgentBudget(auth.companyToken!.companyId, id);
+        if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        return NextResponse.json({ agent }, { headers: { "Cache-Control": "no-store" } });
+    } catch (error) {
+        console.error("Agent budget check failed:", error);
+        return NextResponse.json({ error: "Budget check unavailable" }, { status: 503 });
+    }
+}
 
 export async function PATCH(
     req: NextRequest,

@@ -45,9 +45,6 @@ export function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
 
-// NOTE: Budget status is NOT computed here. The single source of truth for
-// budget enforcement is POST /api/mcp/agents/report-usage, which prices the
-// exact input/output split against the `llm_pricing` DB table and flips
-// budget_status (active → warning at 80% → paused at 100%). An earlier
-// computeBudgetStatus() helper duplicated that logic incorrectly (it costed
-// output tokens at $0) and was unused — removed to avoid drift.
+// Budget thresholds live in src/lib/billing.ts. Both runtime preflight and
+// POST /api/mcp/agents/report-usage apply them under the per-agent DB lock;
+// this display estimate must not be used to authorize execution.

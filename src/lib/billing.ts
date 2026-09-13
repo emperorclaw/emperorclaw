@@ -44,7 +44,7 @@ export function priceUsageCents(args: {
  *   - spend >= 80%  → warning (only escalates from active)
  *   - otherwise      → unchanged
  *
- * Mirrors the enforcement in POST /api/mcp/agents/report-usage exactly.
+ * Used by both runtime preflight and POST /api/mcp/agents/report-usage.
  */
 export function nextBudgetStatus(args: {
     spentCents: number;

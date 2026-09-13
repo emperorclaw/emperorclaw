@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
-import { agents, tokenUsageLog, llmPricing } from "@/db/schema";
-import { and, eq, isNull, sql, desc } from "drizzle-orm";
+import { agents, tokenUsageLog } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { lockAgentBudget, lookupUsagePricing } from "@/lib/agent-budget";
 import { splitLegacyTokens, priceUsageCents, nextBudgetStatus, type BudgetStatus } from "@/lib/billing";
 
 const reportSchema = z.object({
@@ -13,11 +14,6 @@ const reportSchema = z.object({
     inputTokens: z.number().int().min(0).optional(),        // input token count
     outputTokens: z.number().int().min(0).optional(),       // output token count
 });
-
-type PricingRow = {
-    provider: string; model: string;
-    inputPricePer1k: number; outputPricePer1k: number;
-};
 
 /**
  * POST /api/mcp/agents/report-usage
@@ -41,100 +37,41 @@ export async function POST(req: NextRequest) {
 
         const { agentId, tokensUsed, model, inputTokens, outputTokens } = parsed.data;
 
-        // Monthly reset: if month changed, archive & reset counters
-        const currentMonth = new Date().toISOString().slice(0, 7); // "2026-07"
-        const [agent] = await db.select({ lastResetMonth: agents.lastResetMonth, monthlyTokenUsage: agents.monthlyTokenUsage, monthlyCostCents: agents.monthlyCostCents })
-            .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
-
-        if (agent && agent.lastResetMonth && agent.lastResetMonth !== currentMonth) {
-            // Archive previous month in token_usage_log as a summary row
-            await db.insert(tokenUsageLog).values({
-                companyId, agentId,
-                model: "monthly-reset",
-                inputTokens: agent.monthlyTokenUsage ?? 0,
-                outputTokens: 0,
-                costCents: agent.monthlyCostCents ?? 0,
-                reportedAt: new Date(`${agent.lastResetMonth}-01T00:00:00Z`),
-            });
-            // Reset counters
-            await db.update(agents).set({
-                monthlyTokenUsage: 0,
-                monthlyCostCents: 0,
-                lastResetMonth: currentMonth,
-                budgetStatus: "active", // Reset budget status for new month
-            }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
-        } else if (agent && !agent.lastResetMonth) {
-            // First time: set the month marker without resetting
-            await db.update(agents).set({ lastResetMonth: currentMonth })
-                .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
-        }
-
-        const totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0) || tokensUsed || 0;
-        if (totalTokens <= 0) return NextResponse.json({ ok: true, agentId, monthlyTokenUsage: 0 });
-
-        // Model: prefer the agent's configured llmModel from DB (admin's choice
-        // in Emperor UI is authoritative), falling back to whatever real model
-        // name the bridge reports. NEVER fall back to the provider name here —
-        // "openai" is not a model, and persisting it as one (see llmModel below)
-        // used to corrupt the agent's own config: the next container recreate
-        // reads llmModel back out and tries to run Hermes against a model
-        // literally named "openai", which fails outright. The provider is only
-        // used as a last-resort PRICING lookup key, never persisted as a model.
-        const [agentCfg] = await db.select({ m: agents.llmModel, p: agents.llmProvider })
-            .from(agents).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
-        const persistedModel = agentCfg?.m || model || null;
-        const pricingLookupModel = persistedModel || agentCfg?.p || "deepseek-chat";
-
-        const split = splitLegacyTokens(totalTokens);
-        const inputT = inputTokens ?? split.inputTokens;
-        const outputT = outputTokens ?? split.outputTokens;
-
-        // Prices are cents per 1M tokens (e.g. 14 = $0.14/1M). See src/lib/billing.ts.
-        const pricing = await lookupPricing(pricingLookupModel);
-        const costCents = pricing
-            ? priceUsageCents({
-                inputTokens: inputT,
-                outputTokens: outputT,
-                inputCentsPer1M: pricing.inputPricePer1k,
+        return await db.transaction(async (tx) => {
+            const agent = await lockAgentBudget(tx, companyId, agentId);
+            if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            const hasSplit = inputTokens !== undefined || outputTokens !== undefined;
+            const split = hasSplit ? { inputTokens: inputTokens ?? 0, outputTokens: outputTokens ?? 0 }
+                : splitLegacyTokens(tokensUsed ?? 0);
+            const totalTokens = split.inputTokens + split.outputTokens;
+            // Price the reported runtime model without overwriting admin configuration.
+            const pricingLookupModel = model || agent.llmModel || "";
+            const pricing = totalTokens > 0 ? await lookupUsagePricing(tx, pricingLookupModel) : null;
+            if (totalTokens > 0 && !pricing) {
+                // Keep the sample unacknowledged so bridges retain it and stop dispatching.
+                return NextResponse.json({ error: "Active pricing required for reported model", model: pricingLookupModel }, { status: 422 });
+            }
+            const costCents = pricing ? priceUsageCents({
+                ...split, inputCentsPer1M: pricing.inputPricePer1k,
                 outputCentsPer1M: pricing.outputPricePer1k,
-            })
-            : 0;
-
-        const [updated] = await db.update(agents).set({
-            monthlyTokenUsage: sql`COALESCE(monthly_token_usage, 0) + ${totalTokens}`,
-            monthlyCostCents: sql`COALESCE(monthly_cost_cents, 0) + ${costCents}`,
-            ...(persistedModel ? { llmModel: persistedModel } : {}),
-        }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt)))
-            .returning({ id: agents.id, monthlyTokenUsage: agents.monthlyTokenUsage, monthlyCostCents: agents.monthlyCostCents, monthlyBudgetCents: agents.monthlyBudgetCents, budgetStatus: agents.budgetStatus });
-
-        if (!updated) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-
-        // Log
-        await db.insert(tokenUsageLog).values({ companyId, agentId, model: pricingLookupModel, inputTokens: inputT, outputTokens: outputT, costCents });
-
-        // Budget enforcement (single source of truth: src/lib/billing.ts)
-        const bs = nextBudgetStatus({
-            spentCents: updated.monthlyCostCents ?? 0,
-            budgetCents: updated.monthlyBudgetCents ?? 0,
-            current: (updated.budgetStatus ?? "active") as BudgetStatus,
+            }) : 0;
+            const monthlyTokenUsage = agent.monthlyTokenUsage + totalTokens;
+            const monthlyCostCents = agent.monthlyCostCents + costCents;
+            const budgetStatus = nextBudgetStatus({
+                spentCents: monthlyCostCents, budgetCents: agent.monthlyBudgetCents,
+                current: agent.budgetStatus as BudgetStatus,
+            });
+            await tx.update(agents).set({ monthlyTokenUsage, monthlyCostCents, budgetStatus })
+                .where(eq(agents.id, agentId));
+            if (totalTokens > 0) {
+                await tx.insert(tokenUsageLog).values({ companyId, agentId, model: pricingLookupModel,
+                    ...split, costCents });
+            }
+            return NextResponse.json({ ok: true, agentId, monthlyTokenUsage, monthlyCostCents,
+                budgetStatus, model: pricingLookupModel, costCents });
         });
-        if (bs !== updated.budgetStatus) {
-            await db.update(agents).set({ budgetStatus: bs }).where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)));
-        }
-
-        return NextResponse.json({ ok: true, agentId: updated.id, monthlyTokenUsage: updated.monthlyTokenUsage, monthlyCostCents: updated.monthlyCostCents, budgetStatus: bs, model: pricingLookupModel, costCents });
     } catch (error) {
         console.error("report-usage error:", error);
         return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
-}
-
-async function lookupPricing(model: string): Promise<PricingRow | null> {
-    const [exact] = await db.select({ provider: llmPricing.provider, model: llmPricing.model, inputPricePer1k: llmPricing.inputPricePer1k, outputPricePer1k: llmPricing.outputPricePer1k })
-        .from(llmPricing).where(and(eq(llmPricing.model, model), eq(llmPricing.active, true))).limit(1);
-    if (exact) return exact;
-    // Fallback by provider: pick cheapest active model
-    const [byProv] = await db.select({ provider: llmPricing.provider, model: llmPricing.model, inputPricePer1k: llmPricing.inputPricePer1k, outputPricePer1k: llmPricing.outputPricePer1k })
-        .from(llmPricing).where(and(eq(llmPricing.provider, model), eq(llmPricing.active, true))).orderBy(llmPricing.inputPricePer1k).limit(1);
-    return byProv ?? null;
 }

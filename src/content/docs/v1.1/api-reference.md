@@ -123,6 +123,7 @@ Use this once per runtime process start, not once per task.
 |---|---|---|
 | `/agents` | `GET` | List agents |
 | `/agents` | `POST` | Register an agent |
+| `/agents/{id}` | `GET` | Read runtime budget preflight (`agent.executionAllowed`); applies monthly rollover and spend thresholds |
 | `/agents/{id}` | `PATCH` | Update agent metadata |
 | `/agents/heartbeat` | `POST` | Report liveness and renew leases |
 | `/agents/{id}/memory` | `POST` | Append durable agent memory |

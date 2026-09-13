@@ -67,35 +67,39 @@ async function heartbeat() {
 
 async function checkBudget() {
     try {
+        await flushUsage();
         const payload = await api("GET", `/agents/${AGENT_ID}`);
         const agent = payload.agent || payload;
         const status = agent.budgetStatus || "active";
         const usage = agent.monthlyTokenUsage || 0;
         const budget = agent.monthlyBudgetCents || 0;
-        if (status === "paused") {
+        if (agent.executionAllowed !== true || status === "paused") {
             log(`BUDGET PAUSED: ${usage} tokens used of ${budget} cents budget`);
             return false;
         }
         return true;
     } catch (e) {
-        return true; // If we can't check, allow (fail open)
+        log(`budget check failed; dispatch blocked: ${e.message}`);
+        return false;
+    }
+}
+
+// Keep unacknowledged usage in memory and flush it before any subsequent turn.
+const pendingUsage = [];
+async function flushUsage() {
+    while (pendingUsage.length) {
+        await api("POST", "/agents/report-usage", pendingUsage[0]);
+        pendingUsage.shift();
     }
 }
 
 async function reportUsage(inputTokens, outputTokens) {
-    // Use /agents/report-usage (same path as the Hermes bridge): the server
-    // INCREMENTS monthly usage, computes cost from the pricing table, and flips
-    // budgetStatus to warning/paused. The old PATCH /agents/{id} path OVERWROTE
-    // monthlyTokenUsage, never set cost, and never enforced the budget.
-    try {
-        await api("POST", "/agents/report-usage", {
-            agentId: AGENT_ID,
-            inputTokens: Math.max(0, Math.round(inputTokens) || 0),
-            outputTokens: Math.max(0, Math.round(outputTokens) || 0),
-        });
-    } catch (e) {
-        log(`usage report failed: ${e.message}`);
-    }
+    pendingUsage.push({
+        agentId: AGENT_ID,
+        inputTokens: Math.max(0, Math.round(inputTokens) || 0),
+        outputTokens: Math.max(0, Math.round(outputTokens) || 0),
+    });
+    await flushUsage();
 }
 
 async function syncMessages() {
@@ -171,14 +175,6 @@ async function main() {
                     continue;
                 }
 
-                // Loop guard: cap consecutive non-human replies per thread.
-                if (!loopGuardOk(loopCounts, threadId)) {
-                    log(`loop guard tripped in thread ${threadId}, pausing`);
-                    seen.add(msgId);
-                    if (msg.createdAt) lastSeenAt = msg.createdAt;
-                    continue;
-                }
-
                 log(`dispatching message ${msgId}: "${text.slice(0, 80)}..."`);
                 
                 // Budget check — skip if paused. Check on EVERY message: sampling
@@ -186,8 +182,13 @@ async function main() {
                 // checkBudget() is a single cheap GET and messages are infrequent.
                 const budgetOk = await checkBudget();
                 if (!budgetOk) {
-                    await sendReply(msg, `⚠️ Budget exhausted. ${AGENT_NAME} is paused until the next billing cycle.`);
-                    await updateStatus(msg, { typing: false, executionState: "resolved" });
+                    // Leave this and later messages queued for a reset or repaired check.
+                    break;
+                }
+
+                // Loop guard: cap consecutive non-human replies per thread.
+                if (!loopGuardOk(loopCounts, threadId)) {
+                    log(`loop guard tripped in thread ${threadId}, pausing`);
                     seen.add(msgId);
                     if (msg.createdAt) lastSeenAt = msg.createdAt;
                     continue;
@@ -242,13 +243,17 @@ async function main() {
                     });
 
                     if (result.output) {
-                        await sendReply(msg, result.output);
-                        log(`replied to ${msgId} (${result.output.length} chars)`);
                         // Estimate and report token usage. Split into input (prompt)
                         // vs output (reply) so the server applies the correct
                         // per-direction price and enforces budget.
-                        const usage = estimateUsageTokens(text, result.output);
-                        reportUsage(usage.inputTokens, usage.outputTokens).catch(() => {});
+                        const usage = estimateUsageTokens(prompt, result.output);
+                        try {
+                            await reportUsage(usage.inputTokens, usage.outputTokens);
+                        } catch (error) {
+                            log(`usage report pending; future dispatch blocked: ${error.message}`);
+                        }
+                        await sendReply(msg, result.output);
+                        log(`replied to ${msgId} (${result.output.length} chars)`);
                     }
                 } catch (execErr) {
                     log(`codex exec failed: ${execErr.message}`);

@@ -37,7 +37,7 @@ export default async function BudgetsPage() {
     return (
         <div className="mx-auto max-w-[1400px] space-y-6 animate-in fade-in duration-500">
             <PageHeader eyebrow="Finance" title="Budget & Usage"
-                description="Click limit or model to edit inline. Toggle ✓ to disable models. Budgets auto-enforce: 80% warning, 100% pause." />
+                description="Click limit or model to edit inline. Toggle ✓ to disable models. Estimated usage: 80% warning; 100% blocks subsequent Codex/Hermes turns. Running turns can exceed the limit." />
             <BudgetClient initialAgents={allAgents} initialPricing={pricing} initialWeeklyCost={weekly?.total ?? 0} />
         </div>
     );

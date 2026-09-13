@@ -760,21 +760,16 @@ def send_reply(message: Dict[str, Any], text: str) -> None:
     })
 
 
-_last_token_report = 0
 _pending_input_chars = 0
 _pending_output_chars = 0
 
 def report_token_usage(input_chars: int, output_chars: int) -> None:
     """Estimate tokens and report usage to EmperorClaw with model-aware cost tracking.
-    Accumulates between calls and reports at most once per 60 seconds.
-    Sends model info + separate input/output for accurate pricing."""
-    global _last_token_report, _pending_input_chars, _pending_output_chars
+    Flush every turn; retain failed samples and block further dispatch until acknowledged.
+    Counts remain estimates, excluding internal model/tool calls."""
+    global _pending_input_chars, _pending_output_chars
     _pending_input_chars += input_chars
     _pending_output_chars += output_chars
-    now = time.time()
-    if now - _last_token_report < 60:
-        return
-    _last_token_report = now
     total_input = _pending_input_chars
     total_output = _pending_output_chars
     _pending_input_chars = 0
@@ -795,9 +790,24 @@ def report_token_usage(input_chars: int, output_chars: int) -> None:
             body["model"] = model
         api("POST", "/agents/report-usage", body=body)
     except Exception:
-        # Tokens stay accumulated for next window
+        # Retain the sample; preflight retries before permitting another turn.
         _pending_input_chars += total_input
         _pending_output_chars += total_output
+        raise
+
+
+def check_budget() -> bool:
+    try:
+        report_token_usage(0, 0)
+        payload = api("GET", f"/agents/{AGENT_ID}")
+        agent = payload.get("agent", payload)
+        if agent.get("executionAllowed") is not True or agent.get("budgetStatus") == "paused":
+            log(f"dispatch blocked: {agent.get('budgetBlockReason') or 'budget check denied'}")
+            return False
+        return True
+    except Exception as exc:
+        log(f"budget check failed; dispatch blocked: {exc}")
+        return False
 
 
 def main() -> int:
@@ -858,6 +868,9 @@ def main() -> int:
                     if ts:
                         state["lastSeenAt"] = ts
                     continue
+                if not check_budget():
+                    # Preserve this message and everything after it for retry.
+                    break
                 if not check_loop_guard(message, state):
                     thread_id = str(message.get("threadId") or message.get("thread_id") or "")
                     entry = state.get("loop_guard", {}).get(thread_id, {})
@@ -882,8 +895,11 @@ def main() -> int:
                 text = str(message.get("text") or "")
                 try:
                     reply = run_hermes(message, state)
+                    try:
+                        report_token_usage(len(text), len(reply))
+                    except Exception as exc:
+                        log(f"usage report pending; future dispatch blocked: {exc}")
                     send_reply(message, reply)
-                    report_token_usage(len(text), len(reply))
                     update_chat_status(message, typing=False, execution_state="resolved")
                 except Exception as exc:
                     # Do NOT re-raise here: that used to skip remember_seen()

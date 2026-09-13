@@ -105,3 +105,24 @@ To run multiple agents (e.g., Viktor and Manager), create separate:
 3. Systemd services (named `emperor-claw-bridge-viktor.service`, etc.)
 
 Ensure each uses a unique `agentId` and `workspacePath`.
+
+
+## Agent spending limits
+
+Codex and Hermes bridges check the server before every new message turn. At 80%
+of the monthly limit the agent shows a warning; at 100% subsequent turns remain
+queued. A failed or malformed budget check also blocks dispatch. Capped agents
+need an active pricing entry for their configured model. Unknown usage models
+are rejected instead of being recorded as free usage.
+
+Monthly counters reset in UTC at the first budget check or usage report of the
+new month, including for paused agents. Raising the budget and reactivating can
+resume an agent, but reactivating alone cannot bypass an already exhausted limit.
+
+These are limits on **estimated reported usage**, not hard provider billing caps.
+The bridges estimate tokens from text; internal tool/model calls, reasoning and
+conversation history are not fully counted. Running or concurrent turns can
+exceed the remaining allowance. Usage retries are held in bridge memory, so a
+process crash can lose an unacknowledged sample. Other runtimes must explicitly
+implement this preflight contract; merely reporting usage does not stop execution.
+Upgrade the server and restart bridges from the new release to enable enforcement.

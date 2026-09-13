@@ -253,5 +253,56 @@ class TestStatePersistence(unittest.TestCase):
         self.assertEqual(state, {"seen": [], "lastSeenAt": None})
 
 
+class TestBudgetGuard(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        self.api_patch = patch.object(bridge, "api")
+        self.api = self.api_patch.start()
+        self.addCleanup(self.api_patch.stop)
+        bridge._pending_input_chars = 0
+        bridge._pending_output_chars = 0
+
+    def test_denies_paused_malformed_and_failed_checks(self):
+        for payload in [{}, {"agent": {"executionAllowed": False, "budgetStatus": "paused"}}]:
+            self.api.return_value = payload
+            self.assertFalse(bridge.check_budget())
+        self.api.side_effect = RuntimeError("offline")
+        self.assertFalse(bridge.check_budget())
+
+    def test_paused_poll_never_invokes_hermes_or_consumes_message(self):
+        from unittest.mock import patch
+        from contextlib import ExitStack
+        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
+        message = {"id": "blocked", "text": "hello", "senderType": "human",
+                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
+        self.api.return_value = {"agent": {"budgetStatus": "paused", "executionAllowed": False}}
+        with ExitStack() as stack:
+            for name in ["ensure_runtime", "send_heartbeat", "save_state"]:
+                stack.enter_context(patch.object(bridge, name))
+            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
+            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
+            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
+            run = stack.enter_context(patch.object(bridge, "run_hermes"))
+            with self.assertRaises(KeyboardInterrupt):
+                bridge.main()
+            run.assert_not_called()
+            self.assertNotIn("blocked", state["seen"])
+
+    def test_flushes_every_turn_and_retries_before_dispatch(self):
+        self.api.side_effect = RuntimeError("offline")
+        with self.assertRaises(RuntimeError):
+            bridge.report_token_usage(400, 200)
+        self.assertFalse(bridge.check_budget())
+        self.api.side_effect = None
+        self.api.return_value = {"agent": {"executionAllowed": True, "budgetStatus": "active"}}
+        self.assertTrue(bridge.check_budget())
+        self.assertEqual(bridge._pending_input_chars, 0)
+        self.assertEqual(self.api.call_args_list[-2].args[0], "POST")
+        self.assertEqual(self.api.call_args_list[-1].args[0], "GET")
+        bridge.report_token_usage(400, 200)
+        self.assertEqual(self.api.call_args.args[0], "POST")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -9,6 +9,29 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.25] — 2026-09-13
+
+### Fixed
+
+- Add the missing authenticated runtime budget endpoint. Recompute thresholds
+  from recorded spend and reset paused agents when the UTC month changes.
+- Block Codex and Hermes dispatch on exhausted budgets, missing capped-model
+  pricing, or unavailable budget checks. Leave blocked messages queued.
+- Await usage reporting each turn and retry unacknowledged samples before
+  dispatching more work; remove Hermes's 60-second reporting delay.
+- Serialize usage increments, monthly rollover and status updates in one
+  transaction. Avoid duplicating historical spend in monthly summary rows.
+- Reject unknown usage pricing instead of recording free usage, and price a
+  reported runtime model without overwriting the configured model.
+- Update the Drive documentation test to follow the dedicated setup guide
+  after the README rewrite.
+
+### Notes
+
+- Budgets still use estimated token counts. In-flight turns can overshoot;
+  this release does not provide an exact provider billing cap. Upgrade the
+  server and restart updated bridges together.
+
 ## [0.8.24] — 2026-08-24
 
 ### Added
