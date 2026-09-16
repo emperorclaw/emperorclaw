@@ -590,15 +590,6 @@ _TOOL_LOG_RE = re.compile(
     r"(?:\[[^\]]+\]\s+)?agent\.tool_executor:\s+"
     r"[Tt]ool\s+(\w+)\s+(completed|returned error)\s+\(([\d.]+)s"
 )
-# conversation_loop lines are logged retroactively (after the call already
-# finished, carrying its latency) — there's no "call started" marker at INFO
-# level, so this can't show a live "thinking" state mid-call. It's only used
-# to label which model is doing the thinking once we've decided (by elapsed
-# time since the last known tool activity) that a thinking phase is likely.
-_MODEL_LOG_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+INFO\s+"
-    r"(?:\[[^\]]+\]\s+)?agent\.conversation_loop:\s+API call #\d+:\s+model=(\S+)"
-)
 _TOOL_LOG_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # Raw tool names -> short human phrases. Unmapped tools fall back to
@@ -667,7 +658,6 @@ def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | Non
         return None
 
     latest_tool: tuple[float, str, str, str] | None = None  # (ts, tool, status, duration)
-    latest_model: tuple[float, str] | None = None  # (ts, model)
     now = time.time()
     for line in raw.decode("utf-8", errors="replace").splitlines():
         tool_match = _TOOL_LOG_RE.match(line)
@@ -678,15 +668,6 @@ def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | Non
                 continue
             if ts > since_ts and (latest_tool is None or ts >= latest_tool[0]):
                 latest_tool = (ts, tool_match.group(2), tool_match.group(3), tool_match.group(4))
-            continue
-        model_match = _MODEL_LOG_RE.match(line)
-        if model_match:
-            try:
-                ts = time.mktime(time.strptime(model_match.group(1), _TOOL_LOG_TS_FORMAT))
-            except ValueError:
-                continue
-            if latest_model is None or ts >= latest_model[0]:
-                latest_model = (ts, model_match.group(2))
 
     if latest_tool and (now - latest_tool[0]) < _THINKING_AFTER_SECONDS:
         _, tool, status, duration = latest_tool
@@ -694,13 +675,290 @@ def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | Non
             return f"{_tool_label(tool)} ({duration}s)"
         return f"{tool} failed ({duration}s)"
 
-    # No fresh tool activity — likely between tool calls, waiting on the
-    # model. Label with the model name if we have a recent-ish hint of it.
-    if latest_model and (now - latest_model[0]) < 120:
-        return f"thinking ({latest_model[1]})"
-    if latest_tool:
-        return "thinking"
+    # No fresh tool activity. This used to fabricate a "thinking" / "thinking
+    # (model)" line inferred purely from silence — it read no reasoning at all,
+    # it just guessed. That is gone: real reasoning now comes from a
+    # ReasoningSource, and when the runtime exposes none we say nothing rather
+    # than inventing a thought. (Hermes made the same call for its Zed ACP
+    # integration: if the provider emits no reasoning, the client should not be
+    # handed a fake thinking accordion.) The caller falls back to
+    # format_turn_activity, which is honest elapsed-time telemetry.
     return None
+
+
+# ---------------------------------------------------------------------------
+# Real model reasoning ("thinking")
+# ---------------------------------------------------------------------------
+# Emperor Claw is runtime-agnostic: Hermes is the reference runtime, not the
+# only one. So reasoning is read through a tiny pluggable interface — a
+# contributor running some other agent runtime writes ONE class implementing
+# `latest_reasoning()` and registers it in `_build_reasoning_source()`. Nothing
+# else in the bridge needs to change.
+#
+# Selected with EMPEROR_CLAW_REASONING_SOURCE:
+#   auto           (default) session-store when <HERMES_HOME>/state.db exists, else none
+#   session-store  read Hermes's own SQLite session store, strictly read-only
+#   none           never report reasoning (the correct setting for any runtime
+#                  that does not expose reasoning; fully supported, not a downgrade)
+REASONING_SOURCE_NAME = os.environ.get("EMPEROR_CLAW_REASONING_SOURCE", "auto").strip().lower() or "auto"
+
+# The status line is hard-truncated to 200 chars server-side. Budget well under
+# that so the server's slice never visibly cuts a word in half after our own
+# prefix is added.
+_REASONING_MAX_CHARS = 160
+# Below this a leading sentence is too terse to stand alone as a status line.
+_REASONING_MIN_CHARS = 20
+
+
+class ReasoningSource:
+    """Interface a runtime integration implements to surface real reasoning.
+
+    `latest_reasoning` is called roughly every 3 seconds during a turn and MUST
+    be cheap, non-blocking and total: it returns a short already-condensed line,
+    or None when there is nothing new (or anything at all went wrong). It must
+    never raise — a status ping is not worth failing a turn over.
+    """
+
+    name = "none"
+
+    def latest_reasoning(self, session_id: str, since_ts: float) -> str | None:
+        return None
+
+
+class NullReasoningSource(ReasoningSource):
+    """No reasoning available. Used by every runtime that does not expose it."""
+
+    name = "none"
+
+
+def condense_reasoning(text: str) -> str | None:
+    """Squash raw model reasoning into one short status-line-sized phrase.
+
+    Reasoning arrives as multi-paragraph markdown. `currentActivity` is a single
+    ephemeral line, so collapse whitespace, drop the markdown scaffolding that
+    would read as noise inline, prefer the first sentence, and truncate.
+    """
+    if not text:
+        return None
+    flat = text.replace("\r", "\n")
+    # Strip markdown that is meaningless once flattened to one line: headings,
+    # list bullets, emphasis/code markers, blockquotes.
+    flat = re.sub(r"(?m)^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+", "", flat)
+    flat = re.sub(r"[`*_]{1,3}", "", flat)
+    flat = re.sub(r"\s+", " ", flat).strip()
+    if not flat:
+        return None
+    # Prefer a leading sentence when one ends early enough to be informative on
+    # its own. A very short opener ("Let me check.") says nothing by itself, so
+    # grow it with the next sentence rather than discarding it and truncating
+    # the whole blob mid-thought — a complete short thought beats a severed one.
+    parts = re.split(r"(?<=[.!?])\s", flat)
+    chosen = flat
+    for count in (1, 2):
+        candidate = " ".join(parts[:count]).strip()
+        if _REASONING_MIN_CHARS <= len(candidate) <= _REASONING_MAX_CHARS:
+            chosen = candidate
+            break
+    if len(chosen) <= _REASONING_MAX_CHARS:
+        return chosen
+    cut = chosen[: _REASONING_MAX_CHARS - 1]
+    space = cut.rfind(" ")
+    if space > 40:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:.") + "…"
+
+
+class SessionStoreReasoningSource(ReasoningSource):
+    """Reads real reasoning out of Hermes's own session store.
+
+    Hermes persists every turn to `<HERMES_HOME>/state.db` (SQLite), and writes
+    rows INCREMENTALLY during a turn — so polling it mid-turn shows live
+    progress rather than only a post-hoc transcript.
+
+    Two rules make this safe:
+
+    1. STRICTLY READ-ONLY. This is another program's live database. We open it
+       with `mode=ro` and never write, never migrate, never create it. A locked
+       or busy DB (Hermes is writing constantly) is "no data this tick", not an
+       error — the turn must not fail because a status ping lost a race.
+    2. SESSION-SCOPED. The store holds every session of every agent sharing this
+       HERMES_HOME. Querying without a session id would surface ANOTHER agent's
+       private reasoning in this thread's status line. If we don't know the
+       session id, we report nothing.
+    """
+
+    name = "session-store"
+
+    # Column precedence mirrors Hermes's own `_history_reasoning_text` in
+    # acp_adapter/server.py, so we show the same text its ACP clients see.
+    _REASONING_COLUMNS = ("reasoning_content", "reasoning")
+
+    def __init__(self, db_path: Path) -> None:
+        self._db_path = db_path
+        self._columns: tuple[str, ...] | None = None
+        self._unusable = False
+
+    def _connect(self) -> Any:
+        import sqlite3
+
+        uri = "file:" + urllib.request.pathname2url(str(self._db_path)) + "?mode=ro"
+        return sqlite3.connect(uri, uri=True, timeout=0.5)
+
+    def _resolve_columns(self, conn: Any) -> tuple[str, ...]:
+        """Which reasoning columns this schema actually has.
+
+        Hermes's schema_version moves (26 at time of writing) and columns come
+        and go. Probing with PRAGMA instead of assuming means a newer or older
+        Hermes degrades to "no reasoning" rather than raising every 3 seconds.
+        """
+        if self._columns is not None:
+            return self._columns
+        rows = conn.execute("PRAGMA table_info(messages)").fetchall()
+        if not rows:
+            # PRAGMA on a table that does not exist returns an empty list rather
+            # than raising. That happens during first-run schema bootstrap — the
+            # store file exists but `messages` is not created yet — which is
+            # transient, so do NOT memoize it. Caching () here would freeze the
+            # source into "no reasoning" for the life of the process.
+            return ()
+        present = {str(row[1]) for row in rows}
+        self._columns = tuple(col for col in self._REASONING_COLUMNS if col in present)
+        return self._columns
+
+    def latest_reasoning(self, session_id: str, since_ts: float) -> str | None:
+        if self._unusable or not session_id:
+            return None
+        import sqlite3
+
+        try:
+            conn = self._connect()
+        except sqlite3.OperationalError:
+            return None
+        except Exception:
+            # Missing file / unreadable / not a database: stop retrying forever.
+            self._unusable = True
+            return None
+        try:
+            columns = self._resolve_columns(conn)
+            if not columns:
+                # Either the schema genuinely has no reasoning columns, or the
+                # table is not created yet. Both are cheap to re-check and the
+                # second one recovers on its own, so never latch _unusable here.
+                return None
+            selected = ", ".join(columns)
+            # Require SUBSTANTIVE reasoning, not merely non-null. Assistant rows
+            # are written for every step of a turn and many carry a stub — in
+            # production the newest row routinely holds a single character. Just
+            # taking the newest row and condensing it therefore yields nothing,
+            # and the status line falls back to elapsed time even though real
+            # reasoning sits one row behind. So skip the stubs in SQL and let
+            # the last real thought stand until a better one replaces it.
+            substantive = " OR ".join(
+                f"length(trim(coalesce({col}, ''))) >= ?" for col in columns
+            )
+            row = conn.execute(
+                f"SELECT {selected} FROM messages "
+                "WHERE session_id = ? AND role = 'assistant' AND timestamp > ? "
+                f"AND ({substantive}) "
+                "ORDER BY timestamp DESC, id DESC LIMIT 1",
+                (session_id, since_ts, *([_REASONING_MIN_CHARS] * len(columns))),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # Locked/busy, or the `messages` table does not exist on this schema.
+            return None
+        except Exception:
+            self._unusable = True
+            return None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if not row:
+            return None
+        # Same substantive floor as the query: the row qualified because SOME
+        # column cleared it, and that is not necessarily the first one. Picking
+        # the first merely-non-empty column would hand back the stub we just
+        # filtered for and throw away the real reasoning beside it.
+        for value in row:
+            if isinstance(value, str) and len(value.strip()) >= _REASONING_MIN_CHARS:
+                return condense_reasoning(value)
+        return None
+
+
+_reasoning_source: ReasoningSource | None = None
+# How long to wait before re-checking whether a reasoning source has appeared.
+# Only ever consulted while the current source is "none", so on a runtime that
+# exposes no reasoning this costs one stat() per minute and nothing else.
+_REASONING_RESOLVE_RETRY_SECONDS = 60.0
+_reasoning_source_retry_at = 0.0
+
+
+def _session_store_path() -> Path | None:
+    hermes_home = os.environ.get("HERMES_HOME", "").strip()
+    if not hermes_home:
+        return None
+    return Path(hermes_home) / "state.db"
+
+
+def _build_reasoning_source() -> ReasoningSource:
+    """Register additional runtimes here — one branch, one class."""
+    if REASONING_SOURCE_NAME == "none":
+        return NullReasoningSource()
+    db_path = _session_store_path()
+    if REASONING_SOURCE_NAME == "session-store":
+        if db_path is None:
+            log("reasoning source 'session-store' requested but HERMES_HOME is unset; disabling reasoning")
+            return NullReasoningSource()
+        return SessionStoreReasoningSource(db_path)
+    if REASONING_SOURCE_NAME != "auto":
+        log(f"unknown EMPEROR_CLAW_REASONING_SOURCE={REASONING_SOURCE_NAME!r}; falling back to auto")
+    # auto: only claim session-store when the file is actually there and readable.
+    if db_path is not None and os.access(db_path, os.R_OK):
+        return SessionStoreReasoningSource(db_path)
+    return NullReasoningSource()
+
+
+def reasoning_source() -> ReasoningSource:
+    """The active source, re-resolving a negative result on a slow interval.
+
+    A positive result is cached for the life of the process: the path cannot
+    change mid-run, and stat()ing on every 3s status tick would be pure waste.
+
+    A NEGATIVE result must NOT be cached that way. On a fresh install the bridge
+    is started before the runtime has ever run a turn, so the session store does
+    not exist yet and "auto" correctly resolves to none — but the store appears
+    moments later, and these units run for weeks under Restart=always. Latching
+    that first "no" would mean reasoning silently never works until someone
+    happens to restart the bridge, which is exactly the first-run path every new
+    user takes. So retry, rarely enough to cost nothing.
+    """
+    global _reasoning_source, _reasoning_source_retry_at
+    if _reasoning_source is not None and _reasoning_source.name != "none":
+        return _reasoning_source
+    now = time.time()
+    if _reasoning_source is None or now >= _reasoning_source_retry_at:
+        _reasoning_source_retry_at = now + _REASONING_RESOLVE_RETRY_SECONDS
+        rebuilt = _build_reasoning_source()
+        # Only announce the upgrade — a steady "none" must stay quiet or it
+        # would log every retry forever on runtimes that expose no reasoning.
+        if rebuilt.name != "none" and _reasoning_source is not None:
+            log(f"reasoning source now available: {rebuilt.name}")
+        _reasoning_source = rebuilt
+    return _reasoning_source
+
+
+def latest_reasoning_activity(session_id: str, since_ts: float) -> str | None:
+    """Status-line text for genuine model reasoning, or None.
+
+    The "thinking: " prefix is load-bearing: it tells the reader that what
+    follows is the model's own words, not the bridge describing a tool call.
+    """
+    try:
+        text = reasoning_source().latest_reasoning(session_id, since_ts)
+    except Exception:
+        return None
+    return f"thinking: {text}" if text else None
 
 
 def clean_hermes_output(output: str) -> str:
@@ -769,7 +1027,13 @@ def _persist_killed_session(
         pass
 
 
-def invoke_hermes(cmd: List[str], message: Dict[str, Any], *, resumed: bool = False) -> subprocess.CompletedProcess[str]:
+def invoke_hermes(
+    cmd: List[str],
+    message: Dict[str, Any],
+    *,
+    resumed: bool = False,
+    session_id: str = "",
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     # Provider hint: pass EMPEROR_CLAW_LLM_PROVIDER so Hermes skills can auto-detect.
     # The actual API key is configured by the user in ~/.hermes/.env or environment.
@@ -787,7 +1051,14 @@ def invoke_hermes(cmd: List[str], message: Dict[str, Any], *, resumed: bool = Fa
             stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
         if time.time() - last_status >= 3:
-            activity = latest_tool_activity(started) or format_turn_activity(elapsed, resumed)
+            # Preference order, most to least specific: the model's real
+            # reasoning, then a real tool call, then honest elapsed time.
+            # Nothing here is inferred or invented.
+            activity = (
+                latest_reasoning_activity(session_id, started)
+                or latest_tool_activity(started)
+                or format_turn_activity(elapsed, resumed)
+            )
             update_chat_status(message, typing=True, execution_state="acting", activity=activity)
             last_status = time.time()
         time.sleep(0.5)
@@ -862,7 +1133,11 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     if resume_id:
         cmd[3:3] = ["--resume", resume_id]
     try:
-        result = invoke_hermes(cmd, message, resumed=bool(resume_id))
+        # resume_id is the only session id we know BEFORE the turn ends, and it
+        # is what scopes the reasoning lookup. On a brand-new session it is
+        # empty, so that first turn simply reports no reasoning rather than
+        # risking a read of some other agent's session.
+        result = invoke_hermes(cmd, message, resumed=bool(resume_id), session_id=resume_id)
     except subprocess.TimeoutExpired as exc:
         _persist_killed_session(sessions, session_key, exc)
         raise

@@ -380,5 +380,304 @@ class TestMainChatContext(unittest.TestCase):
         self.assertEqual(bridge.format_main_chat_context({}), "")
 
 
+class TestReasoningSource(unittest.TestCase):
+    """Tests for the pluggable reasoning source (real model "thinking")."""
+
+    def _make_db(self, rows, columns=("reasoning_content", "reasoning"), table="messages"):
+        """Build a throwaway fixture SQLite DB. Never touches a real state.db."""
+        import sqlite3
+        directory = tempfile.mkdtemp()
+        db_path = Path(directory) / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        base = ["id INTEGER PRIMARY KEY", "session_id TEXT", "role TEXT", "timestamp REAL"]
+        extra = ["%s TEXT" % name for name in columns]
+        conn.execute("CREATE TABLE %s (%s)" % (table, ", ".join(base + extra)))
+        names = ["session_id", "role", "timestamp"] + list(columns)
+        placeholders = ", ".join("?" * len(names))
+        for row in rows:
+            conn.execute(
+                "INSERT INTO %s (%s) VALUES (%s)" % (table, ", ".join(names), placeholders),
+                [row.get(name) for name in names],
+            )
+        conn.commit()
+        conn.close()
+        return db_path
+
+    def test_none_source_returns_nothing(self):
+        source = bridge.NullReasoningSource()
+        self.assertIsNone(source.latest_reasoning("session-1", 0.0))
+
+    def test_session_store_returns_newest_reasoning(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+             "reasoning_content": "Older thought.", "reasoning": None},
+            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
+             "reasoning_content": "Newest thought about the task.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertEqual(
+            source.latest_reasoning("s1", 50.0),
+            "Newest thought about the task.",
+        )
+
+    def test_session_store_falls_back_to_reasoning_column(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
+             "reasoning_content": None, "reasoning": "Fallback reasoning text here."},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertEqual(
+            source.latest_reasoning("s1", 50.0),
+            "Fallback reasoning text here.",
+        )
+
+    def test_session_store_ignores_rows_older_than_turn_start(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 10.0,
+             "reasoning_content": "Stale reasoning from a previous turn.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("s1", 100.0))
+
+    def test_session_store_never_leaks_another_session(self):
+        """A row from a different session id must NEVER be returned."""
+        db_path = self._make_db([
+            {"session_id": "other-agent-session", "role": "assistant", "timestamp": 300.0,
+             "reasoning_content": "Secret reasoning from another agent.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("s1", 50.0))
+
+    def test_session_store_without_session_id_returns_none(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 300.0,
+             "reasoning_content": "Some reasoning.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("", 50.0))
+
+    def test_session_store_ignores_non_assistant_rows(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "user", "timestamp": 300.0,
+             "reasoning_content": "Not assistant reasoning.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("s1", 50.0))
+
+    def test_missing_db_degrades_to_none(self):
+        missing = Path(tempfile.mkdtemp()) / "does-not-exist.db"
+        source = bridge.SessionStoreReasoningSource(missing)
+        self.assertIsNone(source.latest_reasoning("s1", 0.0))
+
+    def test_missing_table_degrades_to_none(self):
+        db_path = self._make_db([], table="other_table")
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("s1", 0.0))
+
+    def test_missing_reasoning_columns_degrade_to_none(self):
+        db_path = self._make_db(
+            [{"session_id": "s1", "role": "assistant", "timestamp": 300.0, "content": "hi"}],
+            columns=("content",),
+        )
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("s1", 0.0))
+
+    def test_corrupt_db_degrades_to_none(self):
+        path = Path(tempfile.mkdtemp()) / "state.db"
+        path.write_text("this is not a sqlite database", encoding="utf-8")
+        source = bridge.SessionStoreReasoningSource(path)
+        self.assertIsNone(source.latest_reasoning("s1", 0.0))
+
+    def test_stub_row_does_not_mask_real_reasoning(self):
+        """A newer row holding a stub must not hide the real thought behind it.
+
+        Assistant rows are written for every step of a turn and many carry a
+        token-sized `reasoning_content` — observed in production as a single
+        character. Taking the newest row unconditionally meant condensing that
+        stub to nothing and reporting no reasoning at all, even with a full
+        thought one row back.
+        """
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+             "reasoning_content": "A complete thought worth showing.", "reasoning": None},
+            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
+             "reasoning_content": "x", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertEqual(
+            source.latest_reasoning("s1", 0.0),
+            "A complete thought worth showing.",
+        )
+
+    def test_stub_column_does_not_shadow_substantive_sibling(self):
+        """The row may qualify on the SECOND column; do not return the first."""
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+             "reasoning_content": "x", "reasoning": "The real reasoning lives here."},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertEqual(
+            source.latest_reasoning("s1", 0.0),
+            "The real reasoning lives here.",
+        )
+
+    def test_missing_table_recovers_once_it_appears(self):
+        """A not-yet-created `messages` table is transient, not permanent.
+
+        During first-run schema bootstrap the store file exists but `messages`
+        does not. PRAGMA returns an empty list instead of raising, and latching
+        that as unusable would freeze the source into "no reasoning" for the
+        whole life of the process — weeks, under Restart=always.
+        """
+        import sqlite3
+        db_path = self._make_db(
+            [{"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+              "reasoning_content": "unused", "reasoning": None}],
+            table="not_messages",
+        )
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.latest_reasoning("s1", 0.0))
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, "
+            "role TEXT, timestamp REAL, reasoning_content TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO messages (session_id, role, timestamp, reasoning_content) "
+            "VALUES ('s1', 'assistant', 200.0, 'Reasoning that arrived later.')"
+        )
+        conn.commit()
+        conn.close()
+
+        self.assertEqual(
+            source.latest_reasoning("s1", 0.0),
+            "Reasoning that arrived later.",
+        )
+
+
+class TestReasoningSourceResolution(unittest.TestCase):
+    """The active source must not latch a negative result forever."""
+
+    def setUp(self):
+        self._saved = (bridge._reasoning_source, bridge._reasoning_source_retry_at,
+                       bridge.REASONING_SOURCE_NAME, os.environ.get("HERMES_HOME"))
+        bridge._reasoning_source = None
+        bridge._reasoning_source_retry_at = 0.0
+
+    def tearDown(self):
+        (bridge._reasoning_source, bridge._reasoning_source_retry_at,
+         bridge.REASONING_SOURCE_NAME, home) = self._saved
+        if home is None:
+            os.environ.pop("HERMES_HOME", None)
+        else:
+            os.environ["HERMES_HOME"] = home
+
+    def test_auto_upgrades_when_store_appears_later(self):
+        """The fresh-install path: bridge starts before the runtime ever runs.
+
+        The store does not exist yet, so `auto` correctly resolves to none — but
+        it must re-check, or reasoning silently never works until a restart.
+        """
+        import sqlite3
+        home = Path(tempfile.mkdtemp())
+        os.environ["HERMES_HOME"] = str(home)
+        bridge.REASONING_SOURCE_NAME = "auto"
+
+        self.assertEqual(bridge.reasoning_source().name, "none")
+
+        conn = sqlite3.connect(str(home / "state.db"))
+        conn.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        conn.close()
+
+        # Still cached inside the retry window.
+        self.assertEqual(bridge.reasoning_source().name, "none")
+        # Once the window lapses it must notice.
+        bridge._reasoning_source_retry_at = 0.0
+        self.assertEqual(bridge.reasoning_source().name, "session-store")
+
+    def test_positive_result_is_cached(self):
+        home = Path(tempfile.mkdtemp())
+        (home / "state.db").write_bytes(b"")
+        os.environ["HERMES_HOME"] = str(home)
+        bridge.REASONING_SOURCE_NAME = "session-store"
+        first = bridge.reasoning_source()
+        self.assertEqual(first.name, "session-store")
+        self.assertIs(bridge.reasoning_source(), first)
+
+
+class TestCondenseReasoning(unittest.TestCase):
+    """Tests for squashing raw reasoning into a status-line-sized phrase."""
+
+    def test_short_opening_sentence_grows_instead_of_truncating(self):
+        """A terse opener must absorb the next sentence, not be thrown away.
+
+        Discarding it fell back to truncating the entire flattened blob, so the
+        reader got a severed run-on where a complete short thought was available.
+        """
+        text = "Let me check. The deploy job finished at 11:38 and matches the timestamp."
+        out = bridge.condense_reasoning(text)
+        self.assertTrue(out.startswith("Let me check."), out)
+        self.assertNotIn("…", out)
+        self.assertLessEqual(len(out), bridge._REASONING_MAX_CHARS)
+
+    def test_collapses_newlines_and_whitespace(self):
+        condensed = bridge.condense_reasoning("First line of thought\n\n  second   line\nthird")
+        self.assertNotIn("\n", condensed)
+        self.assertNotIn("  ", condensed)
+
+    def test_strips_markdown_scaffolding(self):
+        condensed = bridge.condense_reasoning("## Plan\n- **check** the `config` file")
+        self.assertNotIn("#", condensed)
+        self.assertNotIn("*", condensed)
+        self.assertNotIn("`", condensed)
+
+    def test_truncates_under_budget(self):
+        condensed = bridge.condense_reasoning("word " * 200)
+        self.assertLessEqual(len(condensed), bridge._REASONING_MAX_CHARS)
+        self.assertTrue(condensed.endswith("\u2026"))
+
+    def test_prefers_leading_sentence(self):
+        text = "I should read the config first. Then I will edit the handler and run the tests."
+        self.assertEqual(bridge.condense_reasoning(text), "I should read the config first.")
+
+    def test_empty_input_returns_none(self):
+        self.assertIsNone(bridge.condense_reasoning(""))
+        self.assertIsNone(bridge.condense_reasoning("   \n  "))
+
+
+class TestLatestReasoningActivity(unittest.TestCase):
+    """The status line must mark real reasoning distinctly from tool activity."""
+
+    def _with_source(self, source):
+        original = bridge._reasoning_source
+        bridge._reasoning_source = source
+        self.addCleanup(lambda: setattr(bridge, "_reasoning_source", original))
+
+    def test_prefixes_real_reasoning(self):
+        class Stub(bridge.ReasoningSource):
+            def latest_reasoning(self, session_id, since_ts):
+                return "Checking the cache layer."
+
+        self._with_source(Stub())
+        self.assertEqual(
+            bridge.latest_reasoning_activity("s1", 0.0),
+            "thinking: Checking the cache layer.",
+        )
+
+    def test_no_reasoning_returns_none(self):
+        self._with_source(bridge.NullReasoningSource())
+        self.assertIsNone(bridge.latest_reasoning_activity("s1", 0.0))
+
+    def test_raising_source_is_swallowed(self):
+        class Boom(bridge.ReasoningSource):
+            def latest_reasoning(self, session_id, since_ts):
+                raise RuntimeError("boom")
+
+        self._with_source(Boom())
+        self.assertIsNone(bridge.latest_reasoning_activity("s1", 0.0))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
