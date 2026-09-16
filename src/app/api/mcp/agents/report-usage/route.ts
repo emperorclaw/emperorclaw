@@ -47,7 +47,12 @@ export async function POST(req: NextRequest) {
             // Price the reported runtime model without overwriting admin configuration.
             const pricingLookupModel = model || agent.llmModel || "";
             const pricing = totalTokens > 0 ? await lookupUsagePricing(tx, pricingLookupModel) : null;
-            if (totalTokens > 0 && !pricing) {
+            // Only an agent with a budget needs a price to enforce it. Unbudgeted
+            // agents (the default for auto-registered bridges, which start with no
+            // model configured) must still record usage — otherwise the first turn
+            // returns 422, the bridge retains the sample, and the preflight budget
+            // check then blocks every later turn, wedging the agent permanently.
+            if (totalTokens > 0 && !pricing && agent.monthlyBudgetCents > 0) {
                 // Keep the sample unacknowledged so bridges retain it and stop dispatching.
                 return NextResponse.json({ error: "Active pricing required for reported model", model: pricingLookupModel }, { status: 422 });
             }

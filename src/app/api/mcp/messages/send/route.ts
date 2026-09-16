@@ -21,15 +21,22 @@ const sendMessageSchema = z.object({
 const dedupCache = new Map<string, number>();
 const DEDUP_WINDOW_MS = 120_000; // 2 minutes
 
-function isDuplicate(agentId: string, threadId: string, text: string): boolean {
-    const key = crypto.createHash("sha256")
+function dedupKey(agentId: string, threadId: string, text: string): string {
+    return crypto.createHash("sha256")
         .update(`${agentId}:${threadId}:${text.trim()}`)
         .digest("hex");
-    const now = Date.now();
+}
+
+function wasRecentlySent(key: string): boolean {
     const lastSent = dedupCache.get(key);
-    if (lastSent && now - lastSent < DEDUP_WINDOW_MS) {
-        return true;
-    }
+    return Boolean(lastSent && Date.now() - lastSent < DEDUP_WINDOW_MS);
+}
+
+// Called only AFTER a successful send: recording before the send would poison
+// the key on failure, so the bridge's retry would be treated as a duplicate and
+// the message would be silently dropped.
+function recordSent(key: string): void {
+    const now = Date.now();
     dedupCache.set(key, now);
     // Cleanup old entries periodically
     if (dedupCache.size > 1000) {
@@ -37,7 +44,6 @@ function isDuplicate(agentId: string, threadId: string, text: string): boolean {
             if (now - v > DEDUP_WINDOW_MS) dedupCache.delete(k);
         }
     }
-    return false;
 }
 
 export async function POST(req: NextRequest) {
@@ -58,7 +64,8 @@ export async function POST(req: NextRequest) {
         // Deduplicate: reject if this agent already sent the exact same
         // text in this thread within the last 2 minutes. This is a real fix —
         // it prevents token-wasting duplicate messages from being stored at all.
-        if (agentId && thread_id && isDuplicate(agentId, thread_id, text)) {
+        const key = agentId && thread_id ? dedupKey(agentId, thread_id, text) : null;
+        if (key && wasRecentlySent(key)) {
             return NextResponse.json(
                 { ok: true, message_id: null, thread_id, deduplicated: true },
             );
@@ -74,6 +81,10 @@ export async function POST(req: NextRequest) {
             targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
         });
+
+        // Record only after the send succeeded so a failed send does not poison
+        // the key and make the bridge's retry look like a duplicate.
+        if (key && result.ok) recordSent(key);
 
         return NextResponse.json({
             ok: result.ok,

@@ -101,15 +101,35 @@ def api(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[
 
 
 def load_state() -> Dict[str, Any]:
-    try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {"seen": [], "lastSeenAt": None}
+    # Prefer the live file, then the last good backup, and preserve a corrupt
+    # file instead of silently discarding all bridge state (sessions, thread
+    # ownership, and the loop/cold-start guards all live here).
+    for candidate in (STATE_PATH, STATE_PATH.with_name(STATE_PATH.name + ".bak")):
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception:
+            try:
+                os.replace(candidate, candidate.with_name(candidate.name + ".corrupt"))
+            except OSError:
+                pass
+    return {"seen": [], "lastSeenAt": None}
 
 
 def save_state(state: Dict[str, Any]) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    # Write to a temp file and atomically replace it: a crash mid-write must
+    # never leave a truncated JSON file, which would wipe every session and
+    # guard on the next load. Keep the previous file as .bak.
+    tmp_path = STATE_PATH.with_name(STATE_PATH.name + ".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    if STATE_PATH.exists():
+        try:
+            os.replace(STATE_PATH, STATE_PATH.with_name(STATE_PATH.name + ".bak"))
+        except OSError:
+            pass
+    os.replace(tmp_path, STATE_PATH)
 
 
 def remember_seen(state: Dict[str, Any], message_id: str) -> bool:

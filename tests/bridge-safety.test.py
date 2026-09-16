@@ -249,8 +249,20 @@ class TestStatePersistence(unittest.TestCase):
         """First load with no file should return empty state."""
         state_path = Path(os.environ["EMPEROR_CLAW_HERMES_STATE_PATH"])
         state_path.unlink(missing_ok=True)
+        Path(str(state_path) + ".bak").unlink(missing_ok=True)
         state = bridge.load_state()
         self.assertEqual(state, {"seen": [], "lastSeenAt": None})
+
+    def test_corrupt_state_is_preserved_and_falls_back(self):
+        """A corrupt state file must not be silently discarded."""
+        state_path = Path(os.environ["EMPEROR_CLAW_HERMES_STATE_PATH"])
+        Path(str(state_path) + ".bak").unlink(missing_ok=True)
+        Path(str(state_path) + ".corrupt").unlink(missing_ok=True)
+        state_path.write_text("{not valid json", encoding="utf-8")
+        loaded = bridge.load_state()
+        self.assertEqual(loaded, {"seen": [], "lastSeenAt": None})
+        self.assertTrue(Path(str(state_path) + ".corrupt").exists())
+        Path(str(state_path) + ".corrupt").unlink(missing_ok=True)
 
 
 class TestBudgetGuard(unittest.TestCase):
