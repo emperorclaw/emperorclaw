@@ -304,5 +304,69 @@ class TestBudgetGuard(unittest.TestCase):
         self.assertEqual(self.api.call_args.args[0], "POST")
 
 
+class TestIsDirectThread(unittest.TestCase):
+    """Tests for DM vs team classification (is_direct_thread)."""
+
+    def test_explicit_direct_thread_type(self):
+        self.assertTrue(bridge.is_direct_thread({"threadType": "direct", "threadId": "dm-1"}, {}))
+
+    def test_explicit_team_thread_type(self):
+        self.assertFalse(bridge.is_direct_thread({"threadType": "team", "threadId": "team-1"}, {}))
+
+    def test_target_agent_id_marks_direct(self):
+        msg = {"threadId": "dm-1", "targetAgentId": bridge.AGENT_ID}
+        self.assertTrue(bridge.is_direct_thread(msg, {}))
+
+    def test_recorded_direct_thread_ownership(self):
+        msg = {"threadId": "dm-1"}
+        state = {"direct_threads": {"dm-1": bridge.AGENT_ID}}
+        self.assertTrue(bridge.is_direct_thread(msg, state))
+
+    def test_unknown_thread_is_not_direct(self):
+        self.assertFalse(bridge.is_direct_thread({"threadId": "team-1"}, {}))
+
+
+class TestMainChatContext(unittest.TestCase):
+    """Tests for the DM main-chat digest (format_main_chat_context)."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        self.api_patch = patch.object(bridge, "api")
+        self.api = self.api_patch.start()
+        self.addCleanup(self.api_patch.stop)
+        bridge._team_thread_id_cache = None
+        self.addCleanup(setattr, bridge, "_team_thread_id_cache", None)
+
+    def test_formats_recent_team_messages_with_sender_labels(self):
+        def fake_api(method, path, body=None, query=None):
+            if path == "/threads":
+                return {"threads": [{"id": "team-1", "createdAt": "2026-01-01T00:00:00Z"}]}
+            if path == "/threads/team-1/messages":
+                return {"messages": [
+                    {"senderType": "agent", "senderId": "a1", "text": "hi @Ada"},
+                    {"senderType": "human", "metadataJson": {"senderName": "Operator"}, "text": "thanks"},
+                ]}
+            raise AssertionError(path)
+        self.api.side_effect = fake_api
+        from unittest.mock import patch
+        with patch.object(bridge, "fetch_agent_roster", return_value=[{"id": "a1", "name": "Ada"}]):
+            context = bridge.format_main_chat_context({})
+        self.assertIn("Ada: hi @Ada", context)
+        self.assertIn("Operator: thanks", context)
+
+    def test_disabled_when_limit_is_zero(self):
+        original = bridge.MAIN_CHAT_CONTEXT_LIMIT
+        bridge.MAIN_CHAT_CONTEXT_LIMIT = 0
+        try:
+            self.assertEqual(bridge.format_main_chat_context({}), "")
+            self.api.assert_not_called()
+        finally:
+            bridge.MAIN_CHAT_CONTEXT_LIMIT = original
+
+    def test_empty_when_no_team_thread(self):
+        self.api.return_value = {"threads": []}
+        self.assertEqual(bridge.format_main_chat_context({}), "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

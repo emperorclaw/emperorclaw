@@ -40,6 +40,14 @@ MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX
 # is raised — a single long doctrine/playbook note can silently eat that
 # whole per-resource cap and get truncated even with a generous total pool.
 MAX_CHARS_PER_RESOURCE = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS_PER_RESOURCE", "0")) or None
+# DM awareness: a direct message runs in its own Hermes session (keyed by the
+# direct thread), so from a DM the agent never sees the shared team channel —
+# ask it "what did you and X talk about?" and it draws a blank. When replying in
+# a DM we inject a read-only digest of the recent team channel so it can answer.
+# Set the limit to 0 to disable the injection entirely.
+MAIN_CHAT_CONTEXT_LIMIT = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_LIMIT", "20"))
+MAIN_CHAT_CONTEXT_MAX_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_MAX_CHARS", "6000"))
+MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS", "600"))
 # Loop guard: the @mention convention (reply once, then go silent) is a prompt
 # convention, not a hard rule — an LLM can still misjudge a "closing" reply as
 # needing another response. This is a mechanical backstop: once this agent has
@@ -51,6 +59,9 @@ LOOP_GUARD_MAX_AGENT_TURNS = int(os.environ.get("EMPEROR_CLAW_LOOP_GUARD_MAX_TUR
 # Cached agent LLM provider — read once at startup for documentation
 _agent_llm_provider: str | None = None
 _agent_llm_model: str | None = None
+# Resolved once per process — the company's team thread is stable, and looking
+# it up on every DM turn would add a needless round-trip.
+_team_thread_id_cache: str | None = None
 
 
 def log(message: str) -> None:
@@ -298,6 +309,114 @@ def format_company_brain_context(message: Dict[str, Any]) -> str:
         "Company Brain context resolved by Emperor. Use these source ids when citing loaded doctrine; "
         "do not blindly assume every shared resource was injected.\n"
         + "\n\n".join(sections)
+    )
+
+
+def is_direct_thread(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
+    """Whether this message belongs to one of this agent's private DM threads.
+
+    Synced messages don't carry threadType, so DM-ness is derived from an
+    explicit targetAgentId plus the per-thread ownership map the bridge records
+    the first time it sees a targeted message in that thread.
+    """
+    thread_type = str(message.get("threadType") or message.get("thread_type") or "")
+    if thread_type == "direct":
+        return True
+    if thread_type == "team":
+        return False
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
+    target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
+    if target and target == AGENT_ID:
+        return True
+    return bool(thread_id) and state.get("direct_threads", {}).get(thread_id) == AGENT_ID
+
+
+def resolve_team_thread_id() -> str:
+    """Resolve the company's shared team thread id, cached per process."""
+    global _team_thread_id_cache
+    if _team_thread_id_cache:
+        return _team_thread_id_cache
+    try:
+        payload = api("GET", "/threads", query={"type": "team"})
+    except Exception as exc:
+        log(f"main chat context: team thread lookup failed: {exc}")
+        return ""
+    threads = payload.get("threads") if isinstance(payload, dict) else []
+    if not isinstance(threads, list) or not threads:
+        return ""
+    # ensureTeamThread resolves the oldest non-archived team thread as canonical;
+    # mirror that here instead of trusting the API's row order.
+    oldest = sorted(threads, key=lambda thread: str(thread.get("createdAt") or thread.get("created_at") or ""))[0]
+    resolved = str(oldest.get("id") or "")
+    if resolved:
+        _team_thread_id_cache = resolved
+    return resolved
+
+
+def _message_sender_label(entry: Dict[str, Any], agent_names: Dict[str, str]) -> str:
+    sender_type = str(entry.get("senderType") or entry.get("sender_type") or "").lower()
+    sender_id = str(entry.get("senderId") or entry.get("sender_id") or "")
+    metadata = entry.get("metadataJson") or entry.get("metadata_json") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    if sender_type == "agent":
+        return agent_names.get(sender_id) or str(metadata.get("senderName") or "agent")
+    if sender_type == "human":
+        return str(metadata.get("senderName") or metadata.get("senderEmail") or "operator")
+    return sender_type or "system"
+
+
+def format_main_chat_context(message: Dict[str, Any]) -> str:
+    """Read-only digest of the recent main team channel, for DM turns.
+
+    The DM session is keyed by the direct thread, so it never observed the team
+    channel. Injecting the recent team messages lets the agent answer "what did
+    you and X talk about?" without merging sessions — and because this only
+    flows team -> DM, private DM content never leaks back into the team.
+    """
+    if MAIN_CHAT_CONTEXT_LIMIT <= 0:
+        return ""
+    team_thread_id = resolve_team_thread_id()
+    if not team_thread_id:
+        return ""
+    try:
+        payload = api(
+            "GET",
+            f"/threads/{urllib.parse.quote(team_thread_id)}/messages",
+            query={"limit": MAIN_CHAT_CONTEXT_LIMIT},
+        )
+    except Exception as exc:
+        log(f"main chat context: team messages fetch failed: {exc}")
+        return ""
+    messages = payload.get("messages") if isinstance(payload, dict) else []
+    if not isinstance(messages, list) or not messages:
+        return ""
+    agent_names = {
+        str(agent.get("id")): str(agent.get("name") or agent.get("id"))
+        for agent in fetch_agent_roster()
+        if agent.get("id")
+    }
+    lines: List[str] = []
+    used = 0
+    for entry in messages:
+        if not isinstance(entry, dict):
+            continue
+        text = " ".join(str(entry.get("text") or "").split())
+        if not text:
+            continue
+        if len(text) > MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS:
+            text = text[:MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS] + "…"
+        line = f"- {_message_sender_label(entry, agent_names)}: {text}"
+        if used + len(line) > MAIN_CHAT_CONTEXT_MAX_CHARS:
+            break
+        used += len(line)
+        lines.append(line)
+    if not lines:
+        return ""
+    return (
+        "Recent main team channel activity — read-only context so you know what was "
+        "discussed with the team. Do NOT reply into the team channel from this DM; "
+        "answer the operator here.\n" + "\n".join(lines)
     )
 
 
@@ -661,6 +780,9 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     text = str(message.get("text") or "")
     roster_context = format_agent_roster(AGENT_ID)
     shared_context = format_company_brain_context(message)
+    # A DM runs in its own session, so it needs the team channel read into the
+    # turn explicitly; team turns already carry it in their own session.
+    main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
@@ -698,9 +820,10 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n"
         "- Safety net: if you and a sibling exchange more than a few consecutive messages in team chat with no human input, the bridge will automatically pause your replies in that thread until a human sends a new message. Don't rely on this — follow the rules above so it never triggers.\n\n"
         f"{roster_context}\n\n"
-        f"{shared_context}\n\n"
-        f"Thread: {thread_id}\n"
-        f"Latest message: {text}"
+        + f"{shared_context}\n\n"
+        + (f"{main_chat_context}\n\n" if main_chat_context else "")
+        + f"Thread: {thread_id}\n"
+        + f"Latest message: {text}"
     )
     session_key = f"{AGENT_NAME}:{thread_id}"
     sessions = state.setdefault("sessions", {})
