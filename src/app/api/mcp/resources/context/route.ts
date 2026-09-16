@@ -23,10 +23,18 @@ export async function GET(req: NextRequest) {
   }
   const resourceIds = searchParams.getAll("resourceId").flatMap((value) => value.split(",").filter(Boolean));
   const tagFilters = searchParams.getAll("tag").flatMap((value) => value.split(",").filter(Boolean));
-  const maxChars = Number(searchParams.get("maxChars") || "12000");
+  // Clamp caller-supplied ceilings: without a cap, ?maxChars=1000000000 makes
+  // the resolver emit the entire vault into one prompt on every agent turn.
+  const DEFAULT_MAX_CHARS = 12000;
+  const MAX_CONTEXT_CHARS = 48000;
+  const rawMaxChars = Number(searchParams.get("maxChars") || DEFAULT_MAX_CHARS);
+  const maxChars = Number.isFinite(rawMaxChars) && rawMaxChars > 0 ? Math.min(rawMaxChars, MAX_CONTEXT_CHARS) : DEFAULT_MAX_CHARS;
   // Optional per-note ceiling. Omitted, it falls back to
   // EMPEROR_BRAIN_MAX_CHARS_PER_RESOURCE and then the built-in default.
-  const maxCharsPerResource = Number(searchParams.get("maxCharsPerResource") || "");
+  const rawMaxCharsPerResource = Number(searchParams.get("maxCharsPerResource") || "");
+  const maxCharsPerResource = Number.isFinite(rawMaxCharsPerResource) && rawMaxCharsPerResource > 0
+    ? Math.min(rawMaxCharsPerResource, MAX_CONTEXT_CHARS)
+    : undefined;
   const context = await resolveCompanyBrainContext({
     companyId,
     customerId: customerIdParam,
@@ -34,8 +42,8 @@ export async function GET(req: NextRequest) {
     agentId,
     resourceIds,
     tagFilters,
-    maxChars: Number.isFinite(maxChars) ? maxChars : 12000,
-    maxCharsPerResource: Number.isFinite(maxCharsPerResource) && maxCharsPerResource > 0 ? maxCharsPerResource : undefined,
+    maxChars,
+    maxCharsPerResource,
   });
   return NextResponse.json(context);
 }

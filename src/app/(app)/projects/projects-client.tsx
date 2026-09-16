@@ -838,7 +838,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </details>
                 </div>
             </div>
-            {mutationError && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
+            {mutationError && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
 
             <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
                 <MetricCard label="To do" value={byState.inbox.length} hint="Queued work" />

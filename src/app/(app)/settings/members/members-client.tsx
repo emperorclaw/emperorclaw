@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconMail, IconTrash, IconUserCog, IconUsers, IconShield, IconClock, IconLoader2, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
@@ -60,7 +60,6 @@ function roleBadge(role: string) {
 export default function MembersClient({ currentUserId, currentUserRole, companyId, initialMembers, agents, customersData }: Props) {
     const [members, setMembers] = useState<Member[]>(initialMembers);
     const [invitations, setInvitations] = useState<InvitationRow[]>([]);
-    const [invitationsLoaded, setInvitationsLoaded] = useState(false);
 
     // Invite form
     const [inviteEmail, setInviteEmail] = useState("");
@@ -93,13 +92,13 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
         } catch {
             // Non-critical
         }
-        setInvitationsLoaded(true);
     };
 
-    // Initial load
-    if (!invitationsLoaded) {
-        loadInvitations();
-    }
+    // Initial load — in an effect, not during render (a render-body side effect
+    // fires on every render and can double-fetch).
+    useEffect(() => {
+        void loadInvitations();
+    }, []);
 
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();

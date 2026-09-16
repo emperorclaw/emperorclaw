@@ -6,6 +6,7 @@ import { IconMessage, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -235,8 +236,7 @@ export function OpenClawChat() {
 
     const sendMessage = async () => {
         const textToSend = message;
-
-        setMessage("");
+        if (!textToSend.trim()) return;
 
         try {
             const res = await fetch('/api/chat', {
@@ -246,6 +246,9 @@ export function OpenClawChat() {
             });
             if (res.ok) {
                 const data = await res.json();
+                // Clear the composer only once the message is stored, so a failed
+                // send doesn't silently discard what the user typed.
+                setMessage("");
                 setHistory(prev => {
                     if (prev.some(p => p.id === data.message.id)) return prev;
                     return [...prev, data.message];
@@ -254,9 +257,12 @@ export function OpenClawChat() {
                     return new Date(data.message.createdAt).getTime() > new Date(prevLast || 0).getTime()
                         ? data.message.createdAt : prevLast;
                 });
+            } else {
+                toast.error("Message could not be sent — your draft was kept. Please try again.");
             }
         } catch (err) {
             console.error("Failed to send message", err);
+            toast.error("Message could not be sent — your draft was kept. Please try again.");
         }
     };
 
