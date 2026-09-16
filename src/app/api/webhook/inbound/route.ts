@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { chatMessages } from "@/db/schema";
+import { chatMessages, messageThreads } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
 import { appendThreadMessage, ensureTeamThread } from "@/lib/control-plane";
@@ -59,9 +59,27 @@ export async function POST(req: NextRequest) {
         // 3. Transform and Route
         // This inserts the message into Emperor Claw's system-of-record.
         const thread = await ensureTeamThread(companyId);
+
+        // A caller-supplied thread_id must belong to the caller's company —
+        // otherwise a token from one tenant could inject messages into another
+        // tenant's thread.
+        let threadId = thread.id;
+        if (thread_id) {
+            const [ownedThread] = await db.select({ id: messageThreads.id }).from(messageThreads)
+                .where(and(
+                    eq(messageThreads.id, thread_id),
+                    eq(messageThreads.companyId, companyId),
+                ))
+                .limit(1);
+            if (!ownedThread) {
+                return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+            }
+            threadId = ownedThread.id;
+        }
+
         const newMessage = await appendThreadMessage({
             companyId,
-            threadId: thread_id || thread.id,
+            threadId,
             senderType: "human",
             senderId: from_user_id,
             text,

@@ -65,6 +65,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             return NextResponse.json({ error: "text is required" }, { status: 400 });
         }
 
+        // MCP callers authenticate with a company token, not a user session, so
+        // they must never post as a human sender — otherwise an agent could forge
+        // a human message (and the human audit trail that follows it).
+        if (senderType === "human") {
+            return NextResponse.json({ error: "MCP callers cannot post as a human sender" }, { status: 403 });
+        }
+
         const resolvedSenderId = senderType === "agent" && senderId
             ? await resolveAgentId(companyId, senderId)
             : senderId || null;

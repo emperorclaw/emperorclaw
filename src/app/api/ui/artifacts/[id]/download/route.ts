@@ -52,9 +52,11 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
             "application/octet-stream";
 
         // Only allow inline disposition for safe browser-renderable types.
-        // Force attachment for everything else to prevent stored-XSS.
+        // Force attachment for everything else to prevent stored-XSS. SVG is
+        // excluded on purpose: it can carry <script>, so it must never render
+        // inline on the app origin.
         const SAFE_INLINE_TYPES = new Set([
-            "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+            "image/png", "image/jpeg", "image/gif", "image/webp",
             "application/pdf", "text/plain", "text/csv", "text/markdown",
             "audio/mpeg", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm",
             "audio/x-m4a", "audio/mp4", "audio/aac", "audio/flac",

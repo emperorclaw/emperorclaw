@@ -1,38 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getValidatedServerSession } from "@/lib/auth";
+import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
-import { companies, companyMembers } from "@/db/schema";
+import { companies } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
 export async function PATCH(req: NextRequest) {
     try {
-        const session = await getValidatedServerSession();
-        const sessionUserId = session?.user?.id;
-        if (!sessionUserId) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        const userId = sessionUserId;
-
-        // Verify the user is a member of a company
-        const [membership] = await db.select().from(companyMembers)
-            .where(eq(companyMembers.userId, userId))
-            .limit(1);
-
-        if (!membership) {
-            return NextResponse.json({ error: "No associated company found" }, { status: 404 });
-        }
+        // contextNotes is injected into every agent's MCP instructions block, so
+        // letting any member edit it is a prompt-injection path into agents that
+        // run with terminal/web tools. Restrict writes to admins.
+        const ctx = await requireRole("admin")();
+        const userId = ctx.userId;
 
         const { contextNotes } = await req.json();
 
-        // Update the company context
         const [updatedCompany] = await db.update(companies)
-            .set({ contextNotes, deletedAt: null }) // Setting deletedAt temporarily to ensure update payload maps cleanly in simple schema update cases
-            .where(eq(companies.id, membership.companyId))
+            .set({ contextNotes })
+            .where(eq(companies.id, ctx.companyId))
             .returning();
 
-        await broadcastMcpEvent(membership.companyId, {
+        await broadcastMcpEvent(ctx.companyId, {
             type: "company_context_updated",
             actorUserId: userId,
             company: {
@@ -47,6 +35,9 @@ export async function PATCH(req: NextRequest) {
         });
 
     } catch (error) {
+        if (error instanceof AuthError) {
+            return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        }
         console.error("Error updating company context:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
