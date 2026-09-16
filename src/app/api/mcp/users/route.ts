@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken } from "@/lib/mcp";
+import { verifyMcpToken, hasRequiredCompanyTokenScope } from "@/lib/mcp";
 import { db } from "@/db";
 import { users, companyMembers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -14,6 +14,12 @@ export async function GET(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("id");
+
+    // Listing every member (with emails) is a directory dump; keep it behind the
+    // privileged scope. Targeted single-user lookups stay available.
+    if (!userId && !hasRequiredCompanyTokenScope(auth.companyToken!.scope, "mcp_danger")) {
+        return NextResponse.json({ error: "Listing all members requires an mcp_danger token" }, { status: 403 });
+    }
 
     // Single user lookup
     if (userId) {

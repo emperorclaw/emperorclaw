@@ -35,6 +35,36 @@ export async function PUT(
             );
         }
 
+        // The instance-level role outranks every company role, so only an
+        // instance admin may grant or revoke it — otherwise an owner could
+        // promote themselves (or anyone) to instance_admin. The target must
+        // also be a member of the caller's company.
+        if (instanceRole !== undefined) {
+            if (ctx.role !== "instance_admin") {
+                return NextResponse.json(
+                    { error: "Only an instance admin can change instance roles." },
+                    { status: 403 }
+                );
+            }
+            if (instanceRole !== "instance_admin" && instanceRole !== "member") {
+                return NextResponse.json(
+                    { error: "Invalid instance role. Allowed values: instance_admin, member." },
+                    { status: 400 }
+                );
+            }
+            const [targetMembership] = await db
+                .select({ id: companyMembers.id })
+                .from(companyMembers)
+                .where(and(
+                    eq(companyMembers.userId, userId),
+                    eq(companyMembers.companyId, ctx.companyId),
+                ))
+                .limit(1);
+            if (!targetMembership) {
+                return NextResponse.json({ error: "Member not found" }, { status: 404 });
+            }
+        }
+
         // Last-admin guard (FR-24, EC-4, EC-5)
         if (instanceRole && instanceRole !== "instance_admin") {
             // User being demoted from instance_admin — check it's not the last

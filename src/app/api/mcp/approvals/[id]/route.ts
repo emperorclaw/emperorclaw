@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { requireRole, AuthError } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
 
 export async function GET(
@@ -22,28 +23,34 @@ export async function GET(
 }
 
 export async function PATCH(
-    req: NextRequest,
+    _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const auth = await verifyMcpToken(req);
-    if (auth.error) {
-        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    // Approvals are a human gate. This endpoint is MCP-reachable, but an agent
+    // must never resolve its own approval (or forge a human audit trail), so it
+    // requires a real logged-in user session and ignores any caller-supplied
+    // resolver id in favour of the authenticated one.
+    let ctx;
+    try {
+        ctx = await requireRole("member")();
+    } catch (err) {
+        if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
+        throw err;
     }
 
     try {
-        const companyId = auth.companyToken!.companyId;
         const { id } = await params;
-        const body = await req.json();
-        const { status, resolverUserId, resolutionNote } = body;
+        const body = await _req.json();
+        const { status, resolutionNote } = body;
 
         if (status !== "approved" && status !== "rejected") {
             return NextResponse.json({ error: "status must be approved or rejected" }, { status: 400 });
         }
 
         const approval = await resolveApproval({
-            companyId,
+            companyId: ctx.companyId,
             approvalId: id,
-            resolverUserId: resolverUserId || null,
+            resolverUserId: ctx.userId,
             status,
             resolutionNote: resolutionNote || null,
         });

@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient, validateRedirectUri, createAuthorizationCode, OAuthError } from "@/lib/oauth";
-import { getValidatedServerSession, getCompanyId } from "@/lib/auth";
+import { requireRole, AuthError } from "@/lib/roles";
 
 // The consent form's submit target. Deliberately NOT in src/proxy.ts's
 // public matcher — this must run behind a real session so we know which
 // user/company is granting access. Only the /authorize page (also
-// protected) links here.
+// protected) links here. The granted token is a company-wide mcp_full
+// token, so consent requires the same admin role as minting one directly.
 export async function POST(req: NextRequest) {
-    const session = await getValidatedServerSession();
-    const companyId = await getCompanyId();
-    if (!session?.user?.id || !companyId) {
-        return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("admin")();
+    } catch (err) {
+        if (err instanceof AuthError) return NextResponse.json({ error: "unauthorized" }, { status: err.statusCode });
+        throw err;
     }
+    const companyId = ctx.companyId;
 
     const form = await req.formData();
     const decision = form.get("decision");
@@ -37,7 +41,7 @@ export async function POST(req: NextRequest) {
     try {
         const code = await createAuthorizationCode({
             clientId,
-            userId: session.user.id,
+            userId: ctx.userId,
             companyId,
             redirectUri,
             codeChallenge,

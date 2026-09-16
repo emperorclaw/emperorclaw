@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId } from "@/lib/auth";
+import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
 import { agents, companyTokens } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -27,8 +27,14 @@ export async function POST(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("admin")();
+    } catch (err) {
+        if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
+        throw err;
+    }
+    const companyId = ctx.companyId;
 
     const { id } = await params;
     const [agent] = await db.select().from(agents).where(
@@ -48,7 +54,11 @@ export async function POST(
     // In dev mode (next dev), cwd is already the project root.
     // In production standalone, set EMPEROR_PROJECT_ROOT=/var/www/emperorclaw
     const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
-    const role = agent.role || "operator";
+    // `role` is interpolated into shell command strings below (profile
+    // description, install commands). Even inside double quotes, bash and
+    // PowerShell still interpret backslash, double quote, dollar and backtick,
+    // so strip those (and control chars) to close the command-injection hole.
+    const role = sanitizeShellValue(agent.role || "operator");
     const homeDir = os.homedir();
     const emperorUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
@@ -94,7 +104,7 @@ export async function POST(
         }
 
         // 1. Create profile (skip if exists — idempotent)
-        const createCmd = `hermes profile create ${safeName} --clone --description "${role.replace(/"/g, '\\"')}" --no-alias`;
+        const createCmd = `hermes profile create ${safeName} --clone --description "${role}" --no-alias`;
         const r1 = await runCmd(createCmd, 30_000);
         outputs.push({ command: createCmd, ...r1 });
         // Profile already exists is OK — continue
@@ -192,7 +202,7 @@ export async function POST(
     if (provider.id === "codex") {
         // Run verification commands first
         const commands = provider.installCommands.map((cmd) =>
-            cmd.replace(/\{name\}/g, safeName).replace(/\{role\}/g, role.replace(/"/g, '\\"')).replace(/\{token\}/g, rawToken).replace(/\{projectRoot\}/g, projectRoot)
+            cmd.replace(/\{name\}/g, safeName).replace(/\{role\}/g, role).replace(/\{token\}/g, rawToken).replace(/\{projectRoot\}/g, projectRoot)
         );
         for (const command of commands) {
             if (command.trim().startsWith("#")) { outputs.push({ command, stdout: "", stderr: "", exitCode: 0 }); continue; }
@@ -271,6 +281,10 @@ return p.pid;`
 function fail(outputs: SetupOutput[], message: string, agentId: string) {
     db.update(agents).set({ status: "offline" }).where(eq(agents.id, agentId)).catch(() => {});
     return NextResponse.json({ success: false, message, outputs }, { status: 200 });
+}
+
+function sanitizeShellValue(value: string): string {
+    return String(value ?? "").replace(/[\\"$`\r\n\u0000-\u001f]/g, "").slice(0, 200);
 }
 
 function runCmd(command: string, timeoutMs: number): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {

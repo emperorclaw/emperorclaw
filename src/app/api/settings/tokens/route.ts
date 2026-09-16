@@ -1,27 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { companyTokens, companyMembers } from "@/db/schema";
+import { companyTokens } from "@/db/schema";
 import { randomBytes, createHash } from "crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getValidatedServerSession } from "@/lib/auth";
+import { requireRole, AuthError, roleGte } from "@/lib/roles";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { isCompanyTokenScope, serializeCompanyToken } from "@/lib/mcp";
 
-async function getUserCompanyId() {
-    const session = await getValidatedServerSession();
-    const sessionUserId = session?.user?.id;
-    if (!session || !sessionUserId) return null;
-
-    const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, sessionUserId))
-        .limit(1);
-
-    return membership ? membership.companyId : null;
-}
-
+// Company tokens grant programmatic access to every agent and (at mcp_danger)
+// to decrypted integration/resource secrets, so minting and listing them is an
+// admin action — never something any member can do.
 export async function GET() {
-    const companyId = await getUserCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("admin")();
+    } catch (err) {
+        if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
+        throw err;
+    }
+    const companyId = ctx.companyId;
 
     try {
         const tokens = await db.select().from(companyTokens)
@@ -39,8 +36,14 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getUserCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("admin")();
+    } catch (err) {
+        if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
+        throw err;
+    }
+    const companyId = ctx.companyId;
 
     try {
         const body = await req.json();
@@ -50,6 +53,12 @@ export async function POST(req: NextRequest) {
         if (!name) return NextResponse.json({ error: "Token name is required" }, { status: 400 });
         if (requestedScope !== undefined && !isCompanyTokenScope(requestedScope)) {
             return NextResponse.json({ error: "Invalid token scope" }, { status: 400 });
+        }
+
+        // mcp_danger can lease decrypted integration/resource secrets, so keep it
+        // reserved for owners (and instance admins) rather than any admin.
+        if (requestedScope === "mcp_danger" && !roleGte(ctx.role, "owner")) {
+            return NextResponse.json({ error: "Only owners can create mcp_danger tokens" }, { status: 403 });
         }
 
         const scope = requestedScope ?? "mcp_full";

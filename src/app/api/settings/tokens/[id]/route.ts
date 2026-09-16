@@ -1,29 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
-import { getValidatedServerSession } from "@/lib/auth";
+import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
-import { companyMembers, companyTokens } from "@/db/schema";
+import { companyTokens } from "@/db/schema";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { serializeCompanyToken } from "@/lib/mcp";
-
-async function getUserCompanyId() {
-    const session = await getValidatedServerSession();
-    const sessionUserId = session?.user?.id;
-    if (!session || !sessionUserId) return null;
-
-    const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, sessionUserId))
-        .limit(1);
-
-    return membership ? membership.companyId : null;
-}
 
 export async function DELETE(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getUserCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("admin")();
+    } catch (err) {
+        if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
+        throw err;
+    }
+    const companyId = ctx.companyId;
 
     const { id } = await params;
 

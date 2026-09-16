@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
@@ -25,7 +25,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const memory = await readAgentMemory(companyId, agentId, limit);
-    return NextResponse.json({ agent, ...memory });
+    // Never return the encrypted provider key material — the operator UI
+    // redacts it and MCP callers have no need for it.
+    const safeAgent: Record<string, unknown> = { ...agent };
+    delete safeAgent.llmApiKeyEncrypted;
+    delete safeAgent.llmApiKeyVersion;
+    return NextResponse.json({ agent: safeAgent, ...memory });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +41,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+
+    // Verify the agent belongs to the caller's company before writing, so a
+    // token from one tenant cannot attach memory rows to another's agent id.
+    const [agent] = await db.select({ id: agents.id }).from(agents).where(
+        and(eq(agents.id, agentId), eq(agents.companyId, companyId), isNull(agents.deletedAt))
+    ).limit(1);
+    if (!agent) {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
 
     try {
         const body = await req.json();
