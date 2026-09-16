@@ -9,6 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.28] — 2026-09-16
+
+### Security
+
+- Bind company tokens to a single agent. A leaked runtime token can no longer
+  act as a sibling agent or lease its decrypted integration secrets by passing
+  its name; operator and OAuth tokens stay company-wide. Adds migration `0041`
+  (`company_tokens.agent_id`).
+- Restrict company `contextNotes` writes to admins, and delimit the notes block
+  in the MCP instructions as untrusted data, closing a prompt-injection path
+  into agents that run with terminal/web tools.
+- Verify a webhook-supplied `thread_id` belongs to the caller's company.
+- Reject MCP callers posting as a human sender, so an agent cannot forge a human
+  message or its audit trail.
+- Stop serving `image/svg+xml` inline, so a scripted SVG cannot execute on the
+  app origin.
+
 ## [0.8.27] — 2026-09-16
 
 ### Fixed
