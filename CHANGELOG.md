@@ -9,6 +9,33 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.30] — 2026-09-16
+
+### Security
+
+- `/api/ui/artifacts/[id]` now enforces the download route's visibility rule, so
+  private human uploads no longer leak their content to other users.
+- `/api/mcp/actions` and `/api/mcp/threads` reject project/task ids from another
+  tenant instead of persisting them.
+- Invited and registered users get `instance_role = member` (the only non-admin
+  instance role) instead of a company role outside the declared union.
+
+### Fixed
+
+- `ensureDirectThread` serializes creation per (company, agent) with an advisory
+  lock, so concurrent callers can no longer create duplicate direct threads and
+  split a DM history; `ensureTeamThread` adopts the winner on a unique-violation
+  race instead of returning 500.
+- The watchdog re-checks state and lease in its UPDATEs, so a task finalized
+  mid-scan is no longer resurrected into the inbox.
+- Company resolution orders memberships deterministically when a user belongs to
+  more than one company.
+
+### Performance
+
+- Index `thread_messages` for the MCP message-sync long-poll (adds migration
+  `0042`).
+
 ## [0.8.29] — 2026-09-16
 
 ### Security
