@@ -265,6 +265,32 @@ export async function resolveAgentId(
     return newAgent.id;
 }
 
+/**
+ * Resolves the agent a request acts as, enforcing token→agent binding.
+ *
+ * A company token bound to an agent (agent_id set) may only act as that agent:
+ * a caller-supplied agentId that resolves to a different agent is rejected, and
+ * when none is supplied the bound agent is used. Company-wide tokens (agent_id
+ * null) keep the previous behaviour.
+ */
+export async function resolveBoundAgentId(
+    companyId: string,
+    companyToken: { agentId?: string | null },
+    requestedAgentId: string | null | undefined,
+): Promise<string | null> {
+    const bound = companyToken.agentId || null;
+    if (bound) {
+        if (requestedAgentId) {
+            const resolved = await resolveAgentId(companyId, requestedAgentId);
+            if (resolved !== bound) {
+                throw new Error("Access denied: this token is bound to a different agent");
+            }
+        }
+        return bound;
+    }
+    return requestedAgentId ? await resolveAgentId(companyId, requestedAgentId) : null;
+}
+
 export async function resolveMcpActorContext(
     companyId: string,
     input: {

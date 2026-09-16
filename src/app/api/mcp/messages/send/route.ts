@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyMcpToken } from "@/lib/mcp";
+import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
@@ -61,10 +61,13 @@ export async function POST(req: NextRequest) {
         }
         const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = parsed.data;
 
+        // A token bound to an agent may only send as that agent.
+        const effectiveAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, agentId || null);
+
         // Deduplicate: reject if this agent already sent the exact same
         // text in this thread within the last 2 minutes. This is a real fix —
         // it prevents token-wasting duplicate messages from being stored at all.
-        const key = agentId && thread_id ? dedupKey(agentId, thread_id, text) : null;
+        const key = effectiveAgentId && thread_id ? dedupKey(effectiveAgentId, thread_id, text) : null;
         if (key && wasRecentlySent(key)) {
             return NextResponse.json(
                 { ok: true, message_id: null, thread_id, deduplicated: true },
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
             chatId: chat_id || null,
             threadId: thread_id || null,
             fromUserId: from_user_id || null,
-            agentId: agentId || null,
+            agentId: effectiveAgentId,
             targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
         });
@@ -94,7 +97,11 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         console.error("Chat send webhook error:", error);
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        const status = message.startsWith("Agent not found") || message === "Thread not found" ? 404 : 500;
+        const status = message.startsWith("Agent not found") || message === "Thread not found"
+            ? 404
+            : message.startsWith("Access denied")
+                ? 403
+                : 500;
         return NextResponse.json({ error: message }, { status });
     }
 }

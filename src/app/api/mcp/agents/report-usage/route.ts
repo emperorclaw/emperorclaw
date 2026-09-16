@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken } from "@/lib/mcp";
+import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents, tokenUsageLog } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -37,8 +37,17 @@ export async function POST(req: NextRequest) {
 
         const { agentId, tokensUsed, model, inputTokens, outputTokens } = parsed.data;
 
+        // A token bound to an agent may only report usage for that agent.
+        let effectiveAgentId: string;
+        try {
+            effectiveAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Access denied";
+            return NextResponse.json({ error: msg }, { status: msg.startsWith("Access denied") ? 403 : 404 });
+        }
+
         return await db.transaction(async (tx) => {
-            const agent = await lockAgentBudget(tx, companyId, agentId);
+            const agent = await lockAgentBudget(tx, companyId, effectiveAgentId);
             if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
             const hasSplit = inputTokens !== undefined || outputTokens !== undefined;
             const split = hasSplit ? { inputTokens: inputTokens ?? 0, outputTokens: outputTokens ?? 0 }
@@ -67,12 +76,12 @@ export async function POST(req: NextRequest) {
                 current: agent.budgetStatus as BudgetStatus,
             });
             await tx.update(agents).set({ monthlyTokenUsage, monthlyCostCents, budgetStatus })
-                .where(eq(agents.id, agentId));
+                .where(eq(agents.id, effectiveAgentId));
             if (totalTokens > 0) {
-                await tx.insert(tokenUsageLog).values({ companyId, agentId, model: pricingLookupModel,
+                await tx.insert(tokenUsageLog).values({ companyId, agentId: effectiveAgentId, model: pricingLookupModel,
                     ...split, costCents });
             }
-            return NextResponse.json({ ok: true, agentId, monthlyTokenUsage, monthlyCostCents,
+            return NextResponse.json({ ok: true, agentId: effectiveAgentId, monthlyTokenUsage, monthlyCostCents,
                 budgetStatus, model: pricingLookupModel, costCents });
         });
     } catch (error) {

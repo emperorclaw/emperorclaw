@@ -13,6 +13,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+    if (auth.companyToken!.agentId && auth.companyToken!.agentId !== agentId) {
+        return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+    }
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 100);
 
@@ -41,6 +44,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+    if (auth.companyToken!.agentId && auth.companyToken!.agentId !== agentId) {
+        return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+    }
 
     // Verify the agent belongs to the caller's company before writing, so a
     // token from one tenant cannot attach memory rows to another's agent id.

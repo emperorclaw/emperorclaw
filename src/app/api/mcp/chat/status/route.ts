@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
 import { updateAgentThreadParticipant, updateThreadExecutionState } from "@/lib/control-plane";
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
         if (!agentId) return NextResponse.json({ error: "agentId is required for status updates" }, { status: 400 });
 
-        const resolvedAgentId = await resolveAgentId(companyId, agentId);
+        const resolvedAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
 
         const updates: { lastReadAt?: Date; typingUntil?: Date | null; currentActivity?: string | null } = {};
         if (markRead) updates.lastReadAt = new Date();
@@ -75,6 +75,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: 500 });
+        return NextResponse.json({ error: message }, { status: message.startsWith("Access denied") ? 403 : 500 });
     }
 }
