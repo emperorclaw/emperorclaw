@@ -9,6 +9,45 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.26] — 2026-09-16
+
+### Security
+
+- Gate company-token minting, listing, and revocation behind the admin role, and
+  reserve `mcp_danger` tokens for owners. Any member could previously mint a
+  privileged token and lease decrypted integration and resource secrets.
+- Require an admin role for OAuth consent, and restrict instance-role changes to
+  instance admins so a company owner can no longer promote anyone — including
+  themselves — to `instance_admin`.
+- Scope member access-scope reads and writes to the caller's company, and
+  authorize them from the database role instead of the cached JWT claim.
+- Require an admin role for local agent setup and strip shell metacharacters
+  from the agent role, closing a command-injection path on bare-metal installs.
+- Require a human session (not an MCP token) to resolve approvals, so an agent
+  can no longer approve its own gate.
+- Redact encrypted provider keys from MCP agent-memory responses, verify agent
+  ownership before writing memory, and require the privileged token scope to
+  list company members.
+
+### Fixed
+
+- Persist Hermes bridge state atomically and preserve corrupt files, so a crash
+  can no longer wipe sessions, thread ownership, and the loop/cold-start guards.
+- Record usage for agents without a budget instead of returning 422, which
+  previously wedged an unpriced agent permanently after its first turn.
+- Record the chat-send dedup key only after a successful send, so a failed send
+  no longer makes the retry look like a duplicate and silently drop it.
+- Clamp the knowledge-context `maxChars` so a caller cannot pull the entire
+  vault into a single prompt.
+- Keep the floating-chat draft when a send fails, announce project errors to
+  assistive tech, and load invitations in an effect instead of during render.
+
+### Changed
+
+- CI now runs the Hermes bridge tests, builds the Docker image, and fails on
+  migration/schema drift. The compose Postgres port binds to loopback and its
+  password is overridable.
+
 ## [0.8.25] — 2026-09-13
 
 ### Fixed
