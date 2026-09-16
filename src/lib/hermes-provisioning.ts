@@ -37,11 +37,13 @@ type AgentRow = typeof agents.$inferSelect;
  * setup-local/route.ts: a raw bearer token handed to the agent runtime, only
  * its sha256 hash is ever persisted.
  */
-export async function mintAgentSetupToken(companyId: string, safeName: string): Promise<{ rawToken: string }> {
+export async function mintAgentSetupToken(companyId: string, safeName: string, agentId?: string | null): Promise<{ rawToken: string }> {
     const rawToken = `ec_${crypto.randomBytes(24).toString("hex")}`;
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
     await db.insert(companyTokens).values({
         companyId,
+        // Bind the runtime token to its agent so it cannot act as a sibling.
+        agentId: agentId || null,
         tokenHash,
         name: `${safeName}-local-setup`,
         scope: "mcp_full",
@@ -272,7 +274,7 @@ export async function recreateHermesContainer(agentId: string): Promise<Provisio
 
     const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
     const role = agent.role || "operator";
-    const { rawToken } = await mintAgentSetupToken(agent.companyId, safeName);
+    const { rawToken } = await mintAgentSetupToken(agent.companyId, safeName, agent.id);
 
     const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
     result.outputs = [...outputs, ...result.outputs];

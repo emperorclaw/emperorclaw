@@ -288,6 +288,13 @@
       "when": 1787520186133,
       "tag": "0040_old_freak",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789584143781,
+      "tag": "0041_bind-company-tokens-to-agent",
+      "breakpoints": true
     }
   ]
 }

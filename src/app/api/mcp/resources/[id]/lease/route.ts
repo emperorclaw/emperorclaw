@@ -19,6 +19,7 @@ export async function POST(
       agentId: typeof body.agentId === "string" ? body.agentId : null,
       sessionId: typeof body.sessionId === "string" ? body.sessionId : null,
       taskId: typeof body.taskId === "string" ? body.taskId : null,
+      tokenAgentId: auth.companyToken!.agentId,
     });
 
     const leasedResource = await leaseScopedResource({

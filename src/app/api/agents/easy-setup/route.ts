@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
             agentId = agent.id;
 
             const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
-            const { rawToken } = await mintAgentSetupToken(companyId, safeName);
+            const { rawToken } = await mintAgentSetupToken(companyId, safeName, agentId);
             const provisionResult = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
 
             if (provisionResult.success && provisionResult.containerId) {

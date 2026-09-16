@@ -23,8 +23,14 @@ export async function POST(
         const actor = await resolveMcpActorContext(companyId, {
             agentId: typeof body.agentId === "string" ? body.agentId : null,
             sessionId: typeof sessionId === "string" ? sessionId : null,
+            tokenAgentId: auth.companyToken!.agentId,
         });
         const resolvedAgentId = await resolveAgentId(companyId, agentId);
+
+        // A token bound to an agent may only lease that agent's integrations.
+        if (auth.companyToken!.agentId && resolvedAgentId !== auth.companyToken!.agentId) {
+            return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+        }
 
         const integration = await getAgentIntegration(companyId, resolvedAgentId, integrationId);
 

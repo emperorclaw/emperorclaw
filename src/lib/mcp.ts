@@ -86,11 +86,13 @@ export function serializeCompanyToken(token: {
     createdAt: Date;
     lastUsedAt?: Date | null;
     revokedAt?: Date | null;
+    agentId?: string | null;
 }) {
     return {
         id: token.id,
         name: token.name,
         scope: normalizeCompanyTokenScope(token.scope),
+        agentId: token.agentId ?? null,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
         revokedAt: token.revokedAt ? token.revokedAt.toISOString() : null,
@@ -269,12 +271,22 @@ export async function resolveMcpActorContext(
         agentId?: string | null;
         sessionId?: string | null;
         taskId?: string | null;
+        tokenAgentId?: string | null;
     }
 ): Promise<McpActorContext> {
     let callerAgentId: string | null = null;
 
     if (input.agentId) {
         callerAgentId = await resolveAgentId(companyId, input.agentId);
+    }
+
+    // A token bound to an agent may only ever act as that agent, regardless of
+    // the agentId the caller asserts in the request body.
+    if (input.tokenAgentId) {
+        if (callerAgentId && callerAgentId !== input.tokenAgentId) {
+            throw new Error("Access denied: this token is bound to a different agent");
+        }
+        callerAgentId = callerAgentId || input.tokenAgentId;
     }
 
     if (input.sessionId) {

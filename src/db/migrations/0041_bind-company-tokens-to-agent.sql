@@ -1,0 +1,2 @@
+ALTER TABLE "company_tokens" ADD COLUMN "agent_id" uuid;--> statement-breakpoint
+ALTER TABLE "company_tokens" ADD CONSTRAINT "company_tokens_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;

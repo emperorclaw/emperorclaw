@@ -73,6 +73,8 @@ export async function POST(
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
     await db.insert(companyTokens).values({
         companyId, tokenHash,
+        // Bind the runtime token to this agent so it cannot act as a sibling.
+        agentId: agent.id,
         name: `${safeName}-local-setup`,
         scope: "mcp_full",
     });

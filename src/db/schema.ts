@@ -62,6 +62,11 @@ export const companyMembers = pgTable("company_members", {
 export const companyTokens = pgTable("company_tokens", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    // When set, the token is bound to a single agent: callers presenting it may
+    // only act as that agent, so a leaked runtime token cannot impersonate
+    // sibling agents or lease their secrets. Null = company-wide (operator /
+    // OAuth client).
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'cascade' }),
     tokenHash: text("token_hash").notNull(),
     name: text("name").notNull(),
     scope: text("scope").notNull(), // 'mcp_full', 'mcp_danger'
