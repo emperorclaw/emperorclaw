@@ -42,6 +42,36 @@ jobs:
       - name: Test (unit + static)
         run: npm test
 
+      # Guard against schema.ts / migration-snapshot drift: if `generate` wants
+      # to emit a migration, the committed snapshot no longer matches the schema
+      # (and an unreviewed migration could silently DROP indexes/constraints).
+      - name: Verify migrations match schema (no drift)
+        env:
+          POSTGRES_CONNECTION_STRING: postgres://ci:ci@localhost:5432/ci
+        run: |
+          npx drizzle-kit generate --name _drift_check
+          if [ -n "$(git status --porcelain -- src/db/migrations)" ]; then
+            echo "::error::drizzle-kit generate produced changes — schema.ts and the migration snapshot have drifted."
+            git status --porcelain -- src/db/migrations
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The Hermes bridge is a production runtime shipped as its own image, but
+      # its safety logic (loop/cold-start guards, routing, state persistence) is
+      # Python and had no CI coverage.
+      - name: Bridge tests (Hermes Python bridge)
+        run: npm run test:bridge
+
+      # The image is only otherwise built on release tags, so a broken
+      # Dockerfile/dependency change would not surface until release time.
+      - name: Build Docker image (no push)
+        run: docker build -t emperorclaw:ci .
+
   integration:
     runs-on: ubuntu-latest
     services:

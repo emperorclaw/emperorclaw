@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: emperor
-      POSTGRES_PASSWORD: emperor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emperor}
       POSTGRES_DB: emperor
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -13,7 +13,9 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5433:5432"
+      # Bind to loopback only: the default credentials are not secret, so the
+      # database must never be reachable from outside the host.
+      - "127.0.0.1:5433:5432"
 
   app:
     # Use the pre-built GHCR image for instant startup.
@@ -25,9 +27,11 @@ services:
     env_file:
       - .env
     environment:
-      - POSTGRES_CONNECTION_STRING=postgres://emperor:emperor@postgres:5432/emperor
-      - APP_URL=http://localhost:3000
-      - NEXTAUTH_URL=http://localhost:3000
+      - POSTGRES_CONNECTION_STRING=postgres://emperor:${POSTGRES_PASSWORD:-emperor}@postgres:5432/emperor
+      # Overridable so a reverse-proxied install gets correct absolute links
+      # instead of the compose default localhost.
+      - APP_URL=${APP_URL:-http://localhost:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
       - STORAGE_BACKEND=local
       - STORAGE_LOCAL_DIR=./.data/storage
     volumes:
