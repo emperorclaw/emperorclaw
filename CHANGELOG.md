@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.29] — 2026-09-16
+
+### Security
+
+- Enforce token→agent binding on the agent-acting MCP routes (`messages/send`,
+  `report-usage`, agent memory, `chat/status`, `actions`). A token bound to an
+  agent can no longer send, report usage, write memory, or set status as a
+  sibling agent. Company-wide tokens are unaffected.
+- Derive the client IP for rate limiting from the socket, honouring
+  `X-Forwarded-For` only when the peer is listed in `TRUSTED_PROXY_IPS`. A
+  forged header can no longer bypass the pre-auth MCP throttle.
+
 ## [0.8.28] — 2026-09-16
 
 ### Security
