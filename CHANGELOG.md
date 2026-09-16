@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.27] — 2026-09-16
+
+### Fixed
+
+- Split the report-usage integration test into capped and uncapped cases so the
+  0.8.26 behavior — record usage for agents without a budget instead of
+  returning 422 and wedging them — is verified rather than tripping the previous
+  unconditional-rejection expectation.
+
 ## [0.8.26] — 2026-09-16
 
 ### Security
