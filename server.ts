@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { createServer } from 'http';
+import { createServer, type IncomingMessage } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -13,12 +13,44 @@ const port = parseInt(process.env.PORT || '3000', 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
+// Reverse proxies whose forwarded headers we may trust. Empty by default, so a
+// directly-exposed instance ignores spoofable X-Forwarded-For / CF-Connecting-IP
+// and rate-limits on the real socket peer instead.
+const TRUSTED_PROXY_IPS = new Set(
+  (process.env.TRUSTED_PROXY_IPS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
+
+function normalizeIp(value: string | undefined | null): string {
+  if (!value) return 'unknown';
+  // Unwrap IPv6-mapped IPv4 ("::ffff:1.2.3.4") and brackets.
+  return value.replace(/^::ffff:/, '').replace(/^\[|\]$/g, '');
+}
+
+function resolveClientIp(req: IncomingMessage): string {
+  const peer = normalizeIp(req.socket?.remoteAddress);
+  if (!TRUSTED_PROXY_IPS.has(peer)) {
+    // The peer is not a known proxy, so forwarded headers are client-controlled
+    // and must be ignored.
+    return peer;
+  }
+  const forwarded = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  const first = raw?.split(',')[0]?.trim();
+  return first ? normalizeIp(first) : peer;
+}
+
 type CompanySocket = WebSocket & { companyId?: string };
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url!, true);
+      // Overwrite any client-supplied value with the IP we actually trust, so
+      // downstream rate limiting can never be bypassed by a forged header.
+      req.headers['x-real-ip'] = resolveClientIp(req);
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error('Error occurred handling', req.url, err);

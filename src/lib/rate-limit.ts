@@ -8,11 +8,14 @@ type RateLimitEntry = {
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
 export function getClientIp(request: NextRequest | Request): string {
-    const forwarded =
-        request.headers.get("cf-connecting-ip") ||
-        request.headers.get("x-real-ip") ||
-        request.headers.get("x-forwarded-for");
+    // x-real-ip is set by our own server (server.ts) from the socket address,
+    // overwriting whatever the client sent, so it is the trustworthy value.
+    // cf-connecting-ip / x-forwarded-for are client-controllable and are only
+    // consulted when x-real-ip is absent (non-server contexts, e.g. tests).
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) return realIp;
 
+    const forwarded = request.headers.get("x-forwarded-for");
     if (forwarded) {
         const first = forwarded.split(",")[0]?.trim();
         if (first) return first;
