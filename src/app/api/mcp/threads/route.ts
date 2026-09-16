@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
-import { messageThreads, threadParticipants } from "@/db/schema";
+import { messageThreads, threadParticipants, projects, tasks } from "@/db/schema";
 import { ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -73,6 +75,26 @@ export async function POST(req: NextRequest) {
 
             const thread = await ensureDirectThread(companyId, agentId, null);
             return NextResponse.json({ thread }, { status: 201 });
+        }
+
+        // Reject project/task references from another tenant before persisting.
+        if (projectId) {
+            if (typeof projectId !== "string" || !UUID_RE.test(projectId)) {
+                return NextResponse.json({ error: "Project not found" }, { status: 404 });
+            }
+            const [project] = await db.select({ id: projects.id }).from(projects)
+                .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId), isNull(projects.deletedAt)))
+                .limit(1);
+            if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
+        if (taskId) {
+            if (typeof taskId !== "string" || !UUID_RE.test(taskId)) {
+                return NextResponse.json({ error: "Task not found" }, { status: 404 });
+            }
+            const [task] = await db.select({ id: tasks.id }).from(tasks)
+                .where(and(eq(tasks.id, taskId), eq(tasks.companyId, companyId), isNull(tasks.deletedAt)))
+                .limit(1);
+            if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
         const [thread] = await db.insert(messageThreads).values({

@@ -238,8 +238,10 @@ export async function consumeInvite(
             role: invitation.role,
         });
 
-        // Set instance_role on user (viewer → member at instance level per FR-16)
-        const instanceRole = invitation.role === "viewer" ? "member" : invitation.role;
+        // Set instance_role on user. The instance level only distinguishes
+        // instance_admin from member; the company role carries owner/admin/etc.,
+        // so a consumed invite never grants an out-of-union instance role.
+        const instanceRole = "member";
         await tx
             .update(users)
             .set({ instanceRole })

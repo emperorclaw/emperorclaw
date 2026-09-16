@@ -13,7 +13,7 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, userId } = await requireCompanyFromSession();
         const { id: artifactId } = await params;
 
         const [artifact] = await db.select({
@@ -40,6 +40,8 @@ export async function GET(
             sha256: artifacts.sha256,
             sizeBytes: artifacts.sizeBytes,
             visibility: artifacts.visibility,
+            createdByType: artifacts.createdByType,
+            createdById: artifacts.createdById,
             isCanonical: artifacts.isCanonical,
             promotedAt: artifacts.promotedAt,
             metadataJson: artifacts.metadataJson,
@@ -61,6 +63,18 @@ export async function GET(
             .limit(1);
 
         if (!artifact) {
+            return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+        }
+
+        // Mirror the download route's visibility rule: a private human upload is
+        // only readable by its uploader. Without this, the metadata/contentText
+        // of other users' private artifacts leaks here.
+        if (
+            artifact.visibility === "private" &&
+            artifact.createdByType === "human" &&
+            artifact.createdById &&
+            artifact.createdById !== userId
+        ) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 

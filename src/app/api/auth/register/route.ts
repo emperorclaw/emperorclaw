@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
                         .values({
                             email,
                             passwordHash,
-                            instanceRole: validation.role === "viewer" ? "member" : validation.role,
+                            instanceRole: "member",
                             emailVerifiedAt: autoVerify ? new Date() : null,
                         })
                         .returning();
