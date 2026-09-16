@@ -147,11 +147,11 @@ maybe("report-usage serializes concurrent increments and monthly rollover", asyn
     assert.equal(logs.length, 10); // no duplicate monthly summary cost
 });
 
-maybe("report-usage rejects unpriced models and prices the reported model without changing config", async () => {
+maybe("report-usage rejects unpriced models for capped agents and prices the reported model without changing config", async () => {
     await resetDb();
     await seedPricing("actual-model", 100, 200);
     const { companyId, rawToken } = await seedCompanyWithToken();
-    const agent = await seedAgent(companyId);
+    const agent = await seedAgent(companyId, { monthlyBudgetCents: 1000 });
     const { POST } = await import("@/app/api/mcp/agents/report-usage/route");
     const report = (model: string) => POST(makeRequest("http://localhost/api/mcp/agents/report-usage", {
         method: "POST", headers: { authorization: `Bearer ${rawToken}` },
@@ -166,4 +166,19 @@ maybe("report-usage rejects unpriced models and prices the reported model withou
     const { eq } = await import("drizzle-orm");
     const [row] = await db.select().from(agents).where(eq(agents.id, agent.id));
     assert.equal(row.llmModel, "deepseek-v4-flash");
+});
+
+maybe("report-usage records unpriced usage for uncapped agents instead of wedging them", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const agent = await seedAgent(companyId); // no budget → nothing to enforce
+    const { POST } = await import("@/app/api/mcp/agents/report-usage/route");
+    const res = await POST(makeRequest("http://localhost/api/mcp/agents/report-usage", {
+        method: "POST", headers: { authorization: `Bearer ${rawToken}` },
+        body: { agentId: agent.id, model: "unknown", inputTokens: 1_000_000 },
+    }));
+    // Rejecting here used to 422, which made the bridge retain the sample and
+    // block every later dispatch — a permanent wedge for a model-less agent.
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).costCents, 0);
 });
