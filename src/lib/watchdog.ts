@@ -52,7 +52,16 @@ async function runWatchdog() {
                     assignedAgentId: null,
                     assignedMemberId: null,
                     updatedAt: new Date(),
-                }).where(eq(tasks.id, task.id)).returning();
+                }).where(and(
+                    eq(tasks.id, task.id),
+                    // Re-check the predicate: the task may have been finalized
+                    // between the SELECT and this UPDATE, and must not be
+                    // resurrected back into the inbox.
+                    eq(tasks.state, TASK_STATES.inProgress),
+                    lt(tasks.leaseUntil, now),
+                )).returning();
+
+                if (!updatedTask) continue;
 
                 await db.insert(taskEvents).values({
                     companyId: task.companyId,
@@ -70,7 +79,13 @@ async function runWatchdog() {
                 const [deadLetterTask] = await db.update(tasks).set({
                     state: TASK_STATES.deadLetter,
                     updatedAt: new Date(),
-                }).where(eq(tasks.id, task.id)).returning();
+                }).where(and(
+                    eq(tasks.id, task.id),
+                    eq(tasks.state, TASK_STATES.inProgress),
+                    lt(tasks.leaseUntil, now),
+                )).returning();
+
+                if (!deadLetterTask) continue;
 
                 await db.insert(taskEvents).values({
                     companyId: task.companyId,

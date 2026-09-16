@@ -15,9 +15,11 @@ export async function requireCompanyFromSession(): Promise<SessionCompany> {
         throw new Error("Unauthorized");
     }
 
+    // Deterministic when a user belongs to more than one company: the oldest
+    // membership is the active one, instead of whichever row Postgres returns.
     const [membership] = await db.select().from(companyMembers).where(
         eq(companyMembers.userId, userId)
-    ).limit(1);
+    ).orderBy(companyMembers.createdAt).limit(1);
     if (!membership) {
         throw new Error("Company not found");
     }

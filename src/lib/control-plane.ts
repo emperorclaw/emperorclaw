@@ -15,7 +15,7 @@ import {
     threadParticipants,
     users,
 } from "@/db/schema";
-import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 
@@ -120,15 +120,35 @@ export async function ensureTeamThread(companyId: string) {
         return existing;
     }
 
-    const [created] = await db.insert(messageThreads).values({
-        companyId,
-        type: "team",
-        title: "Agent Team Chat",
-        createdByType: "system",
-    }).returning();
+    let created: typeof messageThreads.$inferSelect;
+    try {
+        [created] = await db.insert(messageThreads).values({
+            companyId,
+            type: "team",
+            title: "Agent Team Chat",
+            createdByType: "system",
+        }).returning();
+    } catch (error) {
+        // A partial unique index enforces one team thread per company. If a
+        // concurrent caller won the race, adopt its thread instead of 500ing.
+        if (!isUniqueViolation(error)) throw error;
+        const [winner] = await db.select().from(messageThreads).where(
+            and(
+                eq(messageThreads.companyId, companyId),
+                eq(messageThreads.type, "team"),
+                isNull(messageThreads.archivedAt)
+            )
+        ).orderBy(messageThreads.createdAt).limit(1);
+        if (!winner) throw error;
+        created = winner;
+    }
 
     await ensureThreadHumanParticipants(companyId, created.id);
     return created;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+    return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
 }
 
 /**
@@ -139,56 +159,56 @@ export async function ensureTeamThread(companyId: string) {
  * used to fork per-user threads, and no participant ref is ever overwritten.
  */
 export async function ensureDirectThread(companyId: string, agentId: string, _userId?: string | null) {
-    // The canonical thread is the one this agent participates in. A race between
-    // two concurrent callers that both see "no thread yet" can still create two
-    // — ordering by createdAt makes every caller converge on the same (oldest)
-    // thread instead of an arbitrary one, so the resolved thread stops flip-flopping
-    // between requests (a real message from a duplicate thread was previously able
-    // to "reappear" mid-conversation depending on which row Postgres happened to
-    // return first).
-    const [agentParticipant] = await db.select({ threadId: threadParticipants.threadId })
-        .from(threadParticipants)
-        .innerJoin(messageThreads, and(
-            eq(messageThreads.id, threadParticipants.threadId),
-            eq(messageThreads.companyId, companyId),
-            eq(messageThreads.type, "direct"),
-            isNull(messageThreads.archivedAt),
-        ))
-        .where(and(
-            eq(threadParticipants.companyId, companyId),
-            eq(threadParticipants.participantType, "agent"),
-            eq(threadParticipants.participantId, agentId),
-        ))
-        .orderBy(messageThreads.createdAt)
-        .limit(1);
+    // Serialize creation per (company, agent) with a transaction-scoped advisory
+    // lock. Without it, two concurrent callers both see "no thread yet" and each
+    // insert one, permanently splitting the agent's DM history across duplicate
+    // threads (a message written to the loser thread becomes unreachable).
+    const thread = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}`}))`);
 
-    if (agentParticipant) {
-        const [existing] = await db.select().from(messageThreads)
-            .where(eq(messageThreads.id, agentParticipant.threadId)).limit(1);
-        if (existing) {
-            await ensureThreadHumanParticipants(companyId, existing.id);
-            return existing;
+        const [agentParticipant] = await tx.select({ threadId: threadParticipants.threadId })
+            .from(threadParticipants)
+            .innerJoin(messageThreads, and(
+                eq(messageThreads.id, threadParticipants.threadId),
+                eq(messageThreads.companyId, companyId),
+                eq(messageThreads.type, "direct"),
+                isNull(messageThreads.archivedAt),
+            ))
+            .where(and(
+                eq(threadParticipants.companyId, companyId),
+                eq(threadParticipants.participantType, "agent"),
+                eq(threadParticipants.participantId, agentId),
+            ))
+            .orderBy(messageThreads.createdAt)
+            .limit(1);
+
+        if (agentParticipant) {
+            const [existing] = await tx.select().from(messageThreads)
+                .where(eq(messageThreads.id, agentParticipant.threadId)).limit(1);
+            if (existing) return existing;
         }
-    }
 
-    // None yet — create the agent's shared channel.
-    const [created] = await db.insert(messageThreads).values({
-        companyId,
-        type: "direct",
-        title: "Direct Agent Thread",
-        createdByType: "system",
-    }).returning();
+        // None yet — create the agent's shared channel.
+        const [created] = await tx.insert(messageThreads).values({
+            companyId,
+            type: "direct",
+            title: "Direct Agent Thread",
+            createdByType: "system",
+        }).returning();
 
-    await db.insert(threadParticipants).values({
-        threadId: created.id,
-        companyId,
-        participantType: "agent",
-        participantId: agentId,
-        role: "member",
+        await tx.insert(threadParticipants).values({
+            threadId: created.id,
+            companyId,
+            participantType: "agent",
+            participantId: agentId,
+            role: "member",
+        });
+
+        return created;
     });
-    await ensureThreadHumanParticipants(companyId, created.id);
 
-    return created;
+    await ensureThreadHumanParticipants(companyId, thread.id);
+    return thread;
 }
 
 /**

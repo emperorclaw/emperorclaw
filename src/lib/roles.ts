@@ -147,6 +147,7 @@ export function requireRole(...requiredRoles: Role[]) {
             .select({ companyId: companyMembers.companyId, role: companyMembers.role })
             .from(companyMembers)
             .where(eq(companyMembers.userId, userId))
+            .orderBy(companyMembers.createdAt)
             .limit(1);
 
         const companyRole: CompanyRole | null = (membership?.role as CompanyRole) ?? null;
