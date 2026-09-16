@@ -795,9 +795,11 @@ export const threadParticipants = pgTable("thread_participants", {
     typingUntil: timestamp("typing_until"),
     // Free-text detail shown alongside the typing indicator while typingUntil
     // is in the future — e.g. "working (42s)" instead of a bare "typing…".
-    // Bridge-supplied telemetry (elapsed time, retry state), not tool-level
-    // detail: no external agent runtime exposes a stable machine-readable
-    // per-tool-call event stream to hook into today.
+    // Bridge-supplied activity: elapsed-time telemetry, the current tool call,
+    // or — when the runtime exposes it (Hermes via its session store or ACP) —
+    // a condensed line of the model's real reasoning, prefixed "thinking:".
+    // Truncated to 200 chars and cleared when typing stops: an ephemeral status
+    // line, never durable transcript history.
     currentActivity: text("current_activity"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -814,7 +816,12 @@ export const threadMessages = pgTable("thread_messages", {
     deliveryState: text("delivery_state").default('delivered').notNull(),
     platformMessageId: text("platform_message_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    // The MCP message-sync long-poll filters by company + created_at and by
+    // company + sender_type + created_at; without these it falls back to scans.
+    companyCreatedIdx: index("thread_messages_company_created_idx").on(table.companyId, table.createdAt),
+    companySenderCreatedIdx: index("thread_messages_company_sender_created_idx").on(table.companyId, table.senderType, table.createdAt),
+}));
 
 export const chatMessages = pgTable("chat_messages", {
     id: uuid("id").primaryKey().defaultRandom(),

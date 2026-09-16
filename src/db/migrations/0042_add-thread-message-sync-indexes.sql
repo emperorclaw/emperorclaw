@@ -1,0 +1,2 @@
+CREATE INDEX "thread_messages_company_created_idx" ON "thread_messages" USING btree ("company_id","created_at");--> statement-breakpoint
+CREATE INDEX "thread_messages_company_sender_created_idx" ON "thread_messages" USING btree ("company_id","sender_type","created_at");
