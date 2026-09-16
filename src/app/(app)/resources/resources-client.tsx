@@ -136,10 +136,12 @@ export default function ResourcesClient({
   const [draftContent, setDraftContent] = useState(initialResources[0]?.configText || "");
   const [draftScopeType, setDraftScopeType] = useState(initialResources[0]?.scopeType || "company");
   const [draftPath, setDraftPath] = useState(initialResources[0]?.path || "");
-  // Collapse state. Scopes collapse by scopeKey; folders by scopeKey + path
-  // (the same path can exist under different scopes).
-  const [collapsedScopes, setCollapsedScopes] = useState<Set<string>>(new Set());
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  // Collapse state. Both scopes and folders are tracked as EXPANDED sets (not
+  // collapsed) so the vault explorer starts fully collapsed. Scopes key by
+  // scopeKey; folders by scopeKey + path (the same path can exist under
+  // different scopes).
+  const [expandedScopes, setExpandedScopes] = useState<Set<string>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   // Folders are implicit, so a folder with no note yet has nothing to derive it
   // from. Hold it (with its scope) until a note is filed into it.
   const [pendingFolders, setPendingFolders] = useState<{ scopeKey: string; path: string }[]>([]);
@@ -266,7 +268,7 @@ export default function ResourcesClient({
 
   function toggleFolder(scopeKey: string, path: string) {
     const key = folderKey(scopeKey, path);
-    setCollapsedFolders((current) => {
+    setExpandedFolders((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -274,7 +276,7 @@ export default function ResourcesClient({
   }
 
   function toggleScope(scopeKey: string) {
-    setCollapsedScopes((current) => {
+    setExpandedScopes((current) => {
       const next = new Set(current);
       if (next.has(scopeKey)) next.delete(scopeKey); else next.add(scopeKey);
       return next;
@@ -298,10 +300,10 @@ export default function ResourcesClient({
     setPendingFolders((current) =>
       current.some((pf) => pf.scopeKey === scopeKey && pf.path === path) ? current : [...current, { scopeKey, path }],
     );
-    setCollapsedScopes((current) => { const next = new Set(current); next.delete(scopeKey); return next; });
-    setCollapsedFolders((current) => {
+    setExpandedScopes((current) => { const next = new Set(current); next.add(scopeKey); return next; });
+    setExpandedFolders((current) => {
       const next = new Set(current);
-      [...resourcePathAncestors(path), path].forEach((p) => next.delete(folderKey(scopeKey, p)));
+      [...resourcePathAncestors(path), path].forEach((p) => next.add(folderKey(scopeKey, p)));
       return next;
     });
     setNewFolderOpen(false);
@@ -401,7 +403,7 @@ export default function ResourcesClient({
   }
 
   function renderFolderNode(group: { key: string; notesByFolder: Map<string, ResourceRecord[]> }, node: ResourceFolderNode, depth: number): ReactNode {
-    const isCollapsed = collapsedFolders.has(folderKey(group.key, node.path));
+    const isCollapsed = !expandedFolders.has(folderKey(group.key, node.path));
     const childNotes = group.notesByFolder.get(node.path) || [];
     return (
       <div key={folderKey(group.key, node.path)}>
@@ -473,10 +475,10 @@ export default function ResourcesClient({
     setSelectedResourceId(body.resource.id);
     // The folder is now real, so drop its pending placeholder and reveal it.
     setPendingFolders((current) => current.filter((pf) => !(pf.scopeKey === scopeKey && pf.path === cleanPath)));
-    setCollapsedScopes((current) => { const next = new Set(current); next.delete(scopeKey); return next; });
-    setCollapsedFolders((current) => {
+    setExpandedScopes((current) => { const next = new Set(current); next.add(scopeKey); return next; });
+    setExpandedFolders((current) => {
       const next = new Set(current);
-      [...resourcePathAncestors(cleanPath), cleanPath].forEach((p) => next.delete(folderKey(scopeKey, p)));
+      [...resourcePathAncestors(cleanPath), cleanPath].forEach((p) => next.add(folderKey(scopeKey, p)));
       return next;
     });
     toast.success("Knowledge rule created");
@@ -694,7 +696,7 @@ export default function ResourcesClient({
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <div className="space-y-3">
                 {scopeGroups.map((group) => {
-                  const scopeCollapsed = collapsedScopes.has(group.key);
+                  const scopeCollapsed = !expandedScopes.has(group.key);
                   const isEmpty = group.tree.length === 0 && group.rootNotes.length === 0;
                   return (
                     <div key={group.key}>
