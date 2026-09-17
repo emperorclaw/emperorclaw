@@ -104,6 +104,8 @@ export function AgentDirectChat({
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [sendMode, setSendMode] = useState<"queue" | "replace">("queue");
+    const [controlError, setControlError] = useState<string | null>(null);
     const [isTyping, setIsTyping] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -171,11 +173,13 @@ export function AgentDirectChat({
                 }
                 if (!since && prev.length === 0) return nextMessages;
                 const existingIds = new Set(prev.map((message) => message.id));
+                const updates = new Map(nextMessages.map(message => [message.id, message]));
+                const refreshed = prev.map(message => updates.get(message.id) || message);
                 const appended = nextMessages.filter((message) => !existingIds.has(message.id));
                 if (appended.length > 0 && !isAtBottomRef.current && since) {
                     setUnreadCount((count) => count + appended.length);
                 }
-                return appended.length > 0 ? [...prev, ...appended] : prev;
+                return [...refreshed, ...appended];
             });
 
             if (!before) {
@@ -272,7 +276,7 @@ export function AgentDirectChat({
         void initialize();
 
         const interval = setInterval(() => {
-            void loadMessages({ since: lastSeenAtRef.current }).catch((error) => {
+            void loadMessages().catch((error) => {
                 if (active) {
                     console.error("Failed to poll direct chat", error);
                 }
@@ -473,26 +477,46 @@ export function AgentDirectChat({
         setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
     };
 
+    const stopAgent = async () => {
+        if (isSending) return;
+        setIsSending(true);
+        setControlError(null);
+        try {
+            const res = await fetch(`/api/agents/${agentId}/control`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "kill" }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Could not stop agent");
+            await loadMessages();
+        } catch (e) { setControlError(e instanceof Error ? e.message : "Could not stop agent"); }
+        finally { setIsSending(false); }
+    };
+
     const handleSend = async (event: React.FormEvent) => {
         event.preventDefault();
         const text = draft.trim();
         if ((!text && pendingAttachments.length === 0) || isSending) return;
 
         setIsSending(true);
+        setControlError(null);
         setDraft("");
         forceScrollToBottomRef.current = true;
         isAtBottomRef.current = true;
         setIsAtBottom(true);
 
         try {
-            const res = await fetch("/api/chat", {
+            const replacing = sendMode === "replace" && !text.trim().startsWith("/");
+            if (replacing && pendingAttachments.length) throw new Error("Send attachments as a queued message");
+            const res = await fetch(replacing ? `/api/agents/${agentId}/control` : "/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, targetAgentId: agentId, attachments: pendingAttachments.map((a) => a.id) }),
+                body: JSON.stringify(replacing ? { action: "replace", prompt: text } : { text, targetAgentId: agentId, attachments: pendingAttachments.map((a) => a.id) }),
             });
 
             if (!res.ok) {
-                throw new Error("Failed to send direct message");
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to send direct message");
             }
 
             const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
@@ -503,6 +527,8 @@ export function AgentDirectChat({
                 setMessages((prev) => prev.some((message) => message.id === data.message!.id) ? prev : [...prev, data.message!]);
                 lastSeenAtRef.current = data.message.createdAt;
                 setPendingAttachments([]);
+                setSendMode("queue");
+                void loadMessages().catch(() => {});
                 // Aggressive polling after send: catch agent response fast
                 const schedulePoll = (delay: number, useSince: boolean) => {
                     setTimeout(() => {
@@ -516,6 +542,7 @@ export function AgentDirectChat({
         } catch (error) {
             console.error("Failed to send direct message", error);
             setDraft(text);
+            setControlError(error instanceof Error ? error.message : "Failed to send message");
         } finally {
             setIsSending(false);
         }
@@ -588,6 +615,7 @@ export function AgentDirectChat({
                             const i = virtualRow.index;
                             const message = messages[i];
                             const isHuman = message.senderType === "human";
+                            const isControl = message.senderType === "system" && Boolean((message.metadataJson as Record<string, unknown> | null)?.runtimeControl);
                             const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
                             const prev = messages[i - 1] ?? null;
                             const next = messages[i + 1] ?? null;
@@ -620,7 +648,7 @@ export function AgentDirectChat({
                                         <div className={cn("flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]", isHuman ? "items-end" : "items-start")}>
                                             {/* Agent name label — only on group-start agent messages */}
                                             {!isHuman && !isContinuation && (
-                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{agentName}</span>
+                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{isControl ? "Emperor" : agentName}</span>
                                             )}
 
                                             <div className={cn(
@@ -638,11 +666,14 @@ export function AgentDirectChat({
                                                             {isHuman ? <IconUser className="w-3 h-3" /> : <IconRobot className="w-3 h-3 text-emerald-400" />}
                                                         </div>
                                                         <span className={cn("text-[10px] uppercase tracking-wider font-bold", isHuman ? "text-emerald-950/70" : "text-zinc-500")}>
-                                                            {isHuman ? (isOwn ? "You" : getMessageSenderName(message) || "Member") : agentName}
+                                                            {isHuman ? (isOwn ? "You" : getMessageSenderName(message) || "Member") : isControl ? "Emperor" : agentName}
                                                         </span>
                                                     </div>
                                                 )}
                                                 <MessageContent text={message.text} isHuman={isHuman} />
+                                                {isControl && <p className="mt-2 text-xs text-zinc-400">
+                                                    {message.deliveryState === "resolved" ? "Runtime confirmed" : "Waiting for Hermes confirmation. An offline or older runtime cannot stop yet."}
+                                                </p>}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
                                                         {messageAttachments.map((att) => (
@@ -687,7 +718,7 @@ export function AgentDirectChat({
                                                         "text-[10px] font-medium",
                                                         message.deliveryState === "acting" ? "text-emerald-500" : "text-zinc-600"
                                                     )}>
-                                                        {message.deliveryState === "acting" ? "Being handled" : "Queued"}
+                                                        {message.deliveryState === "cancelled" ? "Cancelled" : message.deliveryState === "acting" ? "Being handled" : "Queued"}
                                                     </span>
                                                 </div>
                                             ) : isHuman && isLastInGroup && (
@@ -749,6 +780,20 @@ export function AgentDirectChat({
             )}
 
             <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                    <button type="button" onClick={stopAgent} disabled={isSending}
+                        className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300 hover:bg-red-500/10 disabled:opacity-50">
+                        Stop &amp; clear queue
+                    </button>
+                    <label className="flex items-center gap-2">Next prompt
+                        <select aria-label="Next prompt behavior" value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
+                            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2">
+                            <option value="queue">Queue after current work</option>
+                            <option value="replace">Stop &amp; replace current work</option>
+                        </select>
+                    </label>
+                </div>
+                {controlError && <p role="alert" className="text-xs text-red-300">{controlError}</p>}
                 {micError && (
                     <div className="flex items-start gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
                         <IconMicrophone className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
@@ -876,7 +921,7 @@ export function AgentDirectChat({
                     </button>
                 </div>
                 <p id="direct-message-shortcut" className="mt-1.5 px-1 text-[10px] text-zinc-600">
-                    Enter to send · Shift+Enter for a new line
+                    Enter to send · Shift+Enter for a new line · /kill · /queue prompt · /replace prompt
                 </p>
             </form>
                 )}

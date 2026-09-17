@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { IconRobot, IconSearch } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
-import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
@@ -27,17 +26,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState("all");
     const [selectedId, setSelectedId] = useState(agents[0]?.id || "");
-    const [easySetupAvailable, setEasySetupAvailable] = useState(false);
     const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        fetch("/api/agents/easy-setup")
-            .then((r) => r.json())
-            .then((d) => { if (!cancelled) setEasySetupAvailable(!!d.available); })
-            .catch(() => {});
-        return () => { cancelled = true; };
-    }, []);
 
     const filteredAgents = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -57,35 +46,11 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 title="Agent Directory"
                 description="Find agents, inspect workload, and jump into the durable profile when you need details."
                 actions={
-                    easySetupAvailable ? (
-                        <div className="flex items-center gap-2">
-                            <EasySetupDialog
-                                onAgentCreated={(id) => setSelectedId(id)}
-                                onSwitchToAdvanced={() => setAdvancedDialogOpen(true)}
-                            />
-                            {/* No visible trigger here — EasySetupDialog's own
-                                "Advanced" option is the only way in, so this
-                                dialog stays mounted for that programmatic
-                                open without a second, redundant button. */}
-                            <CreateAgentDialog
-                                onAgentCreated={(id) => setSelectedId(id)}
-                                open={advancedDialogOpen}
-                                onOpenChange={setAdvancedDialogOpen}
-                                hideTrigger
-                            />
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-end gap-1">
-                            <CreateAgentDialog onAgentCreated={(id) => setSelectedId(id)} />
-                            <span className="text-[10px] text-zinc-500" title="Local one-click setup requires the Docker install path">
-                                Local one-click setup requires the Docker install path — see{" "}
-                                <Link href="/docs/v1.1/hermes-runtime#accessing-a-locally-provisioned-hermes-container" target="_blank" className="underline underline-offset-2 hover:text-zinc-300">
-                                    docs
-                                </Link>
-                                .
-                            </span>
-                        </div>
-                    )
+                    <div className="flex items-center gap-2">
+                        <EasySetupDialog onAgentCreated={setSelectedId} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
+                        <CreateAgentDialog onAgentCreated={setSelectedId} open={advancedDialogOpen}
+                            onOpenChange={setAdvancedDialogOpen} hideTrigger />
+                    </div>
                 }
             />
 
@@ -93,7 +58,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 <div className="emperor-panel rounded-2xl py-12 text-center">
                     <IconRobot className="mx-auto mb-4 h-12 w-12 text-zinc-500" />
                     <h3 className="mb-1 font-medium text-zinc-200">No agents yet</h3>
-                    <p className="text-sm text-zinc-500">Add an agent profile, then connect a Hermes/OpenClaw runtime when it is ready to work.</p>
+                    <p className="text-sm text-zinc-500">Click Hire an Agent, choose a role, and connect your LLM provider. Emperor starts Hermes for you.</p>
                 </div>
             ) : (
                 <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">

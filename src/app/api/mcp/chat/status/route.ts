@@ -57,10 +57,9 @@ export async function POST(req: NextRequest) {
                 actorType: "agent",
                 actorId: resolvedAgentId,
                 targetState: derivedState,
-                // Scope "resolved" to the specific message that got a reply —
-                // batching it thread-wide would mark still-queued messages
-                // done before the agent has actually processed them.
-                messageId: derivedState === "resolved" && typeof messageId === "string" ? messageId : null,
+                // Advance only the dispatched prompt when the runtime supplies
+                // its id; follow-ups retain their own queue state.
+                messageId: typeof messageId === "string" ? messageId : null,
             });
 
             for (const updatedMessage of updatedMessages) {

@@ -34,6 +34,50 @@ os.environ.setdefault("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "30")
 import emperor_hermes_bridge as bridge
 
 
+class TestRuntimeControls(unittest.TestCase):
+    def test_control_resets_session_before_acknowledging(self):
+        from unittest.mock import patch
+        state = {"sessions": {"agent:thread": "old-session"}}
+        events = []
+        with patch.object(bridge, "save_state", side_effect=lambda value: events.append(("save", dict(value["sessions"])))), patch.object(bridge, "api", side_effect=lambda *args, **kwargs: events.append(("ack", kwargs["body"]["commandId"]))):
+            self.assertTrue(bridge.apply_runtime_controls({"commands": [{"id": "stop-1"}, {"id": "stop-2"}]}, state))
+        self.assertEqual(events, [("save", {}), ("ack", "stop-1"), ("ack", "stop-2")])
+
+    def test_queued_prompt_keeps_session(self):
+        state = {"sessions": {"a:t": "existing"}}
+        self.assertFalse(bridge.apply_runtime_controls({"commands": []}, state))
+        self.assertEqual(state["sessions"], {"a:t": "existing"})
+
+    def test_stop_terminates_real_turn_before_ack(self):
+        from unittest.mock import patch
+        import subprocess
+        real_popen = subprocess.Popen
+        processes = []
+        def launch(*args, **kwargs):
+            proc = real_popen(*args, **kwargs)
+            processes.append(proc)
+            return proc
+        def ack(*args, **kwargs):
+            self.assertIsNotNone(processes[0].poll(), "ack must follow process exit")
+            return {"ok": True}
+        state = {"sessions": {"a:t": "old"}}
+        with patch.object(bridge.subprocess, "Popen", side_effect=launch), patch.object(bridge, "fetch_runtime_control", return_value={"commands": [{"id": "stop"}]}), patch.object(bridge, "save_state"), patch.object(bridge, "api", side_effect=ack):
+            with self.assertRaises(bridge.TurnInterrupted):
+                bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(30)"], {"id": "work"}, state=state)
+        self.assertIsNotNone(processes[0].returncode)
+        self.assertEqual(state["sessions"], {})
+
+    def test_cancelled_cached_prompt_is_interrupted(self):
+        from unittest.mock import patch, MagicMock
+        proc = MagicMock()
+        proc.poll.return_value = None
+        proc.communicate.return_value = ("stale answer", "")
+        with patch.object(bridge.subprocess, "Popen", return_value=proc), patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": True}), patch.object(bridge, "_terminate_turn") as terminate:
+            with self.assertRaises(bridge.TurnInterrupted):
+                bridge.invoke_hermes(["hermes"], {"id": "cached-work"}, state={})
+        terminate.assert_called_once_with(proc)
+
+
 class TestRosterAliases(unittest.TestCase):
     def test_turn_includes_baseline_when_company_kb_empty(self):
         from unittest.mock import patch
@@ -319,6 +363,7 @@ class TestBudgetGuard(unittest.TestCase):
             stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
             stack.enter_context(patch.object(bridge, "load_state", return_value=state))
             stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
             stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
             run = stack.enter_context(patch.object(bridge, "run_hermes"))
             with self.assertRaises(KeyboardInterrupt):
@@ -884,6 +929,7 @@ class TestReasoningHistory(unittest.TestCase):
             stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
             stack.enter_context(patch.object(bridge, "load_state", return_value=state))
             stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
             stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
             stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
             stack.enter_context(patch.object(bridge, "run_hermes", return_value="the real answer"))
@@ -917,6 +963,7 @@ class TestReasoningHistory(unittest.TestCase):
             stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
             stack.enter_context(patch.object(bridge, "load_state", return_value=state))
             stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
             stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
             stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
             stack.enter_context(patch.object(bridge, "run_hermes", return_value="answer"))

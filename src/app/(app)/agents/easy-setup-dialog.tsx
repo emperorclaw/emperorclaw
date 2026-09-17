@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ const LLM_PROVIDER_OPTIONS: { id: string; label: string; verified: boolean }[] =
     { id: "deepseek", label: "DeepSeek", verified: true },
 ];
 
-type EasyStep = "mode" | "count-and-roles" | "provider-key" | "review" | "provisioning" | "done";
+type EasyStep = "count-and-roles" | "provider-key" | "provisioning" | "done";
 
 type AgentSpecState = {
     id: string;
@@ -73,32 +73,45 @@ export function EasySetupDialog({
 }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
-    const [step, setStep] = useState<EasyStep>(localOnly ? "count-and-roles" : "mode");
+    const [step, setStep] = useState<EasyStep>("count-and-roles");
     const [count, setCount] = useState(1);
     const [specs, setSpecs] = useState<AgentSpecState[]>([makeSpec(0)]);
     const [llmProvider, setLlmProvider] = useState(LLM_PROVIDER_OPTIONS[0].id);
     const [llmApiKey, setLlmApiKey] = useState("");
+    const [llmModel, setLlmModel] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [results, setResults] = useState<AgentBatchResult[] | null>(null);
     const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
+    const [available, setAvailable] = useState<boolean | null>(null);
+    const [availabilityReason, setAvailabilityReason] = useState("");
     const [configurations, setConfigurations] = useState<{ id: string; name: string; llmProvider: string }[]>([]);
     const [sourceAgentId, setSourceAgentId] = useState("");
-    useEffect(() => {
-        if (!open) return;
-        fetch("/api/agents/easy-setup").then(r => r.json()).then(data => {
+    const checkAvailability = useCallback(async () => {
+        setAvailable(null);
+        try {
+            const response = await fetch("/api/agents/easy-setup", { cache: "no-store" });
+            if (!response.ok) throw new Error("Could not check local setup. Retry below.");
+            const data = await response.json();
             setConfigurations(data.configurations || []);
-            setSourceAgentId(data.configurations?.[0]?.id || "");
-        }).catch(() => {});
-    }, [open]);
+            setAvailable(Boolean(data.available));
+            setAvailabilityReason(data.reason || "Local Hermes setup is unavailable. Start Docker and retry.");
+        } catch (e) {
+            setAvailable(false);
+            setAvailabilityReason(e instanceof Error ? e.message : "Could not check local setup.");
+        }
+    }, []);
+    useEffect(() => { if (open) void checkAvailability(); }, [open, checkAvailability]);
 
     const resetForm = () => {
-        setStep(localOnly ? "count-and-roles" : "mode");
+        setStep("count-and-roles");
         setCount(1);
         setSpecs([makeSpec(0)]);
         setLlmProvider(LLM_PROVIDER_OPTIONS[0].id);
         setLlmApiKey("");
+        setLlmModel("");
+        setSourceAgentId("");
         setSubmitting(false);
         setError(null);
         setResults(null);
@@ -116,7 +129,7 @@ export function EasySetupDialog({
     };
 
     const handleCreate = async () => {
-        if (submitting) return;
+        if (submitting || available !== true) return;
         setStep("provisioning");
         setSubmitting(true);
         setError(null);
@@ -128,6 +141,7 @@ export function EasySetupDialog({
                     sourceAgentId: sourceAgentId || undefined,
                     llmProvider,
                     llmApiKey,
+                    llmModel: llmModel.trim() || undefined,
                     agents: specs.map((s) => {
                         const template = s.templateId ? getAgentTemplate(s.templateId) : null;
                         return { role: s.role, name: s.name.trim() || s.role, doctrineJson: template ? {
@@ -139,11 +153,13 @@ export function EasySetupDialog({
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Easy Setup failed");
             setResults(data.results || []);
+            setExpanded(Object.fromEntries((data.results || []).map((r: AgentBatchResult, i: number) => [i, !r.success])));
+            setLlmApiKey("");
             setStep("done");
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Easy Setup failed");
-            setStep("review");
+            setStep("provider-key");
         } finally {
             setSubmitting(false);
         }
@@ -174,71 +190,36 @@ export function EasySetupDialog({
             <DialogContent className="sm:max-w-[580px] bg-zinc-950 border-zinc-800 text-zinc-200">
                 <DialogHeader>
                     <DialogTitle className="text-zinc-100">
-                        {step === "mode" && "Where should this agent run?"}
-                        {step === "count-and-roles" && "How many agents, and what roles?"}
+                        {step === "count-and-roles" && "Hire a local Hermes agent"}
                         {step === "provider-key" && "Connect an LLM provider"}
-                        {step === "review" && "Review & create"}
                         {step === "provisioning" && "Provisioning agents…"}
                         {step === "done" && "Setup results"}
                     </DialogTitle>
                     <DialogDescription className="text-zinc-400">
-                        {step === "mode" && "Using Hermes as the runtime — pick where it lives."}
-                        {step === "count-and-roles" && `Pick a role for each agent. Up to ${MAX_EASY_SETUP_AGENTS} per batch.`}
+                        {step === "count-and-roles" && "Choose a role and name. Emperor installs and connects Hermes on this server."}
                         {step === "provider-key" && "Your provider runs the model and bills its usage. Emperor encrypts this key and configures the workers for you."}
-                        {step === "review" && "Confirm the agents you're about to create."}
                         {step === "provisioning" && "Keep this window open while each worker is installed and started. The first download may take a few minutes."}
                         {step === "done" && "Here's what happened for each agent in this batch."}
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* Step: mode — the local/remote choice up front, before anything else,
-                    so it's never ambiguous which one you're picking. Icons/wording match
-                    CreateAgentDialog's own "Where will this agent run?" step so the two
-                    dialogs speak one consistent visual language instead of two. */}
-                {step === "mode" && (
-                    <div className="grid grid-cols-1 gap-3 py-2">
-                        <button
-                            type="button"
-                            onClick={() => setStep("count-and-roles")}
-                            className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 text-left transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/10"
-                        >
-                            <span className="text-2xl shrink-0">🖥️</span>
-                            <div>
-                                <span className="block text-sm font-medium text-emerald-100">Local — this machine</span>
-                                <span className="block text-[11px] leading-relaxed text-emerald-100/60 mt-0.5">
-                                    Pick roles, provide one LLM key, and EmperorClaw provisions isolated Hermes Docker containers here automatically. No CLI required.
-                                </span>
+                {step !== "provisioning" && step !== "done" && available !== true && (
+                    <div className="rounded-lg border border-amber-500/20 px-3 py-2 text-sm text-amber-200" role="status">
+                        {available === null ? "Checking local Hermes setup…" : <>
+                            <p>{availabilityReason}</p>
+                            <div className="mt-2 flex gap-3">
+                                <button type="button" onClick={() => void checkAvailability()} className="underline">Retry</button>
+                                <a href="/docs/v1.1/installation" target="_blank" rel="noreferrer" className="underline">Docker setup guide</a>
                             </div>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleAdvanced}
-                            className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-900"
-                        >
-                            <span className="text-2xl shrink-0">🌐</span>
-                            <div>
-                                <span className="block text-sm font-medium text-zinc-100">Remote — another machine</span>
-                                <span className="block text-[11px] leading-relaxed text-zinc-400 mt-0.5">
-                                    Connect Hermes on another machine or use an existing remote integration.
-                                </span>
-                            </div>
-                        </button>
+                        </>}
                     </div>
                 )}
 
                 {/* Step: count-and-roles */}
                 {step === "count-and-roles" && (
                     <div className="space-y-4 py-2">
-                        {configurations.length > 0 && (
-                            <label className="block space-y-2 text-sm text-zinc-300">
-                                Reuse Hermes configuration
-                                <select value={sourceAgentId} onChange={e => setSourceAgentId(e.target.value)} className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 p-2">
-                                    {configurations.map(c => <option key={c.id} value={c.id}>{c.name} · {c.llmProvider}</option>)}
-                                    <option value="">Use a new API key</option>
-                                </select>
-                                <span className="block text-xs text-zinc-500">Each worker gets its own runtime and token, and inherits the source agent&apos;s access scope.</span>
-                            </label>
-                        )}
+                        <details className="text-sm text-zinc-400">
+                            <summary className="cursor-pointer">Hire more than one agent</summary>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">How many agents?</label>
                             <div className="flex items-center gap-2">
@@ -272,6 +253,8 @@ export function EasySetupDialog({
                             </div>
                         </div>
 
+                        </details>
+
                         <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                             {specs.map((spec, i) => (
                                 <div key={spec.id} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-2">
@@ -303,6 +286,17 @@ export function EasySetupDialog({
                 {/* Step: provider-key */}
                 {step === "provider-key" && (
                     <div className="space-y-4 py-2">
+                        {configurations.length > 0 && (
+                            <label className="block space-y-2 text-sm text-zinc-300">
+                                LLM connection
+                                <select value={sourceAgentId} onChange={e => setSourceAgentId(e.target.value)} className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                                    <option value="">Enter a provider API key</option>
+                                    {configurations.map(c => <option key={c.id} value={c.id}>Reuse {c.name} · {c.llmProvider}</option>)}
+                                </select>
+                                <span className="block text-xs text-zinc-500">{sourceAgentId ? "Uses that agent’s saved provider, model, key, and access scope." : "Enter a new key, or reuse a saved connection."}</span>
+                            </label>
+                        )}
+                        {!sourceAgentId && <>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">LLM Provider</label>
                             <div className="grid grid-cols-2 gap-2">
@@ -310,7 +304,7 @@ export function EasySetupDialog({
                                     <button
                                         key={p.id}
                                         type="button"
-                                        onClick={() => setLlmProvider(p.id)}
+                                        onClick={() => { setLlmProvider(p.id); setLlmModel(""); }}
                                         className={cn(
                                             "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
                                             llmProvider === p.id
@@ -337,49 +331,23 @@ export function EasySetupDialog({
                                 type="password"
                                 value={llmApiKey}
                                 onChange={(e) => setLlmApiKey(e.target.value)}
-                                placeholder="sk-..."
+                                placeholder="Paste your provider API key"
+                                aria-label="LLM provider API key"
                                 autoComplete="off"
                                 className="w-full bg-zinc-900 border-zinc-800 focus:ring-1 focus:ring-cyan-500 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none"
                             />
                         </div>
-                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2">
-                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">🔑 Shared key</span>
-                            <p className="text-[10px] text-amber-200/70 mt-0.5 leading-relaxed">
-                                This key is shared across all {specs.length} agent{specs.length === 1 ? "" : "s"} in this batch and encrypted
-                                at rest (AES-256-GCM). You can give any agent its own key later from its detail page.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Step: review */}
-                {step === "review" && (
-                    <div className="space-y-4 py-2">
-                        <div className="rounded-xl border border-zinc-800 overflow-hidden">
-                            <table className="w-full text-xs">
-                                <thead className="bg-zinc-900/70 text-zinc-500">
-                                    <tr>
-                                        <th className="text-left font-medium px-3 py-2">Name</th>
-                                        <th className="text-left font-medium px-3 py-2">Role</th>
-                                        <th className="text-left font-medium px-3 py-2">Provider</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {specs.map((spec) => (
-                                        <tr key={spec.id} className="border-t border-zinc-800/70">
-                                            <td className="px-3 py-2 text-zinc-200">{spec.name.trim() || spec.role}</td>
-                                            <td className="px-3 py-2 text-zinc-400">{spec.role}</td>
-                                            <td className="px-3 py-2 text-zinc-400">
-                                                {LLM_PROVIDER_OPTIONS.find((p) => p.id === llmProvider)?.label || llmProvider}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        {error && (
-                            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</div>
-                        )}
+                        <label className="block space-y-1.5 text-sm text-zinc-300">
+                            Model <span className="text-zinc-500">(optional)</span>
+                            <input value={llmModel} onChange={e => setLlmModel(e.target.value)} maxLength={200}
+                                placeholder="Use the provider default" className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100" />
+                        </label>
+                        <p className="text-xs text-zinc-500">
+                            Emperor encrypts and stores your key, then configures Hermes automatically.
+                            {specs.length > 1 && " All agents in this batch use this connection."}
+                        </p>
+                        </>}
+                        {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
                     </div>
                 )}
 
@@ -426,44 +394,27 @@ export function EasySetupDialog({
                 )}
 
                 <DialogFooter className="flex items-center gap-2">
-                    {((step === "count-and-roles" && !localOnly) || step === "provider-key" || step === "review") && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setStep(
-                                step === "count-and-roles" ? "mode" :
-                                step === "provider-key" ? "count-and-roles" :
-                                "provider-key"
-                            )}
-                            className="border-zinc-800 text-zinc-300 hover:bg-zinc-800"
-                        >
-                            Back
-                        </Button>
+                    {step === "provider-key" && (
+                        <Button type="button" variant="outline" onClick={() => setStep("count-and-roles")} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">Back</Button>
+                    )}
+                    {step === "count-and-roles" && !localOnly && (
+                        <button type="button" onClick={handleAdvanced} className="text-xs text-zinc-400 underline hover:text-zinc-200">Connect a remote agent instead</button>
                     )}
                     <div className="flex-1" />
                     {step !== "provisioning" && step !== "done" && (
-                        <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">
-                            Cancel
-                        </Button>
+                        <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm(); }} className="border-zinc-800 text-zinc-300 hover:bg-zinc-800">Cancel</Button>
                     )}
                     {step === "count-and-roles" && (
-                        <Button type="button" onClick={() => sourceAgentId ? handleCreate() : setStep("provider-key")} disabled={!canContinueRoles || submitting} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            {sourceAgentId ? `Create ${specs.length} Hermes agent${specs.length === 1 ? "" : "s"}` : "Continue"}
-                        </Button>
+                        <Button type="button" onClick={() => setStep("provider-key")} disabled={!canContinueRoles} className="bg-cyan-600 hover:bg-cyan-500 text-white">Continue</Button>
                     )}
                     {step === "provider-key" && (
-                        <Button type="button" onClick={() => setStep("review")} disabled={!llmApiKey.trim()} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            Continue
-                        </Button>
-                    )}
-                    {step === "review" && (
-                        <Button type="button" onClick={handleCreate} disabled={submitting} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            Create {specs.length} agent{specs.length === 1 ? "" : "s"}
+                        <Button type="button" onClick={handleCreate} disabled={submitting || available !== true || (!sourceAgentId && !llmApiKey.trim())} className="bg-cyan-600 hover:bg-cyan-500 text-white">
+                            Create &amp; start {specs.length === 1 ? "agent" : `${specs.length} agents`}
                         </Button>
                     )}
                     {step === "done" && (
                         <Button type="button" onClick={handleViewAgents} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            View agents
+                            {results?.length === 1 ? "Open agent" : "View agents"}
                         </Button>
                     )}
                 </DialogFooter>

@@ -563,7 +563,7 @@ def update_chat_status(
         body["markRead"] = True
     if execution_state:
         body["executionState"] = execution_state
-        if execution_state == "resolved":
+        if execution_state:
             # Scope "resolved" to this exact message — batching it
             # thread-wide would mark other still-queued messages done the
             # instant this one's reply lands, before they've been touched.
@@ -1144,6 +1144,15 @@ def _terminate_turn(proc: subprocess.Popen[str]) -> None:
             except Exception:
                 pass
 
+    # The parent can exit on SIGTERM while a tool child ignores it. Its group
+    # remains ours even after that exit; reap those children as well.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except Exception:
+        pass
+
 
 def _persist_killed_session(
     sessions: Dict[str, str],
@@ -1166,12 +1175,37 @@ def _persist_killed_session(
         pass
 
 
+class TurnInterrupted(Exception):
+    """An operator stopped this turn; it is not a runtime failure."""
+
+
+def fetch_runtime_control(message: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    query = {"agentId": AGENT_ID}
+    if message and message.get("id"):
+        query["messageId"] = message["id"]
+    return api("GET", "/agents/control", query=query)
+
+
+def apply_runtime_controls(payload: Dict[str, Any], state: Dict[str, Any]) -> bool:
+    commands = payload.get("commands") or []
+    if not commands:
+        return False
+    # Persist the fresh-session decision before acknowledging: a restart between
+    # these writes must never resume the prompt the operator just stopped.
+    state["sessions"] = {}
+    save_state(state)
+    for command in commands:
+        api("POST", "/agents/control", query={"agentId": AGENT_ID}, body={"commandId": command["id"]})
+    return True
+
+
 def invoke_hermes(
     cmd: List[str],
     message: Dict[str, Any],
     *,
     resumed: bool = False,
     session_id: str = "",
+    state: Dict[str, Any] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     # Provider hint: pass EMPEROR_CLAW_LLM_PROVIDER so Hermes skills can auto-detect.
@@ -1190,6 +1224,17 @@ def invoke_hermes(
             stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
         if time.time() - last_status >= 3:
+            try:
+                control = fetch_runtime_control(message)
+            except Exception as exc:
+                # Temporary server failures do not abandon an otherwise healthy turn.
+                log(f"runtime control polling failed: {exc}")
+                control = {}
+            if control.get("commands") or control.get("cancelled"):
+                _terminate_turn(proc)
+                proc.communicate()
+                apply_runtime_controls(control, state if state is not None else {})
+                raise TurnInterrupted("Stopped by operator")
             # Preference order, most to least specific: the model's real
             # reasoning, then a real tool call, then honest elapsed time.
             # Nothing here is inferred or invented.
@@ -1291,7 +1336,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         # is what scopes the reasoning lookup. On a brand-new session it is
         # empty, so that first turn simply reports no reasoning rather than
         # risking a read of some other agent's session.
-        result = invoke_hermes(cmd, message, resumed=bool(resume_id), session_id=resume_id)
+        result = invoke_hermes(cmd, message, resumed=bool(resume_id), session_id=resume_id, state=state)
     except subprocess.TimeoutExpired as exc:
         _persist_killed_session(sessions, session_key, exc)
         raise
@@ -1299,7 +1344,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         sessions.pop(session_key, None)
         cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
         try:
-            result = invoke_hermes(cmd, message, resumed=False)
+            result = invoke_hermes(cmd, message, resumed=False, state=state)
         except subprocess.TimeoutExpired as exc:
             _persist_killed_session(sessions, session_key, exc)
             raise
@@ -1340,6 +1385,7 @@ def send_reply(message: Dict[str, Any], text: str) -> str | None:
         "agentId": AGENT_ID,
         "text": text,
         "targetAgentId": None,
+        "replyToMessageId": message.get("id"),
     })
     message_id = response.get("message_id") if isinstance(response, dict) else None
     return str(message_id) if message_id else None
@@ -1416,6 +1462,7 @@ def main() -> int:
             if time.time() - last_heartbeat >= 60:
                 send_heartbeat(0)
                 last_heartbeat = time.time()
+            apply_runtime_controls(fetch_runtime_control(), state)
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")
                 if not message_id or message_id in (state.get("seen") or []):
@@ -1473,6 +1520,13 @@ def main() -> int:
                     if ts:
                         state["lastSeenAt"] = ts
                     continue
+                # Recheck cached batches: a /kill or /replace can arrive while
+                # an earlier message in this same batch is running.
+                control = fetch_runtime_control(message)
+                apply_runtime_controls(control, state)
+                if control.get("cancelled") or message.get("deliveryState") == "cancelled":
+                    remember_seen(state, message_id)
+                    continue
                 log(f"dispatching message {message_id}")
                 update_chat_status(message, mark_read=True, execution_state="seen")
                 update_chat_status(message, typing=True, execution_state="acting")
@@ -1497,6 +1551,12 @@ def main() -> int:
                         except Exception as reasoning_exc:
                             log(f"reasoning history not stored for {reply_message_id}: {reasoning_exc}")
                     update_chat_status(message, typing=False, execution_state="resolved")
+                except TurnInterrupted:
+                    log(f"operator stopped message {message_id}")
+                    try:
+                        update_chat_status(message, typing=False)
+                    except Exception as status_exc:
+                        log(f"failed to clear stopped turn status: {status_exc}")
                 except Exception as exc:
                     # Do NOT re-raise here: that used to skip remember_seen()
                     # below, so a message that failed once (bad key, Hermes

@@ -12,9 +12,10 @@ Hermes, Python, a plugin, or a bridge, or manually create an Emperor token.
 
 ## 1. Create a worker
 
-On the dashboard choose **Create your first Hermes agent → Hire an Agent**.
+On the dashboard choose **Create your first Hermes agent → Hire an Agent**, or
+click **Hire an Agent** in Agents. Local Hermes is the default.
 Choose a role and a short name. Select your provider, paste its API key, and click
-**Create**. Keep the dialog open. The first runtime image download may take a few
+**Create & start agent**. Keep the dialog open. The first runtime image download may take a few
 minutes. Emperor creates an isolated container, installs the bundled Hermes
 plugin, generates an agent-bound token, and configures its connection and model.
 
@@ -41,6 +42,19 @@ reply, then click **I received a reply — finish setup**. You can also open
 4. In team chat, use the **@ picker** to address the agent with a concrete request.
 5. Add Knowledge & Rules for reusable instructions. Enable **Inject into matching
    agents** only for compact rules needed repeatedly; put reports in Storage.
+
+## Change direction while a worker is busy
+
+In the worker's direct chat, send `/queue <prompt>` to run a follow-up after
+current work. Normal messages also queue. Choose **Stop & replace current work**
+or send `/replace <prompt>` to stop the old turn, cancel pending direct prompts,
+and start a fresh session with the new instruction. **Stop & clear queue** or
+`/kill` stops work without starting another prompt; it does not delete the worker.
+
+The control message shows **Waiting for Hermes confirmation** until the bridge
+has stopped the process. An offline worker receives the request on reconnect.
+These controls require the updated Hermes bridge/image; older running workers
+must be recreated with the updated image. Completed external actions remain completed.
 
 ## Troubleshooting
 

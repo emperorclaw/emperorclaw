@@ -427,9 +427,8 @@ export async function updateThreadExecutionState(input: {
     // transition means "a reply now exists for this exact message" —
     // applying it thread-wide would mark still-unprocessed queued messages
     // as done the instant an earlier one finishes, before the agent has
-    // even started them. "seen"/"acting" stay thread-wide on purpose — the
-    // agent genuinely is looking at / working the whole thread, not just
-    // one message, so batching those two is accurate, not just convenient.
+    // even started them. Hermes supplies messageId for every transition,
+    // keeping follow-ups queued until their own dispatch starts.
     messageId?: string | null;
 }) {
     const targetState = normalizeExecutionState(input.targetState);
@@ -440,6 +439,7 @@ export async function updateThreadExecutionState(input: {
         eq(threadMessages.threadId, input.threadId),
         eq(threadMessages.senderType, "human"),
         ne(threadMessages.deliveryState, "resolved"),
+        ne(threadMessages.deliveryState, "cancelled"),
         input.messageId ? eq(threadMessages.id, input.messageId) : undefined,
     ));
 
@@ -455,7 +455,7 @@ export async function updateThreadExecutionState(input: {
                 executionStateUpdatedBy: input.actorType,
                 executionActorId: input.actorId || null,
             },
-        }).where(eq(threadMessages.id, m.id)).returning();
+        }).where(and(eq(threadMessages.id, m.id), ne(threadMessages.deliveryState, "cancelled"))).returning();
         return row;
     }));
 

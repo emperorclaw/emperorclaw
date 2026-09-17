@@ -82,6 +82,8 @@ export async function POST(req: NextRequest) {
         ? body.llmProvider
         : null;
     const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
+    const parsedModel = z.string().trim().max(200).optional().safeParse(body.llmModel);
+    if (!parsedModel.success) return NextResponse.json({ error: "Model must be a name of at most 200 characters" }, { status: 400 });
     const parsedSpecs = z.array(z.object({
         name: z.string().trim().min(1).max(200),
         role: z.string().trim().max(200),
@@ -121,9 +123,11 @@ export async function POST(req: NextRequest) {
     const llmConfiguration = resolveAgentModelConfiguration({
         current: { llmProvider: null, llmModel: null },
         provider: llmProvider,
-        model: null,
+        model: parsedModel.data || null,
         pricing,
     });
+
+    if (llmConfiguration.llmProvider !== llmProvider) return NextResponse.json({ error: "The selected model belongs to a different provider. Choose a matching model or leave it blank." }, { status: 400 });
 
     const results: AgentBatchResult[] = [];
 

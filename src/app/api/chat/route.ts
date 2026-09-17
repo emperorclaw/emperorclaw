@@ -7,6 +7,9 @@ import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMes
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
+import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
+import { requestAgentControl } from "@/lib/agent-control";
+
 type ThreadMessageLike = {
     fromUserId?: string | null;
     senderId?: string | null;
@@ -54,9 +57,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore });
     } catch (error: unknown) {
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
-        const status = isAgentNotFound ? 404 : 500;
+        const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;
         console.error("[/api/chat] GET error:", error);
-        return NextResponse.json({ error: isAgentNotFound ? "Agent not found" : "Internal Server Error" }, { status });
+        return NextResponse.json({ error: isAgentNotFound ? "Agent not found" : error instanceof Error && error.message.startsWith("Runtime controls") ? error.message : "Internal Server Error" }, { status });
     }
 }
 
@@ -67,6 +70,16 @@ export async function POST(req: NextRequest) {
 
     try {
         const { text, targetAgentId, attachments } = await req.json();
+        if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
+        const command = typeof text === "string" ? parseAgentControlCommand(text) : null;
+        if (command) {
+            if (!targetAgentId) return NextResponse.json({ error: "Use runtime commands in an agent’s direct chat" }, { status: 400 });
+            const error = validateAgentControl(command.action, command.prompt);
+            if (error) return NextResponse.json({ error }, { status: 400 });
+            if (Array.isArray(attachments) && attachments.length) return NextResponse.json({ error: "Send attachments as a normal message" }, { status: 400 });
+            const agentId = await resolveAgentId(companyId, targetAgentId);
+            return NextResponse.json(await requestAgentControl(companyId, userId, agentId, command.action, command.prompt));
+        }
 
         // Resolve attachment artifact ids to compact company-scoped refs.
         // Unknown/deleted ids are silently dropped — only real company
@@ -125,8 +138,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (error: unknown) {
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
-        const status = isAgentNotFound ? 404 : 500;
+        const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;
         console.error("[/api/chat] POST error:", error);
-        return NextResponse.json({ error: isAgentNotFound ? "Agent not found" : "Internal Server Error" }, { status });
+        return NextResponse.json({ error: isAgentNotFound ? "Agent not found" : error instanceof Error && error.message.startsWith("Runtime controls") ? error.message : "Internal Server Error" }, { status });
     }
 }

@@ -9,6 +9,20 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.34] — 2026-09-17
+
+### Added
+
+- Hiring starts with local Hermes, then provider/key and one Create & start action.
+  Remote setup is an explicit secondary option; Docker errors no longer silently
+  switch the hiring flow. Saved connections and custom model names are optional.
+- Direct chat controls and `/kill`, `/queue <prompt>`, `/replace <prompt>`
+  commands for Hermes. Stop clears pending direct prompts; replacement starts
+  a fresh session. Runtime confirmation distinguishes a request from a completed stop.
+- Durable control polling during a turn, process-group termination, and rejection
+  of late replies from cancelled work. Queued follow-ups survive newer replies
+  and a bridge restart.
+
 ## [0.8.33] — 2026-09-17
 
 ### Beginner setup

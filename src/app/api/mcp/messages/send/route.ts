@@ -4,9 +4,13 @@ import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
+import { db } from "@/db";
+import { threadMessages } from "@/db/schema";
+import { and, eq, sql } from "drizzle-orm";
 
 const sendMessageSchema = z.object({
     text: z.string().min(1, "text is required"),
+    replyToMessageId: z.string().uuid().nullish(),
     chat_id: optionalString,
     thread_id: optionalString,
     from_user_id: optionalString,
@@ -59,7 +63,7 @@ export async function POST(req: NextRequest) {
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type } = parsed.data;
+        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId } = parsed.data;
 
         // A token bound to an agent may only send as that agent.
         const effectiveAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, agentId || null);
@@ -74,7 +78,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const result = await sendThreadMessageFromMcp({
+        const send = () => sendThreadMessageFromMcp({
             companyId,
             text,
             chatId: chat_id || null,
@@ -84,6 +88,26 @@ export async function POST(req: NextRequest) {
             targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
         });
+
+        // Serialize a reply with /kill and /replace on the same agent row.
+        // This closes the completion race: cancelled work cannot post a late reply.
+        const result = replyToMessageId && effectiveAgentId ? await db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT id FROM agents WHERE id = ${effectiveAgentId}::uuid AND company_id = ${companyId}::uuid FOR NO KEY UPDATE`);
+            const [source] = await tx.select().from(threadMessages).where(and(
+                eq(threadMessages.id, replyToMessageId), eq(threadMessages.companyId, companyId),
+                thread_id ? eq(threadMessages.threadId, thread_id) : undefined,
+            )).limit(1);
+            if (!source) throw new Error("Thread not found");
+            if (source.deliveryState === "cancelled") return null;
+            const [stop] = await tx.select({ id: threadMessages.id }).from(threadMessages).where(and(
+                eq(threadMessages.companyId, companyId), eq(threadMessages.targetAgentId, effectiveAgentId),
+                eq(threadMessages.senderType, "system"), eq(threadMessages.deliveryState, "queued"),
+                sql`${threadMessages.metadataJson}->'runtimeControl'->>'action' IN ('kill', 'replace')`,
+            )).limit(1);
+            if (stop) return null;
+            return send();
+        }) : await send();
+        if (!result) return NextResponse.json({ ok: true, message_id: null, thread_id, cancelled: true });
 
         // Record only after the send succeeded so a failed send does not poison
         // the key and make the bridge's retry look like a duplicate.

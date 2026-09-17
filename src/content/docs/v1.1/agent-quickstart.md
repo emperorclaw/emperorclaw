@@ -4,7 +4,7 @@ For a new installation, follow [Installation](/docs/v1.1/installation) first.
 
 1. On the dashboard click **Hire an Agent** in the first-agent setup.
 2. Pick a role and a short name. Choose an LLM provider and enter its API key.
-3. Click **Create** and keep the dialog open. Emperor configures Hermes, its
+3. Click **Create & start agent** and keep the dialog open. Emperor configures Hermes, its
    plugin, credentials, and an isolated worker automatically.
 4. Wait for **online** on the dashboard; a created profile or started container
    alone does not confirm runtime connectivity.

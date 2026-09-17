@@ -48,6 +48,8 @@ export async function GET(req: NextRequest) {
 
             const conditions: any[] = [
                 eq(threadMessages.companyId, companyId),
+                ne(threadMessages.deliveryState, 'cancelled'),
+                sql`NOT (${threadMessages.metadataJson} ? 'runtimeControl')`,
             ];
 
             if (senderTypeFilter) {
@@ -85,7 +87,9 @@ export async function GET(req: NextRequest) {
             if (isValidSince) {
                 // Safety buffer: subtract 10ms to handle sub-millisecond precision drift between servers/DBs
                 const bufferDate = new Date(sinceDate.getTime() - 10);
-                conditions.push(gt(threadMessages.createdAt, bufferDate));
+                conditions.push(scopeAgentId
+                    ? sql`(${threadMessages.createdAt} > ${bufferDate} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} = 'human' AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
+                    : gt(threadMessages.createdAt, bufferDate));
             }
 
             const messages = await db.select()
@@ -123,6 +127,8 @@ export async function GET(req: NextRequest) {
                         filtered = messages.filter(m => {
                             const lastReply = replyMap.get(m.threadId);
                             if (!lastReply) return true; // No reply from this agent yet
+                            // A newer reply must not discard an explicitly queued direct follow-up.
+                            if (m.targetAgentId === resolvedAgentId && m.senderType === 'human' && ['queued', 'seen', 'acting'].includes(m.deliveryState)) return true;
                             return m.createdAt > lastReply; // Only show messages AFTER our last reply
                         });
                     }
