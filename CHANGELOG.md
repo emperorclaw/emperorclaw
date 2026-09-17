@@ -9,6 +9,45 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.32] — 2026-09-17
+
+### Added
+
+- Agents now surface their **real** model reasoning in the chat activity line.
+  The bridge reads it from the runtime's own session store instead of guessing,
+  through a pluggable `ReasoningSource` interface
+  (`EMPEROR_CLAW_REASONING_SOURCE`: `auto` | `session-store` | `none`) so any
+  runtime can supply its own. When a runtime exposes no reasoning, nothing is
+  claimed — `none` is a fully supported path, not a degraded one.
+- Team chat shows the activity line too; it previously received the detail and
+  rendered a bare "is typing".
+- Optional persisted reasoning history (`EMPEROR_CLAW_REASONING_HISTORY=on`,
+  **off by default**), exposed as a collapsed "Show reasoning" disclosure on an
+  agent's message. Stored in its own table and fetched only on expand, so the
+  polling message list never carries transcripts. Reasoning is raw model output
+  and can quote the user verbatim or contain paths and credentials, so enabling
+  it is a deliberate choice by the runtime operator.
+
+### Fixed
+
+- The bridge no longer fabricates a "thinking" state. It used to infer one from
+  a gap in tool-executor log lines and emit a literal `thinking` string, having
+  read no reasoning at all.
+- The activity line is no longer uppercased when it carries real reasoning;
+  uppercasing a sentence of model prose shouted it. The uppercase treatment
+  remains on the bare "is typing" label.
+- The direct-chat typing bubble is bounded to the message-bubble width. It was
+  shrink-to-fit, so a full sentence stretched it past the column instead of
+  letting the text truncate.
+- A reasoning source is no longer permanently disabled by a negative result at
+  startup. On a fresh install the session store does not exist yet, and latching
+  that first "no" left reasoning silently dead until someone restarted a bridge
+  that runs for weeks.
+- Reasoning rows are filtered for substantive content rather than merely
+  non-null. Assistant rows carry a stub for most steps of a turn, so taking the
+  newest row unconditionally reported nothing while a real thought sat one row
+  behind.
+
 ## [0.8.31] — 2026-09-17
 
 ### Added
