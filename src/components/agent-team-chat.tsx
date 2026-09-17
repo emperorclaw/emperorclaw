@@ -46,6 +46,10 @@ type TeamParticipant = {
     participantId?: string | null;
     typingUntil?: string | null;
     lastReadAt?: string | null;
+    // What the agent is actually doing right now — its real reasoning, the tool
+    // it is running, or elapsed time. Already served by /api/chat; team chat
+    // used to drop it and show a bare "is typing".
+    currentActivity?: string | null;
 };
 
 type ChatResponse = {
@@ -322,7 +326,15 @@ export function AgentTeamChat({
     const now = Date.now();
     const typingAgents = participants
         .filter(p => p.participantType === "agent" && p.typingUntil && new Date(p.typingUntil).getTime() > now)
-        .map(p => ({ id: p.participantId, name: getAgentName(p.participantId) }));
+        .map(p => ({
+            id: p.participantId,
+            name: getAgentName(p.participantId),
+            activity: p.currentActivity?.trim() || null,
+        }));
+
+    // Only show the detail when a single agent is working: concatenating two
+    // agents' reasoning would produce an unreadable wall in a one-line strip.
+    const soloTypingActivity = typingAgents.length === 1 ? typingAgents[0].activity : null;
 
     const agentReadTimes: Record<string, number> = {};
     const onlineAgents = agents.filter(a => a.status === "online");
@@ -522,16 +534,27 @@ export function AgentTeamChat({
 
             {typingAgents.length > 0 && (
                 <div className="flex items-center gap-2 border-t border-zinc-800/60 px-4 py-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                    <div className="flex gap-1">
+                    <div className="flex shrink-0 gap-1">
                         <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.3s]" />
                         <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.15s]" />
                         <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce" />
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                        {typingAgents.length === 1
-                            ? `${typingAgents[0].name} is typing`
-                            : `${typingAgents.slice(0, -1).map((a: { name: string }) => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name} are typing`}
-                    </span>
+                    {soloTypingActivity ? (
+                        // Real activity is a sentence, so it stays in its own
+                        // case — uppercasing a model's reasoning shouts it and
+                        // makes it markedly harder to read. Only the bare
+                        // "is typing" label keeps the uppercase treatment.
+                        <span className="min-w-0 truncate text-[11px] text-zinc-400" title={soloTypingActivity}>
+                            <span className="font-bold text-zinc-500">{typingAgents[0].name}:</span>{" "}
+                            {soloTypingActivity}
+                        </span>
+                    ) : (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                            {typingAgents.length === 1
+                                ? `${typingAgents[0].name} is typing`
+                                : `${typingAgents.slice(0, -1).map((a: { name: string }) => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name} are typing`}
+                        </span>
+                    )}
                 </div>
             )}
 

@@ -695,15 +695,31 @@ export function AgentDirectChat({
                         </div>
                         {isAgentTyping && (
                             <div className="flex justify-start mt-3 animate-in fade-in slide-in-from-left-2 duration-300">
-                                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-2">
-                                    <div className="flex gap-1">
+                                {/* max-w matches the message bubbles: the activity line now carries a
+                                    full sentence of reasoning, and without a bound this shrink-to-fit
+                                    bubble would stretch past the column instead of letting the text
+                                    truncate. */}
+                                <div className="flex min-w-0 max-w-[88%] items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 sm:max-w-[80%]">
+                                    <div className="flex shrink-0 gap-1">
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]" />
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]" />
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
                                     </div>
-                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                                        {agentActivity ? `${agentName}: ${agentActivity}` : `${agentName} is typing`}
-                                    </span>
+                                    {agentActivity ? (
+                                        // Real activity is a sentence — the model's own reasoning —
+                                        // so it keeps its own case. Uppercasing it shouts it and
+                                        // makes it markedly harder to read. The uppercase treatment
+                                        // was written for terse labels like "working (42s)" and now
+                                        // only applies to the bare "is typing" fallback.
+                                        <span className="min-w-0 truncate text-[11px] text-zinc-400" title={agentActivity}>
+                                            <span className="font-bold text-zinc-500">{agentName}:</span>{" "}
+                                            {agentActivity}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                                            {agentName} is typing
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         )}
