@@ -136,7 +136,10 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
   assertContains(agents, "Open detail", "agent cards should link to the agent detail page");
-  assertContains(agents, "DeleteAgentDialog", "agent cards should expose a real delete action with confirmation");
+  assert.match(agents, /<AgentDetailPanel\s/, "agent directory should render the selected agent’s detail panel");
+  const agentDetail = read("src/app/(app)/agents/agent-detail-panel.tsx");
+  assert.match(agentDetail, /<DeleteAgentDialog\s+agentId=\{agent\.id\}\s+agentName=\{agent\.name\}/,
+    "the rendered agent detail panel should expose a real delete action with confirmation");
   assertNotContains(storage, "window.confirm", "storage destructive actions should use app-native confirmation dialogs");
   assertContains(storage, "Delete folder?", "storage should confirm folder deletion in an app dialog");
   assertContains(storage, "Delete file?", "storage should confirm file deletion in an app dialog");
