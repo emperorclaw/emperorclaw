@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,16 @@ export function EasySetupDialog({
     const [results, setResults] = useState<AgentBatchResult[] | null>(null);
     const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
+    const [configurations, setConfigurations] = useState<{ id: string; name: string; llmProvider: string }[]>([]);
+    const [sourceAgentId, setSourceAgentId] = useState("");
+    useEffect(() => {
+        if (!open) return;
+        fetch("/api/agents/easy-setup").then(r => r.json()).then(data => {
+            setConfigurations(data.configurations || []);
+            setSourceAgentId(data.configurations?.[0]?.id || "");
+        }).catch(() => {});
+    }, [open]);
+
     const resetForm = () => {
         setStep("mode");
         setCount(1);
@@ -112,9 +122,15 @@ export function EasySetupDialog({
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    sourceAgentId: sourceAgentId || undefined,
                     llmProvider,
                     llmApiKey,
-                    agents: specs.map((s) => ({ role: s.role, name: s.name.trim() || s.role })),
+                    agents: specs.map((s) => {
+                        const template = s.templateId ? getAgentTemplate(s.templateId) : null;
+                        return { role: s.role, name: s.name.trim() || s.role, doctrineJson: template ? {
+                            "SOUL.md": template.soul, "AGENTS.md": template.agents, "BOOTSTRAP.md": template.bootstrap, "IDENTITY.md": template.identity,
+                        } : {} };
+                    }),
                 }),
             });
             const data = await res.json().catch(() => ({}));
@@ -209,6 +225,16 @@ export function EasySetupDialog({
                 {/* Step: count-and-roles */}
                 {step === "count-and-roles" && (
                     <div className="space-y-4 py-2">
+                        {configurations.length > 0 && (
+                            <label className="block space-y-2 text-sm text-zinc-300">
+                                Reuse Hermes configuration
+                                <select value={sourceAgentId} onChange={e => setSourceAgentId(e.target.value)} className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                                    {configurations.map(c => <option key={c.id} value={c.id}>{c.name} · {c.llmProvider}</option>)}
+                                    <option value="">Use a new API key</option>
+                                </select>
+                                <span className="block text-xs text-zinc-500">Each worker gets its own runtime and token, and inherits the source agent&apos;s access scope.</span>
+                            </label>
+                        )}
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">How many agents?</label>
                             <div className="flex items-center gap-2">
@@ -380,7 +406,7 @@ export function EasySetupDialog({
                                             "rounded-full px-2 py-0.5 text-[10px] font-medium",
                                             r.success ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
                                         )}>
-                                            {r.success ? "✓ online" : "✕ failed"}
+                                            {r.success ? "✓ started" : "✕ failed"}
                                         </span>
                                     </button>
                                     {expanded[i] && (
@@ -417,8 +443,8 @@ export function EasySetupDialog({
                         </Button>
                     )}
                     {step === "count-and-roles" && (
-                        <Button type="button" onClick={() => setStep("provider-key")} disabled={!canContinueRoles} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                            Continue
+                        <Button type="button" onClick={() => sourceAgentId ? handleCreate() : setStep("provider-key")} disabled={!canContinueRoles || submitting} className="bg-cyan-600 hover:bg-cyan-500 text-white">
+                            {sourceAgentId ? `Create ${specs.length} Hermes agent${specs.length === 1 ? "" : "s"}` : "Continue"}
                         </Button>
                     )}
                     {step === "provider-key" && (

@@ -6,7 +6,7 @@ import { registerProjectTools } from "./tools/projects";
 import { registerKnowledgeTools } from "./tools/knowledge";
 import { registerMessagingTools } from "./tools/messaging";
 
-export async function buildMcpServer(companyId: string): Promise<McpServer> {
+export async function buildMcpServer(companyId: string, callerAgentId?: string | null): Promise<McpServer> {
     const instructions = await buildMcpInstructions(companyId);
 
     const server = new McpServer(
@@ -14,7 +14,7 @@ export async function buildMcpServer(companyId: string): Promise<McpServer> {
         { instructions, capabilities: { tools: {} } },
     );
 
-    registerAgentTools(server, companyId);
+    registerAgentTools(server, companyId, callerAgentId);
     registerTaskTools(server, companyId);
     registerProjectTools(server, companyId);
     registerKnowledgeTools(server, companyId);

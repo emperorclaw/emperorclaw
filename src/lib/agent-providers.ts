@@ -179,7 +179,7 @@ You manage your own runtime. Emperor provides the durable state, task leasing, a
             "Start sending heartbeats to POST /api/mcp/agents/heartbeat",
             "Check Emperor dashboard — agent should appear as online",
         ],
-        supportsLocal: true,
+        supportsLocal: false,
         supportsLlmProvider: false,
     },
     {
@@ -237,7 +237,7 @@ Codex handles its own auth via \`codex login\`. EmperorClaw invokes it with work
         ],
         invokeCommand: "codex exec --workspace {workspace} \"{prompt}\"",
         resultCapture: "stdout",
-        supportsLocal: true,
+        supportsLocal: false,
         supportsLlmProvider: false,
     },
     {

@@ -21,7 +21,7 @@ type SetupOutput = { command: string; stdout: string; stderr: string; exitCode: 
  *
  * Full local agent setup:
  * - Hermes: profile, plugin, token, bridge .env, bridge process start ONLINE
- * - Other providers: runs installCommands + generates API token
+ * - Hermes is the only supported local runtime
  */
 export async function POST(
     _req: NextRequest,
@@ -47,7 +47,7 @@ export async function POST(
     }
 
     const provider = getProvider(agent.provider || "mcp");
-    if (!provider) return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+    if (provider?.id !== "hermes") return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
 
     // Project root: prefer EMPEROR_PROJECT_ROOT env var, fall back to cwd
     const projectRoot = process.env.EMPEROR_PROJECT_ROOT || process.cwd();
@@ -97,8 +97,6 @@ export async function POST(
                 await db.update(agents).set({
                     containerId: result.containerId,
                     containerName: result.containerName,
-                    status: "online",
-                    lastSeenAt: new Date(),
                 }).where(eq(agents.id, agent.id));
             }
             if (!result.success) return fail(outputs.concat(result.outputs), result.message, agent.id);
@@ -111,6 +109,7 @@ export async function POST(
         outputs.push({ command: createCmd, ...r1 });
         // Profile already exists is OK — continue
         const alreadyExists = r1.stderr.includes("already exists") || r1.stdout.includes("already exists");
+        if (r1.exitCode !== 0 && !alreadyExists) return fail(outputs, "Hermes profile creation failed", agent.id);
 
         // 2. Update plugin files and clear stale bytecode
         const pluginSrc = path.join(projectRoot, "integrations", "hermes", "emperor-claw");
@@ -200,84 +199,7 @@ export async function POST(
         return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Bridge running in background. The agent will reply to messages.`, token: rawToken, outputs });
     }
 
-    // ── Codex: run verification, then spawn bridge ──────────────────
-    if (provider.id === "codex") {
-        // Run verification commands first
-        const commands = provider.installCommands.map((cmd) =>
-            cmd.replace(/\{name\}/g, safeName).replace(/\{role\}/g, role).replace(/\{token\}/g, rawToken).replace(/\{projectRoot\}/g, projectRoot)
-        );
-        for (const command of commands) {
-            if (command.trim().startsWith("#")) { outputs.push({ command, stdout: "", stderr: "", exitCode: 0 }); continue; }
-            const result = await runCmd(command, 15_000);
-            outputs.push({ command, ...result });
-            if (result.exitCode !== 0) return fail(outputs, `Verification failed: ${command}`, agent.id);
-        }
-
-        // Spawn Codex bridge via dynamic require to avoid Turbopack static tracing.
-        // Turbopack tries to resolve any .js path passed to spawn() as a module;
-        // wrapping in new Function() makes the path opaque at build time.
-        try {
-            const bridgePid: number = new Function(
-                "projectRoot",
-                "apiUrl",
-                "apiToken",
-                "agentName",
-                "agentId",
-                "agentRole",
-                `const { spawn } = require("child_process");
-const path = require("path");
-const script = path.join(projectRoot, "integrations", "codex", "emperor-codex-bridge.js");
-const p = spawn("node", [script], {
-  env: {
-    ...process.env,
-    EMPEROR_CLAW_API_URL: apiUrl,
-    EMPEROR_CLAW_API_TOKEN: apiToken,
-    EMPEROR_CLAW_AGENT_NAME: agentName,
-    EMPEROR_CLAW_AGENT_ID: agentId,
-    EMPEROR_CLAW_AGENT_ROLE: agentRole,
-    EMPEROR_CLAW_POLL_SECONDS: "5",
-    EMPEROR_CLAW_CODEX_TIMEOUT: "120",
-  },
-  detached: true, stdio: "ignore", windowsHide: true,
-  cwd: projectRoot,
-});
-p.unref();
-return p.pid;`
-            )(projectRoot, emperorUrl, rawToken, safeName, agent.id, role);
-            outputs.push({ command: `Start Codex bridge PID ${bridgePid}`, stdout: "Bridge started", stderr: "", exitCode: 0 });
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "Unknown";
-            if (msg.includes("ENOENT")) {
-                return fail(outputs, `Codex bridge script not found in integrations/codex/`, agent.id);
-            }
-            return fail(outputs, `Codex bridge start failed: ${msg}`, agent.id);
-        }
-
-        await db.update(agents).set({ status: "online", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
-        return NextResponse.json({ success: true, message: `${agent.name} is LIVE! Codex verified, bridge running. Agent is ONLINE and ready to respond.`, token: rawToken, outputs });
-    }
-
-    // ── Generic: run installCommands ────────────────────────────────
-    if (provider.installCommands.length === 0) {
-        return NextResponse.json({ success: true, message: "No setup commands needed.", outputs: [] });
-    }
-
-    const commands = provider.installCommands.map((cmd) =>
-        cmd.replace(/\{name\}/g, safeName).replace(/\{role\}/g, role.replace(/"/g, '\\"')).replace(/\{token\}/g, rawToken).replace(/\{projectRoot\}/g, projectRoot)
-    );
-    for (const command of commands) {
-        if (command.trim().startsWith("#")) { outputs.push({ command, stdout: "", stderr: "", exitCode: 0 }); continue; }
-        try {
-            const result = await runCmd(command, 15_000);
-            outputs.push({ command, ...result });
-            if (result.exitCode !== 0) return fail(outputs, `Command failed: ${command}`, agent.id);
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : "Unknown";
-            return fail(outputs, `Command error: ${msg}`, agent.id);
-        }
-    }
-    await db.update(agents).set({ status: "offline", lastSeenAt: new Date() }).where(eq(agents.id, agent.id));
-    return NextResponse.json({ success: true, message: `All ${outputs.length} commands completed.`, token: rawToken, outputs });
+    return NextResponse.json({ error: "Only Hermes supports local deployment" }, { status: 400 });
 }
 
 function fail(outputs: SetupOutput[], message: string, agentId: string) {

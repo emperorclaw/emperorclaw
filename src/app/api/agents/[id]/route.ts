@@ -37,6 +37,15 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
 
+    if (body.provider !== undefined || body.deploymentMode !== undefined) {
+        const [current] = await db.select({ provider: agents.provider, deploymentMode: agents.deploymentMode })
+            .from(agents).where(and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
+        if (!current) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        if ((body.deploymentMode ?? current.deploymentMode) === "local" && (body.provider ?? current.provider) !== "hermes") {
+            return NextResponse.json({ error: "Only Hermes supports local deployment" }, { status: 400 });
+        }
+    }
+
     // Support updating doctrine_json, budget, provider, deployment mode, and other fields
     const updates: Record<string, unknown> = {};
     if (body.doctrineJson && typeof body.doctrineJson === "object") {

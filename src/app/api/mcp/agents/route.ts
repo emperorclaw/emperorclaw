@@ -1,3 +1,4 @@
+import { hireHermesAgent } from "@/lib/hire-hermes-agent";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
@@ -5,6 +6,9 @@ import { parseJsonBody, optionalString } from "@/lib/validation";
 import { listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
 
 const registerAgentSchema = z.object({
+    deploymentMode: z.enum(["remote", "local"]).optional(),
+    sourceAgentId: z.string().optional(),
+    doctrineJson: z.record(z.string(), z.string()).optional(),
     name: z.string().min(1, "name is required"),
     role: optionalString,
     avatarUrl: optionalString,
@@ -56,6 +60,13 @@ export async function POST(req: NextRequest) {
         const parsed = await parseJsonBody(req, registerAgentSchema);
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
+        }
+        if (parsed.data.deploymentMode === "local") {
+            const sourceAgentId = companyToken.agentId || parsed.data.sourceAgentId;
+            if (!sourceAgentId) return NextResponse.json({ error: "sourceAgentId is required" }, { status: 400 });
+            const result = await hireHermesAgent({ companyId, name: parsed.data.name, role: parsed.data.role ?? undefined, sourceAgentId, doctrineJson: parsed.data.doctrineJson });
+            await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, result);
+            return NextResponse.json(result, { status: 201 });
         }
         const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, llmProvider, llmModel } = parsed.data;
         const agent = await createAgentForCompany({

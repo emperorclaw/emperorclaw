@@ -512,3 +512,11 @@ Walk me through step by step. Ask me for any information you need along the way.
 ```
 
 **Tip:** Replace `[DESCRIBE YOUR AGENT'S ROLE HERE]` with the actual role — e.g. "Lead Generation Specialist", "Technical Implementation Agent", "Customer Support Agent". The more specific you are, the better the configuration will be.
+
+## Create additional local workers
+
+Hermes is the only supported local runtime. In **Agents → Hire an Agent → Local**, select a role and name. If an existing Hermes worker has a stored LLM API key, choose its configuration and click **Create Hermes agent**. The new worker reuses that provider, model, and encrypted key, inherits its access scope, and gets a separate container, persistent volume, and agent-bound token. For the first worker, supply a provider and API key.
+
+Hermes workers can hire other Hermes workers with the `emperor_create_agent` tool, passing `name`, `role`, and optionally `doctrineJson` (a mapping of doctrine filenames to text). The server uses the authenticated worker's configuration. No API key needs to appear in prompts or tool results. Check the returned `success` and `agentId`; failed provisioning leaves an offline profile that can be retried through local setup. Container startup is reported separately from online status, which is confirmed by runtime heartbeats.
+
+MCP clients can call `create_agent` with `deploymentMode: "local"`. Company tokens also supply `sourceAgentId`; agent-bound tokens use their own agent as the source. REST clients use the same fields with `POST /api/mcp/agents`. Local hiring requires the Docker installation with its socket mounted. Remote integrations remain available.

@@ -331,11 +331,11 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 className="h-6 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-200 outline-none focus:border-cyan-400"
                                 autoFocus
                             >
-                                <option value="mcp">🔌 Generic MCP</option>
+                                <option disabled={agent.deploymentMode === "local"} value="mcp">🔌 Generic MCP</option>
                                 <option value="hermes">👑 Hermes</option>
-                                <option value="openclaw">🦀 OpenClaw</option>
-                                <option value="codex">🧠 Codex</option>
-                                <option value="claude">🧠 Claude</option>
+                                <option disabled={agent.deploymentMode === "local"} value="openclaw">🦀 OpenClaw</option>
+                                <option disabled={agent.deploymentMode === "local"} value="codex">🧠 Codex</option>
+                                <option disabled={agent.deploymentMode === "local"} value="claude">🧠 Claude</option>
                             </select>
                         ) : (
                             <>
@@ -362,7 +362,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                 autoFocus
                             >
                                 <option value="remote">🌐 Remote</option>
-                                <option value="local">🖥️ Local (This server)</option>
+                                <option disabled={agent.provider !== "hermes"} value="local">🖥️ Local (This server)</option>
                             </select>
                         ) : (
                             <>

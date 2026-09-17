@@ -80,6 +80,7 @@ export function CreateAgentDialog({
                 ? providers.find((p) => p.id === template.runtime) || providers[0]
                 : providers[0];
             setSelectedProvider(bestProvider);
+            if (!bestProvider.supportsLocal) setDeploymentMode("remote");
             setStep("provider");
         } else {
             setSelectedRole(null);
@@ -91,6 +92,7 @@ export function CreateAgentDialog({
         const provider = getProvider(providerId);
         if (provider) {
             setSelectedProvider(provider);
+            if (!provider.supportsLocal) setDeploymentMode("remote");
             setStep("name");
         }
     };
@@ -143,6 +145,7 @@ export function CreateAgentDialog({
         setSelectedRole(null);
         setSelectedProvider(providers[0]);
         setName("");
+        setDeploymentMode("remote");
         setMonthlyBudget("");
         setLlmProvider("");
         setLlmModel("");

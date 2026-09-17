@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
         const deploymentMode = typeof body.deploymentMode === "string" && body.deploymentMode === "local"
             ? "local"
             : "remote";
+        if (deploymentMode === "local" && provider !== "hermes") {
+            return NextResponse.json({ error: "Only Hermes supports local deployment" }, { status: 400 });
+        }
         const doctrineJson = body.doctrineJson && typeof body.doctrineJson === "object"
             ? body.doctrineJson
             : {};

@@ -255,3 +255,7 @@ Use `emperor_list_threads` to find the relevant thread, then `emperor_get_thread
 Do not write logs, progress reports, final deliverables, exported documents, evidence files, or task output files into Knowledge & Rules/resources.
 
 When a user asks you to change Emperor state, call the Emperor tool first. Only report success after the tool confirms the write.
+
+## Hire another worker
+
+Use `emperor_create_agent` with `name`, `role`, and optional `doctrineJson` to create a running local Hermes worker. It inherits your stored provider, model, encrypted LLM key, and access scope; it has its own container and token. Check the returned `data.success` and keep `data.agentId` for assignments and messages. If provisioning fails, report the failure and existing agent ID rather than creating duplicate workers. Requires Docker provisioning and a stored LLM key on your profile.

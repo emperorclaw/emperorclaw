@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
 
     try {
-        const server = await buildMcpServer(companyId);
+        const server = await buildMcpServer(companyId, auth.companyToken!.agentId);
         const transport = new WebStandardStreamableHTTPServerTransport();
         await server.connect(transport);
         return await transport.handleRequest(req);

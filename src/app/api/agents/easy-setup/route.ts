@@ -1,6 +1,8 @@
+import { z } from "zod";
+import { hireHermesAgent } from "@/lib/hire-hermes-agent";
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getCompanyId } from "@/lib/auth";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
@@ -22,7 +24,9 @@ const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "gro
 export async function GET() {
     const companyId = await getCompanyId();
     const available = !!companyId && isDocker() && fs.existsSync(DOCKER_SOCKET);
-    return NextResponse.json({ available });
+    const configurations = available ? await db.select({ id: agents.id, name: agents.name, llmProvider: agents.llmProvider, llmModel: agents.llmModel })
+        .from(agents).where(and(eq(agents.companyId, companyId!), eq(agents.provider, "hermes"), isNull(agents.deletedAt), isNotNull(agents.llmApiKeyEncrypted), isNotNull(agents.llmProvider))) : [];
+    return NextResponse.json({ available, configurations });
 }
 
 type AgentSpec = {
@@ -66,19 +70,26 @@ export async function POST(req: NextRequest) {
         ? body.llmProvider
         : null;
     const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";
-    const specs: AgentSpec[] = Array.isArray(body.agents)
-        ? body.agents
-            .filter((a: unknown): a is AgentSpec =>
-                !!a && typeof a === "object" && typeof (a as AgentSpec).role === "string" && typeof (a as AgentSpec).name === "string"
-            )
-        : [];
+    const parsedSpecs = z.array(z.object({
+        name: z.string().trim().min(1).max(200),
+        role: z.string().trim().max(200),
+        doctrineJson: z.record(z.string(), z.string()).optional(),
+    })).min(1).max(MAX_EASY_SETUP_AGENTS).safeParse(body.agents);
+    if (!parsedSpecs.success) return NextResponse.json({ error: "Provide 1–10 agents with non-empty names, roles, and optional text doctrine files" }, { status: 400 });
+    const specs: AgentSpec[] = parsedSpecs.data;
 
-    if (specs.length === 0) {
-        return NextResponse.json({ error: "agents must be a non-empty array of { role, name }" }, { status: 400 });
+    if (typeof body.sourceAgentId === "string" && body.sourceAgentId) {
+        const results: AgentBatchResult[] = [];
+        for (const spec of specs) {
+            try {
+                results.push(await hireHermesAgent({ companyId, name: spec.name, role: spec.role, sourceAgentId: body.sourceAgentId, doctrineJson: spec.doctrineJson }));
+            } catch (err) {
+                results.push({ name: spec.name, agentId: null, success: false, message: err instanceof Error ? err.message : "Hiring failed", outputs: [] });
+            }
+        }
+        return NextResponse.json({ results });
     }
-    if (specs.length > MAX_EASY_SETUP_AGENTS) {
-        return NextResponse.json({ error: `Cannot create more than ${MAX_EASY_SETUP_AGENTS} agents in one batch` }, { status: 400 });
-    }
+    if (!llmProvider || !llmApiKey) return NextResponse.json({ error: "Choose an existing Hermes configuration or provide an LLM provider and API key" }, { status: 400 });
 
     let llmApiKeyEncrypted: string | null = null;
     let llmApiKeyVersion: string | null = null;
@@ -139,8 +150,6 @@ export async function POST(req: NextRequest) {
                 await db.update(agents).set({
                     containerId: provisionResult.containerId,
                     containerName: provisionResult.containerName,
-                    status: "online",
-                    lastSeenAt: new Date(),
                 }).where(eq(agents.id, agent.id));
             }
 

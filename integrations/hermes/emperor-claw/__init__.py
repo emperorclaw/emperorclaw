@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import mimetypes
@@ -38,7 +38,7 @@ def _json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[str, Any] | None = None, timeout: int = 30) -> Dict[str, Any]:
     token = _token()
     if not token:
         return {"error": "EMPEROR_CLAW_API_TOKEN is not set"}
@@ -67,7 +67,7 @@ def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: 
 
     req = urllib.request.Request(url, data=payload, method=method.upper(), headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as res:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
             text = res.read().decode("utf-8", errors="replace")
             try:
                 data = json.loads(text) if text else {}
@@ -305,6 +305,16 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
     }
 
 
+def emperor_create_agent(args: Dict[str, Any], **kwargs: Any) -> str:
+    return _json(_request("POST", "/agents", {
+        "name": args.get("name", ""),
+        "role": args.get("role", "operator"),
+        "deploymentMode": "local",
+        "sourceAgentId": _agent_ref(),
+        "doctrineJson": args.get("doctrineJson", {}),
+    }, timeout=600))
+
+
 def _schema(description: str, properties: Dict[str, Any], required: list[str] | None = None) -> Dict[str, Any]:
     return {
         "description": description,
@@ -530,5 +540,22 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Send Emperor message",
+    )
+    ctx.register_tool(
+        "emperor_create_agent",
+        TOOLSET,
+        _schema(
+            "Hire a running local Hermes worker with its own container and token. Reuses your stored LLM configuration and access scope. Requires Docker provisioning.",
+            {
+                "name": {"type": "string"},
+                "role": {"type": "string"},
+                "doctrineJson": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            ["name"],
+        ),
+        emperor_create_agent,
+        check_fn=_available,
+        requires_env=requires,
+        description="Create local Hermes agent",
     )
     ctx.register_hook("pre_llm_call", emperor_context_hook)

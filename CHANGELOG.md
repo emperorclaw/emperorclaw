@@ -9,6 +9,31 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.31] — 2026-09-17
+
+### Added
+
+- Create local Hermes workers with one click after selecting a role and an
+  existing worker's stored LLM configuration. Each worker gets its own container,
+  persistent volume, and agent-bound token, and inherits the source access scope.
+- Hermes workers can hire additional workers using `emperor_create_agent`.
+  MCP and REST creation also support local provisioning; agent-bound tokens use
+  their own worker as the configuration source without exposing credentials.
+- Preserve role template doctrine during easy setup and cover native hiring and
+  Hermes-only local provider selection with regression tests.
+
+### Changed
+
+- Hermes is the only supported local runtime. Remove Codex and generic local
+  setup paths and reject other local providers in creation and update APIs.
+- Docker startup no longer marks a worker online before its runtime heartbeat.
+
+### Fixed
+
+- Stop bare-metal setup when Hermes profile creation fails.
+- Return an existing worker ID after provisioning failures so callers can retry
+  setup without creating duplicate profiles.
+
 ## [0.8.30] — 2026-09-16
 
 ### Security
