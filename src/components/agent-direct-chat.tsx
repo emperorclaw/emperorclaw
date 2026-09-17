@@ -7,6 +7,7 @@ import { IconPaperclip, IconRobot, IconMicrophone, IconSend, IconSquare, IconTra
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
+import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -33,6 +34,13 @@ function getMessageAttachments(message: DirectMessage): AttachmentRef[] {
     const raw = (message.metadataJson as Record<string, unknown>).attachments;
     if (!Array.isArray(raw)) return [];
     return raw.filter(isAttachmentRef);
+}
+
+// A flag, not the transcript: the reasoning itself is never part of the message
+// list payload. It says only whether the disclosure is worth offering.
+function hasStoredReasoning(message: DirectMessage): boolean {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return false;
+    return (message.metadataJson as Record<string, unknown>).hasReasoning === true;
 }
 
 function getMessageSenderName(message: DirectMessage): string | null {
@@ -656,6 +664,9 @@ export function AgentDirectChat({
                                                             )
                                                         ))}
                                                     </div>
+                                                )}
+                                                {!isHuman && hasStoredReasoning(message) && (
+                                                    <MessageReasoningDisclosure messageId={message.id} />
                                                 )}
                                                 {/* Timestamp — bottom-right of bubble, on every message */}
                                                 <div className={cn("text-[10px] mt-1.5 text-right opacity-50", isHuman ? "text-emerald-950" : "text-zinc-400")}>

@@ -154,9 +154,12 @@ contain file paths, command output or credentials that appeared in context.
 Treat the activity line as sensitive to anyone who can see the thread.
 
 It is condensed to a single line (~160 chars), truncated again to 200 chars
-server-side, and cleared as soon as typing stops. This feature persists no
-reasoning anywhere — there is no transcript, no column and no history. Set
+server-side, and cleared as soon as typing stops. The activity line persists
+nothing: it is a status field that is overwritten and then blanked. Set
 `EMPEROR_CLAW_REASONING_SOURCE=none` to turn it off entirely.
+
+Durable transcripts are a separate, opt-in feature — see
+[Persisted Reasoning History](#persisted-reasoning-history) below.
 
 ### Adding your own runtime
 
@@ -169,6 +172,10 @@ class ReasoningSource:
 
     def latest_reasoning(self, session_id: str, since_ts: float) -> str | None:
         """Short, already-condensed reasoning line, or None. Must never raise."""
+
+    def full_reasoning(self, session_id: str, since_ts: float) -> str | None:
+        """The whole turn's raw reasoning, or None. Only called when history
+        is enabled, at most once per turn, after the turn ends."""
 ```
 
 Implement one class for your runtime, return `condense_reasoning(raw_text)`, and
@@ -176,3 +183,74 @@ register it in `_build_reasoning_source()` under a new
 `EMPEROR_CLAW_REASONING_SOURCE` value. It is called about every 3 seconds during
 a turn, so it must be cheap and non-blocking, and it must scope reads to
 `session_id` so one agent never surfaces another's reasoning.
+
+`full_reasoning` is optional: leave it unimplemented and the runtime simply
+supports the live activity line without persisted history.
+
+## Persisted Reasoning History
+
+Reasoning history stores the **full raw reasoning of a turn** against the agent
+message that carried its reply, so it can be read back later from a collapsed
+"Show reasoning" disclosure under that message in team chat and in direct chat.
+
+This is a different thing from the live activity line above, and the two are
+independent: the activity line is one ephemeral sentence that is cleared when
+typing stops, while history is a durable record that lives as long as the
+message does.
+
+### `EMPEROR_CLAW_REASONING_HISTORY`
+
+| Value | Behavior |
+|-------|----------|
+| `off` *(default)* | Never send reasoning history. The bridge sends nothing at all — it does not even read the transcript off disk. |
+| `on` | After a turn completes, post that turn's full reasoning once, attached to the reply message. |
+
+Accepted as on: `on`, `true`, `1`, `yes`. Anything else is off.
+
+### Why it is off by default
+
+Reasoning is raw model output. It quotes the user verbatim and routinely carries
+file paths, command output and credentials that passed through the model's
+context. Keeping that in an ephemeral status line is one thing; persisting it
+durably in a **multi-tenant control plane**, where it is readable by everyone
+who can see the thread and lives as long as the message, is a privacy
+escalation rather than a convenience.
+
+That decision belongs to the operator of the runtime — the person whose machine,
+files and secrets are in that context — so it is opt-in per runtime and never
+enabled for you. With it off there is no transcript to redact, export or delete
+later, because none was ever written.
+
+### Caps
+
+| Cap | Where | Value |
+|-----|-------|-------|
+| Per-turn transcript length | bridge, before sending | 16,000 chars (`_REASONING_HISTORY_MAX_CHARS`) |
+| Per-turn transcript length | server, on write | 16,000 chars (`REASONING_HISTORY_MAX_CHARS`) |
+| Reasoning steps read per turn | bridge SQL `LIMIT` | 500 rows |
+
+The bridge cap keeps a runaway turn — a tool loop that thinks for thousands of
+steps — from pushing a multi-megabyte body over the API on every reply. The
+server cap is not a duplicate: a client can send any length it likes, so the
+only cap that actually protects the table is the one applied on write. When the
+cap trims a transcript the text ends with a visible `[reasoning truncated]`
+marker rather than stopping silently mid-thought.
+
+### How it is written and read
+
+- **One write per turn, at the end.** History is not streamed. The bridge reads
+  the transcript once after the turn finishes, then posts it once to
+  `POST /api/mcp/chat/reasoning` with the id of the message it just created.
+- **Session-scoped.** The transcript is read through the same session-scoped,
+  read-only session-store query as the live line, so agents sharing one
+  `HERMES_HOME` can never persist each other's reasoning.
+- **Never fatal.** A failed history write is logged and dropped. The reply has
+  already been sent, and a transcript is not worth losing a reply over.
+- **Stored in its own table.** `thread_message_reasoning`, one row per message,
+  cascading on both the message and the company. It is deliberately *not* a
+  column on `thread_messages`: the chat message list is a polling loop, so a
+  reasoning column there would ship every visible message's raw thinking to
+  every open browser on every poll.
+- **Fetched on demand only.** The UI disclosure is collapsed by default and
+  calls `GET /api/chat/reasoning?messageId=...` (company-scoped, authenticated)
+  the first time a reader expands it.

@@ -7,6 +7,7 @@ import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
+import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { cn } from "@/lib/utils";
 
 const CHAT_PAGE_SIZE = 25;
@@ -39,6 +40,13 @@ function getMessageSenderName(message: TeamMessage): string | null {
     if (!message.metadataJson || typeof message.metadataJson !== "object") return null;
     const name = (message.metadataJson as Record<string, unknown>).senderName;
     return typeof name === "string" && name.trim() ? name : null;
+}
+
+// A flag, not the transcript: the reasoning itself is never part of the message
+// list payload. It says only whether the disclosure is worth offering.
+function hasStoredReasoning(message: TeamMessage): boolean {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return false;
+    return (message.metadataJson as Record<string, unknown>).hasReasoning === true;
 }
 
 type TeamParticipant = {
@@ -485,6 +493,9 @@ export function AgentTeamChat({
                                                             />
                                                         ))}
                                                     </div>
+                                                )}
+                                                {!isHuman && hasStoredReasoning(msg) && (
+                                                    <MessageReasoningDisclosure messageId={msg.id} />
                                                 )}
                                                 {/* Timestamp bottom-right */}
                                                 <div className={cn(

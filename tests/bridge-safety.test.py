@@ -679,5 +679,252 @@ class TestLatestReasoningActivity(unittest.TestCase):
         self.assertIsNone(bridge.latest_reasoning_activity("s1", 0.0))
 
 
+class TestReasoningHistory(unittest.TestCase):
+    """Durable reasoning history: opt-in, capped, session-scoped, never fatal."""
+
+    def _make_db(self, rows, columns=("reasoning_content", "reasoning")):
+        import sqlite3
+        directory = tempfile.mkdtemp()
+        db_path = Path(directory) / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        base = ["id INTEGER PRIMARY KEY", "session_id TEXT", "role TEXT", "timestamp REAL"]
+        extra = ["%s TEXT" % name for name in columns]
+        conn.execute("CREATE TABLE messages (%s)" % ", ".join(base + extra))
+        names = ["session_id", "role", "timestamp"] + list(columns)
+        for row in rows:
+            conn.execute(
+                "INSERT INTO messages (%s) VALUES (%s)" % (", ".join(names), ", ".join("?" * len(names))),
+                [row.get(name) for name in names],
+            )
+        conn.commit()
+        conn.close()
+        return db_path
+
+    def _with_source(self, source):
+        original = bridge._reasoning_source
+        bridge._reasoning_source = source
+        self.addCleanup(lambda: setattr(bridge, "_reasoning_source", original))
+
+    def _with_history(self, enabled):
+        original = bridge.REASONING_HISTORY_ENABLED
+        bridge.REASONING_HISTORY_ENABLED = enabled
+        self.addCleanup(lambda: setattr(bridge, "REASONING_HISTORY_ENABLED", original))
+
+    # ── Opt-in ────────────────────────────────────────────────────────────
+
+    def test_disabled_sends_nothing_and_never_reads(self):
+        """Off by default: no transcript, and the store is not even touched."""
+        reads = []
+
+        class Loud(bridge.ReasoningSource):
+            def full_reasoning(self, session_id, since_ts):
+                reads.append(session_id)
+                return "Should never be read."
+
+        self._with_history(False)
+        self._with_source(Loud())
+        self.assertIsNone(bridge.turn_reasoning_history("s1", 0.0))
+        self.assertEqual(reads, [])
+
+    def test_default_is_off(self):
+        """The module default must be off, whatever this process's env says."""
+        self.assertFalse(
+            bridge.REASONING_HISTORY_ENABLED
+            or os.environ.get("EMPEROR_CLAW_REASONING_HISTORY", "off").lower() in {"on", "true", "1", "yes"}
+        )
+
+    def test_enabled_returns_full_text_uncondensed(self):
+        class Stub(bridge.ReasoningSource):
+            def full_reasoning(self, session_id, since_ts):
+                return "First thought about it.\n\nSecond thought about it."
+
+        self._with_history(True)
+        self._with_source(Stub())
+        out = bridge.turn_reasoning_history("s1", 0.0)
+        self.assertIn("First thought", out)
+        self.assertIn("Second thought", out)
+
+    def test_null_source_yields_nothing(self):
+        self._with_history(True)
+        self._with_source(bridge.NullReasoningSource())
+        self.assertIsNone(bridge.turn_reasoning_history("s1", 0.0))
+
+    # ── Cap ───────────────────────────────────────────────────────────────
+
+    def test_cap_truncates_a_runaway_turn(self):
+        class Huge(bridge.ReasoningSource):
+            def full_reasoning(self, session_id, since_ts):
+                return "thinking " * 100_000
+
+        self._with_history(True)
+        self._with_source(Huge())
+        out = bridge.turn_reasoning_history("s1", 0.0)
+        self.assertLessEqual(len(out), bridge._REASONING_HISTORY_MAX_CHARS)
+        self.assertTrue(out.endswith("[reasoning truncated]"), out[-40:])
+
+    def test_text_under_the_cap_is_untouched(self):
+        text = "A complete thought that fits comfortably."
+
+        class Small(bridge.ReasoningSource):
+            def full_reasoning(self, session_id, since_ts):
+                return text
+
+        self._with_history(True)
+        self._with_source(Small())
+        self.assertEqual(bridge.turn_reasoning_history("s1", 0.0), text)
+
+    # ── Session scoping ───────────────────────────────────────────────────
+
+    def test_full_reasoning_never_leaks_another_session(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+             "reasoning_content": "My own reasoning for this turn.", "reasoning": None},
+            {"session_id": "other-agent-session", "role": "assistant", "timestamp": 110.0,
+             "reasoning_content": "Another agent's private reasoning.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        out = source.full_reasoning("s1", 0.0)
+        self.assertIn("My own reasoning", out)
+        self.assertNotIn("Another agent", out)
+
+    def test_full_reasoning_without_session_id_returns_none(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+             "reasoning_content": "Reasoning that must stay put.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.full_reasoning("", 0.0))
+
+    def test_full_reasoning_is_chronological_and_skips_stubs(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 300.0,
+             "reasoning_content": "Third, I will run the tests.", "reasoning": None},
+            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
+             "reasoning_content": "First, I will read the config.", "reasoning": None},
+            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
+             "reasoning_content": "x", "reasoning": "Second, I will edit the handler."},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        out = source.full_reasoning("s1", 0.0)
+        self.assertEqual(
+            out,
+            "First, I will read the config.\n\n"
+            "Second, I will edit the handler.\n\n"
+            "Third, I will run the tests.",
+        )
+
+    def test_full_reasoning_ignores_previous_turns_and_other_roles(self):
+        db_path = self._make_db([
+            {"session_id": "s1", "role": "assistant", "timestamp": 10.0,
+             "reasoning_content": "Reasoning from a previous turn.", "reasoning": None},
+            {"session_id": "s1", "role": "user", "timestamp": 300.0,
+             "reasoning_content": "Not assistant reasoning at all.", "reasoning": None},
+        ])
+        source = bridge.SessionStoreReasoningSource(db_path)
+        self.assertIsNone(source.full_reasoning("s1", 100.0))
+
+    def test_full_reasoning_degrades_on_a_corrupt_store(self):
+        path = Path(tempfile.mkdtemp()) / "state.db"
+        path.write_text("this is not a sqlite database", encoding="utf-8")
+        source = bridge.SessionStoreReasoningSource(path)
+        self.assertIsNone(source.full_reasoning("s1", 0.0))
+
+    def test_raising_source_is_swallowed(self):
+        class Boom(bridge.ReasoningSource):
+            def full_reasoning(self, session_id, since_ts):
+                raise RuntimeError("boom")
+
+        self._with_history(True)
+        self._with_source(Boom())
+        self.assertIsNone(bridge.turn_reasoning_history("s1", 0.0))
+
+    # ── A history write must never cost a reply ───────────────────────────
+
+    def test_failing_history_post_does_not_fail_the_turn(self):
+        """The reply is the product; the transcript is a bonus.
+
+        A throwing history write used to be the classic way to lose a reply:
+        it escapes into the turn's except block, posts an error notice for a
+        turn that actually succeeded, and leaves the message to be redispatched.
+        """
+        from unittest.mock import patch
+        from contextlib import ExitStack
+        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
+        message = {"id": "msg-1", "text": "hello", "senderType": "human",
+                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
+        with ExitStack() as stack:
+            for name in ["ensure_runtime", "send_heartbeat", "save_state",
+                         "update_chat_status", "report_token_usage"]:
+                stack.enter_context(patch.object(bridge, name))
+            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
+            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
+            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
+            stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
+            stack.enter_context(patch.object(bridge, "run_hermes", return_value="the real answer"))
+            stack.enter_context(patch.object(bridge, "_last_turn_reasoning", "raw model thinking"))
+            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
+            send = stack.enter_context(patch.object(bridge, "send_reply", return_value="stored-msg-1"))
+            post = stack.enter_context(
+                patch.object(bridge, "post_reasoning_history", side_effect=RuntimeError("history down"))
+            )
+            with self.assertRaises(KeyboardInterrupt):
+                bridge.main()
+
+        post.assert_called_once_with("stored-msg-1", "raw model thinking")
+        sent = [call.args[1] for call in send.call_args_list]
+        self.assertEqual(sent, ["the real answer"])
+        self.assertNotIn("msg-1", [text for text in sent if "hit an error" in text])
+        # The message is still consumed exactly once — no silent redispatch loop.
+        self.assertIn("msg-1", state["seen"])
+
+    def test_no_history_post_without_a_stored_message_id(self):
+        """A deduplicated send returns no id; there is nothing to annotate."""
+        from unittest.mock import patch
+        from contextlib import ExitStack
+        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
+        message = {"id": "msg-2", "text": "hello", "senderType": "human",
+                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
+        with ExitStack() as stack:
+            for name in ["ensure_runtime", "send_heartbeat", "save_state",
+                         "update_chat_status", "report_token_usage"]:
+                stack.enter_context(patch.object(bridge, name))
+            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
+            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
+            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
+            stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
+            stack.enter_context(patch.object(bridge, "run_hermes", return_value="answer"))
+            stack.enter_context(patch.object(bridge, "_last_turn_reasoning", "raw model thinking"))
+            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
+            stack.enter_context(patch.object(bridge, "send_reply", return_value=None))
+            post = stack.enter_context(patch.object(bridge, "post_reasoning_history"))
+            with self.assertRaises(KeyboardInterrupt):
+                bridge.main()
+            post.assert_not_called()
+
+
+class TestSendReply(unittest.TestCase):
+    """send_reply must hand back the stored message id for history to attach to."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        self.api_patch = patch.object(bridge, "api")
+        self.api = self.api_patch.start()
+        self.addCleanup(self.api_patch.stop)
+
+    def test_returns_message_id(self):
+        self.api.return_value = {"ok": True, "message_id": "stored-1"}
+        self.assertEqual(bridge.send_reply({"threadId": "t1"}, "hi"), "stored-1")
+
+    def test_deduplicated_send_returns_none(self):
+        self.api.return_value = {"ok": True, "message_id": None, "deduplicated": True}
+        self.assertIsNone(bridge.send_reply({"threadId": "t1"}, "hi"))
+
+    def test_empty_text_sends_nothing(self):
+        self.assertIsNone(bridge.send_reply({"threadId": "t1"}, ""))
+        self.api.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

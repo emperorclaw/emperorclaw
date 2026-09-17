@@ -702,6 +702,28 @@ def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | Non
 #                  that does not expose reasoning; fully supported, not a downgrade)
 REASONING_SOURCE_NAME = os.environ.get("EMPEROR_CLAW_REASONING_SOURCE", "auto").strip().lower() or "auto"
 
+# Durable reasoning history: OFF by default, and it must stay that way.
+#
+# The live activity line above is ephemeral — condensed to one sentence and
+# cleared the moment typing stops. History is the opposite: the full raw
+# reasoning of a turn, stored in the control plane for as long as the message
+# lives. Raw reasoning quotes the user verbatim and routinely carries file
+# paths, command output and secrets that passed through context, so persisting
+# it durably in a MULTI-TENANT control plane is a privacy escalation, not a
+# convenience. That is a decision the runtime operator has to make deliberately
+# for their own machine and their own data, so it is opt-in per runtime.
+# With this off the bridge sends no history at all — there is nothing to
+# truncate, redact or delete later. Live activity is unaffected either way.
+#   off (default)  never send reasoning history
+#   on             post the turn's full reasoning once, when the turn ends
+REASONING_HISTORY_ENABLED = os.environ.get("EMPEROR_CLAW_REASONING_HISTORY", "off").strip().lower() in {"on", "true", "1", "yes"}
+
+# Ceiling on what one turn may send. The server re-applies its own cap (it must
+# never trust a client's length), but capping here is what keeps a runaway turn
+# — a tool loop that thinks for thousands of steps — from writing an unbounded
+# row and from pushing a multi-megabyte body over the API on every reply.
+_REASONING_HISTORY_MAX_CHARS = 16_000
+
 # The status line is hard-truncated to 200 chars server-side. Budget well under
 # that so the server's slice never visibly cuts a word in half after our own
 # prefix is added.
@@ -722,6 +744,16 @@ class ReasoningSource:
     name = "none"
 
     def latest_reasoning(self, session_id: str, since_ts: float) -> str | None:
+        return None
+
+    def full_reasoning(self, session_id: str, since_ts: float) -> str | None:
+        """Every reasoning step of the turn, joined in order, raw (not condensed).
+
+        Called AT MOST ONCE per turn, after the turn ends, and only when
+        reasoning history is enabled. Same totality contract as
+        `latest_reasoning`: return None on anything unexpected, never raise.
+        A runtime that cannot produce a transcript simply leaves this alone.
+        """
         return None
 
 
@@ -885,6 +917,71 @@ class SessionStoreReasoningSource(ReasoningSource):
                 return condense_reasoning(value)
         return None
 
+    def full_reasoning(self, session_id: str, since_ts: float) -> str | None:
+        """The turn's reasoning steps in chronological order, raw.
+
+        Deliberately built on the SAME read as `latest_reasoning`: same
+        read-only connection, same PRAGMA-probed columns, same substantive
+        floor, and — the load-bearing part — the same `session_id = ?` filter.
+        The store holds every session of every agent sharing this HERMES_HOME,
+        so a query without that filter would persist ANOTHER agent's private
+        reasoning into this thread's durable history, where it would sit for as
+        long as the message lives. An empty session id therefore returns None.
+        """
+        if self._unusable or not session_id:
+            return None
+        import sqlite3
+
+        try:
+            conn = self._connect()
+        except sqlite3.OperationalError:
+            return None
+        except Exception:
+            self._unusable = True
+            return None
+        try:
+            columns = self._resolve_columns(conn)
+            if not columns:
+                return None
+            selected = ", ".join(columns)
+            substantive = " OR ".join(
+                f"length(trim(coalesce({col}, ''))) >= ?" for col in columns
+            )
+            # Oldest first: a transcript reads forward. LIMIT is a second belt
+            # beside the character cap — a pathological turn can write tens of
+            # thousands of rows, and we should not materialize them all just to
+            # throw most away.
+            rows = conn.execute(
+                f"SELECT {selected} FROM messages "
+                "WHERE session_id = ? AND role = 'assistant' AND timestamp > ? "
+                f"AND ({substantive}) "
+                "ORDER BY timestamp ASC, id ASC LIMIT 500",
+                (session_id, since_ts, *([_REASONING_MIN_CHARS] * len(columns))),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+        except Exception:
+            self._unusable = True
+            return None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        steps: List[str] = []
+        for row in rows:
+            # Same reason as in latest_reasoning: the row may have qualified on
+            # the second column, so take the first SUBSTANTIVE value rather than
+            # the first non-empty one, which is often a one-character stub.
+            for value in row:
+                if isinstance(value, str) and len(value.strip()) >= _REASONING_MIN_CHARS:
+                    steps.append(value.strip())
+                    break
+        if not steps:
+            return None
+        return "\n\n".join(steps)
+
 
 _reasoning_source: ReasoningSource | None = None
 # How long to wait before re-checking whether a reasoning source has appeared.
@@ -959,6 +1056,39 @@ def latest_reasoning_activity(session_id: str, since_ts: float) -> str | None:
     except Exception:
         return None
     return f"thinking: {text}" if text else None
+
+
+def turn_reasoning_history(session_id: str, since_ts: float) -> str | None:
+    """The finished turn's full reasoning, capped, or None.
+
+    Returns None immediately when history is disabled — the default — so nothing
+    is even read off disk, let alone sent. Never raises: a transcript is a nice
+    extra, and a turn that produced a real reply must not fail because of it.
+    """
+    if not REASONING_HISTORY_ENABLED:
+        return None
+    try:
+        text = reasoning_source().full_reasoning(session_id, since_ts)
+    except Exception:
+        return None
+    if not text:
+        return None
+    text = text.strip()
+    if not text:
+        return None
+    if len(text) <= _REASONING_HISTORY_MAX_CHARS:
+        return text
+    notice = "\n\n[reasoning truncated]"
+    return text[: _REASONING_HISTORY_MAX_CHARS - len(notice)].rstrip() + notice
+
+
+def post_reasoning_history(message_id: str, reasoning: str) -> None:
+    """Attach a turn's reasoning to the agent message that carries its reply."""
+    api("POST", "/chat/reasoning", body={
+        "messageId": message_id,
+        "agentId": AGENT_ID,
+        "reasoning": reasoning,
+    })
 
 
 def clean_hermes_output(output: str) -> str:
@@ -1066,6 +1196,17 @@ def invoke_hermes(
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
+# Reasoning transcript of the most recent turn, or None.
+#
+# It lives here rather than in run_hermes's return value because the transcript
+# cannot be posted until the reply has been sent and the control plane has
+# handed back the id of the message it created. The bridge processes one message
+# at a time in a single thread, so there is exactly one "most recent turn";
+# run_hermes clears this at the start of every turn so a failed turn can never
+# attach a previous turn's thinking to a new reply.
+_last_turn_reasoning: str | None = None
+
+
 def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
@@ -1132,6 +1273,9 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     ]
     if resume_id:
         cmd[3:3] = ["--resume", resume_id]
+    global _last_turn_reasoning
+    _last_turn_reasoning = None
+    turn_started = time.time()
     try:
         # resume_id is the only session id we know BEFORE the turn ends, and it
         # is what scopes the reasoning lookup. On a brand-new session it is
@@ -1163,19 +1307,32 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     new_session_id = extract_session_id("\n".join([result.stdout or "", result.stderr or ""]))
     if new_session_id:
         sessions[session_key] = new_session_id
+    # ONE read, at the end of the turn — history is not streamed. Reading it now
+    # also means the FIRST turn of a session gets a transcript: the live status
+    # line only ever knows `resume_id`, which is empty until a session exists,
+    # but by here Hermes has printed the id it actually used.
+    _last_turn_reasoning = turn_reasoning_history(new_session_id or resume_id, turn_started)
     return clean_hermes_output(result.stdout)
 
 
-def send_reply(message: Dict[str, Any], text: str) -> None:
+def send_reply(message: Dict[str, Any], text: str) -> str | None:
+    """Post the reply and return the id of the stored message, if any.
+
+    The id is what reasoning history is attached to. It can legitimately be
+    None: the send route deduplicates identical text within a 2-minute window
+    and returns no id in that case, and there is nothing to annotate then.
+    """
     if not text:
-        return
-    api("POST", "/messages/send", body={
+        return None
+    response = api("POST", "/messages/send", body={
         "thread_id": message.get("threadId") or message.get("thread_id"),
         "thread_type": message.get("threadType") or message.get("thread_type") or "direct",
         "agentId": AGENT_ID,
         "text": text,
         "targetAgentId": None,
     })
+    message_id = response.get("message_id") if isinstance(response, dict) else None
+    return str(message_id) if message_id else None
 
 
 _pending_input_chars = 0
@@ -1317,7 +1474,18 @@ def main() -> int:
                         report_token_usage(len(text), len(reply))
                     except Exception as exc:
                         log(f"usage report pending; future dispatch blocked: {exc}")
-                    send_reply(message, reply)
+                    reply_message_id = send_reply(message, reply)
+                    # Reasoning history is a bonus artifact, so it is isolated
+                    # the same way the recovery calls below are: if this write
+                    # throws it must NOT escape into the except block, which
+                    # would post an error notice for a turn that actually
+                    # succeeded and re-send the reply on the next poll. A
+                    # transcript is never worth losing a reply over.
+                    if reply_message_id and _last_turn_reasoning:
+                        try:
+                            post_reasoning_history(reply_message_id, _last_turn_reasoning)
+                        except Exception as reasoning_exc:
+                            log(f"reasoning history not stored for {reply_message_id}: {reasoning_exc}")
                     update_chat_status(message, typing=False, execution_state="resolved")
                 except Exception as exc:
                     # Do NOT re-raise here: that used to skip remember_seen()

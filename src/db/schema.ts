@@ -823,6 +823,35 @@ export const threadMessages = pgTable("thread_messages", {
     companySenderCreatedIdx: index("thread_messages_company_sender_created_idx").on(table.companyId, table.senderType, table.createdAt),
 }));
 
+// Durable transcript of the model's own reasoning for ONE agent message.
+//
+// This is deliberately its own table rather than a column on `thread_messages`.
+// `/api/chat` selects whole message rows on a polling loop, so a reasoning
+// column there would ship the full raw thinking of every message in the page to
+// every open browser on every poll — kilobytes per message, repeatedly, for a
+// panel that is collapsed by default. Keeping it in a side table means the
+// message list payload never changes and reasoning is fetched only on demand.
+// NEVER join this into a message-list query.
+//
+// Privacy: reasoning is raw model output. It quotes the user verbatim and can
+// carry file paths, command output or credentials that passed through context,
+// so writing it is opt-in per runtime (`EMPEROR_CLAW_REASONING_HISTORY=on` in
+// the bridge) and never the default. Rows are company-scoped and cascade with
+// both the message and the company so deleting either really removes them.
+export const threadMessageReasoning = pgTable("thread_message_reasoning", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Unique: one reasoning record per message. A turn writes once, at the end,
+    // and a retry must overwrite rather than accumulate duplicate transcripts.
+    messageId: uuid("message_id").notNull().unique().references(() => threadMessages.id, { onDelete: 'cascade' }),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    reasoning: text("reasoning").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    // Retention/erasure work is "everything for this company older than X".
+    // Without this index that sweep is a full scan of the largest text table.
+    companyCreatedIdx: index("thread_message_reasoning_company_created_idx").on(table.companyId, table.createdAt),
+}));
+
 export const chatMessages = pgTable("chat_messages", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),

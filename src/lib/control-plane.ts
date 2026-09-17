@@ -11,6 +11,7 @@ import {
     integrationSecretVersions,
     messageThreads,
     runtimeNodes,
+    threadMessageReasoning,
     threadMessages,
     threadParticipants,
     users,
@@ -18,6 +19,7 @@ import {
 import { and, desc, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
+import { truncateReasoningForStorage } from "./reasoning-history";
 
 type SenderType = "human" | "agent" | "system";
 
@@ -277,6 +279,90 @@ export async function updateAgentThreadParticipant(
             ...updates,
         });
     }
+}
+
+/**
+ * Persist the reasoning transcript for one agent message.
+ *
+ * Tenancy is enforced here, not by the caller: the message must exist inside
+ * `companyId`, and it must be an agent message authored by `agentId`. Without
+ * that second check a runtime token could staple arbitrary text onto a human's
+ * message, or onto another agent's reply, inside its own company.
+ *
+ * Returns false when the target is not a message this agent may annotate.
+ */
+export async function saveThreadMessageReasoning(input: {
+    companyId: string;
+    messageId: string;
+    agentId: string;
+    reasoning: string;
+}): Promise<boolean> {
+    const reasoning = truncateReasoningForStorage(input.reasoning);
+    if (!reasoning) return false;
+
+    const [message] = await db.select({
+        id: threadMessages.id,
+        senderType: threadMessages.senderType,
+        senderId: threadMessages.senderId,
+    })
+        .from(threadMessages)
+        .where(and(
+            eq(threadMessages.id, input.messageId),
+            eq(threadMessages.companyId, input.companyId),
+        ))
+        .limit(1);
+
+    if (!message) return false;
+    if (message.senderType !== "agent" || message.senderId !== input.agentId) return false;
+
+    // One row per message. A retried write (the bridge posts once per turn, but
+    // a network retry can duplicate that post) must replace the transcript
+    // rather than fail or accumulate.
+    await db.insert(threadMessageReasoning)
+        .values({ messageId: input.messageId, companyId: input.companyId, reasoning })
+        .onConflictDoUpdate({
+            target: threadMessageReasoning.messageId,
+            set: { reasoning, createdAt: new Date() },
+        });
+
+    // Mark the message so the UI knows a transcript exists WITHOUT fetching it.
+    // `metadata_json` already travels with every message in the list payload, so
+    // a boolean there costs nothing, while rendering a "Show reasoning" control
+    // on every agent message would give most readers a button that resolves to
+    // "nothing recorded" — history is off by default. Merged with jsonb `||`
+    // rather than read-modify-write so a concurrent metadata update (attachments,
+    // delivery state) cannot be clobbered.
+    await db.update(threadMessages)
+        .set({ metadataJson: sql`coalesce(${threadMessages.metadataJson}, '{}'::jsonb) || '{"hasReasoning":true}'::jsonb` })
+        .where(and(
+            eq(threadMessages.id, input.messageId),
+            eq(threadMessages.companyId, input.companyId),
+        ));
+    return true;
+}
+
+/**
+ * Read one message's reasoning transcript, or null when there is none.
+ *
+ * Company-scoped by joining through the message, so a reasoning id alone is
+ * never enough to read across tenants. Called only from the on-demand UI route
+ * — never from the message-list query, whose payload must stay small.
+ */
+export async function getThreadMessageReasoning(companyId: string, messageId: string) {
+    const [row] = await db.select({
+        messageId: threadMessageReasoning.messageId,
+        reasoning: threadMessageReasoning.reasoning,
+        createdAt: threadMessageReasoning.createdAt,
+    })
+        .from(threadMessageReasoning)
+        .innerJoin(threadMessages, eq(threadMessages.id, threadMessageReasoning.messageId))
+        .where(and(
+            eq(threadMessageReasoning.messageId, messageId),
+            eq(threadMessageReasoning.companyId, companyId),
+            eq(threadMessages.companyId, companyId),
+        ))
+        .limit(1);
+    return row ?? null;
 }
 
 export async function appendThreadMessage(input: {
