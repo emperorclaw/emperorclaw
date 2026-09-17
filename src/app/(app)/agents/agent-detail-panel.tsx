@@ -715,6 +715,29 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
         setTimeout(() => setCopied(false), 2000);
     };
 
+    if (providerId === "hermes" && isLocal) return (
+        <div className="border-b border-emerald-500/20 bg-emerald-500/[0.06] p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-emerald-100">Start local Hermes</h3>
+            <p className="text-xs text-zinc-400">Emperor uses this agent’s saved provider and key, installs Hermes, and connects it automatically. Retry this profile if the first setup failed.</p>
+            <button type="button" disabled={setupRunning} onClick={async () => {
+                setSetupRunning(true); setSetupResult(null);
+                try {
+                    const response = await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" });
+                    const data = await response.json();
+                    setSetupResult(response.ok ? data : { success: false, message: data.error || "Setup failed" });
+                    if (response.ok && data.success) setTimeout(() => window.location.reload(), 2000);
+                } catch (e) { setSetupResult({ success: false, message: e instanceof Error ? e.message : "Setup failed" }); }
+                finally { setSetupRunning(false); }
+            }} className="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50">
+                {setupRunning ? "Starting Hermes…" : "Retry local setup"}
+            </button>
+            {setupResult && <div className="space-y-2 text-xs" role="status">
+                <p className={setupResult.success ? "text-emerald-300" : "text-rose-300"}>{setupResult.message}</p>
+                {setupResult.outputs && <SetupOutputLog outputs={setupResult.outputs} />}
+            </div>}
+        </div>
+    );
+
     return (
         <div className={cn(
             "border-b p-4 sm:p-5 space-y-4",

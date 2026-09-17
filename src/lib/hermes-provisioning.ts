@@ -283,8 +283,9 @@ export async function recreateHermesContainer(agentId: string): Promise<Provisio
         await db.update(agents).set({
             containerId: result.containerId,
             containerName: result.containerName,
-            status: "online",
-            lastSeenAt: new Date(),
+            // Container start is not a runtime heartbeat. Keep onboarding and
+            // chat readiness honest until Hermes itself checks in.
+            status: "offline",
         }).where(eq(agents.id, agentId));
     }
 

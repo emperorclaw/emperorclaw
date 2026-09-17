@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.35] — 2026-09-18
+
+### Fixed
+
+- Fresh Hermes profile volumes are writable by the runtime user, and first
+  container creation allows time for Docker to unpack the runtime image.
+- Preserve registry authorization errors in local Hermes setup and reject Docker
+  streamed pull failures even when the HTTP response is 200.
+- Failed local workers show a single retry action instead of manual CLI setup.
+  Recreating a runtime waits for a real heartbeat before reporting online.
+- Verify anonymous access to published Hermes images, which fresh installations
+  must be able to download without GitHub credentials.
+
 ## [0.8.34] — 2026-09-17
 
 ### Added

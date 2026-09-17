@@ -48,3 +48,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+
+      # GHCR packages can be private even when the repository is public. New
+      # installs have no GitHub credentials, so verify anonymous access too.
+      - name: Verify public runtime download
+        run: docker --config "$RUNNER_TEMP/ghcr-anonymous" pull --platform linux/amd64 "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"

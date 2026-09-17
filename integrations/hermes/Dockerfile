@@ -49,4 +49,11 @@ ENV PATH="/home/hermes/.local/bin:${PATH}"
 RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh \
     | bash -s -- --skip-setup
 
+# Docker initializes a fresh named volume from this directory. Without an
+# existing directory it creates a root-owned mount that Hermes cannot write.
+USER root
+RUN mkdir -p /home/hermes/.hermes/profiles \
+    && chown -R hermes:hermes /home/hermes/.hermes/profiles
+USER hermes
+
 ENTRYPOINT ["/entrypoint.sh"]

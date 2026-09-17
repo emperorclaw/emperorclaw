@@ -1,5 +1,6 @@
 import fs from "fs";
 import http from "http";
+import { parseDockerPullResponse } from "./docker-pull-response";
 
 // ---- Docker Engine API over Unix socket ----
 // Shared primitives for talking to the Docker daemon from inside a sibling
@@ -20,7 +21,8 @@ export function dockerCall(method: string, path: string, body?: unknown): Promis
             method,
             path,
             headers: { "Content-Type": "application/json" },
-            timeout: method === "POST" && path.includes("/images/create") ? 300_000 : 30_000,
+            // A first container creation can unpack a large runtime image.
+            timeout: method === "POST" && (path.includes("/images/create") || path.startsWith("/containers/create")) ? 300_000 : 30_000,
         };
         if (method === "POST" && path.includes("/images/create")) {
             (opts as Record<string, unknown>).agent = false;
@@ -54,12 +56,9 @@ export async function dockerPull(image: string): Promise<string> {
             const chunks: Buffer[] = [];
             res.on("data", (c: Buffer) => chunks.push(c));
             res.on("end", () => {
-                if (res.statusCode !== 200) {
-                    return reject(new Error(`Pull failed: HTTP ${res.statusCode}`));
-                }
-                const lines = Buffer.concat(chunks).toString("utf-8").trim().split("\n");
-                const last = JSON.parse(lines[lines.length - 1] || "{}");
-                resolve(last.status || last.error || "Image pulled");
+                try {
+                    resolve(parseDockerPullResponse(res.statusCode ?? 500, Buffer.concat(chunks).toString("utf-8")));
+                } catch (error) { reject(error); }
             });
             res.on("error", reject);
         });
