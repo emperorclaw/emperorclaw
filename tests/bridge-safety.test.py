@@ -34,6 +34,31 @@ os.environ.setdefault("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "30")
 import emperor_hermes_bridge as bridge
 
 
+class TestRosterAliases(unittest.TestCase):
+    def test_turn_includes_baseline_when_company_kb_empty(self):
+        from unittest.mock import patch
+        import subprocess
+        with patch.object(bridge, "format_agent_roster", return_value=""), patch.object(bridge, "fetch_company_brain_context", return_value={"sources": []}), patch.object(bridge, "invoke_hermes", return_value=subprocess.CompletedProcess([], 0, "Hello", "")) as invoke:
+            result = bridge.run_hermes({"threadId": "team-test", "threadType": "team", "text": "@TestAgent hello"}, {})
+        self.assertEqual(result, "Hello")
+        command = invoke.call_args.args[0]
+        prompt = command[command.index("-q") + 1]
+        for phrase in ["Emperor minimum operating practices", "Group chat", "isShared=true", "Common scenarios", "resolver returned no readable context"]:
+            self.assertIn(phrase, prompt)
+
+    def test_same_first_name_gets_distinct_aliases(self):
+        from unittest.mock import patch
+        with patch.object(bridge, "fetch_agent_roster", return_value=[
+            {"id": "1", "name": "Alex Smith"}, {"id": "2", "name": "Alex Jones"},
+        ]):
+            roster = bridge.format_agent_roster("1")
+        self.assertIn("@Alex-Jones", roster)
+        self.assertIn("@Alex-Smith", roster)
+        self.assertNotIn(": @Alex\n", roster)
+        self.assertTrue(bridge.mentions_agent("@Alex-Jones please review", "Alex Jones"))
+        self.assertFalse(bridge.mentions_agent("@Alex-Jones please review", "Alex Smith"))
+
+
 class TestColdStartGuard(unittest.TestCase):
     """Tests for per-thread cold-start guard."""
 

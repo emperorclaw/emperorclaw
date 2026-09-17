@@ -230,8 +230,17 @@ def format_agent_roster(agent_id: str) -> str:
     for agent in agents[:24]:
         name = str(agent.get("name") or agent.get("id") or "unknown")
         marker = " (you)" if str(agent.get("id") or "") == agent_id else ""
-        alias = sorted(agent_name_aliases(name), key=len)[0] if agent_name_aliases(name) else name
-        lines.append(f"- {name}{marker}: @{alias}")
+        sibling_aliases = {
+            normalize_mention(alias)
+            for sibling in agents if str(sibling.get("id") or "") != str(agent.get("id") or "")
+            for alias in agent_name_aliases(str(sibling.get("name") or ""))
+        }
+        unique_aliases = sorted((alias for alias in agent_name_aliases(name)
+            if not re.search(r"\s", alias) and normalize_mention(alias) not in sibling_aliases), key=lambda alias: (len(alias), alias.lower()))
+        if unique_aliases:
+            lines.append(f"- {name}{marker}: @{unique_aliases[0]}")
+        else:
+            lines.append(f"- {name}{marker}: no unambiguous alias; use an explicitly assigned task or ask for distinct agent names")
     return "Team roster aliases:\n" + "\n".join(lines)
 
 
@@ -323,7 +332,7 @@ def format_company_brain_context(message: Dict[str, Any]) -> str:
     if not sections:
         return (
             "Company Brain: resolver returned no readable context. "
-            "Use emperor_request GET /resources/context or create/update a draft Knowledge & Rules note via POST /resources when durable doctrine matters."
+            "Use emperor_request GET /resources/context or retrieve a specific note when durable doctrine matters."
         )
     return (
         "Company Brain context resolved by Emperor. Use these source ids when citing loaded doctrine; "
@@ -1221,9 +1230,10 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         f"Agent role: {AGENT_ROLE}\n"
         + (f"Role instructions:\n{AGENT_INSTRUCTIONS}\n\n" if AGENT_INSTRUCTIONS else "")
         +
-        "Reply to the latest message. Do not recap old context unless asked.\n"
+        Path(__file__).resolve().parent.parent.joinpath("operating-guide.md").read_text(encoding="utf-8") + "\n\n"
+        + "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
-        "For reusable knowledge, create or update a normal Company Brain note with frontmatter status: active by default; use status: draft only when explicitly uncertain.\n"
+        "For reusable knowledge, create or update a normal Company Brain note with top-level status: active for established knowledge; use status: draft only when explicitly uncertain.\n"
         "When writing Knowledge & Rules, use Obsidian-style markdown notes: frontmatter with scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], and Evidence/Related sections when useful.\n"
         "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope.\n"
         "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
@@ -1233,7 +1243,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Team roster: emperor_request GET /agents.\n"
         "- Projects/tasks: emperor_list_projects, emperor_list_tasks, or scoped GET /projects/{id}, GET /tasks/{id}.\n"
         "- Task progress/history: emperor_request GET /tasks/{id}/notes.\n"
-        "- Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources for draft knowledge notes, GET /resources for lookup.\n"
+        "- Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources for established knowledge (active) or uncertain proposals (draft), with top-level status, GET /resources for lookup.\n"
         "- Storage/files: emperor_request GET /artifacts for lookup; emperor_create_folder + emperor_upload_artifact for uploads.\n"
         "- External APIs are not Emperor; use terminal/curl or a dedicated plugin if available.\n\n"
         "Storage rules:\n"

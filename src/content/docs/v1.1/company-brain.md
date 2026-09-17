@@ -176,7 +176,8 @@ The bridge and MCP clients should use `GET /api/mcp/resources/context` instead o
 2. Exact customer/project/agent shared resources.
 3. Explicitly selected resources.
 4. One-hop outgoing links and backlinks.
-5. Non-shared discoverable summaries within budget.
+
+Non-shared notes are excluded from automatic context unless explicitly selected by resource ID, tags, or links from selected notes. They remain available for direct lookup.
 
 The response includes source ids and names so agents can cite what they loaded.
 
@@ -245,3 +246,26 @@ Before marking a note shared or changing `status: draft` to `status: active`:
 - Is evidence attached or referenced?
 - Should agents always receive it? If not, do not mark `isShared`.
 - Are files linked through Storage instead of pasted into the note?
+
+
+## Guaranteed Hermes baseline
+
+Hermes ships a compact operating guide in the bridge prompt and plugin pre-LLM
+hook. It loads without a KB note or network request, so an empty company vault
+still teaches chat routing, private replies, human mention limitations, short
+project goals, explicit task assignments, scoped notes, auto-injection, Storage,
+and failure handling. Company-specific KB is fetched separately on each bridge
+chat turn, subject to scope and context budgets. This does not seed or overwrite
+operator-authored KB notes.
+
+Use top-level API `status` to publish or draft a note; markdown frontmatter alone
+does not set publication state. MCP knowledge tools accept `status` on create
+and update. Keep uncertain proposals draft and unshared, and enable `isShared`
+only for compact verified rules needed repeatedly in that scope. Shared is an
+injection preference, not a confidentiality control.
+
+Project `goal` is the displayed name: use about 3–8 words, preferably under 80
+characters. Keep full context and success criteria in memory and tasks. Human
+`@names` in chat are text, not a guaranteed notification mechanism. Agent routing
+uses mention aliases; the Hermes roster suggests distinct aliases when first
+names collide.

@@ -106,39 +106,51 @@ Self-hosted on PostgreSQL. One command to install. No cloud lock-in. Runs on a V
 
 ## Quick start
 
-**No server? Deploy to the cloud in one click** (managed Postgres, secrets auto-generated):
+**Recommended for beginners: Docker on your computer or server.**
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/emperorclaw/emperorclaw)
+First install and start [Docker Desktop](https://docs.docker.com/desktop/) on
+Windows/Mac, or [Docker Engine with Compose](https://docs.docker.com/engine/install/)
+on Linux. No Git, Node.js, PostgreSQL, Python, or Hermes installation is needed.
 
-**Self-host with Docker (recommended):**
+**Mac/Linux — paste into Terminal:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
 ```
 
-Open `http://localhost:3000` and create your admin account. Docker, PostgreSQL, secrets, and migrations are handled automatically.
-
-**Windows (PowerShell):**
+**Windows — paste into PowerShell:**
 
 ```powershell
 irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
 ```
 
-**Next:** [Connect your first agent →](docs/CONNECT-FIRST-AGENT.md) — get an agent online and replying to chat in about five minutes.
+Wait for **Ready!**. The installer configures PostgreSQL, secrets, migrations,
+and storage, then checks that the app can create local workers. Open
+`http://localhost:3000/signup` and create your admin account.
 
-### Your first five minutes
+### From install to useful work
 
-1. **Sign up** at `/signup` — create your account and name your company.
-2. **Create a project** — give it a name and optionally link a customer.
-3. **Add a task** — set its type and priority.
-4. **Write some knowledge** — add a rule or procedure in Markdown, linking notes with `[[wikilinks]]`.
-5. **Connect an agent** — generate a token at Settings → Tokens and point your agent at the API.
-6. **Watch it work** — the agent registers, claims the task, and reports progress in real time.
+1. On the dashboard choose **Hire an Agent**, pick a role and short name.
+2. Select your LLM provider and enter its API key. Emperor configures Hermes,
+   its plugin, connection, and agent-bound token automatically.
+3. Wait for **online**, send **Hello! Reply with ACK working.**, and finish
+   onboarding after the reply.
+4. Create a short project, add a task with a clear expected result, and assign
+   it to your worker.
+5. Use the **@ picker** in group chat to address agents. Private chat needs no mention.
+6. Add reusable Knowledge & Rules; enable auto-injection for compact recurring
+   instructions, and keep deliverables in Storage.
 
-### Requirements
+[Full installation guide](src/content/docs/v1.1/installation.md) covers Docker
+prerequisites, automatic HTTPS for your domain, remote-server access, updates,
+and recovery. [First agent walkthrough](docs/CONNECT-FIRST-AGENT.md) includes
+troubleshooting. Use a machine that stays on while workers are working. The
+current images target amd64; Apple Silicon requires Docker Desktop emulation.
 
-- **Node.js ≥ 20** and **PostgreSQL 16**
-- **A long-running server** — VPS, VM, or dedicated machine. Serverless platforms (Vercel, Lambda, Cloud Run) aren't supported because EmperorClaw needs persistent real-time connections and a background watchdog.
+**Hosted alternative:** [Deploy the app to Render](https://render.com/deploy?repo=https://github.com/emperorclaw/emperorclaw).
+Hosted services without a Docker socket need a separate remote Hermes worker;
+they do not include local click-to-create provisioning. Source builds require
+Node.js ≥20 and PostgreSQL 16.
 
 ---
 
@@ -156,12 +168,13 @@ EmperorClaw works with the agent runtimes you already use — it doesn't lock yo
 
 ## Configuration
 
-All configuration is via environment variables. Copy `.env.example` to `.env` and set the required values. The two you must set:
+The Docker installer creates configuration automatically. For a manual source installation, copy `.env.example` to `.env`. Configure the database, session secret, and master encryption key (required for stored LLM credentials):
 
 | Variable | Purpose |
 |---|---|
 | `POSTGRES_CONNECTION_STRING` | Your PostgreSQL connection string |
 | `NEXTAUTH_SECRET` | Session encryption (generate with `openssl rand -base64 32`) |
+| `EMPEROR_CLAW_MASTER_KEY` | Stored credential encryption (generate with `openssl rand -hex 32`) |
 
 > **Never commit secrets.** The repository contains no credentials — everything is supplied through environment variables at deploy time.
 

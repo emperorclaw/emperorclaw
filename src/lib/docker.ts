@@ -36,6 +36,7 @@ export function dockerCall(method: string, path: string, body?: unknown): Promis
             res.on("error", reject);
         });
         req.on("error", reject);
+        req.on("timeout", () => req.destroy(new Error("Docker request timed out")));
         if (body !== undefined) req.write(JSON.stringify(body));
         req.end();
     });
@@ -63,6 +64,7 @@ export async function dockerPull(image: string): Promise<string> {
             res.on("error", reject);
         });
         req.on("error", reject);
+        req.on("timeout", () => req.destroy(new Error("Docker request timed out")));
         req.end();
     });
 }

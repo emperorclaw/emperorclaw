@@ -274,13 +274,13 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
 
 def emperor_context_hook(**_: Any) -> Dict[str, str]:
     return {
-        "context": (
+        "context": Path(__file__).with_name("operating-guide.md").read_text(encoding="utf-8") + "\n\n" + (
             "Use Emperor only when the request needs durable state, exact message history, or a real state change; otherwise answer normally. "
             "Do not preload, summarize, or mention projects/tasks/resources/artifacts by default. "
             "Lookup map: past chat/history -> emperor_list_threads then emperor_get_thread_messages; team roster -> GET /agents; "
             "projects -> emperor_list_projects or GET /projects/{id}; tasks -> emperor_list_tasks or GET /tasks/{id}; "
             "task progress/history -> GET /tasks/{id}/notes; project memory -> GET /projects/{id}/memory; "
-            "Knowledge & Rules -> GET /resources/context for resolved doctrine, POST /resources with frontmatter status: active for reusable knowledge updates; use status: draft only when explicitly uncertain, GET /resources for lookup; Storage/files/deliverables -> GET /artifacts; "
+            "Knowledge & Rules -> GET /resources/context for resolved doctrine, POST /resources with top-level status: active for reusable knowledge updates; use status: draft only when explicitly uncertain, GET /resources for lookup; Storage/files/deliverables -> GET /artifacts; "
             "When proposing Knowledge & Rules, use Obsidian-style markdown: frontmatter scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], Evidence, and Related sections. "
             "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope. "
             "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
@@ -296,7 +296,7 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it — if your name is absent, the message is for someone else. "
             "(2) To ask a sibling to do something: emperor_send_message(text='@SiblingName <request>', threadType='team'). Discover sibling names first with emperor_request GET /agents. "
             "(3) When responding to a sibling's request, @mention them once in your reply so the message routes back: '@Viktor here are the results...'. "
-            "(4) After that single @mention do NOT repeat it — repeating triggers another response cycle from them. "
+            "(4) A closing answer ends the exchange: do not send thanks or another acknowledgment; mention only for a new actionable request. "
             "(5) Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention. "
             "Use emperor_send_message threadType=direct only when the message must be private. "
             "Call Emperor tools before claiming a state change. "
@@ -378,7 +378,7 @@ def register(ctx: Any) -> None:
         _schema(
             "Create an Emperor project for a clear business goal.",
             {
-                "goal": {"type": "string"},
+                "goal": {"type": "string", "description": "Short displayed project name, 3–8 words, preferably under 80 characters. Put details in memory/tasks."},
                 "status": {"type": "string", "default": "active"},
                 "customerId": {"type": "string"},
                 "leadAgentId": {"type": "string"},

@@ -50,6 +50,12 @@ if [[ "$MODE" == "--docker" ]]; then
     if [[ -d ".git" ]]; then
         echo -e "${YELLOW}Updating release configuration...${NC}"
         git pull --ff-only origin main
+    else
+        echo "Updating server configuration (preserving .env and data)..."
+        for file in docker-compose.yml Caddyfile; do
+            curl -fsSL --retry 3 "https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/$file" -o "$file.download"
+            mv "$file.download" "$file"
+        done
     fi
 
     COMPOSE_PROFILE_ARGS=()

@@ -7,7 +7,7 @@ import { getCompanyId } from "@/lib/auth";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
-import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
+import { DOCKER_SOCKET, isDocker, dockerCall } from "@/lib/docker";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { mintAgentSetupToken, provisionHermesContainer, type SetupOutput } from "@/lib/hermes-provisioning";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
@@ -23,10 +23,22 @@ const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "gro
 // socket mounted (sibling-container provisioning requires it).
 export async function GET() {
     const companyId = await getCompanyId();
-    const available = !!companyId && isDocker() && fs.existsSync(DOCKER_SOCKET);
+    let available = false;
+    let reason = "Sign in to create a worker.";
+    if (companyId) {
+        if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) reason = "This installation needs Docker with its socket mounted for automatic Hermes setup.";
+        else {
+            try {
+                available = (await dockerCall("GET", "/_ping")).code === 200;
+                reason = available ? "" : "Docker is not responding. Restart Docker and retry.";
+            } catch {
+                reason = "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry.";
+            }
+        }
+    }
     const configurations = available ? await db.select({ id: agents.id, name: agents.name, llmProvider: agents.llmProvider, llmModel: agents.llmModel })
         .from(agents).where(and(eq(agents.companyId, companyId!), eq(agents.provider, "hermes"), isNull(agents.deletedAt), isNotNull(agents.llmApiKeyEncrypted), isNotNull(agents.llmProvider))) : [];
-    return NextResponse.json({ available, configurations });
+    return NextResponse.json({ available, configurations, reason });
 }
 
 type AgentSpec = {

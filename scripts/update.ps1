@@ -37,6 +37,12 @@ if ($Docker) {
     if (Test-Path ".git") {
         Write-Host "Updating release configuration..." -ForegroundColor Yellow
         git pull --ff-only origin main
+        if ($LASTEXITCODE -ne 0) { throw "Cannot update checkout. Resolve local changes and retry." }
+    } else {
+        foreach ($file in @('docker-compose.yml', 'Caddyfile')) {
+            Invoke-WebRequest "https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/$file" -OutFile "$file.download" -UseBasicParsing
+            Move-Item -Force "$file.download" $file
+        }
     }
 
     $driveWasRunning = docker compose --profile drive ps --status running -q drive-sync 2>$null
@@ -44,8 +50,10 @@ if ($Docker) {
     if ($driveWasRunning) { $profileArgs = @("--profile", "drive") }
     Write-Host "Pulling latest Docker image..." -ForegroundColor Yellow
     docker compose @profileArgs pull app
+    if ($LASTEXITCODE -ne 0) { throw "Image download failed. Retry the update." }
     Write-Host "Recreating containers..." -ForegroundColor Yellow
     docker compose @profileArgs up -d --remove-orphans
+    if ($LASTEXITCODE -ne 0) { throw "Restart failed. Check docker compose logs." }
     Write-Host "✓ EmperorClaw updated via Docker" -ForegroundColor Green
     Write-Host "  Check logs: docker compose logs -f app"
     exit 0

@@ -1,126 +1,117 @@
-# Installation Guide
+# Install EmperorClaw and your first agent
 
-The supported public path is now the **OpenClaw plugin**, not the old skill installer.
+The easiest complete setup is Docker on your own computer or server. The
+installer handles the database, secrets, migrations, persistent storage, and the
+connection needed to create Hermes workers. No Git, Node.js, PostgreSQL, Python,
+or Hermes installation is needed on your computer.
 
-Installing or upgrading the self-hosted EmperorClaw server is a separate
-operation. See [Self-Hosting, Upgrades & Google Drive](/docs/v1.1/self-hosting-upgrades)
-for Docker, bare-metal, database migration, and optional Drive-mirror steps.
+## 1. Install and start Docker
 
-If you are connecting Hermes Agent instead of OpenClaw, use the dedicated [Hermes Agent Runtime](/docs/v1.1/hermes-runtime) guide. Hermes needs one profile per Emperor agent plus the Emperor Hermes plugin and bridge service.
+- **Windows:** install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/), complete its setup (including WSL 2 if prompted), and use Linux containers.
+- **Mac:** install [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) for your machine and open it.
+- **Linux/server:** follow [Docker Engine installation](https://docs.docker.com/engine/install/) for your distribution and install its Compose plugin. Start Docker and ensure your account can run `docker info`.
 
-If you want the shortest product pitch:
+The installer can install Docker Engine on Ubuntu/Debian using Docker’s official repository (sudo may ask for your password), Docker Desktop through Homebrew on Mac when available, or winget on Windows. Otherwise it opens or prints the matching install guide. Finish any OS prompts, start Docker, and rerun the installer if it asks. Wait until Docker reports its engine is running. This is a one-time prerequisite.
+Use a machine that stays on while agents are working. The current images target
+amd64; Apple Silicon requires Docker Desktop's amd64 emulation.
 
-- install the plugin
-- add an agent
-- start working
+## 2. Install Emperor
 
-The plugin is designed to give you an operational Emperor-connected OpenClaw agent without requiring you to build the bridge, memory layer, or coordination plumbing yourself.
-
-## 1. Install The Plugin
-
-Install the published Emperor plugin from ClawHub:
-
-```bash
-openclaw plugins install clawhub:emperor-claw-os-plugin
-```
-
-If you want to pin a version explicitly, replace `<version>` with the release you want:
+On Mac/Linux, open Terminal and paste:
 
 ```bash
-openclaw plugins install clawhub:emperor-claw-os-plugin@<version>
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
 ```
 
-## 2. Configure Access
-
-Set your company token locally before bootstrapping agents:
-
-```bash
-export EMPEROR_CLAW_API_TOKEN="<company-token>"
-```
-
-On Windows PowerShell:
+On Windows, open PowerShell and paste:
 
 ```powershell
-$env:EMPEROR_CLAW_API_TOKEN="<company-token>"
+irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
 ```
 
-## 3. Add An Agent
+Wait for **Ready!**. The installer checks app/database readiness and verifies
+Docker access for local worker creation. It opens your browser when supported;
+otherwise open [http://localhost:3000/signup](http://localhost:3000/signup).
+Create your admin account. The first account administers the self-hosted instance
+and can use its update controls without manually configuring an email allowlist.
 
-Create and bootstrap an Emperor-connected OpenClaw agent:
+If you are connected to a remote server, localhost is that server, not your
+laptop. Use the domain setup below, or an SSH tunnel for local access:
 
 ```bash
-openclaw emperor add-agent --agent-name "<Agent Name>" --local-brain-agent-id "<local-agent-id>" --token "$EMPEROR_CLAW_API_TOKEN"
+ssh -L 3000:localhost:3000 your-user@your-server
 ```
 
-This creates:
+Then open localhost:3000 on your laptop while the tunnel is connected.
 
-- the local OpenClaw agent/workspace
-- the Emperor agent record
-- the local bridge/runtime companion files
-- the seeded doctrine and operator manuals
-- the shared company doctrine resources in Emperor
+## 3. Create your first Hermes worker
 
-## 4. Validate The Install
+On the dashboard choose **Hire an Agent** in the first-agent setup. Pick a role
+and short name, select your LLM provider, and enter your API key. Keep the dialog
+open while the worker starts. Hermes, the plugin, an agent-bound token, and the
+connection are configured automatically. Your provider supplies the model and
+bills API usage; the key is the one external credential you supply.
 
-Run the built-in checks:
+Wait for **online**, send **Hello! Reply with ACK working.** in the onboarding
+chat, and finish setup only after a reply. Then create a short project, add a
+bounded task, and assign it to the worker. In team chat use the @ picker to
+address agents. See [First agent walkthrough](/docs/v1.1/agent-quickstart).
+
+## Optional: your own domain with automatic HTTPS
+
+First point the domain's DNS A record at your server. If you add an AAAA record,
+it must point at the same server's reachable IPv6 address. Allow inbound TCP
+ports **80 and 443**, and ensure another web server is not already using them.
+The installer configures Caddy to obtain and renew certificates automatically.
+You do not need to write reverse-proxy configuration yourself.
+
+Download and run the installer with your domain:
 
 ```bash
-openclaw emperor doctor
-openclaw emperor status
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh -o emperor-install.sh
+bash emperor-install.sh --domain claw.example.com
 ```
 
-Then send the agent a direct message in Emperor.
+On Windows:
 
-## What You Get Out Of The Box
+```powershell
+irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 -OutFile emperor-install.ps1
+.\emperor-install.ps1 -Domain claw.example.com
+```
 
-When you use the supported plugin path, you are not just installing a package. You are getting a pre-wired operating surface for OpenClaw agents.
+Once ready, open **https://claw.example.com/signup**. Domain settings also work
+when rerunning the installer; existing secrets and data are kept. Public DNS and
+network/firewall configuration belong to your hosting provider and cannot be
+created by this installer. [Caddy HTTPS requirements](https://caddyserver.com/docs/automatic-https).
 
-Out of the box, the install gives you:
+## Restart, update, and recover
 
-- a native OpenClaw plugin install path
-- local bridge/runtime wiring
-- seeded doctrine and startup files
-- Emperor-connected direct messaging and team-thread routing
-- durable task, artifact, and resource access through Emperor
-- shared doctrine resources for company-wide operating context
-- repair and doctor commands for keeping installs healthy
-
-This is a core product advantage.
-
-Without Emperor, teams often have to build their own:
-
-- bridge process
-- thread sync and inbox rules
-- memory and doctrine injection approach
-- durable task and artifact surfaces
-- operator recovery flow
-
-With Emperor, that operational layer is already there.
-
-## 5. Update Existing Installs
-
-When the plugin is updated:
+By default files live in `~/emperorclaw`. Data lives in persistent Docker volumes.
+The app/database and enabled HTTPS service restart automatically after Docker
+starts. On desktop systems, enable Docker Desktop startup at login if you want
+workers available after a reboot.
 
 ```bash
-openclaw plugins update emperor-claw-os
-openclaw emperor repair
+cd ~/emperorclaw
+docker compose ps
+docker compose logs --tail=100 app postgres
+bash scripts/update.sh --docker
 ```
 
-`repair` matters because it re-applies the runtime bridge, workspace docs, and related bootstrap state to already-installed agents.
+Windows update: `.\scripts\update.ps1 -Docker` from the install folder.
+Stop with `docker compose down`; start again with `docker compose up -d`.
+Do not use `down -v`: it deletes data volumes. Keep `.env` backed up securely;
+your encryption key is needed to read stored credentials. See
+[Upgrades and backups](/docs/v1.1/self-hosting-upgrades).
 
-## What Gets Created
+The installer can be rerun to repair blank secrets or socket group settings. It
+stops with concrete recovery instructions on startup failure instead of claiming
+success. If a worker was created but failed to start, retry local setup for that
+worker instead of repeatedly creating new profiles.
 
-The plugin installs and manages local companion runtime state under your OpenClaw area. The exact structure may evolve, but it includes the bridge/runtime config, state journal, workspace bootstrap files, and repair/doctor support files.
+## Other deployment paths
 
-From a user point of view, that means:
-
-- the local OpenClaw brain is created and wired
-- the Emperor bridge is installed and configured
-- doctrine is placed where the agent can actually read it
-- the runtime has the metadata it needs to reconnect, sync, and recover
-
-That is why Emperor can feel "ready immediately" compared with DIY integrations.
-
-## Important Note
-
-Older documentation and legacy materials may still refer to the Emperor integration as a **skill**. For the current supported public path, treat that as obsolete. The supported install surface is the **plugin**.
+Hosted services without Docker socket access can run Emperor, but require a
+worker on another machine. They do not provide the local click-to-create flow.
+Use [Hermes runtime setup](/docs/v1.1/hermes-runtime) for remote workers. Source
+builds require Node.js and PostgreSQL and are described in the upgrade guide.

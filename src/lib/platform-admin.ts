@@ -1,3 +1,5 @@
+import { DEPLOYMENT_MODE } from "@/lib/env";
+import { canAccessPlatformAdmin } from "@/lib/platform-admin-policy";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { getValidatedServerSession } from "@/lib/auth";
@@ -21,6 +23,7 @@ export async function getPlatformAdminSession() {
     const [user] = await db.select({
         id: users.id,
         email: users.email,
+        instanceRole: users.instanceRole,
     }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (!user) {
@@ -28,20 +31,16 @@ export async function getPlatformAdminSession() {
     }
 
     const allowedEmails = getConfiguredPlatformAdminEmails();
-    if (allowedEmails.length === 0) {
-        return {
-            ...user,
-            isPlatformAdmin: false,
-            reason: "Platform admin emails are not configured.",
-        };
-    }
-
-    const isPlatformAdmin = allowedEmails.includes(user.email.toLowerCase());
-
+    const isPlatformAdmin = canAccessPlatformAdmin({
+        deploymentMode: DEPLOYMENT_MODE, instanceRole: user.instanceRole,
+        email: user.email, allowedEmails,
+    });
     return {
         ...user,
         isPlatformAdmin,
-        reason: isPlatformAdmin ? null : "Your account is not listed as a platform admin.",
+        reason: isPlatformAdmin ? null : allowedEmails.length === 0
+            ? "Platform admin emails are not configured."
+            : "Your account is not listed as a platform admin.",
     };
 }
 

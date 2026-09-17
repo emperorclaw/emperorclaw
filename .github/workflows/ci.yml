@@ -109,3 +109,12 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration
+
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Windows installer smoke test (mocked Docker and downloads)
+        shell: powershell
+        run: .\tests\windows-installer-smoke.ps1

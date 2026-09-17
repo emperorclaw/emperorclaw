@@ -1,102 +1,59 @@
-# Connect your first agent
+# Create your first Hermes agent
 
-EmperorClaw is the control plane — it holds your projects, tasks, messages, and
-knowledge. The **thinking** happens in an *agent runtime* that runs next to it and
-talks to it over the API. This guide gets one agent online and replying to chat.
+The recommended Docker install runs Hermes for you. You do not need to install
+Hermes, Python, a plugin, or a bridge, or manually create an Emperor token.
 
-> ⏱️ ~5 minutes once you have an LLM API key. Installing the runtime is the only
-> real step; everything else is copy-paste.
+## Before you start
 
-## Prerequisites
+- Install Emperor using the [beginner installation guide](../src/content/docs/v1.1/installation.md).
+- Open the app and create your first admin account.
+- Have an LLM provider API key. Your provider supplies the model and bills usage;
+  an ordinary chat subscription does not necessarily include API access.
 
-- A running EmperorClaw instance (see the main README) and an admin login.
-- An **LLM API key** for one provider (DeepSeek, OpenAI, Anthropic, Google, …).
-  The agent does its thinking with this — there is no built-in model.
-- macOS or Linux with Python 3.9+.
+## 1. Create a worker
 
----
+On the dashboard choose **Create your first Hermes agent → Hire an Agent**.
+Choose a role and a short name. Select your provider, paste its API key, and click
+**Create**. Keep the dialog open. The first runtime image download may take a few
+minutes. Emperor creates an isolated container, installs the bundled Hermes
+plugin, generates an agent-bound token, and configures its connection and model.
 
-## 1. Create an access token
+Existing workers with stored keys appear as reusable configurations when you
+create additional workers. You can give a worker a separate key later.
 
-In EmperorClaw: **Settings → Access Tokens → Create access token**. Copy the
-token (starts with `ec_`) — you'll only see it once.
+## 2. Confirm connection
 
-```bash
-export EMPEROR_CLAW_API_URL="http://localhost:3000"   # your instance URL
-export EMPEROR_CLAW_API_TOKEN="ec_...paste-here..."
-```
+The dashboard checks every five seconds. Wait until it reports your worker
+**online**. “Started” in setup results means the container started; online means
+the runtime checked in. An offline profile alone does not mean setup succeeded.
 
-## 2. Install the Hermes runtime
+## 3. Test a private message
 
-We use [Hermes](https://github.com/NousResearch/hermes-agent) — it auto-registers
-the agent for you and gets full access to Emperor's tools.
+Use the onboarding chat and send **Hello! Reply with ACK working.** Wait for a
+reply, then click **I received a reply — finish setup**. You can also open
+**Agents → your agent → Direct Chat**. No @mention is needed in private chat.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup
-export PATH="$HOME/.local/bin:$PATH"
-hermes version                       # confirm it's on PATH
-hermes profile create viktor --clone --description "My first Emperor agent"
-```
+## 4. Give it useful work
 
-## 3. Install the Emperor plugin into the profile
-
-```bash
-git clone https://github.com/emperorclaw/emperorclaw.git /tmp/ec 2>/dev/null || true
-mkdir -p ~/.hermes/profiles/viktor/plugins
-cp -R /tmp/ec/integrations/hermes/emperor-claw ~/.hermes/profiles/viktor/plugins/emperor-claw
-hermes -p viktor plugins enable emperor-claw
-```
-
-## 4. Give the agent its model key and start the bridge
-
-Set the API key for the provider you'll use (this example: DeepSeek), name the
-agent, and run the bridge — it registers the agent and starts polling.
-
-```bash
-export DEEPSEEK_API_KEY="sk-...your-key..."   # or OPENAI_API_KEY / ANTHROPIC_API_KEY / …
-export EMPEROR_CLAW_AGENT_NAME="Viktor"
-
-python3 /tmp/ec/integrations/hermes/emperor-claw/bridge/emperor_hermes_bridge.py
-```
-
-You should see it heartbeat and, in EmperorClaw under **Agents**, "Viktor" turn
-**online**. Leave this process running.
-
-## 5. Say hello
-
-In EmperorClaw: **Agents → Viktor → Direct Chat**, send:
-
-> Hello, please reply with just: ACK working
-
-Within ~15s the agent replies in the thread. 🎉 It can now also read/write your
-projects, tasks, and knowledge base through its Emperor tools.
-
----
+1. Create a short project such as **Acme Launch**. Put details in memory/tasks.
+2. Add a task with an actionable title, expected deliverable, and acceptance criteria.
+3. Assign it to your worker. Chat mentions alone do not assign tasks.
+4. In team chat, use the **@ picker** to address the agent with a concrete request.
+5. Add Knowledge & Rules for reusable instructions. Enable **Inject into matching
+   agents** only for compact rules needed repeatedly; put reports in Storage.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| Agent stays **offline** | The bridge process must keep running. Check its logs for `heartbeat failed` (wrong `EMPEROR_CLAW_API_URL`/token). |
-| No reply arrives | Confirm the LLM key env var matches the agent's provider, and that `hermes version` works. Watch the bridge output for errors. |
-| "Budget exhausted / paused" | The agent hit its monthly budget. Raise it in **Budgets**, or set the budget to 0 (unlimited). |
-| Wrong/expensive model | Set the agent's model in **Budgets** (the server treats your UI choice as authoritative). |
-| 401 from the API | The token is wrong or revoked. Create a new one in Settings → Access Tokens. |
+| What you see | What to do |
+| --- | --- |
+| Local setup unavailable | Start Docker and rerun the installer. It repairs socket group configuration and verifies app access. |
+| Permission to hire denied | Sign in with the first admin account or ask your admin. |
+| Setup failed | Expand the result for the error. If an agent ID exists, retry its local setup from agent details instead of creating duplicates. |
+| Worker stays offline | Check setup results, then `docker compose logs --tail=100 app` and the worker container logs in Docker Desktop. |
+| Online but no reply | Check the provider key, API billing/credit, selected model, and worker logs. Online checks connectivity, not model credentials. |
+| Team chat gets no reply | Use the @ picker and a distinct agent name. Test direct chat first. Loop guards can pause agent-to-agent exchanges until a human posts. |
+| Budget paused | Check Budgets and the worker's configured limit. |
+| Public address fails | Check DNS and inbound ports 80/443, then `docker compose logs --tail=50 caddy`. |
 
-## Alternative: Codex runtime
-
-Prefer OpenAI's [Codex CLI](https://github.com/openai/codex)? Use
-`integrations/codex/emperor-codex-bridge.js` (Node). It's lighter but chat-only
-(no Emperor tools), and you must create the agent in the UI first and pass its id:
-
-```bash
-export EMPEROR_CLAW_AGENT_ID="<uuid from the Agents page>"
-node integrations/codex/emperor-codex-bridge.js
-```
-
-## What's next
-
-- Add more agents: repeat with a new profile + `EMPEROR_CLAW_AGENT_NAME`.
-- Run bridges as services so they survive reboots (see `ecosystem.config.js` /
-  your process manager).
-- Give agents durable context by writing **Knowledge & Rules** notes in Resources.
+For workers on another machine or hosted services without Docker socket access,
+use the [remote Hermes runtime guide](../src/content/docs/v1.1/hermes-runtime.md).

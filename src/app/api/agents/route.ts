@@ -18,6 +18,8 @@ export async function GET() {
             id: agents.id,
             name: agents.name,
             avatarUrl: agents.avatarUrl,
+            status: agents.status,
+            lastSeenAt: agents.lastSeenAt,
         }).from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 

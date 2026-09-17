@@ -40,7 +40,7 @@ export function registerProjectTools(server: McpServer, companyId: string) {
         title: "Create Project",
         description: "Create a new project. A project groups tasks under a shared goal and optional workflow rules.",
         inputSchema: {
-            goal: z.string().min(1).describe("What this project is trying to achieve"),
+            goal: z.string().min(1).describe("Displayed project name and outcome: 3–8 words, preferably under 80 characters; keep background and acceptance criteria in memory/tasks"),
             customerId: z.string().optional(),
             leadAgentId: z.string().optional(),
             requireApprovalForDone: z.boolean().optional(),

@@ -1,11 +1,11 @@
 # Self-Hosting, Upgrades & Google Drive
 
 This guide covers the EmperorClaw server. The [Installation Guide](/docs/v1.1/installation)
-covers the separate OpenClaw agent plugin.
+covers initial Docker setup and your first Hermes worker.
 
 ## Upgrade An Existing Docker Installation
 
-The recommended installer creates a Git checkout, so one command updates both
+The recommended installer downloads a small server bundle; existing Git checkouts are also supported. One command updates both
 the application image and its versioned Compose configuration:
 
 ```bash
@@ -22,8 +22,8 @@ cd ~/emperorclaw
 
 The updater:
 
-1. fetches the latest `docker-compose.yml` and helper scripts with a
-   fast-forward-only Git pull
+1. fetches the latest Compose/Caddy configuration; existing Git checkouts use a
+   fast-forward-only pull
 2. pulls the latest application image
 3. recreates the containers while retaining the Postgres and storage volumes
 4. runs incremental database migrations before the application starts

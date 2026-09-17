@@ -21,6 +21,12 @@ class HermesHiringTests(unittest.TestCase):
             self.assertEqual(body["deploymentMode"], "local")
             self.assertNotIn("llmApiKey", body)
 
+    def test_baseline_loads_without_kb_or_network(self):
+        with patch.object(plugin, "_request", side_effect=AssertionError("baseline must not fetch KB")):
+            context = plugin.emperor_context_hook()["context"]
+        for phrase in ["Emperor minimum operating practices", "Human mentions are text", "3–8 words", "isShared=true", "status=\"draft\"", "Common scenarios"]:
+            self.assertIn(phrase, context)
+
     def test_hiring_tool_registered(self):
         class Context:
             tools = {}

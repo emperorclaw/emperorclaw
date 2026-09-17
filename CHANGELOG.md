@@ -9,6 +9,43 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.33] — 2026-09-17
+
+### Beginner setup
+
+- Replace manual OpenClaw onboarding with local Hermes creation, a runtime
+  heartbeat check, private test chat, and first-project/task guidance.
+- Install Docker through the official Ubuntu/Debian repository, Homebrew on Mac,
+  or winget on Windows when available; otherwise provide the platform guide.
+- Server installers need no Git or Node.js, work when piped into a shell,
+  preserve secrets, repair blank setup values, and verify startup and app-user
+  Docker access before reporting ready. Public installer URLs now install the
+  server; legacy bridge installers have explicit names.
+- Optional domain setup enables Caddy with automatic HTTPS, preserves enabled
+  Compose profiles, and checks public reachability. Default app access binds to
+  loopback; app/database/proxy services restart after Docker starts.
+- Update Compose/Caddy configuration for installations without a Git checkout.
+  Self-hosted instance admins can access update controls without an email
+  allowlist; configured restrictions and cloud behavior are preserved.
+- Align README, installation, and first-worker guides with the Docker path and
+  clearly describe Docker prerequisites, API keys, and recovery.
+
+### Added
+
+- Load a practical Hermes operating baseline in bridge prompts and plugin hooks
+  even when the company KB is empty. Expand the skill with scenarios for group
+  chat, human decisions, delegation, projects, scoped knowledge, and Storage.
+- Knowledge MCP tools accept explicit publication status, and context lookup
+  accepts reference IDs and tags.
+
+### Fixed
+
+- Respect auto-injection being disabled: unshared notes enter context only on
+  explicit selection, tag lookup, or as a linked reference to selected notes.
+- Suggest distinct mention aliases for workers with the same first name.
+- Clarify that human @mentions are text, not guaranteed notifications, and that
+  project goals are displayed names and should stay short.
+
 ## [0.8.32] — 2026-09-17
 
 ### Added
@@ -47,6 +84,7 @@ ships in the release notes.
   non-null. Assistant rows carry a stub for most steps of a turn, so taking the
   newest row unconditionally reported nothing while a real thought sat one row
   behind.
+
 
 ## [0.8.31] — 2026-09-17
 

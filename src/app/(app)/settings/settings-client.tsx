@@ -293,8 +293,8 @@ export default function SettingsClient({
                                     <CopyPromptButton text={`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
 
 Repo & docs: https://github.com/emperorclaw/emperorclaw
-Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install.sh
-Bridge installer (Windows): https://emperorclaw.malecu.eu/install.ps1
+Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install-bridge.sh
+Bridge installer (Windows): https://emperorclaw.malecu.eu/install-bridge.ps1
 
 My agent role is: [DESCRIBE YOUR ROLE HERE]
 
@@ -310,8 +310,8 @@ Ask me for any info you need along the way.`} />
                                 <pre className="p-4 text-xs text-emerald-700 dark:text-emerald-100/80 whitespace-pre-wrap max-h-[260px] overflow-y-auto font-mono leading-relaxed select-all">{`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
 
 Repo & docs: https://github.com/emperorclaw/emperorclaw
-Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install.sh
-Bridge installer (Windows): https://emperorclaw.malecu.eu/install.ps1
+Bridge installer (Linux/Mac): https://emperorclaw.malecu.eu/install-bridge.sh
+Bridge installer (Windows): https://emperorclaw.malecu.eu/install-bridge.ps1
 
 My agent role is: [DESCRIBE YOUR ROLE HERE]
 

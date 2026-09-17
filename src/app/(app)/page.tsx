@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { agents, tasks, incidents, companyTokens, users, companyMembers, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
+import { agents, tasks, incidents, users, companyMembers, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
 import { eq, and, sql, isNull, desc, gte } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
@@ -83,7 +83,6 @@ export default async function DashboardPage({
     ? dashboardTasks.filter((task) => task.assignedMemberId === currentMemberId && task.state !== TASK_STATES.done && task.state !== TASK_STATES.failed && task.state !== TASK_STATES.deadLetter).length
     : 0;
   const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
-  const [{ count: activeTokens }] = await db.select({ count: sql<number>`count(*)` }).from(companyTokens).where(and(eq(companyTokens.companyId, companyId), isNull(companyTokens.revokedAt)));
   const [{ count: recentErrors }] = await db.select({ count: sql<number>`count(*)` }).from(opsEvents).where(and(
     eq(opsEvents.companyId, companyId),
     eq(opsEvents.level, "error"),
@@ -244,11 +243,9 @@ export default async function DashboardPage({
         description="Your people, agents, recent work, and team communication — all in one place."
       />
 
-      {totalAgents === 0 && !currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
+      {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
         <OnboardingTour
           companyId={companyId}
-          initialAgentCount={totalAgents}
-          initialTokenCount={activeTokens}
         />
       )}
 

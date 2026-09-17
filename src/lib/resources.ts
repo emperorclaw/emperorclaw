@@ -1,3 +1,4 @@
+import { resourceContextPriority } from "@/lib/resource-context-priority";
 import { randomUUID } from "crypto";
 import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
@@ -800,27 +801,13 @@ export async function resolveCompanyBrainContext(input: {
     if (link.targetResourceId && selected.has(link.targetResourceId)) selectedNeighbors.add(link.sourceResourceId);
   }
 
-  const scored = allResources.map((resource) => {
-    let priority = 99;
-    if (resource.scopeType === "company" && resource.isShared && /operating|doctrine/i.test(`${resource.name} ${resource.displayName || ""}`)) priority = 1;
-    else if (resource.isShared && (
-      resource.scopeType === "company" ||
-      (resource.scopeType === "customer" && resource.scopeId === input.customerId) ||
-      (resource.scopeType === "project" && resource.scopeId === input.projectId) ||
-      (resource.scopeType === "agent" && resource.scopeId === input.agentId)
-    )) priority = 2;
-    else if (selected.has(resource.id)) priority = 3;
-    else if (resourcesMatchingTags.has(resource.id)) priority = 3;
-    else if (selectedNeighbors.has(resource.id)) priority = 4;
-    else if (
-      resource.scopeType === "company" ||
-      (resource.scopeType === "customer" && resource.scopeId === input.customerId) ||
-      (resource.scopeType === "project" && resource.scopeId === input.projectId) ||
-      (resource.scopeType === "agent" && resource.scopeId === input.agentId)
-    ) priority = 5;
-
-    return { resource, priority };
-  }).filter((item) => item.priority < 99)
+  const scored = allResources.map((resource) => ({
+    resource,
+    priority: resourceContextPriority(resource, {
+      customerId: input.customerId, projectId: input.projectId, agentId: input.agentId,
+      selected, matchingTags: resourcesMatchingTags, neighbors: selectedNeighbors,
+    }),
+  })).filter((item) => item.priority < 99)
     .sort((left, right) => left.priority - right.priority || +new Date(right.resource.updatedAt) - +new Date(left.resource.updatedAt));
 
   const resources = [];

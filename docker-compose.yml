@@ -1,5 +1,6 @@
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: emperor
@@ -18,12 +19,13 @@ services:
       - "127.0.0.1:5433:5432"
 
   app:
+    restart: unless-stopped
     # Use the pre-built GHCR image for instant startup.
     # Switch to `build: .` if you want to build from source instead.
     image: ghcr.io/emperorclaw/emperorclaw:latest
     # build: .
     ports:
-      - "3000:3000"
+      - "${EMPEROR_BIND_ADDRESS:-127.0.0.1}:3000:3000"
     env_file:
       - .env
     environment:
@@ -53,6 +55,24 @@ services:
       start_period: 40s
     depends_on:
       postgres:
+        condition: service_healthy
+
+  # Enabled by the installer when --domain is supplied.
+  caddy:
+    profiles: ["https"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      - EMPEROR_DOMAIN=${EMPEROR_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
         condition: service_healthy
 
   # Optional near-real-time Google Drive mirror. Configure rclone first, then
@@ -94,6 +114,8 @@ services:
   #   restart: unless-stopped
 
 volumes:
+  caddy-data:
+  caddy-config:
   pgdata:
   app-storage:
   rclone-config:

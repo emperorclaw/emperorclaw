@@ -65,13 +65,15 @@ function resizeSpecs(specs: AgentSpecState[], count: number): AgentSpecState[] {
 export function EasySetupDialog({
     onAgentCreated,
     onSwitchToAdvanced,
+    localOnly = false,
 }: {
     onAgentCreated?: (agentId: string) => void;
     onSwitchToAdvanced: () => void;
+    localOnly?: boolean;
 }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
-    const [step, setStep] = useState<EasyStep>("mode");
+    const [step, setStep] = useState<EasyStep>(localOnly ? "count-and-roles" : "mode");
     const [count, setCount] = useState(1);
     const [specs, setSpecs] = useState<AgentSpecState[]>([makeSpec(0)]);
     const [llmProvider, setLlmProvider] = useState(LLM_PROVIDER_OPTIONS[0].id);
@@ -92,7 +94,7 @@ export function EasySetupDialog({
     }, [open]);
 
     const resetForm = () => {
-        setStep("mode");
+        setStep(localOnly ? "count-and-roles" : "mode");
         setCount(1);
         setSpecs([makeSpec(0)]);
         setLlmProvider(LLM_PROVIDER_OPTIONS[0].id);
@@ -114,6 +116,7 @@ export function EasySetupDialog({
     };
 
     const handleCreate = async () => {
+        if (submitting) return;
         setStep("provisioning");
         setSubmitting(true);
         setError(null);
@@ -137,6 +140,7 @@ export function EasySetupDialog({
             if (!res.ok) throw new Error(data.error || "Easy Setup failed");
             setResults(data.results || []);
             setStep("done");
+            router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Easy Setup failed");
             setStep("review");
@@ -146,7 +150,7 @@ export function EasySetupDialog({
     };
 
     const handleViewAgents = () => {
-        const firstSuccess = results?.find((r) => r.success && r.agentId);
+        const firstSuccess = results?.find((r) => r.success && r.agentId) || results?.find((r) => r.agentId);
         setOpen(false);
         resetForm();
         router.refresh();
@@ -163,7 +167,7 @@ export function EasySetupDialog({
     const canContinueRoles = specs.every((s) => s.name.trim().length > 0);
 
     return (
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+        <Dialog open={open} onOpenChange={(o) => { if (submitting) return; setOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild>
                 <Button variant="default" className="shadow-sm">➕ Hire an Agent</Button>
             </DialogTrigger>
@@ -175,14 +179,14 @@ export function EasySetupDialog({
                         {step === "provider-key" && "Connect an LLM provider"}
                         {step === "review" && "Review & create"}
                         {step === "provisioning" && "Provisioning agents…"}
-                        {step === "done" && "Agents hired"}
+                        {step === "done" && "Setup results"}
                     </DialogTitle>
                     <DialogDescription className="text-zinc-400">
                         {step === "mode" && "Using Hermes as the runtime — pick where it lives."}
                         {step === "count-and-roles" && `Pick a role for each agent. Up to ${MAX_EASY_SETUP_AGENTS} per batch.`}
-                        {step === "provider-key" && "This key will be used to run every agent in this batch."}
+                        {step === "provider-key" && "Your provider runs the model and bills its usage. Emperor encrypts this key and configures the workers for you."}
                         {step === "review" && "Confirm the agents you're about to create."}
-                        {step === "provisioning" && "This runs synchronously — hang tight, this can take a moment per agent."}
+                        {step === "provisioning" && "Keep this window open while each worker is installed and started. The first download may take a few minutes."}
                         {step === "done" && "Here's what happened for each agent in this batch."}
                     </DialogDescription>
                 </DialogHeader>
@@ -215,7 +219,7 @@ export function EasySetupDialog({
                             <div>
                                 <span className="block text-sm font-medium text-zinc-100">Remote — another machine</span>
                                 <span className="block text-[11px] leading-relaxed text-zinc-400 mt-0.5">
-                                    Hermes on a VPS/Raspberry Pi/dedicated worker, OpenClaw, or manual setup — full control over runtime and provider.
+                                    Connect Hermes on another machine or use an existing remote integration.
                                 </span>
                             </div>
                         </button>
@@ -323,7 +327,7 @@ export function EasySetupDialog({
                             </div>
                             {!LLM_PROVIDER_OPTIONS.find((p) => p.id === llmProvider)?.verified && (
                                 <p className="text-[10px] text-zinc-500">
-                                    Beta: this provider is registry-confirmed but not yet live-verified end-to-end for Easy Setup.
+                                    Beta: this provider has not yet been verified end to end with Easy Setup.
                                 </p>
                             )}
                         </div>
@@ -422,7 +426,7 @@ export function EasySetupDialog({
                 )}
 
                 <DialogFooter className="flex items-center gap-2">
-                    {(step === "count-and-roles" || step === "provider-key" || step === "review") && (
+                    {((step === "count-and-roles" && !localOnly) || step === "provider-key" || step === "review") && (
                         <Button
                             type="button"
                             variant="outline"
