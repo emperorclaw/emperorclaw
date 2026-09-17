@@ -25,7 +25,11 @@ AGENT_INSTRUCTIONS = os.environ.get("EMPEROR_CLAW_AGENT_INSTRUCTIONS", "").strip
 AGENT_ID = os.environ.get("EMPEROR_CLAW_AGENT_ID", "").strip()
 RUNTIME_ID = os.environ.get("EMPEROR_CLAW_RUNTIME_ID", f"hermes-{socket.gethostname()}-{uuid.uuid4().hex[:8]}")
 HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
-HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "emperor-claw,web,terminal,code_execution").strip()
+# Toolsets handed to the Hermes CLI. The Emperor tools come from the plugin
+# (plugins.enabled), NOT from a toolset, so naming the plugin here made Hermes
+# warn `Unknown toolsets: emperor-claw` on every single turn — a line that then
+# travelled into the agent's reply.
+HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
 HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "300"))
 # Grace window after SIGTERM before SIGKILL on a timed-out turn: lets Hermes
@@ -564,12 +568,25 @@ def latest_tool_activity(since_ts: float, tail_bytes: int = 32_000) -> str | Non
     return None
 
 
+# Runtime notices Hermes prints around the answer. Never part of the reply, and
+# useless to a human reading an Emperor thread.
+HERMES_OUTPUT_NOISE_PREFIXES = ("Warning: Unknown toolsets:",)
+
+
 def clean_hermes_output(output: str) -> str:
+    """Strip the transport-level noise Hermes adds around the real answer.
+
+    Hermes appends a `session_id: ...` footer and, when its config names a
+    toolset it does not know, prints a `Warning: Unknown toolsets: ...` line
+    before the answer. Both are runtime bookkeeping: forwarding them makes
+    every Emperor message open with text the human cannot act on.
+    """
     lines = output.strip().splitlines()
     while lines and lines[-1].startswith("session_id:"):
         lines.pop()
         while lines and not lines[-1].strip():
             lines.pop()
+    lines = [line for line in lines if not line.startswith(HERMES_OUTPUT_NOISE_PREFIXES)]
     return "\n".join(lines).strip()
 
 

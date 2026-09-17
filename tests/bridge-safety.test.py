@@ -253,5 +253,41 @@ class TestStatePersistence(unittest.TestCase):
         self.assertEqual(state, {"seen": [], "lastSeenAt": None})
 
 
+class TestCleanHermesOutput(unittest.TestCase):
+    """Hermes prints runtime notices around the answer; they must not be sent.
+
+    The `Unknown toolsets` notice fired on every turn because the bridge named
+    the plugin in HERMES_TOOLSETS, and it travelled into the agent's reply.
+    """
+
+    def test_unknown_toolset_warning_is_dropped(self):
+        raw = "Warning: Unknown toolsets: emperor-claw\nACK working\n"
+        self.assertEqual(bridge.clean_hermes_output(raw), "ACK working")
+
+    def test_warning_alone_leaves_nothing_to_send(self):
+        raw = "Warning: Unknown toolsets: emperor-claw\n"
+        self.assertEqual(bridge.clean_hermes_output(raw), "")
+
+    def test_session_footer_is_dropped(self):
+        raw = "ACK working\nsession_id: abc-123\n"
+        self.assertEqual(bridge.clean_hermes_output(raw), "ACK working")
+
+    def test_an_agent_warning_about_something_else_survives(self):
+        # An agent may legitimately write about a warning; only the fixed
+        # "Unknown toolsets" notice is transport noise.
+        raw = "Warning: this will delete data. Confirm before continuing."
+        self.assertEqual(bridge.clean_hermes_output(raw), raw)
+
+    def test_default_toolsets_do_not_name_the_plugin(self):
+        # The Emperor tools come from plugins.enabled, not from a toolset, so
+        # the plugin name must not sit in the default toolset list. Checked on
+        # the source because the resolved value depends on the env.
+        src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
+        self.assertIn(
+            'os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution")',
+            src,
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
