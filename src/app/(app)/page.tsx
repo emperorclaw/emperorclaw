@@ -246,6 +246,7 @@ export default async function DashboardPage({
       {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
         <OnboardingTour
           companyId={companyId}
+          hasExistingAgents={allAgents.length > 0}
         />
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { IconCircleCheck, IconLoader2, IconX } from "@tabler/icons-react";
 import { EasySetupDialog } from "@/app/(app)/agents/easy-setup-dialog";
 import { CreateAgentDialog } from "@/app/(app)/agents/create-agent-dialog";
@@ -9,7 +9,7 @@ import { AgentDirectChat } from "@/components/agent-direct-chat";
 
 type Worker = { id: string; name: string; status: string; lastSeenAt: string | null };
 
-export function OnboardingTour({ companyId }: { companyId: string }) {
+export function OnboardingTour({ companyId, hasExistingAgents = false }: { companyId: string; hasExistingAgents?: boolean }) {
   const storageKey = `emperor:onboarding-dismissed:${companyId}`;
   const [dismissed, setDismissed] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
@@ -19,11 +19,17 @@ export function OnboardingTour({ companyId }: { companyId: string }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState(false);
+  const [replyConfirmed, setReplyConfirmed] = useState(false);
+  const confirmReply = useCallback((message: { text: string }) => {
+    if (message.text.split("\n").some(line => /^ACK working[.!]?$/i.test(line.trim()))) setReplyConfirmed(true);
+  }, []);
   const worker = workers.find(w => w.id === selectedId) || workers.find(w => w.status === "online" && w.lastSeenAt) || workers[0];
   const online = worker?.status === "online" && Boolean(worker.lastSeenAt);
+  useEffect(() => { setReplyConfirmed(false); }, [worker?.id]);
 
   useEffect(() => {
     setDismissed(window.localStorage.getItem(storageKey) === "true");
+    if (hasExistingAgents && !selectedId) return;
     let cancelled = false;
     const check = async () => {
       try {
@@ -45,7 +51,7 @@ export function OnboardingTour({ companyId }: { companyId: string }) {
     void check();
     const interval = window.setInterval(check, 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [storageKey]);
+  }, [storageKey, hasExistingAgents, selectedId]);
 
   const finish = async (status: "completed" | "dismissed") => {
     try {
@@ -57,7 +63,9 @@ export function OnboardingTour({ companyId }: { companyId: string }) {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save setup progress."); }
   };
 
-  if (dismissed || completed) return null;
+  // Another user may register a worker after the dashboard was rendered.
+  // Keep this flow only when this user is actively setting up its first worker.
+  if (dismissed || completed || ((hasExistingAgents || workers.length > 0) && !selectedId)) return null;
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 space-y-5" aria-label="First agent setup">
       <div className="flex items-start justify-between gap-3">
@@ -92,9 +100,10 @@ export function OnboardingTour({ companyId }: { companyId: string }) {
         </li>
         <li className="space-y-2">
           <h3 className="font-medium text-zinc-200">3. Test a private conversation</h3>
-          <p className="text-zinc-400">When online, send: “Hello! Reply with ACK working.” Wait for the agent&apos;s reply before finishing setup.</p>
-          {worker && online && <AgentDirectChat agentId={worker.id} agentName={worker.name} />}
-          <button type="button" disabled={!online} onClick={() => void finish("completed")} className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-white hover:bg-cyan-500 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-cyan-400"><IconCircleCheck className="h-4 w-4" />I received a reply — finish setup</button>
+          <p className="text-zinc-400">This is a private chat with your worker, so no @mention is needed. When online, send: “Hello! Reply exactly ACK working.” In team chat, use the @ picker to address your agent.</p>
+          {worker && online && <AgentDirectChat key={worker.id} agentId={worker.id} agentName={worker.name} onAgentReply={confirmReply} />}
+          <p role="status" className={replyConfirmed ? "text-emerald-300" : "text-zinc-400"}>{replyConfirmed ? "Test reply received. Your worker can answer messages." : "Finish setup unlocks when your worker replies with ACK working. If no reply arrives, check agent details for runtime or provider errors."}</p>
+          <button type="button" disabled={!replyConfirmed} onClick={() => void finish("completed")} className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-white hover:bg-cyan-500 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-cyan-400"><IconCircleCheck className="h-4 w-4" />Finish setup</button>
         </li>
       </ol>
       <div className="border-t border-zinc-800 pt-4 text-sm text-zinc-400 space-y-2">

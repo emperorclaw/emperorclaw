@@ -88,10 +88,12 @@ export function AgentDirectChat({
     agentId,
     agentName,
     hideHeader = false,
+    onAgentReply,
 }: {
     agentId: string;
     agentName: string;
     hideHeader?: boolean;
+    onAgentReply?: (message: { text: string; createdAt: string }) => void;
 }) {
     const { data: session } = useSession();
     // session.user.id is set in the auth session callback at runtime but not
@@ -100,6 +102,12 @@ export function AgentDirectChat({
     const currentUserId = (session?.user as { id?: string } | undefined)?.id;
     const [thread, setThread] = useState<DirectThread | null>(null);
     const [messages, setMessages] = useState<DirectMessage[]>([]);
+    useEffect(() => {
+        if (!onAgentReply) return;
+        for (const message of messages) {
+            if (message.senderType === "agent" && message.senderId === agentId) onAgentReply(message);
+        }
+    }, [messages, agentId, onAgentReply]);
     const [participants, setParticipants] = useState<DirectParticipant[]>([]);
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(true);

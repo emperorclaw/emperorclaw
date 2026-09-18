@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.36] — 2026-09-18
+
+### Fixed
+
+- Hide first-agent onboarding for companies with existing agents, including
+  installations with remote Hermes workers that do not need local Docker setup.
+- Keep a new worker's onboarding open across the hiring dialog's dashboard refresh.
+- Explain that private chat needs no @mention, while team chat requires addressing
+  the agent. Unlock setup completion only after the worker returns `ACK working`.
+
 ## [0.8.35] — 2026-09-18
 
 ### Fixed

@@ -156,6 +156,9 @@ export function EasySetupDialog({
             setExpanded(Object.fromEntries((data.results || []).map((r: AgentBatchResult, i: number) => [i, !r.success])));
             setLlmApiKey("");
             setStep("done");
+            const created = (data.results || []).find((r: AgentBatchResult) => r.success && r.agentId)
+                || (data.results || []).find((r: AgentBatchResult) => r.agentId);
+            if (created?.agentId) onAgentCreated?.(created.agentId);
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Easy Setup failed");
