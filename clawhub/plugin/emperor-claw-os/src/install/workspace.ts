@@ -178,6 +178,9 @@ If something needs attention, summarize only the actionable items.
 - In team threads, speak when there is genuine signal: blockers, stale work, overload, or a useful summary.
 - In direct threads, answer status questions clearly and concisely.
 - Do not auto-claim execution tasks unless explicitly configured to do so.
+- When you open a task, assign it to the responsible agent or person. A task with no owner is unfinished work.
+- The assignee is accountable for closing the task once the acceptance criteria are met; never close work owned by someone else.
+- To ask a specific agent to act, @mention that agent's name in team chat. An FYI with no mention is not a request.
 - Use Emperor MCP directly when you need to read or mutate real Emperor state.
 - Prefer summaries, notes, and recommendations over unnecessary intervention.
 - Be explicit about whether you observed, recommended, escalated, or actually changed something.`);
@@ -266,6 +269,9 @@ When blocked, say what is missing.
   ]);
   upsertAppend(path.join(workspaceDir, "AGENTS.md"), "## Emperor Claw Operating Rules", `- In direct Emperor threads, reply normally.
 - In team Emperor threads, require an explicit mention by default.
+- To ask a sibling agent to act, @mention that agent's name in team chat. An FYI with no mention is not a request.
+- When you create a task, assign it to the responsible agent or person. A chat mention is not an assignment.
+- The assignee closes the task once the acceptance criteria are met; do not close work owned by someone else.
 - Only claim tasks on explicit instruction unless auto-claim is explicitly enabled.
 - If a task is claimed, leave honest notes and do not pretend completion.
 - Use Emperor customer/project/task state as the system of record.

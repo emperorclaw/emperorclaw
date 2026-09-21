@@ -1105,8 +1105,13 @@ def post_reasoning_history(message_id: str, reasoning: str) -> None:
 
 
 # Runtime notices Hermes prints around the answer. Never part of the reply, and
-# useless to a human reading an Emperor thread.
-HERMES_OUTPUT_NOISE_PREFIXES = ("Warning: Unknown toolsets:",)
+# useless to a human reading an Emperor thread. The tirith notice fires on the
+# first turn of a fresh profile, while Hermes is still downloading its security
+# scanner, and would otherwise open every agent's first reply.
+HERMES_OUTPUT_NOISE_PREFIXES = (
+    "Warning: Unknown toolsets:",
+    "⚠ tirith security scanner",
+)
 
 
 def clean_hermes_output(output: str) -> str:

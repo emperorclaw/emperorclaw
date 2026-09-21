@@ -31,7 +31,11 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          # Built-in token + `packages: write` above is the supported way to
+          # push to GHCR from the repo that owns the package. A manually-managed
+          # PAT here fails closed (`denied: denied`) when it is unset, expired,
+          # or missing the write:packages scope.
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta

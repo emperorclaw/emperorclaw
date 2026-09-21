@@ -102,11 +102,18 @@ export function MessagingHub({
     }, [agents, selectedAgentId]);
 
     useEffect(() => {
+        // `?agent=<id>` is a deep link (onboarding "Open direct chat", shared
+        // links). It wins over the last-remembered conversation for this load.
+        const requestedAgent = new URLSearchParams(window.location.search).get("agent");
         const savedConversation = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
         const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
 
-        if (savedConversation === TEAM_CONVERSATION) {
+        if (requestedAgent && agents.some((agent) => agent.id === requestedAgent)) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
+            setSelectedAgentId(requestedAgent);
+            setMobileChatOpen(true);
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, requestedAgent);
+        } else if (savedConversation === TEAM_CONVERSATION) {
             setSelectedAgentId(null);
             setMobileChatOpen(true);
         } else if (savedConversation && agents.some((agent) => agent.id === savedConversation)) {

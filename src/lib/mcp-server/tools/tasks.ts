@@ -40,18 +40,22 @@ export function registerTaskTools(server: McpServer, companyId: string) {
 
     server.registerTool("create_task", {
         title: "Create Task",
-        description: "Create a new task under a project. Use claim_task if you want an agent to immediately pick up available work instead of assigning directly.",
+        description: "Create a new task under a project. Every task should have exactly one owner: pass `assignee` to assign the responsible agent or human (or assignedAgentId for agents only). The assignee is accountable for closing it. Use claim_task instead when you want an agent to pick up unassigned work.",
         inputSchema: {
             projectId: z.string().describe("The project this task belongs to"),
             taskType: z.string().describe("Task type identifier, e.g. 'research', 'write_content', 'review'"),
             inputJson: z.record(z.string(), z.unknown()).optional().describe("Structured task input/spec"),
             priority: z.number().int().optional(),
-            assignedAgentId: z.string().optional().describe("Agent id to assign this task to directly"),
+            assignee: z.object({
+                type: z.enum(["agent", "human"]),
+                id: z.string().describe("Agent id, or a company membership/user id for a human"),
+            }).nullable().optional().describe("The single owner responsible for closing this task"),
+            assignedAgentId: z.string().optional().describe("Agent id to assign this task to directly (agent-only shorthand for assignee)"),
         },
-    }, async ({ projectId, taskType, inputJson, priority, assignedAgentId }) => {
+    }, async ({ projectId, taskType, inputJson, priority, assignee, assignedAgentId }) => {
         try {
             const { task } = await createTaskForProject({
-                companyId, projectId, taskType, inputJson, priority, assignedAgentId,
+                companyId, projectId, taskType, inputJson, priority, assignee, assignedAgentId,
                 source: "mcp_server", actorType: "agent",
             });
             return jsonResult({ message: "Task created", task });
@@ -62,19 +66,23 @@ export function registerTaskTools(server: McpServer, companyId: string) {
 
     server.registerTool("update_task", {
         title: "Update Task",
-        description: "Update a task's title, goal, priority, assignee, state, or input. Provide only the fields you want to change.",
+        description: "Update a task's title, goal, priority, assignee, state, or input. Provide only the fields you want to change. Reassign explicitly with `assignee`; the assignee closes the task.",
         inputSchema: {
             taskId: z.string(),
             title: z.string().optional(),
             goal: z.string().optional(),
             priority: z.number().int().optional(),
+            assignee: z.object({
+                type: z.enum(["agent", "human"]),
+                id: z.string().describe("Agent id, or a company membership/user id for a human"),
+            }).nullable().optional().describe("The single owner responsible for closing this task; null unassigns"),
             assignedAgentId: z.string().optional(),
             state: z.string().optional().describe("New task state, e.g. 'in_progress', 'done'"),
             inputJson: z.record(z.string(), z.unknown()).optional(),
         },
-    }, async ({ taskId, title, goal, priority, assignedAgentId, state, inputJson }) => {
+    }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson }) => {
         try {
-            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignedAgentId, state, inputJson });
+            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson });
             return jsonResult({ message: "Task updated", task });
         } catch (e) {
             return errorResult(e);

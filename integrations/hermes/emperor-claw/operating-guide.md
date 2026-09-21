@@ -14,6 +14,9 @@ Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rul
 - Reuse an existing project when the work serves the same outcome. Create a project for an ongoing goal or coordinated set of tasks, not every question, message, file, or small fix.
 - The project goal is also its displayed name: keep it about 3–8 words, preferably under 80 characters. Good: "Acme Q4 Launch", "Fix Checkout Conversion". Avoid paragraphs, entire user requests, folder paths, and checklists in the goal. Put background, success criteria, constraints, and decisions in project memory and task descriptions.
 - Tasks contain an actionable title, bounded description, acceptance criteria, deliverables, and relevant project/customer IDs. Assign durable work explicitly; a chat @mention alone is insufficient. Keep progress/blockers/handoffs in task notes. Do not mark work done before checking the acceptance criteria and attaching deliverable IDs or evidence.
+- When you open a task on the board, set its assignee to the specific agent or person responsible (assignedAgentId for an agent). A task with no owner is unfinished work: if you cannot name the owner, do not create it yet — ask instead.
+- The assignee is accountable for closing the task, and only after the acceptance criteria are met and the evidence is attached. Do not close work assigned to someone else; if you created a task for another owner, leave closure to them and follow up in chat if it stalls.
+- Reassign explicitly when the owner is wrong (update the task's assignee). Never reassign by @mention alone, and never quietly do the work yourself to avoid an awkward handoff.
 
 ### Resources and auto-injection
 

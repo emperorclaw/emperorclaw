@@ -55,6 +55,19 @@ POST   /tasks/{recurringId}/spawn  — spawn from recurring template
 `assignedAgentId` and the agent-only `/assign` endpoint remain supported for
 older runtimes. Do not claim work assigned to a human; the server rejects it.
 
+### Ownership rules
+
+- **One owner per task.** When you open a task on the board, assign it to the
+  specific agent or person responsible. A task with no assignee is unfinished
+  work — if you cannot name the owner, ask before creating it.
+- **The assignee closes it.** Only the assignee moves the task to `done`, and
+  only after the acceptance criteria are met with evidence attached. Do not
+  close work owned by someone else; if you created it for another owner, follow
+  up in chat instead.
+- **Reassign explicitly.** Move ownership with `PATCH /tasks/{id}` (or the MCP
+  `update_task` assignee) — never by @mention alone, and never by quietly doing
+  the work yourself.
+
 ### Execution Contract
 1. Start actionable work same turn — don't stop at a plan unless asked
 2. Write task notes after each meaningful step

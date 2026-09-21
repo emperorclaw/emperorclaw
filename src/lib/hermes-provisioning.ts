@@ -16,7 +16,12 @@ import {
     type ContainerMount,
 } from "@/lib/docker";
 
-export const HERMES_IMAGE = "ghcr.io/emperorclaw/emperorclaw-hermes:latest";
+// Overridable so a self-hoster (or a runtime-image change under test) can pin a
+// locally built image instead of the published one. The app pulls whatever this
+// names, so a local tag that does not exist in a registry falls back to the
+// cached local image automatically.
+export const HERMES_IMAGE =
+    process.env.EMPEROR_CLAW_HERMES_IMAGE?.trim() || "ghcr.io/emperorclaw/emperorclaw-hermes:latest";
 
 export type SetupOutput = { command: string; stdout: string; stderr: string; exitCode: number | null };
 
@@ -32,6 +37,28 @@ const PROVIDER_ENV_VAR: Record<string, string> = {
 };
 
 type AgentRow = typeof agents.$inferSelect;
+
+// The bridge reads its role doctrine from EMPEROR_CLAW_AGENT_INSTRUCTIONS and
+// prepends it to every turn's system prompt. Provisioning used to never set
+// this, so a hired role's SOUL/AGENTS doctrine was stored but never reached
+// the runtime. Order matters: operating rules first, then persona, then the
+// identity anchor. Unknown doctrine files are appended after the known ones.
+const DOCTRINE_ENV_ORDER = ["AGENTS.md", "SOUL.md", "IDENTITY.md"];
+const MAX_AGENT_INSTRUCTIONS_CHARS = 12000;
+
+export function buildAgentInstructions(doctrine: Record<string, string> | null | undefined): string {
+    if (!doctrine || typeof doctrine !== "object") return "";
+    const parts: string[] = [];
+    for (const key of DOCTRINE_ENV_ORDER) {
+        const value = doctrine[key];
+        if (typeof value === "string" && value.trim()) parts.push(value.trim());
+    }
+    for (const [key, value] of Object.entries(doctrine)) {
+        if (DOCTRINE_ENV_ORDER.includes(key)) continue;
+        if (typeof value === "string" && value.trim()) parts.push(`### ${key}\n${value.trim()}`);
+    }
+    return parts.join("\n\n").slice(0, MAX_AGENT_INSTRUCTIONS_CHARS);
+}
 
 /**
  * Factors out the token-mint-and-store logic previously inlined in
@@ -162,6 +189,10 @@ export async function provisionHermesContainer(
             `HERMES_BIN=hermes`,
             `HERMES_TOOLSETS=emperor-claw,web,terminal,code_execution`,
         ];
+        const agentInstructions = buildAgentInstructions(agent.doctrineJson);
+        if (agentInstructions) {
+            env.push(`EMPEROR_CLAW_AGENT_INSTRUCTIONS=${agentInstructions}`);
+        }
         // Tells entrypoint.sh which provider/model to actually configure the
         // cloned profile for (hermes config set model.provider/...) — the
         // profile otherwise inherits whatever the base image's default

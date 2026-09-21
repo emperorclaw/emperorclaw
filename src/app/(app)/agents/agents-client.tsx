@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { IconRobot, IconSearch } from "@tabler/icons-react";
+import { useRouter } from "next/navigation";
+import { IconLoader2, IconRobot, IconSearch } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
@@ -27,6 +28,55 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const [status, setStatus] = useState("all");
     const [selectedId, setSelectedId] = useState(agents[0]?.id || "");
     const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
+    const router = useRouter();
+    // A freshly hired agent is not instantly reachable: the runtime has to boot
+    // and check in. Track it here and drop the operator into its direct chat as
+    // soon as it is actually online, instead of leaving them on the directory.
+    const [pendingId, setPendingId] = useState<string | null>(null);
+    const [pendingStalled, setPendingStalled] = useState(false);
+    const [pendingRetrying, setPendingRetrying] = useState(false);
+
+    const handleAgentCreated = (id: string) => {
+        setSelectedId(id);
+        setPendingId(id);
+        setPendingStalled(false);
+    };
+
+    useEffect(() => {
+        if (!pendingId) return;
+        let cancelled = false;
+        const check = async () => {
+            try {
+                const response = await fetch("/api/agents", { cache: "no-store" });
+                if (!response.ok) return;
+                const data = await response.json();
+                const agent = (data.agents || []).find((item: { id: string }) => item.id === pendingId);
+                if (cancelled || !agent) return;
+                if (agent.status === "online" && agent.lastSeenAt) {
+                    router.push(`/messages?agent=${pendingId}`);
+                }
+            } catch {
+                // Transient failure: keep polling.
+            }
+        };
+        void check();
+        const interval = window.setInterval(check, 4000);
+        const stallTimer = window.setTimeout(() => { if (!cancelled) setPendingStalled(true); }, 3 * 60 * 1000);
+        return () => { cancelled = true; window.clearInterval(interval); window.clearTimeout(stallTimer); };
+    }, [pendingId, router]);
+
+    const retryPendingRuntime = async () => {
+        if (!pendingId || pendingRetrying) return;
+        setPendingRetrying(true);
+        try {
+            await fetch(`/api/agents/${pendingId}/recreate-runtime`, { method: "POST" });
+            setPendingStalled(false);
+        } finally {
+            setPendingRetrying(false);
+        }
+    };
+
+    const pendingName = agents.find((agent) => agent.id === pendingId)?.name || "Your agent";
 
     const filteredAgents = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -47,12 +97,29 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                 description="Find agents, inspect workload, and jump into the durable profile when you need details."
                 actions={
                     <div className="flex items-center gap-2">
-                        <EasySetupDialog onAgentCreated={setSelectedId} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
-                        <CreateAgentDialog onAgentCreated={setSelectedId} open={advancedDialogOpen}
+                        <EasySetupDialog onAgentCreated={handleAgentCreated} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
+                        <CreateAgentDialog onAgentCreated={handleAgentCreated} open={advancedDialogOpen}
                             onOpenChange={setAdvancedDialogOpen} hideTrigger />
                     </div>
                 }
             />
+
+            {pendingId && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3 text-sm">
+                    <IconLoader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-400" />
+                    <span className="text-zinc-200">
+                        {pendingName} is starting up. We&apos;ll open its direct chat as soon as it&apos;s online — no action needed.
+                    </span>
+                    {pendingStalled && (
+                        <>
+                            <span className="text-amber-200/90">Still offline after a few minutes.</span>
+                            <button type="button" onClick={() => void retryPendingRuntime()} disabled={pendingRetrying} className="rounded-lg border border-amber-500/40 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10 disabled:opacity-50">
+                                {pendingRetrying ? "Restarting…" : "Retry runtime"}
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
 
             {agents.length === 0 ? (
                 <div className="emperor-panel rounded-2xl py-12 text-center">

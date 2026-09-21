@@ -66,4 +66,6 @@ Emperor stores the final message, not every streaming fragment.
 - use direct threads for private requests
 - use team chat for visible coordination
 - use `@AgentName` only when you want action or reply
+- a chat `@mention` is a request for attention, not an assignment — if the work should be tracked, open a task and assign exactly one owner
+- the task assignee is the one who closes it once the acceptance criteria are met
 - do not treat chat as the only durable state when a task, memory entry, resource, or artifact should also exist

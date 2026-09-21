@@ -58,6 +58,7 @@ type AgentDetailData = {
         budgetStatus?: string;
         containerId?: string | null;
         containerName?: string | null;
+        createdAt?: string;
     };
     latestSnapshot: { id: string; content: string; createdAt: string } | null;
     memoryEntries: Array<{
@@ -165,6 +166,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
 
     const { agent, latestSnapshot, memoryEntries, sessions, runs, threads } = data;
     const provider = getProvider(agent.provider || "mcp");
+    // A freshly created agent is legitimately offline while its runtime installs
+    // and connects (first boot can take a minute or two). Don't show the red
+    // "never connected" warning during that window — it reads as a failure when
+    // nothing is wrong yet.
+    const startupGraceMs = 3 * 60 * 1000;
+    const agentCreatedAtMs = agent.createdAt ? new Date(agent.createdAt).getTime() : 0;
+    const withinStartupGrace = agentCreatedAtMs > 0 && Date.now() - agentCreatedAtMs < startupGraceMs;
 
     const updateAgent = async (fields: Record<string, unknown>) => {
         setSaving(true);
@@ -301,10 +309,16 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     deploymentMode={(agent.deploymentMode as "local" | "remote") || "remote"}
                 />
                 {!agent.lastSeenAt && (
-                    <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[10px] text-rose-300/70">
-                        ⚠️ This agent has never connected — no heartbeat received yet. The bridge must be running for the agent to appear online.
-                        {agent.provider === "hermes" ? " See the setup guide below." : ""}
-                    </div>
+                    withinStartupGrace ? (
+                        <div className="border-b border-amber-500/15 bg-amber-500/[0.04] px-4 py-2 text-[10px] text-amber-200/80">
+                            ⏳ Starting up — the runtime is being installed and connected. The first boot can take a minute or two; this page shows “online” once it checks in.
+                        </div>
+                    ) : (
+                        <div className="border-b border-rose-500/15 bg-rose-500/[0.04] px-4 py-2 text-[10px] text-rose-300/70">
+                            ⚠️ This agent has never connected — no heartbeat received yet. The bridge must be running for the agent to appear online.
+                            {agent.provider === "hermes" ? " See the setup guide below." : ""}
+                        </div>
+                    )
                 )}
                 </>
             )}

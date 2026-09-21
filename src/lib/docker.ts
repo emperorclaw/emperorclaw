@@ -10,6 +10,13 @@ import { parseDockerPullResponse } from "./docker-pull-response";
 
 export const DOCKER_SOCKET = "/var/run/docker.sock";
 
+// The Hermes runtime image is ~2.8 GB. A 5-minute ceiling made the first-ever
+// hire fail on ordinary connections — the pull timed out mid-download, leaving
+// a half-created, permanently "offline" agent behind, while a second attempt
+// succeeded instantly from the now-cached layers. 30 minutes is the ceiling for
+// that one-time download, not the steady-state cost.
+const IMAGE_PULL_TIMEOUT_MS = 30 * 60 * 1000;
+
 export function isDocker(): boolean {
     try { return fs.existsSync("/.dockerenv"); } catch { return false; }
 }
@@ -22,7 +29,9 @@ export function dockerCall(method: string, path: string, body?: unknown): Promis
             path,
             headers: { "Content-Type": "application/json" },
             // A first container creation can unpack a large runtime image.
-            timeout: method === "POST" && (path.includes("/images/create") || path.startsWith("/containers/create")) ? 300_000 : 30_000,
+            timeout: method === "POST" && path.includes("/images/create") ? IMAGE_PULL_TIMEOUT_MS
+                : method === "POST" && path.startsWith("/containers/create") ? 300_000
+                : 30_000,
         };
         if (method === "POST" && path.includes("/images/create")) {
             (opts as Record<string, unknown>).agent = false;
@@ -50,7 +59,7 @@ export async function dockerPull(image: string): Promise<string> {
             socketPath: DOCKER_SOCKET,
             method: "POST",
             path: `/images/create?fromImage=${encodeURIComponent(image)}`,
-            timeout: 300_000,
+            timeout: IMAGE_PULL_TIMEOUT_MS,
             agent: false,
         }, (res) => {
             const chunks: Buffer[] = [];

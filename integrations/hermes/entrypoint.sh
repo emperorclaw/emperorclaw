@@ -7,6 +7,22 @@ ROLE="${EMPEROR_CLAW_AGENT_ROLE:-operator}"
 echo "[entrypoint] hermes profile create $PROFILE_NAME"
 hermes profile create "$PROFILE_NAME" --clone --description "$ROLE" || true
 
+# `hermes profile create` also writes the per-profile wrapper at
+# ~/.local/bin/<profile>, which the bridge uses as HERMES_BIN. That directory
+# is NOT on the persisted profile volume (/home/hermes/.hermes/profiles), so a
+# recreate (retry, image update, key rotation) finds the profile already
+# present, `create` fails with "already exists", and the wrapper is never
+# rebuilt — every turn then dies with "No such file or directory:
+# /home/hermes/.local/bin/<profile>". Recreate the wrapper explicitly when it
+# is missing; its contents mirror what `hermes profile create` generates.
+WRAPPER="$HOME/.local/bin/$PROFILE_NAME"
+if [ ! -x "$WRAPPER" ]; then
+    echo "[entrypoint] recreating missing profile wrapper $WRAPPER"
+    mkdir -p "$HOME/.local/bin"
+    printf '#!/bin/sh\nexec /home/hermes/.local/bin/hermes -p "%s" "$@"\n' "$PROFILE_NAME" > "$WRAPPER"
+    chmod +x "$WRAPPER"
+fi
+
 PLUGIN_DIR="$HOME/.hermes/profiles/$PROFILE_NAME/plugins/emperor-claw"
 mkdir -p "$PLUGIN_DIR"
 cp -R /opt/emperor-claw-plugin/* "$PLUGIN_DIR/"

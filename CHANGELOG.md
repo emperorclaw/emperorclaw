@@ -9,6 +9,44 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.38] — 2026-09-21
+
+### Added
+
+- A Boss (Team Lead) role template, pinned above the specialist grid, that
+  coordinates the roster, assigns each task to one owner, and verifies closure.
+- Guided company onboarding: name, what you do, industry, and website are
+  captured into company context, and a starter Knowledge & Rules scaffold is
+  seeded (Company, Agents, Projects, Customers folders).
+- After hiring an agent, the app confirms creation and opens its private direct
+  chat as soon as the runtime is online, from both onboarding and the agent
+  directory.
+
+### Fixed
+
+- Recreated Hermes containers keep working: a retry, image update, or key
+  rotation left the per-profile wrapper missing, so every turn failed with
+  "No such file or directory: /home/hermes/.local/bin/<profile>". The entrypoint
+  now recreates the wrapper when the profile already exists on the volume.
+- The first Hermes hire no longer fails mid-download: the ~3 GB runtime image
+  pull gets a 30-minute budget instead of 5.
+- Failed provisioning no longer advances the wizard to a permanently
+  "disconnected" agent; it reports the failure and offers a retry.
+- Hermes' tirith security notice no longer leaks into an agent's first reply.
+- The agent detail page shows a "starting up" state during the first-boot window
+  instead of the red "never connected" warning.
+- Container publishing uses the built-in `GITHUB_TOKEN`; the missing/expired
+  `GHCR_PAT` made both image workflows fail with `denied: denied`.
+
+### Changed
+
+- Role doctrine (SOUL/AGENTS/IDENTITY) is delivered to the Hermes runtime, and
+  the default doctrine now states the assignment rules: one owner per task, a
+  chat mention is not an assignment, and the assignee closes it.
+- MCP task tools accept a hybrid assignee (agent or human), matching the
+  documented API.
+- `EMPEROR_CLAW_HERMES_IMAGE` can override the Hermes runtime image.
+
 ## [0.8.37] — 2026-09-21
 
 ### Added

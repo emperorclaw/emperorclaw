@@ -1023,6 +1023,15 @@ class TestCleanHermesOutput(unittest.TestCase):
         raw = "Warning: this will delete data. Confirm before continuing."
         self.assertEqual(bridge.clean_hermes_output(raw), raw)
 
+    def test_tirith_security_notice_is_dropped(self):
+        # Fired on a fresh profile's first turn while Hermes downloads tirith,
+        # and used to open the agent's very first reply.
+        raw = (
+            "⚠ tirith security scanner enabled but not available — command "
+            "scanning will use pattern matching only\nHey. What do you need?\n"
+        )
+        self.assertEqual(bridge.clean_hermes_output(raw), "Hey. What do you need?")
+
     def test_default_toolsets_do_not_name_the_plugin(self):
         # The Emperor tools come from plugins.enabled, not from a toolset, so
         # the plugin name must not sit in the default toolset list. Checked on

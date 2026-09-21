@@ -155,13 +155,18 @@ export function EasySetupDialog({
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Easy Setup failed");
-            setResults(data.results || []);
-            setExpanded(Object.fromEntries((data.results || []).map((r: AgentBatchResult, i: number) => [i, !r.success])));
-            setLlmApiKey("");
+            const batch: AgentBatchResult[] = data.results || [];
+            setResults(batch);
+            setExpanded(Object.fromEntries(batch.map((r: AgentBatchResult, i: number) => [i, !r.success])));
             setStep("done");
-            const created = (data.results || []).find((r: AgentBatchResult) => r.success && r.agentId)
-                || (data.results || []).find((r: AgentBatchResult) => r.agentId);
-            if (created?.agentId) onAgentCreated?.(created.agentId);
+            const created = batch.find((r: AgentBatchResult) => r.success && r.agentId);
+            if (created?.agentId) {
+                // Only clear the key and advance once a worker actually came up.
+                // A failed runtime download used to still advance, stranding the
+                // operator on an agent stuck at "disconnected" with no retry.
+                setLlmApiKey("");
+                onAgentCreated?.(created.agentId);
+            }
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Easy Setup failed");
@@ -363,6 +368,11 @@ export function EasySetupDialog({
                         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-200">
                             {successCount} of {results.length} agent{results.length === 1 ? "" : "s"} provisioned successfully
                         </div>
+                        {successCount === 0 && (
+                            <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 text-xs text-amber-200">
+                                Nothing came up. The first run downloads the runtime image (about 3 GB), which can time out on a slow link — retrying usually finishes from the already-downloaded layers.
+                            </p>
+                        )}
                         <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
                             {results.map((r, i) => (
                                 <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
@@ -410,7 +420,17 @@ export function EasySetupDialog({
                             Create &amp; start {specs.length === 1 ? "agent" : `${specs.length} agents`}
                         </Button>
                     )}
-                    {step === "done" && (
+                    {step === "done" && successCount === 0 && (
+                        <Button
+                            type="button"
+                            onClick={handleCreate}
+                            disabled={submitting || available !== true || (!sourceAgentId && !llmApiKey.trim())}
+                            className="bg-cyan-600 hover:bg-cyan-500 text-white"
+                        >
+                            Retry provisioning
+                        </Button>
+                    )}
+                    {step === "done" && successCount > 0 && (
                         <Button type="button" onClick={handleViewAgents} className="bg-cyan-600 hover:bg-cyan-500 text-white">
                             {results?.length === 1 ? "Open agent" : "View agents"}
                         </Button>
