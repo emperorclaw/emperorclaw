@@ -25,7 +25,21 @@ import {
     threadParticipants,
 } from "@/db/schema";
 import { logAudit } from "@/lib/mcp";
-import { removeContainer, stopContainer } from "@/lib/docker";
+import { removeContainer, stopContainer, dockerVolumeRemove } from "@/lib/docker";
+import { hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
+
+/** Outcome of tearing down an agent's Docker runtime, surfaced to the caller. */
+export type AgentRuntimeCleanup = {
+    /** True when the agent had a provisioned Docker container to tear down. */
+    attempted: boolean;
+    containerRemoved: boolean;
+    volumeRemoved: boolean;
+    warnings: string[];
+};
+
+function errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : "Unknown error";
+}
 
 export async function deleteAgentAndData(input: {
     companyId: string;
@@ -135,17 +149,43 @@ export async function deleteAgentAndData(input: {
         role: existing.role,
     });
 
-    // Container removal isn't transactional with Postgres, so this runs
-    // post-commit and best-effort: a Docker hiccup must never block the
-    // DB-level deletion that already succeeded above.
-    if (existing.containerId) {
+    // Docker teardown isn't transactional with Postgres, so it runs post-commit
+    // and best-effort: a Docker hiccup must never block the DB-level deletion
+    // that already succeeded above. Unlike the previous swallow-everything
+    // version, failures are collected and returned so the caller can warn
+    // instead of silently leaving a running container or an orphan volume.
+    const cleanup: AgentRuntimeCleanup = {
+        attempted: false,
+        containerRemoved: false,
+        volumeRemoved: false,
+        warnings: [],
+    };
+
+    const containerId = existing.containerId;
+    if (containerId) {
+        cleanup.attempted = true;
+        const shortId = containerId.slice(0, 12);
         try {
-            await stopContainer(existing.containerId).catch(() => {});
-            await removeContainer(existing.containerId, true).catch(() => {});
-        } catch {
-            // best effort — DB deletion already committed, nothing further to do
+            await stopContainer(containerId);
+        } catch (err) {
+            cleanup.warnings.push(`Could not stop container ${shortId}: ${errorMessage(err)}`);
+        }
+        try {
+            await removeContainer(containerId, true);
+            cleanup.containerRemoved = true;
+        } catch (err) {
+            cleanup.warnings.push(`Could not remove container ${shortId}: ${errorMessage(err)}`);
+        }
+        // The volume name is derived from the agent row, so its state can be
+        // reclaimed even if the container record was already gone.
+        const volumeName = hermesVolumeName(hermesSafeName(existing.name), existing.id);
+        try {
+            await dockerVolumeRemove(volumeName);
+            cleanup.volumeRemoved = true;
+        } catch (err) {
+            cleanup.warnings.push(`Could not remove volume ${volumeName}: ${errorMessage(err)}`);
         }
     }
 
-    return existing;
+    return { agent: existing, cleanup };
 }

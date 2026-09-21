@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
 import { mintAgentSetupToken, provisionHermesContainer } from "@/lib/hermes-provisioning";
+import { hermesSafeName } from "@/lib/hermes-names";
 import { logAudit } from "@/lib/mcp";
 
 /** Hire an isolated worker without exposing the source worker's credentials. */
@@ -30,7 +31,7 @@ export async function hireHermesAgent(input: {
         scopeJson: source.scopeJson,
         doctrineJson: input.doctrineJson ?? {}, status: "offline",
     }).returning();
-    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
+    const safeName = hermesSafeName(name);
     try {
         const { rawToken } = await mintAgentSetupToken(input.companyId, safeName, agent.id);
         const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });

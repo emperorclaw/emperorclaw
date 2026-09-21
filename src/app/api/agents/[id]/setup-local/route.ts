@@ -11,6 +11,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
 import { provisionHermesContainer } from "@/lib/hermes-provisioning";
+import { hermesSafeName } from "@/lib/hermes-names";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export async function POST(
     const projectRoot = process.env.EMPEROR_PROJECT_ROOT || process.cwd();
     // In dev mode (next dev), cwd is already the project root.
     // In production standalone, set EMPEROR_PROJECT_ROOT=/var/www/emperorclaw
-    const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
+    const safeName = hermesSafeName(agent.name);
     // `role` is interpolated into shell command strings below (profile
     // description, install commands). Even inside double quotes, bash and
     // PowerShell still interpret backslash, double quote, dollar and backtick,

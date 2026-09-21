@@ -156,6 +156,19 @@ export async function dockerVolumeCreate(name: string): Promise<void> {
     }
 }
 
+/**
+ * Remove a named Docker volume. Idempotent: a 404 (already gone) is success.
+ * Used when an agent is deleted so its Hermes profile/session/bridge state does
+ * not linger as an orphan volume. `force` lets Docker remove a volume that a
+ * stale container still references.
+ */
+export async function dockerVolumeRemove(name: string, force = true): Promise<void> {
+    const { code, data } = await dockerCall("DELETE", `/volumes/${encodeURIComponent(name)}?force=${force}`);
+    if (code !== 204 && code !== 404) {
+        throw new Error(`dockerVolumeRemove HTTP ${code}: ${JSON.stringify(data).slice(0, 200)}`);
+    }
+}
+
 export async function startContainer(id: string): Promise<void> {
     const { code, data } = await dockerCall("POST", `/containers/${id}/start`);
     if (code !== 204 && code !== 304) {

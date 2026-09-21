@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companyTokens } from "@/db/schema";
 import { decryptSecretPayload } from "@/lib/secrets";
+import { hermesContainerName, hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
 import {
     createContainer,
     dockerPull,
@@ -148,7 +149,7 @@ export async function provisionHermesContainer(
         }
 
         // 4. Build env + create + start the sibling container.
-        const containerName = `emperor-hermes-${safeName}-${agent.id.slice(0, 8)}`;
+        const containerName = hermesContainerName(safeName, agent.id);
         const env = [
             `EMPEROR_CLAW_API_URL=${emperorUrl}`,
             `EMPEROR_CLAW_API_TOKEN=${apiToken}`,
@@ -183,7 +184,7 @@ export async function provisionHermesContainer(
         // from scratch after a slow-turn timeout. If the volume cannot be
         // created we degrade to the old ephemeral-home behavior with a
         // warning rather than failing provisioning.
-        const volumeName = `emperor-hermes-${safeName}-${agent.id.slice(0, 8)}-home`;
+        const volumeName = hermesVolumeName(safeName, agent.id);
         let mounts: ContainerMount[] = [];
         try {
             await dockerVolumeCreate(volumeName);
@@ -272,7 +273,7 @@ export async function recreateHermesContainer(agentId: string): Promise<Provisio
         }
     }
 
-    const safeName = agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
+    const safeName = hermesSafeName(agent.name);
     const role = agent.role || "operator";
     const { rawToken } = await mintAgentSetupToken(agent.companyId, safeName, agent.id);
 

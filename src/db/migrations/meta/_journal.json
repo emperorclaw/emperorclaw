@@ -309,6 +309,13 @@
       "when": 1789677446031,
       "tag": "0043_add-thread-message-reasoning",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789763846031,
+      "tag": "0044_free-openrouter-model",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 export function DeleteAgentDialog({
     agentId,
@@ -45,6 +46,15 @@ export function DeleteAgentDialog({
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
                 throw new Error(typeof payload.error === "string" ? payload.error : "Agent deletion failed.");
+            }
+
+            const cleanup = payload.cleanup as { warnings?: string[] } | undefined;
+            const warnings = Array.isArray(cleanup?.warnings) ? cleanup.warnings : [];
+            if (warnings.length > 0) {
+                toast.warning("Agent deleted, but its runtime was not fully cleaned up", {
+                    description: warnings.join(" "),
+                    duration: 10000,
+                });
             }
 
             setOpen(false);

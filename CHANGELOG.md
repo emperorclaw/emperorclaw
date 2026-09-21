@@ -9,6 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.37] — 2026-09-21
+
+### Added
+
+- Easy Setup hires with OpenRouter or DeepSeek only. OpenRouter defaults to the
+  free `nvidia/nemotron-3-ultra-550b-a55b:free` model, seeded at zero cost so
+  reported usage stays $0 and budget-capped workers remain executable.
+
+### Fixed
+
+- The Custom role card is always visible and clickable in the role picker; it was
+  clipped below the fold inside nested scroll areas.
+- Buttons show a pointer cursor again after Tailwind v4 dropped the preflight rule.
+- Deleting a local Hermes agent also removes its Docker volume, and reports a
+  warning instead of silently leaving a running container or orphan volume when
+  teardown fails.
+
 ## [0.8.36] — 2026-09-18
 
 ### Fixed

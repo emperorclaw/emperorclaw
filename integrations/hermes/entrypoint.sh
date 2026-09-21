@@ -51,7 +51,9 @@ if [ -n "$EMPEROR_CLAW_LLM_PROVIDER" ]; then
         openrouter)
             hermes -p "$PROFILE_NAME" config set model.provider openrouter || true
             hermes -p "$PROFILE_NAME" config unset model.base_url || true
-            DEFAULT_MODEL="openai/gpt-4o-mini"
+            # Free by default so an OpenRouter worker can reply at zero cost
+            # when the operator leaves the model blank.
+            DEFAULT_MODEL="nvidia/nemotron-3-ultra-550b-a55b:free"
             ;;
         grok)
             hermes -p "$PROFILE_NAME" config set model.provider xai || true

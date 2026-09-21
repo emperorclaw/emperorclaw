@@ -206,6 +206,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tailwind v4 preflight dropped the browser's default pointer cursor on
+     buttons. Restore it so clickable controls read as clickable; disabled
+     buttons keep the default cursor. */
+  button:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* Task Processing Indicator Animations */

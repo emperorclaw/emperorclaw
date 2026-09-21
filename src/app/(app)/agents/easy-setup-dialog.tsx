@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { RoleTemplatePicker } from "./role-template-picker";
 import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
 import { getAgentTemplate } from "@/lib/agent-templates";
@@ -15,19 +14,23 @@ import { cn } from "@/lib/utils";
 // server-only route dependencies.
 const MAX_EASY_SETUP_AGENTS = 10;
 
-// Same 6-provider whitelist used by create-agent-dialog.tsx and
-// agent-detail-panel.tsx's LLM provider selects.
-// `verified: false` mirrors integrations/hermes/entrypoint.sh — only OpenAI
-// and DeepSeek have been live-verified end-to-end with a real key and a
-// real reply; the rest are registry-confirmed but best-effort.
-const LLM_PROVIDER_OPTIONS: { id: string; label: string; verified: boolean }[] = [
-    { id: "openai", label: "OpenAI", verified: true },
-    { id: "anthropic", label: "Anthropic", verified: false },
-    { id: "google", label: "Google Gemini", verified: false },
-    { id: "openrouter", label: "OpenRouter", verified: false },
-    { id: "grok", label: "Grok", verified: false },
-    { id: "deepseek", label: "DeepSeek", verified: true },
+// Easy Setup deliberately offers only the two providers we support for
+// one-click local hiring: OpenRouter (free default model, no billing
+// surprise) and DeepSeek. Every other provider stays reachable through the
+// Advanced create-agent flow.
+const LLM_PROVIDER_OPTIONS: { id: string; label: string }[] = [
+    { id: "openrouter", label: "OpenRouter" },
+    { id: "deepseek", label: "DeepSeek" },
 ];
+
+// Default model per provider, so a hired worker can reply without the operator
+// knowing a model name. OpenRouter's Nemotron 3 Ultra is free.
+const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
+    openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
+    deepseek: "",
+};
+
+const DEFAULT_LLM_PROVIDER = LLM_PROVIDER_OPTIONS[0].id;
 
 type EasyStep = "count-and-roles" | "provider-key" | "provisioning" | "done";
 
@@ -76,9 +79,9 @@ export function EasySetupDialog({
     const [step, setStep] = useState<EasyStep>("count-and-roles");
     const [count, setCount] = useState(1);
     const [specs, setSpecs] = useState<AgentSpecState[]>([makeSpec(0)]);
-    const [llmProvider, setLlmProvider] = useState(LLM_PROVIDER_OPTIONS[0].id);
+    const [llmProvider, setLlmProvider] = useState(DEFAULT_LLM_PROVIDER);
     const [llmApiKey, setLlmApiKey] = useState("");
-    const [llmModel, setLlmModel] = useState("");
+    const [llmModel, setLlmModel] = useState(DEFAULT_MODEL_BY_PROVIDER[DEFAULT_LLM_PROVIDER]);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [results, setResults] = useState<AgentBatchResult[] | null>(null);
@@ -108,9 +111,9 @@ export function EasySetupDialog({
         setStep("count-and-roles");
         setCount(1);
         setSpecs([makeSpec(0)]);
-        setLlmProvider(LLM_PROVIDER_OPTIONS[0].id);
+        setLlmProvider(DEFAULT_LLM_PROVIDER);
         setLlmApiKey("");
-        setLlmModel("");
+        setLlmModel(DEFAULT_MODEL_BY_PROVIDER[DEFAULT_LLM_PROVIDER]);
         setSourceAgentId("");
         setSubmitting(false);
         setError(null);
@@ -307,7 +310,7 @@ export function EasySetupDialog({
                                     <button
                                         key={p.id}
                                         type="button"
-                                        onClick={() => { setLlmProvider(p.id); setLlmModel(""); }}
+                                        onClick={() => { setLlmProvider(p.id); setLlmModel(DEFAULT_MODEL_BY_PROVIDER[p.id] ?? ""); }}
                                         className={cn(
                                             "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
                                             llmProvider === p.id
@@ -316,17 +319,9 @@ export function EasySetupDialog({
                                         )}
                                     >
                                         {p.label}
-                                        {!p.verified && (
-                                            <Badge variant="outline" className="text-[9px] px-1.5 py-0">Beta</Badge>
-                                        )}
                                     </button>
                                 ))}
                             </div>
-                            {!LLM_PROVIDER_OPTIONS.find((p) => p.id === llmProvider)?.verified && (
-                                <p className="text-[10px] text-zinc-500">
-                                    Beta: this provider has not yet been verified end to end with Easy Setup.
-                                </p>
-                            )}
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">API Key</label>
@@ -343,7 +338,7 @@ export function EasySetupDialog({
                         <label className="block space-y-1.5 text-sm text-zinc-300">
                             Model <span className="text-zinc-500">(optional)</span>
                             <input value={llmModel} onChange={e => setLlmModel(e.target.value)} maxLength={200}
-                                placeholder="Use the provider default" className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100" />
+                                placeholder={DEFAULT_MODEL_BY_PROVIDER[llmProvider] || "Use the provider default"} className="block w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100" />
                         </label>
                         <p className="text-xs text-zinc-500">
                             Emperor encrypts and stores your key, then configures Hermes automatically.

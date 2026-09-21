@@ -10,6 +10,7 @@ import { agents, llmPricing } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker, dockerCall } from "@/lib/docker";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { mintAgentSetupToken, provisionHermesContainer, type SetupOutput } from "@/lib/hermes-provisioning";
+import { hermesSafeName } from "@/lib/hermes-names";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 
 export const dynamic = "force-dynamic";
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
             }).returning();
             agentId = agent.id;
 
-            const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
+            const safeName = hermesSafeName(name);
             const { rawToken } = await mintAgentSetupToken(companyId, safeName, agentId);
             const provisionResult = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
 

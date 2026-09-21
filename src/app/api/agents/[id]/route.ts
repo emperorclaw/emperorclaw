@@ -215,9 +215,9 @@ export async function DELETE(
     const body = await req.json().catch(() => ({}));
     const confirmName = typeof body.confirmName === "string" ? body.confirmName.trim() : "";
 
-    let deletedAgent;
+    let deleted;
     try {
-        deletedAgent = await deleteAgentAndData({
+        deleted = await deleteAgentAndData({
             companyId,
             agentId: id,
             actorType: "human",
@@ -231,12 +231,14 @@ export async function DELETE(
         throw error;
     }
 
-    if (!deletedAgent) {
+    if (!deleted) {
         return NextResponse.json({ error: "Agent not found or already deleted." }, { status: 404 });
     }
 
+    const { agent: deletedAgent, cleanup } = deleted;
     return NextResponse.json({
         message: `Agent ${deletedAgent.name} deleted.`,
         agent: { id: deletedAgent.id, name: deletedAgent.name },
+        cleanup,
     });
 }
