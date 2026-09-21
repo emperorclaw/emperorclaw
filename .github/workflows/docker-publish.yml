@@ -31,11 +31,13 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          # Built-in token + `packages: write` above is the supported way to
-          # push to GHCR from the repo that owns the package. A manually-managed
-          # PAT here fails closed (`denied: denied`) when it is unset, expired,
-          # or missing the write:packages scope.
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a classic PAT with `write:packages` when one is configured:
+          # a GHCR package created by a PAT is often not linked to the repo, and
+          # GITHUB_TOKEN then fails the push with `permission_denied:
+          # write_package`. Grant the repo Write access to the package under
+          # org → Packages → <package> → Manage Actions access to make the
+          # GITHUB_TOKEN fallback work instead.
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
