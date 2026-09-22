@@ -1093,5 +1093,59 @@ class TestExtractStreamJson(unittest.TestCase):
         self.assertEqual(session, "sys-1")
 
 
+class TestOperatingGuide(unittest.TestCase):
+    """A missing/unreadable operating-guide.md must degrade, never crash.
+
+    Regression: run_hermes() read the guide unguarded, so a deployment that
+    shipped only the bridge script (the README's own layout) threw
+    FileNotFoundError on every turn and the agent went permanently silent.
+    """
+
+    def _missing_path(self) -> Path:
+        return Path(tempfile.gettempdir()) / "does-not-exist-operating-guide.md"
+
+    def test_missing_guide_returns_builtin_fallback(self):
+        from unittest.mock import patch
+        missing = self._missing_path()
+        with patch.object(bridge, "OPERATING_GUIDE_PATH", str(missing)), \
+             patch.object(bridge, "default_operating_guide_path", return_value=missing), \
+             patch.object(bridge, "log"):
+            text = bridge.load_operating_guide()
+        self.assertIn("Emperor is the durable source of truth", text)
+
+    def test_env_override_takes_precedence(self):
+        from unittest.mock import patch
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
+            handle.write("# custom guide")
+            path = handle.name
+        try:
+            with patch.object(bridge, "OPERATING_GUIDE_PATH", path), patch.object(bridge, "log"):
+                text = bridge.load_operating_guide()
+            self.assertEqual(text.strip(), "# custom guide")
+        finally:
+            os.unlink(path)
+
+    def test_run_hermes_proceeds_when_guide_missing(self):
+        from unittest.mock import patch
+        import subprocess
+        missing = self._missing_path()
+        stream = "\n".join([
+            '{"type": "system", "subtype": "init", "session_id": "sess-1"}',
+            '{"type": "result", "session_id": "sess-1", "text": "ACK working"}',
+        ])
+        completed = subprocess.CompletedProcess(["hermes"], 0, stream, "session_id: sess-1\n")
+        state = {"sessions": {}}
+        with patch.object(bridge, "OPERATING_GUIDE_PATH", str(missing)), \
+             patch.object(bridge, "default_operating_guide_path", return_value=missing), \
+             patch.object(bridge, "log"), \
+             patch.object(bridge, "format_agent_roster", return_value=""), \
+             patch.object(bridge, "format_company_brain_context", return_value=""), \
+             patch.object(bridge, "is_direct_thread", return_value=False), \
+             patch.object(bridge, "invoke_hermes", return_value=completed), \
+             patch.object(bridge, "turn_reasoning_history", return_value=None):
+            reply = bridge.run_hermes({"threadId": "t1", "text": "hi"}, state)
+        self.assertEqual(reply, "ACK working")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

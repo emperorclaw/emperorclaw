@@ -183,6 +183,11 @@ EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state
 HERMES_BIN="/home/<user>/.local/bin/hermes"
 HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 
+# Optional: where the bridge finds operating-guide.md. Defaults to the file
+# next to the bridge's parent directory; set it when your deployment does not
+# mirror the repo's layout. A missing guide degrades to a built-in fallback.
+# EMPEROR_CLAW_OPERATING_GUIDE_PATH="/home/<user>/.hermes/emperor-bridge/operating-guide.md"
+
 # Team-chat loop guard: max consecutive agent-authored turns in one team
 # thread (no human message in between) before this agent auto-pauses
 # replies there. Default 3. Raise it for workflows that legitimately need
@@ -225,6 +230,23 @@ Copy the bridge script to a stable location:
 mkdir -p ~/.hermes/emperor-bridge
 cp bridge/emperor_hermes_bridge.py ~/.hermes/emperor-bridge/emperor_hermes_bridge.py
 ```
+
+> **The bridge depends on a sibling `operating-guide.md`.** It prepends that
+> file to every turn's system prompt, and by default it looks for it one
+> directory above the script's own directory — a sibling of `bridge/`, matching
+> this repo's `emperor-claw/bridge/emperor_hermes_bridge.py` +
+> `emperor-claw/operating-guide.md` layout. The `cp` above copies only the
+> script, so a flattened `~/.hermes/emperor-bridge/` layout has no such file.
+> A missing guide no longer crashes the bridge — it falls back to a condensed
+> built-in guide and logs one warning — but to use the real guide either copy
+> it alongside (`cp emperor-claw/operating-guide.md ~/.hermes/operating-guide.md`)
+> or point the bridge at it explicitly:
+>
+> ```bash
+> EMPEROR_CLAW_OPERATING_GUIDE_PATH="/home/<user>/.hermes/emperor-bridge/operating-guide.md"
+> ```
+>
+> The env var takes precedence over the relative-path convention when set.
 
 ### Run manually (test)
 

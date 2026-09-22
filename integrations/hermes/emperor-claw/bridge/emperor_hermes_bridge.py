@@ -38,6 +38,11 @@ HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS
 HERMES_TIMEOUT_GRACE_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_GRACE_SECONDS", "10"))
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
 DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
+# Path to the operating guide prepended to every turn's system prompt. Unset,
+# the bridge uses the packaged `operating-guide.md` next to its parent directory
+# (the repo/image layout). Set this when a deployment does not mirror that tree —
+# e.g. a flattened `emperor-bridge/` directory holding only the bridge script.
+OPERATING_GUIDE_PATH = os.environ.get("EMPEROR_CLAW_OPERATING_GUIDE_PATH", "").strip()
 MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "12000"))
 # Per-resource ceiling within that total. Left unset, the server applies its
 # own default (8000 chars) regardless of how high MAX_SHARED_RESOURCE_CHARS
@@ -1325,6 +1330,84 @@ def invoke_hermes(
 _last_turn_reasoning: str | None = None
 
 
+# Condensed operating rules used ONLY when the packaged operating-guide.md is
+# missing or unreadable. It keeps a bridge deployed without its sibling file
+# functional (if less detailed) instead of failing every turn. The packaged
+# guide remains the source of truth; keep this short so it cannot drift far.
+BUILTIN_OPERATING_GUIDE = """## Emperor minimum operating practices
+
+Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rules before assuming company conventions. Use tools before claiming writes succeeded.
+
+### Group chat, mentions, and privacy
+
+- Reply in the current thread. Direct threads are private; no @mention is needed. Team chat is visible to the company — never copy private details or secrets into it.
+- Act on a team message only when it addresses your @name. To ask a sibling to act, look up GET /agents and send one concrete @SiblingName request with context IDs, expected output, and a deadline. A mention requests attention; it does not assign a task.
+- Reply to a requested handoff once. When a reply closes your own request, stop — no acknowledgment loop. FYI/status updates have no @mention.
+
+### Projects and tasks
+
+- Reuse a project by outcome; keep the goal to 3–8 words and put background and success criteria in memory/tasks.
+- Every task has exactly one owner: assign it to the responsible agent or person. A chat @mention is not an assignment.
+- The assignee closes the task, and only after the acceptance criteria are met with evidence attached. Keep progress and blockers in task notes.
+
+### Knowledge & Rules
+
+- Notes are reusable doctrine, SOPs, and business rules — not one-off facts, logs, or deliverables.
+- Pick the narrowest scope (company/customer/project/agent), search before creating, and update the canonical note. Never store secrets in note content.
+- Use status=active for established facts, draft for uncertain proposals. isShared is the auto-injection switch, not access control — enable it only for short rules needed repeatedly.
+
+### Honesty
+
+- Never claim a task is done, an agent was created, or a message was sent unless the tool call actually succeeded.
+"""
+
+_operating_guide_warned = False
+
+
+def default_operating_guide_path() -> Path:
+    """The packaged guide's location: next to the bridge's parent directory."""
+    return Path(__file__).resolve().parent.parent / "operating-guide.md"
+
+
+def load_operating_guide() -> str:
+    """Return the operating guide for the system prompt. Never raises.
+
+    Resolution order: EMPEROR_CLAW_OPERATING_GUIDE_PATH when set, then the
+    packaged `operating-guide.md` next to the bridge's parent directory. A
+    missing or unreadable file degrades to BUILTIN_OPERATING_GUIDE and logs a
+    single warning per process — the dispatch loop would otherwise repeat the
+    same warning every poll, and a missing guide must not stop the agent from
+    answering at all.
+    """
+    global _operating_guide_warned
+    candidates: List[Path] = []
+    if OPERATING_GUIDE_PATH:
+        candidates.append(Path(OPERATING_GUIDE_PATH))
+    candidates.append(default_operating_guide_path())
+
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            if not _operating_guide_warned:
+                log(f"operating guide unreadable at {path}: {exc} — using built-in fallback")
+                _operating_guide_warned = True
+            continue
+        if text.strip():
+            return text
+
+    if not _operating_guide_warned:
+        log(
+            "operating guide not found (looked in "
+            + ", ".join(str(p) for p in candidates)
+            + ") — using built-in fallback"
+        )
+        _operating_guide_warned = True
+    return BUILTIN_OPERATING_GUIDE
+
+
 def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
@@ -1338,8 +1421,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         f"Agent name: {AGENT_NAME}\n"
         f"Agent role: {AGENT_ROLE}\n"
         + (f"Role instructions:\n{AGENT_INSTRUCTIONS}\n\n" if AGENT_INSTRUCTIONS else "")
-        +
-        Path(__file__).resolve().parent.parent.joinpath("operating-guide.md").read_text(encoding="utf-8") + "\n\n"
+        + load_operating_guide() + "\n\n"
         + "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"
         "For reusable knowledge, create or update a normal Company Brain note with top-level status: active for established knowledge; use status: draft only when explicitly uncertain.\n"
