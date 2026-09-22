@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { agents, tasks, incidents, users, companyMembers, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns } from "@/db/schema";
+import { agents, tasks, incidents, users, companyMembers, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns, companies } from "@/db/schema";
 import { eq, and, sql, isNull, desc, gte } from "drizzle-orm";
 import { AgentTeamChat } from "@/components/agent-team-chat";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
@@ -43,7 +43,13 @@ export default async function DashboardPage({
     : "all";
   const companyId = await getCompanyId();
   if (!companyId) {
-    redirect("/login");
+    // A fresh self-hosted install has no company yet. Send the operator to
+    // account creation instead of a login form no account can satisfy.
+    const [companyCount] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(companies)
+      .where(isNull(companies.deletedAt));
+    redirect((companyCount?.count ?? 0) === 0 ? "/signup" : "/login");
   }
 
   const [currentUser] = session?.user?.id

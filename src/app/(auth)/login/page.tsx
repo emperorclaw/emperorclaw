@@ -37,9 +37,14 @@ export default function LoginPage() {
     useEffect(() => {
         fetch("/api/auth/register-state")
             .then((res) => res.json())
-            .then((data) => setEmailConfigured(data.emailConfigured !== false))
+            .then((data) => {
+                setEmailConfigured(data.emailConfigured !== false);
+                // Fresh self-hosted install: no account exists yet, so a login
+                // form is a dead end. Send the operator to workspace creation.
+                if (data.isBootstrap) router.replace("/signup");
+            })
             .catch(() => { /* keep default */ });
-    }, []);
+    }, [router]);
 
     useEffect(() => {
         const card = cardRef.current;
