@@ -1043,5 +1043,55 @@ class TestCleanHermesOutput(unittest.TestCase):
         )
 
 
+class TestExtractStreamJson(unittest.TestCase):
+    """`--format stream-json` output is parsed for the final answer only.
+
+    Tool events (and the stray runtime notices Hermes still prints) must never
+    reach an Emperor message.
+    """
+
+    def test_final_result_text_wins(self):
+        raw = "\n".join([
+            '{"type": "system", "subtype": "init", "session_id": "s1"}',
+            "  ⚠ tirith security scanner enabled but not available",
+            '{"type": "tool_use", "name": "terminal", "input": {"command": "echo hi"}}',
+            '{"type": "tool_result", "name": "terminal", "output": "hi"}',
+            '{"type": "text", "text": "\\n\\nDONE"}',
+            '{"type": "result", "session_id": "s2", "text": "DONE", "tokens": {"total": 1}}',
+        ])
+        reply, session = bridge.extract_stream_json(raw)
+        self.assertEqual(reply, "DONE")
+        self.assertEqual(session, "s2")
+
+    def test_tool_preview_never_reaches_the_reply(self):
+        raw = "\n".join([
+            '{"type": "tool_use", "name": "write_file", "input": {"path": "/tmp/x.py"}}',
+            '{"type": "tool_result", "name": "write_file", "output": "review diff a//tmp/x.py"}',
+            '{"type": "result", "session_id": "s1", "text": "Done, file written."}',
+        ])
+        reply, _ = bridge.extract_stream_json(raw)
+        self.assertEqual(reply, "Done, file written.")
+        self.assertNotIn("review diff", reply)
+
+    def test_text_events_join_when_no_result(self):
+        raw = "\n".join([
+            '{"type": "text", "text": "Hello "}',
+            '{"type": "text", "text": "world"}',
+        ])
+        reply, session = bridge.extract_stream_json(raw)
+        self.assertEqual(reply, "Hello world")
+        self.assertIsNone(session)
+
+    def test_no_json_yields_none_for_fallback(self):
+        reply, session = bridge.extract_stream_json("plain text\nsession_id: abc\n")
+        self.assertIsNone(reply)
+        self.assertIsNone(session)
+
+    def test_session_id_from_system_event(self):
+        reply, session = bridge.extract_stream_json('{"type": "system", "session_id": "sys-1"}')
+        self.assertIsNone(reply)
+        self.assertEqual(session, "sys-1")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1114,6 +1114,48 @@ HERMES_OUTPUT_NOISE_PREFIXES = (
 )
 
 
+def extract_stream_json(output: str) -> tuple[str | None, str | None]:
+    """Pull the final answer and session id out of `--format stream-json` output.
+
+    Hermes emits newline-delimited JSON events (system/tool_use/tool_result/
+    text/result). Only the model's own `text`/`result` events are the reply;
+    tool events are never forwarded, so no tool preview (diffs, command output)
+    can leak into an Emperor message. Non-JSON lines — Hermes still prints a
+    stray runtime notice to stdout even in quiet mode — are ignored.
+
+    Returns `(reply, session_id)`. `reply` is None when no text-bearing event
+    was seen (e.g. an older Hermes that ignored the flag), which lets the caller
+    fall back to plain-text cleaning instead of posting an empty message.
+    """
+    parts: list[str] = []
+    result_text: str | None = None
+    session_id = ""
+    for line in (output or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        etype = event.get("type")
+        if etype == "text" and isinstance(event.get("text"), str):
+            parts.append(event["text"])
+        elif etype == "result":
+            if isinstance(event.get("text"), str):
+                result_text = event["text"]
+            if isinstance(event.get("session_id"), str):
+                session_id = event["session_id"]
+        elif etype == "system" and isinstance(event.get("session_id"), str) and not session_id:
+            session_id = event["session_id"]
+    if result_text is None and not parts:
+        return None, (session_id or None)
+    reply = result_text if result_text is not None else "".join(parts)
+    return reply.strip(), (session_id or None)
+
+
 def clean_hermes_output(output: str) -> str:
     """Strip the transport-level noise Hermes adds around the real answer.
 
@@ -1341,6 +1383,11 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         HERMES_BIN,
         "chat",
         "-Q",
+        # Structured output: only the final answer (and session id/tokens) come
+        # back, so tool previews — the TUI's `┊ review diff` blocks, command
+        # output — can never be mistaken for the reply.
+        "--format",
+        "stream-json",
         "--source",
         "emperor",
         "--toolsets",
@@ -1373,15 +1420,17 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     if result.returncode != 0:
         # stderr often contains *only* the `session_id: ...` footer Hermes
         # appends regardless of success/failure — preferring it blindly hides
-        # the real error (e.g. an auth failure reported on stdout). Combine
-        # both streams and strip the footer so the actual failure surfaces.
+        # the real error (e.g. an auth failure reported on stdout). Prefer any
+        # text the model emitted, then the cleaned combined streams.
+        stream_reply, _ = extract_stream_json(result.stdout)
         combined = "\n".join(filter(None, [result.stdout, result.stderr]))
-        raise RuntimeError(clean_hermes_output(combined) or combined.strip() or "Hermes failed")
-    # Hermes writes the final response to stdout, but the automation-friendly
-    # `session_id: ...` footer is emitted on stderr so piped stdout stays clean.
-    # Parse both streams; otherwise every Emperor message starts a fresh Hermes
-    # conversation because the bridge never records the session to resume.
-    new_session_id = extract_session_id("\n".join([result.stdout or "", result.stderr or ""]))
+        raise RuntimeError(stream_reply or clean_hermes_output(combined) or combined.strip() or "Hermes failed")
+    # `--format stream-json` carries the final answer and the session id as
+    # structured events; prefer those so no tool preview can reach the reply.
+    # Fall back to the plain-text path and the `session_id:` stderr footer for
+    # an older Hermes that ignored the flag.
+    stream_reply, stream_session = extract_stream_json(result.stdout)
+    new_session_id = stream_session or extract_session_id("\n".join([result.stdout or "", result.stderr or ""]))
     if new_session_id:
         sessions[session_key] = new_session_id
     # ONE read, at the end of the turn — history is not streamed. Reading it now
@@ -1389,6 +1438,8 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     # line only ever knows `resume_id`, which is empty until a session exists,
     # but by here Hermes has printed the id it actually used.
     _last_turn_reasoning = turn_reasoning_history(new_session_id or resume_id, turn_started)
+    if stream_reply is not None:
+        return stream_reply
     return clean_hermes_output(result.stdout)
 
 
