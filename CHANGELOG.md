@@ -9,6 +9,20 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.39] — 2026-09-22
+
+### Fixed
+
+- Agent replies no longer leak tool activity. The bridge now runs Hermes with
+  `--format stream-json` and takes only the model's final answer, so tool
+  previews (the TUI's `review diff` blocks, command output) can no longer be
+  mistaken for the reply. Session id comes from the structured event too, with
+  the plain-text path kept as a fallback.
+- A missing or unreadable `operating-guide.md` no longer crashes every turn and
+  silences the agent. The bridge degrades to a condensed built-in guide and logs
+  one warning per process. Set `EMPEROR_CLAW_OPERATING_GUIDE_PATH` to point at
+  the real guide when a deployment does not mirror the repo's directory tree.
+
 ## [0.8.38] — 2026-09-21
 
 ### Added
