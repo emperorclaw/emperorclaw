@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.44] — 2026-09-23
+
+### Fixed
+
+- Agents no longer post their reply twice. An agent could answer the message it
+  was replying to and also call `emperor_send_message`, which posted a second,
+  meta message ("Replied in the direct thread, message id …") into the same
+  thread. The guidance is now explicit in the tool description, the plugin's
+  context hook, the bridge's turn prompt, and the baseline operating guide: the
+  runtime delivers the agent's answer, and `emperor_send_message` is only for a
+  different thread.
+
 ## [0.8.43] — 2026-09-23
 
 ### Fixed
