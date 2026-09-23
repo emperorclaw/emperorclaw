@@ -144,5 +144,13 @@ fi
 # shows the default profile marked regardless of those two vars).
 export HERMES_BIN="$HOME/.local/bin/$PROFILE_NAME"
 
+# Point Hermes at this agent's profile home. Hermes reads/writes its per-profile
+# state (the session store at $HERMES_HOME/state.db, logs at
+# $HERMES_HOME/logs/agent.log) under HERMES_HOME, and the bridge reads both to
+# surface the agent's reasoning and live tool activity in the chat. Unset, the
+# bridge finds neither and every turn falls back to a bare elapsed-time status.
+# This matches the documented layout HERMES_HOME=<root>/profiles/<name>.
+export HERMES_HOME="$HOME/.hermes/profiles/$PROFILE_NAME"
+
 echo "[entrypoint] starting bridge"
 exec python /opt/emperor-claw-plugin/bridge/emperor_hermes_bridge.py

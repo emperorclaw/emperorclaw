@@ -82,6 +82,14 @@ test("Failed provisioning does not advance and can be retried", () => {
   );
 });
 
+test("Hermes entrypoint points the bridge at the profile home", () => {
+  const entrypoint = read("integrations/hermes/entrypoint.sh");
+  assert.ok(
+    entrypoint.includes('export HERMES_HOME="$HOME/.hermes/profiles/$PROFILE_NAME"'),
+    "HERMES_HOME must be set so the bridge can read the session store and logs",
+  );
+});
+
 test("Hermes entrypoint enables the tool-loop guardrail hard stop", () => {
   const entrypoint = read("integrations/hermes/entrypoint.sh");
   assert.ok(
