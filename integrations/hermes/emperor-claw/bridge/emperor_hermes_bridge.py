@@ -1452,6 +1452,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- If upload fails, report an Emperor Storage upload failure with the tool error.\n\n"
         "Messaging model:\n"
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
+        "- Your answer is delivered to the current thread automatically. Do NOT call emperor_send_message to reply to the message you are answering — that posts a duplicate. Use emperor_send_message only to message a DIFFERENT thread (a sibling handoff in team chat).\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
         "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
         "- To ask a sibling to do something: post in team chat with @SiblingName and one concrete request (use the roster aliases below for the exact @name).\n"

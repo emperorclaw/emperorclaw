@@ -299,6 +299,7 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "(4) A closing answer ends the exchange: do not send thanks or another acknowledgment; mention only for a new actionable request. "
             "(5) Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention. "
             "Use emperor_send_message threadType=direct only when the message must be private. "
+            "Never use emperor_send_message to deliver your own reply to the message you are answering: the runtime posts your answer to the current thread automatically, so calling the tool as well duplicates it. It is only for messaging a DIFFERENT thread. "
             "Call Emperor tools before claiming a state change. "
             "emperor_request is not a generic external HTTP client; use terminal/curl or a dedicated plugin for external APIs."
         )
@@ -525,7 +526,7 @@ def register(ctx: Any) -> None:
         "emperor_send_message",
         TOOLSET,
         _schema(
-            "Send a message into an Emperor direct or team thread.",
+            "Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. Use it for a sibling handoff in team chat (@Name) or to message a different agent privately.",
             {
                 "text": {"type": "string"},
                 "agentId": {"type": "string", "description": "Optional sender Emperor agent id/name. Defaults to this Hermes profile's configured agent."},

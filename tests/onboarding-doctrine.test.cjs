@@ -82,6 +82,21 @@ test("Failed provisioning does not advance and can be retried", () => {
   );
 });
 
+test("Agents are told not to double-post via emperor_send_message", () => {
+  const guide = read("integrations/hermes/emperor-claw/operating-guide.md");
+  assert.match(
+    guide,
+    /Never call emperor_send_message to deliver your own reply/i,
+    "the operating guide should forbid self-reply via the tool",
+  );
+  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_hermes_bridge.py");
+  assert.match(
+    bridge,
+    /Do NOT call emperor_send_message to reply/i,
+    "the bridge prompt should forbid self-reply via the tool",
+  );
+});
+
 test("Hermes entrypoint points the bridge at the profile home", () => {
   const entrypoint = read("integrations/hermes/entrypoint.sh");
   assert.ok(
