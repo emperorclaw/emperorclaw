@@ -185,7 +185,9 @@ export async function provisionHermesContainer(
             `EMPEROR_CLAW_AGENT_ROLE=${role}`,
             `EMPEROR_CLAW_RUNTIME_ID=hermes-${safeName}-${agent.id.slice(0, 8)}-1`,
             `EMPEROR_CLAW_HERMES_POLL_SECONDS=5`,
-            `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=300`,
+            // Generous per-turn ceiling: tool-heavy turns (KB writing, browser
+            // automation) run well past a few minutes. See the bridge default.
+            `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=1800`,
             `HERMES_BIN=hermes`,
             `HERMES_TOOLSETS=emperor-claw,web,terminal,code_execution`,
         ];

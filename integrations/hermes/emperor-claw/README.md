@@ -178,7 +178,7 @@ EMPEROR_CLAW_RUNTIME_ID="hermes-viktor-<hostname>"
 
 # Bridge settings
 EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
-EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="300"
+EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="1800"
 EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state.json"
 HERMES_BIN="/home/<user>/.local/bin/hermes"
 HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"

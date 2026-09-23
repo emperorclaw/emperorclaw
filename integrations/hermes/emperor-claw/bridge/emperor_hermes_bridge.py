@@ -31,7 +31,12 @@ HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 # travelled into the agent's reply.
 HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
-HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "300"))
+# Per-turn ceiling before the bridge kills a Hermes turn. Tool-heavy turns
+# (writing KB documentation, browser automation) routinely run past a few
+# minutes, and a killed turn is only resumed from its checkpoint on the next
+# dispatch — so the default is deliberately generous. Override with
+# EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS.
+HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "1800"))
 # Grace window after SIGTERM before SIGKILL on a timed-out turn: lets Hermes
 # checkpoint/save its session transcript so the next dispatch can --resume
 # instead of restarting the whole slow turn from scratch.
@@ -1718,7 +1723,14 @@ def main() -> int:
                     # crash) was never marked seen and got redispatched every
                     # poll cycle forever — a silent infinite retry loop with
                     # no visible failure and, on a real API key, unbounded
-                    # cost. Log it, tell the human, and move on.
+                    # cost. Log it and move on.
+                    #
+                    # No chat notice is posted. A generic failure line in the
+                    # conversation reads as the agent answering with an error,
+                    # and is misleading for the recoverable cases (a slow turn
+                    # that hit the timeout is resumed from its checkpoint on the
+                    # next dispatch). The failure stays in the runtime log for
+                    # the operator.
                     #
                     # Every recovery call below hits the same Emperor API that
                     # may have just failed (e.g. Emperor Claw mid-deploy) — if
@@ -1734,10 +1746,6 @@ def main() -> int:
                     except Exception as status_exc:
                         log(f"failed to update chat status for {message_id}: {status_exc}")
                     log(f"error processing message {message_id}: {exc}")
-                    try:
-                        send_reply(message, f"{AGENT_NAME}: I hit an error and couldn't reply — check the runtime logs.")
-                    except Exception as reply_exc:
-                        log(f"failed to send error notice for {message_id}: {reply_exc}")
                 finally:
                     try:
                         send_heartbeat(0)

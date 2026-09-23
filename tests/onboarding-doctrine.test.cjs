@@ -119,6 +119,14 @@ test("Onboarding is server-owned, not hidden by stale localStorage", () => {
   );
 });
 
+test("Local agent provisioning uses a generous turn timeout", () => {
+  const provisioning = read("src/lib/hermes-provisioning.ts");
+  assert.ok(
+    provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=1800"),
+    "provisioning should give tool-heavy turns a generous ceiling",
+  );
+});
+
 test("The Hermes image pull gets a generous timeout", () => {
   const docker = read("src/lib/docker.ts");
   assert.ok(docker.includes("IMAGE_PULL_TIMEOUT_MS"), "the pull timeout should be a named constant");

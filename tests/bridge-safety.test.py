@@ -1147,5 +1147,22 @@ class TestOperatingGuide(unittest.TestCase):
         self.assertEqual(reply, "ACK working")
 
 
+class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
+    """The default turn ceiling must be generous, and a failed turn must not
+    post a generic "I hit an error" line into the conversation."""
+
+    def test_default_turn_timeout_is_generous(self):
+        # Read the source because the test harness overrides the env var.
+        src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
+        self.assertIn(
+            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "1800")',
+            src,
+        )
+
+    def test_no_generic_error_notice_in_chat(self):
+        src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
+        self.assertNotIn("I hit an error and couldn't reply", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
