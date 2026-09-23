@@ -9,6 +9,23 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.40] — 2026-09-23
+
+### Fixed
+
+- Local agents no longer abandon long turns: the per-turn timeout is now 30
+  minutes by default (was 5), in both the bridge and local provisioning. A
+  tool-heavy turn that writes documentation or drives a browser no longer gets
+  killed at the 5-minute mark.
+- A failed turn no longer posts a generic "I hit an error and couldn't reply"
+  line into the conversation. The failure is still logged for the operator; the
+  line read as the agent answering with an error, and was misleading for the
+  recoverable cases (a timed-out turn resumes from its checkpoint).
+- Onboarding can be re-run: the tour no longer hides behind a stale
+  localStorage flag. The server onboarding state is the single source of truth.
+- A fresh self-hosted install sends the operator to signup instead of a
+  dead-end login form they cannot satisfy.
+
 ## [0.8.39] — 2026-09-22
 
 ### Fixed
