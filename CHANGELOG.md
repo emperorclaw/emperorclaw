@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.41] — 2026-09-23
+
+### Changed
+
+- Long agent turns are no longer cut off. The per-turn timeout now defaults to
+  0 (no ceiling), so an agent can work for hours on a single turn — a coding
+  session, a large documentation pass. The operator can still stop a running
+  turn from the UI, and the runtime control is polled during the turn. Set
+  `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS` to a positive number of seconds to
+  reinstate a hard ceiling for a genuinely hung turn.
+
 ## [0.8.40] — 2026-09-23
 
 ### Fixed
