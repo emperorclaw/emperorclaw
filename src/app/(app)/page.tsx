@@ -250,10 +250,7 @@ export default async function DashboardPage({
       />
 
       {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
-        <OnboardingTour
-          companyId={companyId}
-          hasExistingAgents={allAgents.length > 0}
-        />
+        <OnboardingTour hasExistingAgents={allAgents.length > 0} />
       )}
 
       <nav aria-label="Dashboard work filter" className="flex flex-wrap items-center gap-2">

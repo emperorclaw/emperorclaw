@@ -9,8 +9,11 @@ import { CreateAgentDialog } from "@/app/(app)/agents/create-agent-dialog";
 
 type Worker = { id: string; name: string; status: string; lastSeenAt: string | null };
 
-export function OnboardingTour({ companyId, hasExistingAgents = false }: { companyId: string; hasExistingAgents?: boolean }) {
-  const storageKey = `emperor:onboarding-dismissed:${companyId}`;
+export function OnboardingTour({ hasExistingAgents = false }: { hasExistingAgents?: boolean }) {
+  // Dismissal/completion is owned by the server (users.onboarding_completed_at
+  // / onboarding_dismissed_at): the dashboard only renders this tour while the
+  // account is unresolved. A localStorage flag used to gate it too, which made
+  // onboarding impossible to re-run after a server-side reset.
   const [dismissed, setDismissed] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [reason, setReason] = useState("");
@@ -40,7 +43,6 @@ export function OnboardingTour({ companyId, hasExistingAgents = false }: { compa
   const offlineTooLong = justCreated && !online && createdAtMs !== null && Date.now() - createdAtMs > startupGraceMs;
 
   useEffect(() => {
-    setDismissed(window.localStorage.getItem(storageKey) === "true");
     if (hasExistingAgents && !selectedId) return;
     let cancelled = false;
     const check = async () => {
@@ -63,7 +65,7 @@ export function OnboardingTour({ companyId, hasExistingAgents = false }: { compa
     void check();
     const interval = window.setInterval(check, 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [storageKey, hasExistingAgents, selectedId]);
+  }, [hasExistingAgents, selectedId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +109,6 @@ export function OnboardingTour({ companyId, hasExistingAgents = false }: { compa
     try {
       const response = await fetch("/api/onboarding", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
       if (!response.ok) throw new Error("Could not save setup progress. Please retry.");
-      window.localStorage.setItem(storageKey, "true");
       if (status === "completed") setCompleted(true);
       else setDismissed(true);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save setup progress."); }

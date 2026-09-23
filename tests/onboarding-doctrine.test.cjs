@@ -106,6 +106,19 @@ test("Agents directory routes to the direct chat after hiring", () => {
   assert.ok(client.includes("recreate-runtime"), "the directory should offer a runtime retry if it stalls");
 });
 
+test("Onboarding is server-owned, not hidden by stale localStorage", () => {
+  const tour = read("src/components/onboarding-tour.tsx");
+  assert.ok(
+    !tour.includes("window.localStorage"),
+    "the tour must not gate on localStorage, or a server-side reset can never re-show it",
+  );
+  const page = read("src/app/(app)/page.tsx");
+  assert.ok(
+    page.includes("onboardingCompletedAt") && page.includes("onboardingDismissedAt"),
+    "the dashboard should gate the tour on the server onboarding state",
+  );
+});
+
 test("The Hermes image pull gets a generous timeout", () => {
   const docker = read("src/lib/docker.ts");
   assert.ok(docker.includes("IMAGE_PULL_TIMEOUT_MS"), "the pull timeout should be a named constant");
