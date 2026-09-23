@@ -9,6 +9,18 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.42] — 2026-09-23
+
+### Fixed
+
+- Agents no longer spin in a tool-call loop. Hermes' tool-loop guardrail is
+  warning-only on CLI sessions, which is how the bridge runs it, so an agent
+  that kept calling a tool that kept failing (a task body the API rejected, a
+  bad argument) looped until the iteration cap instead of replying. The runtime
+  now enables the guardrail hard stop, so the turn ends with a short
+  explanation. Legitimate iteration is unaffected — a successful mutating call
+  resets the failure streak.
+
 ## [0.8.41] — 2026-09-23
 
 ### Changed
