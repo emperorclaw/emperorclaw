@@ -31,12 +31,15 @@ HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 # travelled into the agent's reply.
 HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
-# Per-turn ceiling before the bridge kills a Hermes turn. Tool-heavy turns
-# (writing KB documentation, browser automation) routinely run past a few
-# minutes, and a killed turn is only resumed from its checkpoint on the next
-# dispatch — so the default is deliberately generous. Override with
-# EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS.
-HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "1800"))
+# Per-turn ceiling before the bridge kills a Hermes turn. 0 (the default) means
+# no ceiling: an agent can legitimately work for hours on a single turn (a long
+# coding session, a large documentation pass), and cutting that work off is far
+# worse than letting it finish. Control is not lost — the operator can always
+# stop a running turn via the runtime control, which the bridge polls during the
+# turn. Set EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS to a positive number of seconds
+# to reinstate a hard ceiling (a genuinely hung turn is then killed and resumed
+# from its checkpoint on the next dispatch).
+HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0"))
 # Grace window after SIGTERM before SIGKILL on a timed-out turn: lets Hermes
 # checkpoint/save its session transcript so the next dispatch can --resume
 # instead of restarting the whole slow turn from scratch.
@@ -1293,7 +1296,7 @@ def invoke_hermes(
     last_status = 0.0
     while proc.poll() is None:
         elapsed = time.time() - started
-        if elapsed > HERMES_TIMEOUT_SECONDS:
+        if HERMES_TIMEOUT_SECONDS > 0 and elapsed > HERMES_TIMEOUT_SECONDS:
             _terminate_turn(proc)
             stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)

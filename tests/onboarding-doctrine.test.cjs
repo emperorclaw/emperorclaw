@@ -119,11 +119,11 @@ test("Onboarding is server-owned, not hidden by stale localStorage", () => {
   );
 });
 
-test("Local agent provisioning uses a generous turn timeout", () => {
+test("Local agent provisioning does not pin a per-turn timeout", () => {
   const provisioning = read("src/lib/hermes-provisioning.ts");
   assert.ok(
-    provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=1800"),
-    "provisioning should give tool-heavy turns a generous ceiling",
+    !provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS"),
+    "provisioning must not pin a turn timeout; the bridge default is unlimited",
   );
 });
 

@@ -1148,20 +1148,43 @@ class TestOperatingGuide(unittest.TestCase):
 
 
 class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
-    """The default turn ceiling must be generous, and a failed turn must not
+    """The default turn ceiling must be unlimited, and a failed turn must not
     post a generic "I hit an error" line into the conversation."""
 
-    def test_default_turn_timeout_is_generous(self):
+    def test_default_turn_timeout_is_unlimited(self):
         # Read the source because the test harness overrides the env var.
         src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
         self.assertIn(
-            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "1800")',
+            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0")',
             src,
         )
 
     def test_no_generic_error_notice_in_chat(self):
         src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
         self.assertNotIn("I hit an error and couldn't reply", src)
+
+    def test_zero_timeout_does_not_kill_a_turn(self):
+        """0 = no ceiling, so a turn that runs longer than any small ceiling
+        still completes. A positive ceiling kills the same kind of turn."""
+        from unittest.mock import patch
+        import subprocess
+
+        def quiet(*_args, **_kwargs):
+            return {"commands": [], "cancelled": False}
+
+        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
+             patch.object(bridge, "fetch_runtime_control", side_effect=quiet), \
+             patch.object(bridge, "update_chat_status"), \
+             patch.object(bridge, "log"):
+            done = bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(1.5)"], {"id": "w"})
+        self.assertEqual(done.returncode, 0)
+
+        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0.2), \
+             patch.object(bridge, "fetch_runtime_control", side_effect=quiet), \
+             patch.object(bridge, "update_chat_status"), \
+             patch.object(bridge, "log"):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(5)"], {"id": "w"})
 
 
 if __name__ == "__main__":
