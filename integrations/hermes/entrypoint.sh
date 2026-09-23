@@ -98,6 +98,15 @@ if [ -n "$EMPEROR_CLAW_LLM_PROVIDER" ]; then
     hermes -p "$PROFILE_NAME" config set agent.reasoning_effort none || true
 fi
 
+# Hermes' tool-loop guardrail is warning-only on CLI sessions by default, and
+# the bridge runs `hermes chat` as exactly that. An agent that keeps calling a
+# tool that keeps failing (a rejected task body, a bad argument) then loops
+# until the 500-iteration cap instead of replying. Enable the hard stop so the
+# turn ends with a short explanation. Legitimate iteration is unaffected: any
+# successful mutating call resets the failure streak.
+echo "[entrypoint] enabling tool-loop guardrail hard stop"
+hermes -p "$PROFILE_NAME" config set tool_loop_guardrails.hard_stop_enabled true || true
+
 # Connect this profile to Emperor's own real MCP server (/mcp) as an
 # additional MCP connection — alongside, not instead of, the emperor-claw
 # plugin's REST-backed tools above. `hermes mcp add --auth header` always

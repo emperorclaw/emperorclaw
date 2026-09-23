@@ -82,6 +82,14 @@ test("Failed provisioning does not advance and can be retried", () => {
   );
 });
 
+test("Hermes entrypoint enables the tool-loop guardrail hard stop", () => {
+  const entrypoint = read("integrations/hermes/entrypoint.sh");
+  assert.ok(
+    entrypoint.includes("tool_loop_guardrails.hard_stop_enabled true"),
+    "the entrypoint should hard-stop tool loops so an agent cannot spin forever",
+  );
+});
+
 test("Hermes entrypoint recreates the profile wrapper when it is missing", () => {
   const entrypoint = read("integrations/hermes/entrypoint.sh");
   assert.ok(entrypoint.includes("WRAPPER="), "the entrypoint should track the profile wrapper path");
