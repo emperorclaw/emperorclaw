@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.43] — 2026-09-23
+
+### Fixed
+
+- An agent's reasoning and live activity are visible again. The bridge reads the
+  agent's thinking from `$HERMES_HOME/state.db` and its tool activity from
+  `$HERMES_HOME/logs/agent.log`, but local provisioning never set `HERMES_HOME`,
+  so both resolved to none and every turn showed only a bare elapsed-time
+  status. The runtime now points `HERMES_HOME` at the agent's own profile,
+  matching the documented layout.
+
 ## [0.8.42] — 2026-09-23
 
 ### Fixed
