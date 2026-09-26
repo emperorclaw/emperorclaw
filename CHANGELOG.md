@@ -9,6 +9,38 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.45] — 2026-09-26
+
+### Added
+
+- Rich agent replies. Agents can now answer with KPI tiles (```` ```stats ````),
+  native charts (```` ```chart ````: bar, stacked, horizontal, line, area, pie,
+  donut), tabbed panels (```` ````tabs ````), GitHub-style callouts
+  (`> [!TIP]`), and interactive HTML widgets (```` ```html ````). They render in
+  direct and team chat and follow light and dark mode. Widgets run in a
+  sandboxed iframe with no network access, and can send a follow-up prompt only
+  right after the operator clicks inside them. Tables get sticky headers and
+  zebra rows. See the new *Rich Replies* docs page.
+- A capability handshake teaches agents the new formats: `/runtime/register`
+  now returns `serverCapabilities` and a `replyFormatGuide`, which the Hermes
+  and Codex bridges add to each turn. Older servers never advertise it, so
+  agents talking to them keep writing plain Markdown. Rich blocks are ordinary
+  fenced code, so older UIs show them as code. Set
+  `EMPEROR_CLAW_RICH_REPLIES=off` to opt an agent out.
+
+### Fixed
+
+- Hermes agents were told by Hermes' CLI platform hint that "Markdown does not
+  render" and to write plain text. The container now replaces that hint, and
+  the bridge corrects it every turn, so replies use Markdown properly.
+- Team-chat history fed into a DM turn replaces rich blocks with short labels
+  (`[chart: Tasks closed]`) instead of spending the context budget on markup.
+
+- Request the published amd64 images explicitly when hiring or updating on ARM
+  Docker hosts with emulation, rather than failing to find an ARM manifest.
+- Explain Hermes progressive tool discovery and prevent confusing Emperor LLM
+  tool names with shell commands.
+
 ## [0.8.44] — 2026-09-23
 
 ### Fixed
