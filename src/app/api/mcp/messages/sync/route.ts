@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
     const mode = (searchParams.get('mode') || 'human_only').toLowerCase(); // human_only | all
     const senderTypeFilter = searchParams.get('senderType'); // optional explicit sender type
     const agentId = searchParams.get('agentId'); // agent requesting sync — used for dedup + scoping
+    const retryMessageIds = (searchParams.get('retryMessageIds') || '')
+        .split(',').filter(id => UUID_RE.test(id)).slice(0, 100);
 
     const sinceDate = since ? new Date(since) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
@@ -87,9 +89,15 @@ export async function GET(req: NextRequest) {
             if (isValidSince) {
                 // Safety buffer: subtract 10ms to handle sub-millisecond precision drift between servers/DBs
                 const bufferDate = new Date(sinceDate.getTime() - 10);
-                conditions.push(scopeAgentId
+                const sinceCondition = scopeAgentId
                     ? sql`(${threadMessages.createdAt} > ${bufferDate} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} = 'human' AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
-                    : gt(threadMessages.createdAt, bufferDate));
+                    : gt(threadMessages.createdAt, bufferDate);
+                // A runtime retains failed message IDs in a durable retry ledger.
+                // Include only those exact messages after the normal cursor has
+                // advanced, while keeping every company/thread scope above.
+                conditions.push(retryMessageIds.length > 0
+                    ? sql`(${sinceCondition} OR ${threadMessages.id} = ANY(ARRAY[${sql.join(retryMessageIds.map(id => sql`${id}::uuid`), sql`, `)}]))`
+                    : sinceCondition);
             }
 
             const messages = await db.select()

@@ -78,6 +78,26 @@ class TestRuntimeControls(unittest.TestCase):
         terminate.assert_called_once_with(proc)
 
 
+class TestRetryLedger(unittest.TestCase):
+    def test_retry_is_durable_and_uses_bounded_exponential_backoff(self):
+        state = {}
+        self.assertTrue(bridge.retry_due(state, "message-1", now=100))
+        self.assertEqual(bridge.schedule_retry(state, "message-1", now=100), 1)
+        self.assertFalse(bridge.retry_due(state, "message-1", now=100))
+        self.assertTrue(bridge.retry_due(state, "message-1", now=100 + bridge.RETRY_BASE_SECONDS))
+        self.assertEqual(bridge.schedule_retry(state, "message-1", now=200), 2)
+        self.assertEqual(state["retries"]["message-1"]["nextRetryAt"], 200 + min(bridge.RETRY_MAX_SECONDS, bridge.RETRY_BASE_SECONDS * 2))
+        bridge.clear_retry(state, "message-1")
+        self.assertTrue(bridge.retry_due(state, "message-1", now=200))
+
+    def test_sync_includes_persisted_retry_ids(self):
+        from unittest.mock import patch
+        state = {"lastSeenAt": "2026-01-01T00:00:00Z", "retries": {"retry-1": {"attempts": 1, "nextRetryAt": 0}}}
+        with patch.object(bridge, "api", return_value={"messages": []}) as api:
+            self.assertEqual(bridge.sync_messages(state), [])
+        self.assertEqual(api.call_args.kwargs["query"]["retryMessageIds"], "retry-1")
+
+
 class TestRosterAliases(unittest.TestCase):
     def test_turn_includes_baseline_when_company_kb_empty(self):
         from unittest.mock import patch

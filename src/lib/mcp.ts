@@ -140,11 +140,16 @@ export async function verifyMcpAuthorizationHeader(
     return verifyStoredCompanyToken(companyToken, options);
 }
 
-// Generous ceilings: the busiest legitimate fleet (several bridges polling
-// every few seconds plus bursts of status updates) stays far below these,
-// while a leaked or brute-forced token stops being unlimited. The limiter is
-// in-memory per process — fine for the supported single-process deployment.
-const MCP_RATE_LIMIT_PER_MINUTE = 600;
+// A bridge fleet performs several authenticated requests per agent on every
+// polling cycle (sync, control, heartbeat and status updates). Keep a bounded
+// limiter, but leave enough room for a fleet sharing one public IP and company
+// token; the previous 600/minute ceiling caused healthy six-agent fleets to
+// throttle themselves during normal work bursts.
+//
+// The limiter is in-memory per process — fine for the supported single-process
+// deployment. Authentication and endpoint-specific mutation safeguards still
+// apply to every request.
+const MCP_RATE_LIMIT_PER_MINUTE = 5_000;
 
 export async function verifyMcpToken(req: NextRequest, options: VerifyMcpTokenOptions = {}): Promise<VerifyMcpTokenResult> {
     // Pre-auth throttle by client IP blunts token brute-forcing before any DB work.

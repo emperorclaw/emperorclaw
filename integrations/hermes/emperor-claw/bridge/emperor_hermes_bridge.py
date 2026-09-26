@@ -45,6 +45,8 @@ HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS
 # instead of restarting the whole slow turn from scratch.
 HERMES_TIMEOUT_GRACE_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_GRACE_SECONDS", "10"))
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
+RETRY_BASE_SECONDS = max(1, int(os.environ.get("EMPEROR_CLAW_HERMES_RETRY_BASE_SECONDS", "15")))
+RETRY_MAX_SECONDS = max(RETRY_BASE_SECONDS, int(os.environ.get("EMPEROR_CLAW_HERMES_RETRY_MAX_SECONDS", "300")))
 DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
 # Path to the operating guide prepended to every turn's system prompt. Unset,
 # the bridge uses the packaged `operating-guide.md` next to its parent directory
@@ -166,6 +168,35 @@ def remember_seen(state: Dict[str, Any], message_id: str) -> bool:
     seen.append(message_id)
     state["seen"] = seen[-1000:]
     return True
+
+
+def retry_entries(state: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Return the durable retry ledger, tolerating state written by older bridges."""
+    entries = state.get("retries")
+    if not isinstance(entries, dict):
+        entries = {}
+        state["retries"] = entries
+    return entries
+
+
+def retry_due(state: Dict[str, Any], message_id: str, now: float | None = None) -> bool:
+    entry = retry_entries(state).get(message_id)
+    if not isinstance(entry, dict):
+        return True
+    return float(entry.get("nextRetryAt", 0) or 0) <= (time.time() if now is None else now)
+
+
+def schedule_retry(state: Dict[str, Any], message_id: str, now: float | None = None) -> int:
+    """Persist bounded exponential backoff so a broken runtime cannot spin or lose work."""
+    current = retry_entries(state).get(message_id)
+    attempts = int(current.get("attempts", 0) if isinstance(current, dict) else 0) + 1
+    delay = min(RETRY_MAX_SECONDS, RETRY_BASE_SECONDS * (2 ** min(attempts - 1, 16)))
+    retry_entries(state)[message_id] = {"attempts": attempts, "nextRetryAt": (time.time() if now is None else now) + delay}
+    return attempts
+
+
+def clear_retry(state: Dict[str, Any], message_id: str) -> None:
+    retry_entries(state).pop(message_id, None)
 
 
 def _log_llm_guidance(provider: str) -> None:
@@ -676,6 +707,9 @@ def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     query = {"mode": "all", "agentId": AGENT_ID}
     if state.get("lastSeenAt"):
         query["since"] = state["lastSeenAt"]
+    retry_ids = list(retry_entries(state).keys())
+    if retry_ids:
+        query["retryMessageIds"] = ",".join(retry_ids[-100:])
     payload = api("GET", "/messages/sync", query=query)
     messages = payload.get("messages") if isinstance(payload, dict) else []
     return messages if isinstance(messages, list) else []
@@ -1756,7 +1790,25 @@ def main() -> int:
             apply_runtime_controls(fetch_runtime_control(), state)
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")
-                if not message_id or message_id in (state.get("seen") or []):
+                if not message_id:
+                    continue
+                # Older bridges recorded failed messages as seen. A direct message
+                # still marked seen/acting has no live turn at the start of this
+                # loop, so recover it instead of leaving the conversation stuck.
+                if message_id in (state.get("seen") or []):
+                    is_our_unfinished_direct = (
+                        str(message.get("targetAgentId") or message.get("target_agent_id") or "") == AGENT_ID
+                        and str(message.get("deliveryState") or message.get("delivery_state") or "") in {"seen", "acting"}
+                    )
+                    if not is_our_unfinished_direct:
+                        continue
+                    state["seen"] = [item for item in state.get("seen", []) if item != message_id]
+                    log(f"recovering orphaned message {message_id}")
+                    try:
+                        update_chat_status(message, typing=False, execution_state="queued")
+                    except Exception as exc:
+                        log(f"failed to requeue orphaned message {message_id}: {exc}")
+                if not retry_due(state, message_id):
                     continue
                 # Record DM thread ownership before any routing decision.
                 # When a message carries targetAgentId we learn which agent owns that thread,
@@ -1842,48 +1894,34 @@ def main() -> int:
                         except Exception as reasoning_exc:
                             log(f"reasoning history not stored for {reply_message_id}: {reasoning_exc}")
                     update_chat_status(message, typing=False, execution_state="resolved")
+                    clear_retry(state, message_id)
                 except TurnInterrupted:
                     log(f"operator stopped message {message_id}")
                     try:
                         update_chat_status(message, typing=False)
                     except Exception as status_exc:
                         log(f"failed to clear stopped turn status: {status_exc}")
+                    clear_retry(state, message_id)
+                    remember_seen(state, message_id)
                 except Exception as exc:
-                    # Do NOT re-raise here: that used to skip remember_seen()
-                    # below, so a message that failed once (bad key, Hermes
-                    # crash) was never marked seen and got redispatched every
-                    # poll cycle forever — a silent infinite retry loop with
-                    # no visible failure and, on a real API key, unbounded
-                    # cost. Log it and move on.
-                    #
-                    # No chat notice is posted. A generic failure line in the
-                    # conversation reads as the agent answering with an error,
-                    # and is misleading for the recoverable cases (a slow turn
-                    # that hit the timeout is resumed from its checkpoint on the
-                    # next dispatch). The failure stays in the runtime log for
-                    # the operator.
-                    #
-                    # Every recovery call below hits the same Emperor API that
-                    # may have just failed (e.g. Emperor Claw mid-deploy) — if
-                    # a recovery call itself throws uncaught, it re-escapes
-                    # this except block and skips remember_seen() below just
-                    # like the original bug, redispatching this message as a
-                    # brand-new Hermes turn on the next poll cycle while the
-                    # first one may still be running: two independent replies
-                    # for the same message. Each call is isolated so one
-                    # failure can't take down the rest.
+                    # Preserve the prompt for retry. The durable ledger gives a
+                    # failed runtime backoff without turning one transient error
+                    # into a hot loop, and the server keeps retry IDs visible even
+                    # after the normal incremental sync cursor has advanced.
                     try:
-                        update_chat_status(message, typing=False, execution_state="seen")
+                        update_chat_status(message, typing=False, execution_state="queued")
                     except Exception as status_exc:
-                        log(f"failed to update chat status for {message_id}: {status_exc}")
-                    log(f"error processing message {message_id}: {exc}")
+                        log(f"failed to requeue message {message_id}: {status_exc}")
+                    attempts = schedule_retry(state, message_id)
+                    log(f"error processing message {message_id}; retry {attempts} scheduled: {exc}")
                 finally:
                     try:
                         send_heartbeat(0)
                     except Exception as heartbeat_exc:
                         log(f"failed to send heartbeat after {message_id}: {heartbeat_exc}")
-                remember_seen(state, message_id)
-                if ts:
+                if message_id not in retry_entries(state):
+                    remember_seen(state, message_id)
+                if ts and message_id not in retry_entries(state):
                     state["lastSeenAt"] = ts
                 save_state(state)  # Persist immediately after each dispatch
             save_state(state)
