@@ -9,6 +9,21 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.46] — 2026-09-26
+
+### Fixed
+
+- Agent tables no longer collapse into a wall of pipes. Models often emit a
+  table whose separator row has a different column count than the header, or
+  put the whole table on one line; the chat now repairs both before rendering.
+- A Hermes bridge updated before its Emperor server now picks up rich replies
+  without a restart: it re-checks the server's capabilities every 10 minutes
+  (`EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS`) and logs when they change.
+- The reply guide steers metrics toward stats tiles and charts, spells out
+  table rules, and tells agents never to post chart images or local file
+  links. Images the browser can't load show a labelled placeholder instead of
+  a broken icon.
+
 ## [0.8.45] — 2026-09-26
 
 ### Added
