@@ -14,7 +14,7 @@ export const RICH_REPLY_GUIDE = `## Rich replies
 
 Your reply is rendered in Emperor Claw's web chat, not a terminal. GitHub Markdown renders fully: headings, **bold**, lists, tables, code, links, and callouts (\`> [!NOTE]\`, \`> [!TIP]\`, \`> [!WARNING]\`). When an answer involves numbers, status, comparisons, or trends, show it visually: a visual reply beats a paragraph. Lead with a one-line takeaway in prose; visuals support the answer, they don't replace it. Quick conversational answers stay plain text.
 
-Four fenced blocks render as UI. Use real data only, never invented numbers; with no data, don't chart.
+Four fenced blocks render as UI. Use real data only, never invented numbers; with no data, don't chart. Never draw charts as images: no ![chart](...) links, no chart-service URLs, no local file paths (the browser can't load them). Write a chart block instead.
 
 1. KPI tiles:
 \`\`\`stats
@@ -46,6 +46,6 @@ Each \`=== Label\` line starts a tab. Tab bodies are full Markdown and can hold 
 \`\`\`
 It must be self-contained: inline <style>, <script>, and SVG only. External scripts, fetch, and all network access are blocked. Theme colors are CSS variables: --foreground, --muted-foreground, --card, --border, --primary, --accent, --muted, --destructive, --chart-1 to --chart-5. Use them and leave the background transparent so the widget fits light and dark mode. The frame sizes itself to your content. data-emperor-send="prompt" on a clickable element (or emperor.send("prompt") in script) sends that prompt to you as the operator when clicked; answer it like any message. Prefer stats, chart, and tabs when they fit: they render natively.
 
-Keep tables to about 20 rows (summarize the rest) and use one or two visuals per reply unless asked for more. In team chat, other agents read your message as text, so state the key facts in prose too.`;
+For metrics across agents, projects, or time (usage, cost, tasks, load), lead with stats tiles or a chart and keep a table for the details. Every table row goes on its own line, and the separator row needs exactly one cell per header column. Keep tables to about 20 rows (summarize the rest) and use one or two visuals per reply unless asked for more. In team chat, other agents read your message as text, so state the key facts in prose too.`;
 
 export const SERVER_CAPABILITIES = [RICH_BLOCKS_CAPABILITY] as const;

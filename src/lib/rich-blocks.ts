@@ -421,3 +421,95 @@ export function buildWidgetDocument(html: string, options: {
     // widget's own top-level script runs; it attaches to <body> once parsed.
     return prelude + bridge + html;
 }
+
+// ─── Table repair ──────────────────────────────────────────────────────────
+
+const DELIMITER_CELL_RE = /^\s*:?-{1,}:?\s*$/;
+
+/** Split a table row into cells, honoring `\|` escapes and optional outer pipes. */
+function tableCells(line: string): string[] {
+    let row = line.trim();
+    if (row.startsWith("|")) row = row.slice(1);
+    if (row.endsWith("|") && !row.endsWith("\\|")) row = row.slice(0, -1);
+    return row.split(/(?<!\\)\|/);
+}
+
+function isDelimiterRow(line: string): boolean {
+    if (!line.includes("-") || !line.includes("|")) return false;
+    const cells = tableCells(line);
+    return cells.length > 0 && cells.every((cell) => DELIMITER_CELL_RE.test(cell));
+}
+
+/**
+ * A table collapsed onto one line: `| A | B | |---|---| | 1 | 2 |`. Rows are
+ * joined by `| |` and the second row is a delimiter. Returns the rows, or null
+ * when the line isn't that shape.
+ */
+function unflattenTableLine(line: string): string[] | null {
+    if (!/\|\s+\|\s*:?-{3,}/.test(line)) return null;
+    const rows = line
+        .trim()
+        .split(/\|\s+\|/)
+        .map((part) => `| ${tableCells(part).map((cell) => cell.trim()).join(" | ")} |`);
+    return rows.length >= 3 && isDelimiterRow(rows[1]) ? rows : null;
+}
+
+/**
+ * Repair the two GFM table mistakes models make most, which otherwise turn a
+ * table into a wall of pipes (GFM rejects the whole table):
+ *   1. the delimiter row has a different cell count than the header, and
+ *   2. the table was emitted on a single line.
+ * Content inside fenced code blocks is left alone. Well-formed input is
+ * returned unchanged.
+ */
+export function repairMarkdownTables(content: string): string {
+    if (!content.includes("|") || !content.includes("-")) return content;
+    const lines = content.split("\n");
+    const out: string[] = [];
+    let fence: string | null = null;
+    let changed = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+        if (fenceMatch) {
+            const marker = fenceMatch[1];
+            if (fence === null) fence = marker;
+            else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+            out.push(line);
+            continue;
+        }
+        if (fence !== null) {
+            out.push(line);
+            continue;
+        }
+
+        const flattened = unflattenTableLine(line);
+        if (flattened) {
+            // Put the recovered table on its own paragraph so it can't be
+            // absorbed into a preceding line of prose.
+            if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
+            // Re-process the recovered rows so a bad delimiter count in the
+            // same table is fixed too.
+            lines.splice(i, 1, ...flattened);
+            i--;
+            changed = true;
+            continue;
+        }
+
+        const next = lines[i + 1];
+        if (next !== undefined && line.includes("|") && !isDelimiterRow(line) && isDelimiterRow(next)) {
+            const headerCount = tableCells(line).length;
+            const delimiter = tableCells(next).map((c) => c.trim());
+            if (headerCount > 0 && delimiter.length !== headerCount) {
+                const fixed = Array.from({ length: headerCount }, (_, k) => delimiter[k] ?? "---");
+                out.push(line, `| ${fixed.join(" | ")} |`);
+                i++;
+                changed = true;
+                continue;
+            }
+        }
+        out.push(line);
+    }
+    return changed ? out.join("\n") : content;
+}

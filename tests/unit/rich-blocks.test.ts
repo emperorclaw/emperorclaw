@@ -149,3 +149,49 @@ test("every example in the agent reply guide renders with the real parsers", asy
         if (lang === "html") assert.equal(widgetTitle(body), "Agent load");
     }
 });
+
+test("repairMarkdownTables fixes a delimiter row with the wrong cell count", async () => {
+    const { repairMarkdownTables } = await import("../../src/lib/rich-blocks");
+    const input = "| Agent | Tokens | Cost |\n|---|---:|---:|---:|\n| Builder | 302,428 | $25.42 |";
+    const out = repairMarkdownTables(input).split("\n");
+    assert.equal(out[1], "| --- | ---: | ---: |");
+    assert.equal(out[2], "| Builder | 302,428 | $25.42 |");
+    // Too few delimiter cells are padded.
+    assert.equal(repairMarkdownTables("| a | b | c |\n|---|---|\n| 1 | 2 | 3 |").split("\n")[1], "| --- | --- | --- |");
+});
+
+test("repairMarkdownTables unflattens a table emitted on one line", async () => {
+    const { repairMarkdownTables } = await import("../../src/lib/rich-blocks");
+    const input = "Per-agent stats:\n| Agent | Model | Load | |---|---|---:| | Builder | deepseek-v4-pro | 1 | | QA | deepseek-v4-flash | 0 |\nTotals: 2";
+    const out = repairMarkdownTables(input).split("\n");
+    assert.deepEqual(out, [
+        "Per-agent stats:",
+        "",
+        "| Agent | Model | Load |",
+        "| --- | --- | ---: |",
+        "| Builder | deepseek-v4-pro | 1 |",
+        "| QA | deepseek-v4-flash | 0 |",
+        "Totals: 2",
+    ]);
+});
+
+test("repairMarkdownTables leaves good tables and fenced code alone", async () => {
+    const { repairMarkdownTables } = await import("../../src/lib/rich-blocks");
+    const good = "| a | b |\n|---|---|\n| 1 | 2 |";
+    assert.equal(repairMarkdownTables(good), good);
+    const fenced = "```md\n| a | b |\n|---|---|---|\n```";
+    assert.equal(repairMarkdownTables(fenced), fenced);
+    assert.equal(repairMarkdownTables("a | b - c"), "a | b - c");
+});
+
+test("repairMarkdownTables recovers a real flattened table with a bad delimiter", async () => {
+    const { repairMarkdownTables } = await import("../../src/lib/rich-blocks");
+    const input = "Per-agent stats, September-to-date.\n| Agent | Model | Status | Load | Open tasks | Closed tasks | Tokens (mo) | Cost (mo) | |---|---|---|---|---|---|---:|---:|---:| | Builder | deepseek-v4-pro | online | 1 | 5 | 1 | 302,428 | $25.42 | | SEO (operator) | — | online | 0 | 0 | 0 | 0 | $0.00 |\nTotals: ~469,589 tokens, $29.84 this month.";
+    const out = repairMarkdownTables(input).split("\n");
+    assert.equal(out[1], "");
+    assert.equal(out[2], "| Agent | Model | Status | Load | Open tasks | Closed tasks | Tokens (mo) | Cost (mo) |");
+    assert.equal(out[3], "| --- | --- | --- | --- | --- | --- | ---: | ---: |");
+    assert.equal(out[4], "| Builder | deepseek-v4-pro | online | 1 | 5 | 1 | 302,428 | $25.42 |");
+    assert.equal(out[5], "| SEO (operator) | — | online | 0 | 0 | 0 | 0 | $0.00 |");
+    assert.equal(out[6], "Totals: ~469,589 tokens, $29.84 this month.");
+});

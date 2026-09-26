@@ -71,6 +71,9 @@ MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT
 # Set EMPEROR_CLAW_RICH_REPLIES=off to keep an agent on plain Markdown.
 RICH_REPLIES_ENABLED = os.environ.get("EMPEROR_CLAW_RICH_REPLIES", "on").strip().lower() not in {"0", "off", "false", "no"}
 RICH_BLOCKS_CAPABILITY = "rich-blocks-v1"
+# Re-run the /runtime/register handshake this often, so a server upgraded
+# after the bridge started is picked up without restarting the bridge.
+CAPABILITY_REFRESH_SECONDS = float(os.environ.get("EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS", "600"))
 MAX_REPLY_FORMAT_GUIDE_CHARS = 8000
 # Loop guard: the @mention convention (reply once, then go silent) is a prompt
 # convention, not a hard rule — an LLM can still misjudge a "closing" reply as
@@ -198,9 +201,31 @@ def ensure_runtime() -> None:
         "capabilitiesJson": ["hermes-agent", "thread-reply", "emperor-tools", "rich-replies"],
         "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     })
+    had_rich = RICH_BLOCKS_CAPABILITY in _server_capabilities and bool(_reply_format_guide)
     _server_capabilities, _reply_format_guide = parse_server_capabilities(response)
-    if RICH_BLOCKS_CAPABILITY in _server_capabilities:
-        log("server renders rich replies; reply-format guide loaded" if _reply_format_guide else "server renders rich replies but sent no guide")
+    has_rich = RICH_BLOCKS_CAPABILITY in _server_capabilities and bool(_reply_format_guide)
+    if has_rich != had_rich or not _capability_logged:
+        log(
+            "server renders rich replies; reply-format guide loaded" if has_rich
+            else "server does not advertise rich replies; agents will write plain Markdown"
+        )
+    _mark_capability_logged()
+
+
+_capability_logged = False
+
+
+def _mark_capability_logged() -> None:
+    global _capability_logged
+    _capability_logged = True
+
+
+def refresh_server_capabilities() -> None:
+    """Periodic re-handshake; a failure keeps the last known capabilities."""
+    try:
+        ensure_runtime()
+    except Exception as exc:
+        log(f"capability refresh failed: {exc}")
 
 
 def parse_server_capabilities(response: Any) -> tuple[List[str], str]:
@@ -1719,11 +1744,15 @@ def main() -> int:
         save_state(state)
     log(f"started runtime={RUNTIME_ID} agent={AGENT_NAME} agentId={agent_id}")
     last_heartbeat = time.time()
+    last_capability_refresh = time.time()
     while True:
         try:
             if time.time() - last_heartbeat >= 60:
                 send_heartbeat(0)
                 last_heartbeat = time.time()
+            if CAPABILITY_REFRESH_SECONDS > 0 and time.time() - last_capability_refresh >= CAPABILITY_REFRESH_SECONDS:
+                refresh_server_capabilities()
+                last_capability_refresh = time.time()
             apply_runtime_controls(fetch_runtime_control(), state)
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")

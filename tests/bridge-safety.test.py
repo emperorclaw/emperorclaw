@@ -1225,6 +1225,20 @@ class TestRichReplies(unittest.TestCase):
         bridge._server_capabilities = ["something-else"]
         self.assertNotIn("## Rich replies", bridge.format_reply_guidance())
 
+    def test_refresh_picks_up_a_server_upgraded_after_start(self):
+        from unittest.mock import patch
+        bridge._server_capabilities, bridge._reply_format_guide = [], ""
+        with patch.object(bridge, "api", return_value={"runtimeNode": {}}):
+            bridge.refresh_server_capabilities()
+        self.assertNotIn("## Rich", bridge.format_reply_guidance())
+        with patch.object(bridge, "api", return_value={"serverCapabilities": ["rich-blocks-v1"], "replyFormatGuide": "## Rich"}):
+            bridge.refresh_server_capabilities()
+        self.assertIn("## Rich", bridge.format_reply_guidance())
+        # A failed refresh keeps the last known capabilities.
+        with patch.object(bridge, "api", side_effect=RuntimeError("offline")):
+            bridge.refresh_server_capabilities()
+        self.assertIn("## Rich", bridge.format_reply_guidance())
+
     def test_summarize_rich_blocks_compresses_history(self):
         text = (
             "Here is the week.\n"

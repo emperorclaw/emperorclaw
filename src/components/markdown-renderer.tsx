@@ -14,6 +14,7 @@ import {
   MAX_WIDGET_HTML_CHARS,
   parseChartSpec,
   parseStats,
+  repairMarkdownTables,
   splitTabs,
 } from '@/lib/rich-blocks';
 import { ChartBlock } from '@/components/rich/chart-block';
@@ -180,7 +181,7 @@ function RichFence({ language, code, depth }: { language: string; code: string; 
 }
 
 export function MarkdownRenderer({ content, className = "", depth = 0 }: MarkdownRendererProps) {
-  const normalizedContent = ensureBlankBeforeFences(wrapUnifiedDiffHunks(content));
+  const normalizedContent = ensureBlankBeforeFences(repairMarkdownTables(wrapUnifiedDiffHunks(content)));
 
   const components = useMemo<Components>(() => ({
     h1: styled('h1', 'text-2xl font-bold mb-4 mt-6 text-zinc-100 border-b border-zinc-800 pb-2'),
@@ -230,6 +231,23 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     a: ({ node, ...props }) => <a className="text-indigo-400 hover:text-indigo-300 underline" target="_blank" rel="noopener noreferrer" {...props} />,
     hr: styled('hr', 'border-zinc-800 my-8'),
+    // Agents sometimes link a file that only exists on their own machine
+    // (`/tmp/chart.png`, `file://…`). The browser can't load that, so say so
+    // instead of showing a broken-image icon.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    img: ({ node, src, alt, ...props }) => {
+      const url = typeof src === 'string' ? src : '';
+      const loadable = /^(https?:|data:image\/|blob:)/i.test(url) || (url.startsWith('/') && !url.startsWith('//') && /^\/(api|_next|icon)/.test(url));
+      if (!loadable) {
+        return (
+          <span className="not-prose inline-flex items-center gap-1.5 rounded-md border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-500" title={url}>
+            Image unavailable{alt ? `: ${alt}` : ''}
+          </span>
+        );
+      }
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={url} alt={alt ?? ''} loading="lazy" className="my-2 max-w-full rounded-lg border border-zinc-800" {...props} />;
+    },
   }), [depth]);
 
   return (
