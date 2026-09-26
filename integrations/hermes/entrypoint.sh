@@ -44,8 +44,8 @@ if [ -n "$EMPEROR_CLAW_LLM_PROVIDER" ]; then
     # ~/.hermes/hermes-agent/plugins/model-providers/) — there is no plain
     # "openai" plugin; direct OpenAI access goes through the generic "custom"
     # provider with an explicit base_url. Google/Grok are named "gemini"/"xai"
-    # in that registry, not "google"/"grok". Only the openai and deepseek
-    # paths below have been live-verified end-to-end with a real key and a
+    # in that registry, not "google"/"grok". Only OpenAI, DeepSeek,
+    # and OpenRouter have been live-verified with a real key and a
     # real reply; the others use registry-confirmed plugin names but are
     # best-effort.
     case "$EMPEROR_CLAW_LLM_PROVIDER" in

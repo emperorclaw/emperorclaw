@@ -182,7 +182,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
 
     // 4. Pull latest image
     try {
-        const msg = await dockerPull(IMAGE);
+        const msg = await dockerPull(IMAGE, "linux/amd64");
         steps.push({ step: "pull-image", status: "ok", output: msg });
     } catch (e) {
         steps.push({ step: "pull-image", status: "error", output: (e as Error).message });
@@ -261,7 +261,7 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
 
         if (hermesAgents.length > 0) {
             try {
-                const msg = await dockerPull(HERMES_IMAGE);
+                const msg = await dockerPull(HERMES_IMAGE, "linux/amd64");
                 steps.push({ step: "pull-hermes-image", status: "ok", output: msg });
             } catch (e) {
                 // Recreate calls below will still attempt their own pull per

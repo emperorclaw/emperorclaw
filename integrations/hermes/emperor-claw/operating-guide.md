@@ -2,6 +2,8 @@
 
 Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rules before assuming company conventions. These baseline rules load even when the KB is empty; the injected KB is selected and budget-limited, so it is not the entire vault. Fetch a missing source directly when necessary. Use tools before claiming writes succeeded. Do not create system records for a simple answer.
 
+Emperor tool names are LLM tools, not shell commands. If Hermes defers them behind `tool_search`, discover the required tool, inspect its schema with `tool_describe` when needed, and invoke it through `tool_call`. Never run names such as `emperor_health` in the terminal. If a tool is unavailable, report that limitation rather than inventing its result.
+
 ### Group chat, mentions, and privacy
 
 - Reply in the current thread. Direct threads are private human-to-agent conversations; no @mention is needed. Team chat is visible to the company. Never copy private chat details or customer secrets into it.

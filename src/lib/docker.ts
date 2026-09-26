@@ -53,12 +53,12 @@ export function dockerCall(method: string, path: string, body?: unknown): Promis
     });
 }
 
-export async function dockerPull(image: string): Promise<string> {
+export async function dockerPull(image: string, platform?: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const req = http.request({
             socketPath: DOCKER_SOCKET,
             method: "POST",
-            path: `/images/create?fromImage=${encodeURIComponent(image)}`,
+            path: `/images/create?fromImage=${encodeURIComponent(image)}${platform ? `&platform=${encodeURIComponent(platform)}` : ""}`,
             timeout: IMAGE_PULL_TIMEOUT_MS,
             agent: false,
         }, (res) => {

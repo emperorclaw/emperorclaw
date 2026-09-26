@@ -162,7 +162,9 @@ export async function provisionHermesContainer(
         // self-hoster who built their own hermes-runtime image, or this
         // exact tag built locally before ever being pushed to GHCR.
         try {
-            const msg = await dockerPull(HERMES_IMAGE);
+            // Published Hermes runtimes currently target amd64. Request that
+            // manifest explicitly on ARM hosts with Docker emulation enabled.
+            const msg = await dockerPull(HERMES_IMAGE, "linux/amd64");
             outputs.push({ command: `docker pull ${HERMES_IMAGE}`, stdout: msg, stderr: "", exitCode: 0 });
         } catch (err) {
             const msg = err instanceof Error ? err.message : "Unknown error";
