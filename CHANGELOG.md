@@ -9,6 +9,22 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.47] — 2026-09-27
+
+### Fixed
+
+- Hermes bridges now preserve failed turns in a durable retry ledger with
+  bounded exponential backoff, instead of marking them seen and losing them.
+  Direct messages stranded in `acting` by a stopped bridge are recovered on
+  the next start.
+- MCP fleet rate limiting now supports normal multi-agent bridge polling while
+  retaining bounded authentication throttling.
+- Storage integrity can be checked through `GET /artifacts/{id}/verify` and
+  the Hermes `emperor_verify_artifact` tool. It verifies blob presence, size,
+  and SHA-256 without exposing file bytes to the model.
+- Storage guidance now clearly distinguishes metadata creation from file
+  uploads, documents replacement, and explains multi-file folder uploads.
+
 ## [0.8.46] — 2026-09-26
 
 ### Fixed
