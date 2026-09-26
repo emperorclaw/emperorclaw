@@ -1187,5 +1187,61 @@ class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
                 bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(5)"], {"id": "w"})
 
 
+
+class TestRichReplies(unittest.TestCase):
+    """Capability handshake + rich-block handling for Emperor's rich chat."""
+
+    def setUp(self):
+        self._saved = (bridge._server_capabilities, bridge._reply_format_guide, bridge.RICH_REPLIES_ENABLED)
+
+    def tearDown(self):
+        bridge._server_capabilities, bridge._reply_format_guide, bridge.RICH_REPLIES_ENABLED = self._saved
+
+    def test_old_server_response_yields_no_capabilities(self):
+        self.assertEqual(bridge.parse_server_capabilities({"runtimeNode": {"id": "x"}}), ([], ""))
+        self.assertEqual(bridge.parse_server_capabilities(None), ([], ""))
+
+    def test_new_server_response_is_parsed(self):
+        caps, guide = bridge.parse_server_capabilities({
+            "serverCapabilities": ["rich-blocks-v1"],
+            "replyFormatGuide": "  ## Rich replies\nUse charts.  ",
+        })
+        self.assertEqual(caps, ["rich-blocks-v1"])
+        self.assertEqual(guide, "## Rich replies\nUse charts.")
+
+    def test_guidance_always_corrects_the_cli_hint(self):
+        bridge._server_capabilities, bridge._reply_format_guide = [], ""
+        text = bridge.format_reply_guidance()
+        self.assertIn("not a terminal", text)
+        self.assertNotIn("Rich replies", text)
+
+    def test_guide_only_when_server_supports_it_and_not_disabled(self):
+        bridge._server_capabilities, bridge._reply_format_guide = ["rich-blocks-v1"], "## Rich replies"
+        bridge.RICH_REPLIES_ENABLED = True
+        self.assertIn("## Rich replies", bridge.format_reply_guidance())
+        bridge.RICH_REPLIES_ENABLED = False
+        self.assertNotIn("## Rich replies", bridge.format_reply_guidance())
+        bridge.RICH_REPLIES_ENABLED = True
+        bridge._server_capabilities = ["something-else"]
+        self.assertNotIn("## Rich replies", bridge.format_reply_guidance())
+
+    def test_summarize_rich_blocks_compresses_history(self):
+        text = (
+            "Here is the week.\n"
+            "```chart\n{\"type\":\"bar\",\"title\":\"Tasks closed\",\"labels\":[\"a\"],\"series\":[[1]]}\n```\n"
+            "```stats\n[{\"label\":\"Open\",\"value\":\"12\"}]\n```\n"
+            "````tabs\n=== Summary\nhi\n=== Details\n```chart\n{}\n```\n````\n"
+            "```html\n<!-- title: Agent load -->\n<div>big markup</div>\n```\n"
+            "```python\nprint('kept')\n```"
+        )
+        out = bridge.summarize_rich_blocks(text)
+        self.assertIn("[chart: Tasks closed]", out)
+        self.assertIn("[stats: Open 12]", out)
+        self.assertIn("[tabs: Summary, Details]", out)
+        self.assertIn("[html widget: Agent load]", out)
+        self.assertNotIn("big markup", out)
+        self.assertIn("print('kept')", out)
+        self.assertEqual(bridge.summarize_rich_blocks("plain text"), "plain text")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

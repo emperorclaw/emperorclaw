@@ -17,7 +17,7 @@
 
 const { spawn } = require("child_process");
 const os = require("os");
-const { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise } = require("./bridge-logic");
+const { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide } = require("./bridge-logic");
 
 const API_URL = (process.env.EMPEROR_CLAW_API_URL || "http://localhost:3000").replace(/\/+$/, "");
 const API_TOKEN = process.env.EMPEROR_CLAW_API_TOKEN || "";
@@ -133,15 +133,18 @@ async function updateStatus(message, opts = {}) {
 async function main() {
     log(`starting agent=${AGENT_NAME} id=${AGENT_ID} poll=${POLL_SECONDS}s`);
 
-    // Register runtime
+    // Register runtime. The response may carry the server's reply-format
+    // guide (rich chat blocks); older servers return only runtimeNode.
+    let formatGuide = "";
     try {
-        await api("POST", "/runtime/register", {
+        const registered = await api("POST", "/runtime/register", {
             runtimeId: `codex-${AGENT_ID.slice(0, 8)}`,
             name: `Codex on ${os.hostname()}`,
             hostname: os.hostname(),
             gatewayVersion: "codex-cli",
-            capabilitiesJson: ["codex-cli", "thread-reply"],
+            capabilitiesJson: ["codex-cli", "thread-reply", "rich-replies"],
         });
+        formatGuide = replyFormatGuide(registered);
     } catch (e) { /* ignore */ }
 
     await heartbeat();
@@ -208,7 +211,9 @@ async function main() {
                     `- Direct chat: private 1-on-1 thread. Reply normally.`,
                     `- Team chat: only respond when explicitly @mentioned by name. Stay silent otherwise.`,
                     `- Be concise. One clear answer per response. No walls of text.`,
+                    `- Your reply is shown in Emperor Claw's web chat, not a terminal: Markdown renders (tables, code, links).`,
                     ``,
+                    ...(formatGuide ? [formatGuide, ``] : []),
                     `## Message to answer`,
                     text,
                 ].join("\n");

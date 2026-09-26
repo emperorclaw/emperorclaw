@@ -107,6 +107,14 @@ fi
 echo "[entrypoint] enabling tool-loop guardrail hard stop"
 hermes -p "$PROFILE_NAME" config set tool_loop_guardrails.hard_stop_enabled true || true
 
+# `hermes chat -q` runs under Hermes' CLI platform hint, which tells the model
+# "Markdown does NOT render — write plain text". Emperor's chat renders
+# Markdown (and, on servers that advertise it, charts/tabs/widgets — the bridge
+# adds that guide per turn), so replace the hint instead of contradicting it
+# on every turn. `replace` is Hermes' documented platform_hints override.
+echo "[entrypoint] setting Emperor chat formatting hint"
+hermes -p "$PROFILE_NAME" config set platform_hints.cli.replace "You are replying through Emperor Claw's web chat, a graphical chat app, not a terminal. GitHub-flavored Markdown renders: headings, bold, lists, tables, code blocks, links. Format for a reader: short paragraphs, tables for tabular data. Deliver files through Emperor Storage (emperor_upload_artifact) and cite the artifact; MEDIA: tags are not intercepted here." || true
+
 # Connect this profile to Emperor's own real MCP server (/mcp) as an
 # additional MCP connection — alongside, not instead of, the emperor-claw
 # plugin's REST-backed tools above. `hermes mcp add --auth header` always

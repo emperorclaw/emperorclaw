@@ -6,6 +6,7 @@ const {
     loopGuardOk,
     estimateUsageTokens,
     stripCodexNoise,
+    replyFormatGuide,
 } = require("../../integrations/codex/bridge-logic");
 
 const CTX = { agentId: "agent-1", agentName: "Ada" };
@@ -88,4 +89,16 @@ test("mock reply cycle: a valid message yields a cleaned reply + usage report", 
 
     const usage = estimateUsageTokens(msg.text, reply);
     assert.ok(usage.inputTokens > 0 && usage.outputTokens > 0, "usage should be reported for a real reply");
+});
+
+test("replyFormatGuide: only a server advertising rich-blocks-v1 yields a guide", () => {
+    assert.equal(replyFormatGuide({ runtimeNode: {} }, {}), "");
+    assert.equal(replyFormatGuide(null, {}), "");
+    assert.equal(replyFormatGuide({ serverCapabilities: ["other"], replyFormatGuide: "g" }, {}), "");
+    assert.equal(replyFormatGuide({ serverCapabilities: ["rich-blocks-v1"], replyFormatGuide: " ## Rich " }, {}), "## Rich");
+});
+
+test("replyFormatGuide: EMPEROR_CLAW_RICH_REPLIES=off opts out", () => {
+    const res = { serverCapabilities: ["rich-blocks-v1"], replyFormatGuide: "## Rich" };
+    assert.equal(replyFormatGuide(res, { EMPEROR_CLAW_RICH_REPLIES: "off" }), "");
 });

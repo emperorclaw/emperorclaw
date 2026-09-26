@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { registerRuntimeNode } from "@/lib/control-plane";
+import { RICH_REPLY_GUIDE, SERVER_CAPABILITIES } from "@/lib/rich-reply-guide";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -26,7 +27,15 @@ export async function POST(req: NextRequest) {
             startedAt: startedAt ? new Date(startedAt) : null,
         });
 
-        return NextResponse.json({ runtimeNode });
+        // Capability handshake: a runtime learns what THIS server can render
+        // and gets the matching reply-format guide to hand its agent. Older
+        // runtimes ignore the extra fields; older servers never send them,
+        // so their agents keep writing plain Markdown.
+        return NextResponse.json({
+            runtimeNode,
+            serverCapabilities: SERVER_CAPABILITIES,
+            replyFormatGuide: RICH_REPLY_GUIDE,
+        });
     } catch (error: any) {
         return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }

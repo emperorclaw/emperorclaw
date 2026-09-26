@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
 import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
+import { hasRichBlocks } from "@/lib/rich-blocks";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
@@ -325,6 +327,30 @@ export function AgentTeamChat({
         void sendMessage();
     };
 
+    // A widget in an agent's team-chat reply sends its follow-up back to that
+    // agent: team chat only routes @mentioned messages, so the prompt is
+    // addressed to the widget's author exactly as the operator would type it.
+    const sendTeamWidgetPrompt = useCallback(async (text: string) => {
+        forceScrollToBottomRef.current = true;
+        setIsAtBottom(true);
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, attachments: [] }),
+            });
+            if (!res.ok) throw new Error("Failed to send");
+            const data = await res.json() as ChatResponse;
+            const sentMessage = data.message;
+            if (sentMessage) {
+                setMessages((prev) => prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]);
+                setLastSeenAt(messageCursor(sentMessage.createdAt));
+            }
+        } catch (err) {
+            console.error("Failed to send widget prompt", err);
+        }
+    }, []);
+
     const getAgentName = (id: string | null | undefined) => {
         if (!id) return "System";
         const agent = agents.find((a) => a.id === id);
@@ -426,6 +452,7 @@ export function AgentTeamChat({
                             const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || "agent")}`;
                             const isOwn = isHuman && senderId === currentUserId;
                             const messageAttachments = getMessageAttachments(msg);
+                            const isRich = !isHuman && hasRichBlocks(msg.text);
 
                             return (
                                 <div
@@ -463,7 +490,7 @@ export function AgentTeamChat({
                                         </div>
 
                                         {/* Bubble + read receipts */}
-                                        <div className={cn("flex min-w-0 max-w-[86%] flex-col sm:max-w-[78%]", isHuman ? "items-end" : "items-start")}>
+                                        <div className={cn("flex min-w-0 max-w-[86%] flex-col sm:max-w-[78%]", isHuman ? "items-end" : "items-start", isRich && "w-full max-w-full sm:max-w-[min(92%,880px)]")}>
                                             {/* Sender name — group-start only */}
                                             {!isContinuation && !isHuman && (
                                                 <span className="text-[10px] font-medium text-cyan-400 mb-1 ml-1">{getAgentName(senderId)}</span>
@@ -476,13 +503,20 @@ export function AgentTeamChat({
 
                                             <div className={cn(
                                                 "min-w-0 max-w-full rounded-2xl border px-4 py-2.5 text-sm",
+                                                isRich && "w-full",
                                                 isHuman
                                                     ? "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
                                                     : "border-zinc-800/50 bg-zinc-800/30 text-zinc-300",
                                                 isLastInGroup && isHuman && "rounded-tr-none",
                                                 isLastInGroup && !isHuman && "rounded-tl-none"
                                             )}>
-                                                <ParsedMessage text={msg.text} />
+                                                {isHuman ? (
+                                                    <ParsedMessage text={msg.text} />
+                                                ) : (
+                                                    <AgentMessageActions agentName={getAgentName(senderId)} send={sendTeamWidgetPrompt}>
+                                                        <ParsedMessage text={msg.text} />
+                                                    </AgentMessageActions>
+                                                )}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">
                                                         {messageAttachments.map((att) => (
@@ -644,6 +678,19 @@ export function AgentTeamChat({
             )}
         </div>
     );
+}
+
+function AgentMessageActions({
+    agentName,
+    send,
+    children,
+}: {
+    agentName: string;
+    send: (text: string) => Promise<void>;
+    children: React.ReactNode;
+}) {
+    const value = useMemo(() => ({ sendPrompt: (prompt: string) => send(`@${agentName} ${prompt}`) }), [agentName, send]);
+    return <RichMessageActionsContext.Provider value={value}>{children}</RichMessageActionsContext.Provider>;
 }
 
 function ParsedMessage({ text }: { text: string }) {

@@ -24,6 +24,7 @@ export const versions: DocVersion[] = [
       { slug: 'lifecycle', title: 'Work Lifecycle', file: 'lifecycle.md' },
       { slug: 'pipelines', title: 'Pipelines Registry', file: 'pipelines.md' },
       { slug: 'messaging', title: 'Messaging & Inbox Rules', file: 'messaging.md' },
+      { slug: 'rich-replies', title: 'Rich Replies: Charts, Tabs & Widgets', file: 'rich-replies.md' },
       { slug: 'incidents', title: 'Incidents & Watchdogs', file: 'incidents.md' },
       { slug: 'retention', title: 'Archiving & Retention', file: 'retention.md' },
       { slug: 'limits', title: 'Current Platform Limits', file: 'limits.md' },

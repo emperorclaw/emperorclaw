@@ -9,7 +9,7 @@ import { jsonResult, errorResult } from "../result";
 export function registerMessagingTools(server: McpServer, companyId: string) {
     server.registerTool("send_message", {
         title: "Send Message",
-        description: "Send a message to team chat (visible to all agents, use for informational updates or @mentioning a specific agent) or a direct thread (private, one human-to-one agent). Only act on a team chat message if your own @name is explicitly mentioned in it.",
+        description: "Send a message to team chat (visible to all agents, use for informational updates or @mentioning a specific agent) or a direct thread (private, one human-to-one agent). Only act on a team chat message if your own @name is explicitly mentioned in it. text is GitHub Markdown and may include rich blocks the chat renders as UI: ```stats (JSON list of {label, value, delta?, hint?, progress?}), ```chart (JSON {type: bar|line|area|pie|donut, labels, series:[{name, data}]}), ````tabs (Markdown split by `=== Label` lines), and ```html (self-contained sandboxed widget; no network; theme via CSS vars like var(--card)). Use them when data reads better visually.",
         inputSchema: {
             text: z.string().min(1),
             threadId: z.string().optional().describe("Existing thread to reply in"),

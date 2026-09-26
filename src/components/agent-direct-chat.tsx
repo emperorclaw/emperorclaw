@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
 import { IconPaperclip, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
+import { hasRichBlocks } from "@/lib/rich-blocks";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 
@@ -566,7 +568,37 @@ export function AgentDirectChat({
 
     const agentLastReadAt = participants.find(p => p.participantType === 'agent')?.lastReadAt;
 
+    // Interactive widgets in agent replies can send a follow-up prompt as the
+    // operator (a "Show details" button, a drill-down in a chart). It is posted
+    // exactly like a typed message, so it stays visible in the transcript.
+    const sendWidgetPrompt = useCallback(async (prompt: string) => {
+        setControlError(null);
+        forceScrollToBottomRef.current = true;
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: prompt, targetAgentId: agentId, attachments: [] }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to send message");
+            }
+            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
+            if (data.thread) setThread(data.thread);
+            if (data.message) {
+                setMessages((prev) => prev.some((m) => m.id === data.message!.id) ? prev : [...prev, data.message!]);
+                lastSeenAtRef.current = data.message.createdAt;
+            }
+            void loadMessages().catch(() => {});
+        } catch (error) {
+            setControlError(error instanceof Error ? error.message : "Failed to send message");
+        }
+    }, [agentId, loadMessages]);
+    const richActions = useMemo(() => ({ sendPrompt: sendWidgetPrompt }), [sendWidgetPrompt]);
+
     return (
+        <RichMessageActionsContext.Provider value={richActions}>
         <div className={cn("relative bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
             {!hideHeader && (
                 <div className="flex items-center justify-between gap-4 p-5 border-b border-zinc-800 bg-zinc-900/40">
@@ -633,6 +665,7 @@ export function AgentDirectChat({
                             const isLastInGroup = !next || !isGroupContinuation(next, message);
                             const messageAttachments = getMessageAttachments(message);
                             const isOwn = isHuman && message.senderId === currentUserId;
+                            const isRich = !isHuman && hasRichBlocks(message.text);
 
                             return (
                                 <div
@@ -653,7 +686,7 @@ export function AgentDirectChat({
                                         `flex ${isHuman ? "justify-end" : "justify-start"}`,
                                         isContinuation ? "mt-0.5" : "mt-3"
                                     )}>
-                                        <div className={cn("flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]", isHuman ? "items-end" : "items-start")}>
+                                        <div className={cn("flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]", isHuman ? "items-end" : "items-start", isRich && "w-full max-w-full sm:max-w-[min(92%,880px)]")}>
                                             {/* Agent name label — only on group-start agent messages */}
                                             {!isHuman && !isContinuation && (
                                                 <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{isControl ? "Emperor" : agentName}</span>
@@ -661,6 +694,7 @@ export function AgentDirectChat({
 
                                             <div className={cn(
                                                 `min-w-0 max-w-full rounded-2xl border px-4 py-3 shadow-sm`,
+                                                isRich && "w-full",
                                                 isHuman
                                                     ? "bg-emerald-500 text-emerald-950 border-emerald-400/40"
                                                     : "bg-zinc-950/85 text-zinc-200 border-zinc-800",
@@ -935,6 +969,7 @@ export function AgentDirectChat({
                 )}
             </div>
         </div>
+        </RichMessageActionsContext.Provider>
     );
 }
 

@@ -27,7 +27,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
 
   // Group pages by category (heuristic: use sections or just list them)
   const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'agent-quickstart', 'emperor-operating-pipeline', 'why-emperor-vs-openclaw', 'installation', 'activation'].includes(p.slug));
-  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'company-brain', 'resources-as-wiki-memory', 'project-architecture', 'lifecycle', 'pipelines', 'messaging', 'incidents', 'retention', 'limits'].includes(p.slug));
+  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'company-brain', 'resources-as-wiki-memory', 'project-architecture', 'lifecycle', 'pipelines', 'messaging', 'rich-replies', 'incidents', 'retention', 'limits'].includes(p.slug));
   const runtimePages = selectedVersion.pages.filter((p: DocPage) => ['hermes-runtime', 'openclaw-agents'].includes(p.slug));
   const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'mcp', 'configuration', 'best-practices', 'usage', 'skill-development', 'troubleshooting'].includes(p.slug));
 

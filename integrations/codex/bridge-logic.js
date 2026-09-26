@@ -65,4 +65,20 @@ function stripCodexNoise(stdout) {
         .trim();
 }
 
-module.exports = { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise };
+/**
+ * Reply-format guide from the server's /runtime/register handshake, or "".
+ * Only a server advertising rich-blocks-v1 sends one; an older server's
+ * response has neither field, so the agent keeps writing plain Markdown.
+ * EMPEROR_CLAW_RICH_REPLIES=off opts an agent out.
+ */
+function replyFormatGuide(registerResponse, env = process.env) {
+    const optOut = String(env.EMPEROR_CLAW_RICH_REPLIES || "on").trim().toLowerCase();
+    if (["0", "off", "false", "no"].includes(optOut)) return "";
+    if (!registerResponse || typeof registerResponse !== "object") return "";
+    const caps = Array.isArray(registerResponse.serverCapabilities) ? registerResponse.serverCapabilities : [];
+    if (!caps.includes("rich-blocks-v1")) return "";
+    const guide = registerResponse.replyFormatGuide;
+    return typeof guide === "string" ? guide.trim().slice(0, 8000) : "";
+}
+
+module.exports = { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide };

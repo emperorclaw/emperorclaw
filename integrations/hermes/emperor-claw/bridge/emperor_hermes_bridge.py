@@ -65,6 +65,13 @@ MAX_CHARS_PER_RESOURCE = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CH
 MAIN_CHAT_CONTEXT_LIMIT = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_LIMIT", "20"))
 MAIN_CHAT_CONTEXT_MAX_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_MAX_CHARS", "6000"))
 MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS", "600"))
+# Rich replies (charts, KPI tiles, tabs, sandboxed HTML widgets). The server
+# advertises support and ships the matching reply-format guide in its
+# /runtime/register response; a server that doesn't is never sent rich blocks.
+# Set EMPEROR_CLAW_RICH_REPLIES=off to keep an agent on plain Markdown.
+RICH_REPLIES_ENABLED = os.environ.get("EMPEROR_CLAW_RICH_REPLIES", "on").strip().lower() not in {"0", "off", "false", "no"}
+RICH_BLOCKS_CAPABILITY = "rich-blocks-v1"
+MAX_REPLY_FORMAT_GUIDE_CHARS = 8000
 # Loop guard: the @mention convention (reply once, then go silent) is a prompt
 # convention, not a hard rule — an LLM can still misjudge a "closing" reply as
 # needing another response. This is a mechanical backstop: once this agent has
@@ -177,15 +184,105 @@ def _log_llm_guidance(provider: str) -> None:
         )
 
 
+_server_capabilities: List[str] = []
+_reply_format_guide = ""
+
+
 def ensure_runtime() -> None:
-    api("POST", "/runtime/register", body={
+    global _server_capabilities, _reply_format_guide
+    response = api("POST", "/runtime/register", body={
         "runtimeId": RUNTIME_ID,
         "name": f"Hermes on {socket.gethostname()}",
         "hostname": socket.gethostname(),
         "gatewayVersion": "hermes-agent",
-        "capabilitiesJson": ["hermes-agent", "thread-reply", "emperor-tools"],
+        "capabilitiesJson": ["hermes-agent", "thread-reply", "emperor-tools", "rich-replies"],
         "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     })
+    _server_capabilities, _reply_format_guide = parse_server_capabilities(response)
+    if RICH_BLOCKS_CAPABILITY in _server_capabilities:
+        log("server renders rich replies; reply-format guide loaded" if _reply_format_guide else "server renders rich replies but sent no guide")
+
+
+def parse_server_capabilities(response: Any) -> tuple[List[str], str]:
+    """Read the capability handshake from a /runtime/register response.
+
+    Older servers return only `runtimeNode`, which yields ([], "") — the
+    agent then keeps writing plain Markdown, which every Emperor renders.
+    """
+    if not isinstance(response, dict):
+        return [], ""
+    raw = response.get("serverCapabilities")
+    capabilities = [str(c) for c in raw if isinstance(c, (str, int))] if isinstance(raw, list) else []
+    guide = response.get("replyFormatGuide")
+    guide = guide.strip()[:MAX_REPLY_FORMAT_GUIDE_CHARS] if isinstance(guide, str) else ""
+    return capabilities, guide
+
+
+def format_reply_guidance() -> str:
+    """Formatting section of the turn prompt.
+
+    `hermes chat -q` runs under Hermes' CLI platform hint, which tells the
+    model Markdown does not render and to write plain text. That is wrong for
+    Emperor, whose chat renders Markdown on every version — so this always
+    corrects it, and adds the rich-block guide only when the server both
+    supports it and sent one.
+    """
+    base = (
+        "Formatting: your reply is shown in Emperor Claw's web chat, a graphical app, not a terminal. "
+        "Markdown renders (tables, code blocks, links, lists), so use it; ignore any earlier note that says Markdown does not render."
+    )
+    if RICH_REPLIES_ENABLED and RICH_BLOCKS_CAPABILITY in _server_capabilities and _reply_format_guide:
+        return base + "\n\n" + _reply_format_guide
+    return base
+
+
+_RICH_FENCE_RE = re.compile(
+    r"^(?P<fence>`{3,}|~{3,})[ \t]*(?P<lang>chart|stats|kpi|tabs|html|widget)\b[^\n]*\n(?P<body>.*?)^(?P=fence)[ \t]*$",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+
+
+def _rich_block_label(lang: str, body: str) -> str:
+    lang = lang.lower()
+    title = ""
+    if lang == "chart":
+        try:
+            spec = json.loads(body)
+            title = str(spec.get("title") or "") if isinstance(spec, dict) else ""
+        except (ValueError, TypeError):
+            title = ""
+        return f"[chart: {title}]" if title else "[chart]"
+    if lang in {"stats", "kpi"}:
+        try:
+            items = json.loads(body)
+            if isinstance(items, dict):
+                items = items.get("items")
+            parts = [
+                f"{item.get('label')} {item.get('value')}".strip()
+                for item in (items if isinstance(items, list) else [])[:6]
+                if isinstance(item, dict) and item.get("label") is not None
+            ]
+            return f"[stats: {'; '.join(parts)}]" if parts else "[stats]"
+        except (ValueError, TypeError):
+            return "[stats]"
+    if lang == "tabs":
+        labels = re.findall(r"^\s*={3,}\s+(.+?)\s*=*\s*$", body, re.MULTILINE)
+        return f"[tabs: {', '.join(labels[:8])}]" if labels else "[tabs]"
+    match = re.search(r"<!--\s*title:\s*(.*?)\s*-->", body, re.IGNORECASE) or re.search(r"<title[^>]*>(.*?)</title>", body, re.IGNORECASE | re.DOTALL)
+    title = re.sub(r"\s+", " ", match.group(1)).strip()[:80] if match else ""
+    return f"[html widget: {title}]" if title else "[html widget]"
+
+
+def summarize_rich_blocks(text: str) -> str:
+    """Replace rich fenced blocks with a short label for history context.
+
+    A chart spec or an HTML widget is kilobytes of markup that carries little
+    for another turn's reasoning; the label keeps what was shown (and the
+    stats values) at a fraction of the prompt budget.
+    """
+    if "```" not in text and "~~~" not in text:
+        return text
+    return _RICH_FENCE_RE.sub(lambda m: _rich_block_label(m.group("lang"), m.group("body")), text)
 
 
 def ensure_agent() -> str:
@@ -447,7 +544,7 @@ def format_main_chat_context(message: Dict[str, Any]) -> str:
     for entry in messages:
         if not isinstance(entry, dict):
             continue
-        text = " ".join(str(entry.get("text") or "").split())
+        text = " ".join(summarize_rich_blocks(str(entry.get("text") or "")).split())
         if not text:
             continue
         if len(text) > MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS:
@@ -1437,6 +1534,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope.\n"
         "Do not mention projects, tasks, resources, or Storage unless they are relevant to the user's request.\n"
         "Emperor is the source of truth. If local memory and Emperor disagree, prefer Emperor and surface the mismatch.\n\n"
+        + format_reply_guidance() + "\n\n"
         "Where to look in Emperor:\n"
         "- Past chat/history: emperor_list_threads, then emperor_get_thread_messages.\n"
         "- Team roster: emperor_request GET /agents.\n"
