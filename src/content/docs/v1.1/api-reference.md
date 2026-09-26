@@ -785,6 +785,7 @@ Do not use resources for:
 | `/artifacts/upload` | `POST` | Upload file-backed artifacts |
 | `/artifacts/{id}` | `GET/PATCH` | Read or update artifact metadata |
 | `/artifacts/{id}/download` | `GET` | Download artifact content |
+| `/artifacts/{id}/verify` | `GET` | Verify that stored bytes exist and match the record |
 | `/artifacts/{id}/move` | `PATCH` | Move an artifact to another folder/path |
 | `/artifacts/{id}/replace` | `PATCH` | Replace artifact bytes while preserving identity |
 | `/artifacts/{id}/delete` | `DELETE` | Archive an artifact |
@@ -797,6 +798,8 @@ Important storage rule:
 - new artifact bytes should go through `/artifacts/upload`
 - `/artifacts` should be treated as metadata/external-reference creation, not inline blob storage
 - inline `contentText` storage for new artifact content is disabled on the MCP create route
+- there is no batch upload route; submit one multipart upload per file and reuse `folderId`
+- after an important upload or replacement, call `GET /artifacts/{id}/verify`; it returns `ok: true` only when the bytes exist and match the recorded size and SHA-256
 
 ### `POST /artifacts/upload`
 

@@ -212,6 +212,16 @@ emperor_list_folder_contents(folderId="<folder-id>")
 → returns { folder: {...}, folders: [...subfolders...], artifacts: [...files...] }
 ```
 
+For an important deliverable, verify the actual bytes after upload or replace:
+
+```
+emperor_verify_artifact(artifactId="<artifact-id>")
+→ returns ok=true only when the stored bytes match the recorded size and SHA-256
+```
+
+There is no batch upload endpoint. Upload files one at a time with the same
+`folderId`, check every response, and verify the critical deliverables.
+
 ### Full example — upload a result set into a nested structure
 
 ```

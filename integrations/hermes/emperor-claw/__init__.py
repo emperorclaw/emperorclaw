@@ -243,6 +243,13 @@ def emperor_upload_artifact(args: Dict[str, Any], **_: Any) -> str:
     return _json(_multipart_upload(url, _token(), file_path, fields))
 
 
+def emperor_verify_artifact(args: Dict[str, Any], **_: Any) -> str:
+    artifact_id = str(args.get("artifactId") or "").strip()
+    if not artifact_id:
+        return _json({"error": "artifactId is required"})
+    return _json(_request("GET", f"/artifacts/{urllib.parse.quote(artifact_id)}/verify"))
+
+
 def emperor_add_task_note(args: Dict[str, Any], **_: Any) -> str:
     task_id = str(args.get("taskId") or "").strip()
     note = str(args.get("note") or "").strip()
@@ -285,6 +292,7 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope. "
             "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
             "upload a local file to Storage -> emperor_upload_artifact (never emperor_request, never curl). "
+            "verify an uploaded file without reading its bytes -> emperor_verify_artifact(artifactId). "
             "Storage is an Emperor abstraction: do not ask for or mention Bunny/backing blob-provider keys during normal uploads. "
             "If upload fails, report an Emperor Storage upload failure with the tool error. "
             "Storage folder workflow: (1) emperor_create_folder(name, projectId/customerId) -> returns folder.id; "
@@ -503,6 +511,19 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Upload a local file to Emperor Storage",
+    )
+    ctx.register_tool(
+        "emperor_verify_artifact",
+        TOOLSET,
+        _schema(
+            "Verify that a Storage artifact's bytes exist and match its recorded size and SHA-256. Use after important uploads or replacements.",
+            {"artifactId": {"type": "string"}},
+            ["artifactId"],
+        ),
+        emperor_verify_artifact,
+        check_fn=_available,
+        requires_env=requires,
+        description="Verify a Storage artifact's bytes and checksum",
     )
     ctx.register_tool(
         "emperor_add_task_note",
