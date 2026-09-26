@@ -1792,13 +1792,14 @@ def main() -> int:
                 message_id = str(message.get("id") or "")
                 if not message_id:
                     continue
-                # Older bridges recorded failed messages as seen. A direct message
-                # still marked seen/acting has no live turn at the start of this
-                # loop, so recover it instead of leaving the conversation stuck.
+                # Older bridges recorded failed messages as seen. Recover only a
+                # direct message left in ``acting``: it had begun a turn but has
+                # no live process at the start of this loop. Old ``seen`` rows
+                # may simply be historical reads and must not be replayed.
                 if message_id in (state.get("seen") or []):
                     is_our_unfinished_direct = (
                         str(message.get("targetAgentId") or message.get("target_agent_id") or "") == AGENT_ID
-                        and str(message.get("deliveryState") or message.get("delivery_state") or "") in {"seen", "acting"}
+                        and str(message.get("deliveryState") or message.get("delivery_state") or "") == "acting"
                     )
                     if not is_our_unfinished_direct:
                         continue
