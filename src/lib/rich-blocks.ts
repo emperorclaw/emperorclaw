@@ -16,7 +16,7 @@
  * break the message around it.
  */
 
-export const RICH_BLOCK_LANGUAGES = ["chart", "stats", "tabs", "html"] as const;
+export const RICH_BLOCK_LANGUAGES = ["chart", "stats", "tabs", "html", "choices"] as const;
 export type RichBlockLanguage = (typeof RICH_BLOCK_LANGUAGES)[number];
 
 /** Bumped when the agent-facing block contract changes incompatibly. The
@@ -24,15 +24,66 @@ export type RichBlockLanguage = (typeof RICH_BLOCK_LANGUAGES)[number];
 export const RICH_BLOCKS_CAPABILITY = "rich-blocks-v1";
 
 const RICH_FENCE_RE = /^\s*(`{3,}|~{3,})\s*(chart|stats|tabs|html)\b/im;
+const CHOICES_FENCE_RE = /^\s*(`{3,}|~{3,})\s*choices\b/im;
 
 export function isRichBlockLanguage(language: string | null | undefined): language is RichBlockLanguage {
     return !!language && (RICH_BLOCK_LANGUAGES as readonly string[]).includes(language.toLowerCase());
 }
 
 /** Cheap check used to widen the chat bubble for messages that carry a
- *  chart, tabs, or widget. Tables alone keep the normal bubble. */
+ *  chart, tabs, or widget. Tables and choices keep the normal bubble. */
 export function hasRichBlocks(text: string): boolean {
     return RICH_FENCE_RE.test(text);
+}
+
+/** Does the message carry a ```choices block (buttons awaiting an answer)? */
+export function hasChoicesBlock(text: string): boolean {
+    return CHOICES_FENCE_RE.test(text);
+}
+
+// ─── Choices ───────────────────────────────────────────────────────────────
+
+export type ChoiceStyle = "primary" | "danger" | "default";
+
+export interface ChoiceOption {
+    label: string;
+    /** What clicking sends; defaults to the label. */
+    prompt: string;
+    style: ChoiceStyle;
+    hint?: string;
+}
+
+export interface ChoicesSpec {
+    question?: string;
+    options: ChoiceOption[];
+}
+
+const MAX_CHOICES = 8;
+
+/** Parse a ```choices body: `{"question", "options": [...]}` or a bare list. */
+export function parseChoices(source: string): ChoicesSpec | null {
+    let raw: unknown;
+    try {
+        raw = JSON.parse(source);
+    } catch {
+        return null;
+    }
+    const input = Array.isArray(raw) ? { options: raw } : raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+    if (!input || !Array.isArray(input.options)) return null;
+    const options = input.options.slice(0, MAX_CHOICES).flatMap((entry): ChoiceOption[] => {
+        if (typeof entry === "string" || typeof entry === "number") {
+            const label = asText(entry, 60);
+            return label ? [{ label, prompt: label, style: "default" }] : [];
+        }
+        if (!entry || typeof entry !== "object") return [];
+        const o = entry as Record<string, unknown>;
+        const label = asText(o.label ?? o.title ?? o.text, 60);
+        if (!label) return [];
+        const style = o.style === "primary" || o.style === "danger" ? o.style : "default";
+        return [{ label, prompt: asText(o.prompt ?? o.value ?? o.send, 500) ?? label, style, hint: asText(o.hint ?? o.description, 100) }];
+    });
+    if (options.length === 0) return null;
+    return { question: asText(input.question ?? input.title, 200), options };
 }
 
 // ─── Charts ────────────────────────────────────────────────────────────────

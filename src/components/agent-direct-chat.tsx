@@ -7,7 +7,7 @@ import { IconPaperclip, IconRobot, IconMicrophone, IconSend, IconSquare, IconTra
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
-import { hasRichBlocks } from "@/lib/rich-blocks";
+import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 
@@ -591,8 +591,10 @@ export function AgentDirectChat({
                 lastSeenAtRef.current = data.message.createdAt;
             }
             void loadMessages().catch(() => {});
+            return true;
         } catch (error) {
             setControlError(error instanceof Error ? error.message : "Failed to send message");
+            return false;
         }
     }, [agentId, loadMessages]);
     const richActions = useMemo(() => ({ sendPrompt: sendWidgetPrompt }), [sendWidgetPrompt]);
@@ -712,7 +714,13 @@ export function AgentDirectChat({
                                                         </span>
                                                     </div>
                                                 )}
-                                                <MessageContent text={message.text} isHuman={isHuman} />
+                                                {!isHuman && hasChoicesBlock(message.text) ? (
+                                                    <RichMessageActionsContext.Provider value={{ sendPrompt: sendWidgetPrompt, laterReplies: laterHumanTexts(messages, i) }}>
+                                                        <MessageContent text={message.text} isHuman={isHuman} />
+                                                    </RichMessageActionsContext.Provider>
+                                                ) : (
+                                                    <MessageContent text={message.text} isHuman={isHuman} />
+                                                )}
                                                 {isControl && <p className="mt-2 text-xs text-zinc-400">
                                                     {message.deliveryState === "resolved" ? "Runtime confirmed" : "Waiting for Hermes confirmation. An offline or older runtime cannot stop yet."}
                                                 </p>}
@@ -971,6 +979,11 @@ export function AgentDirectChat({
         </div>
         </RichMessageActionsContext.Provider>
     );
+}
+
+/** Operator messages after index `i`, so a choices block knows its answer. */
+function laterHumanTexts(messages: DirectMessage[], i: number): string[] {
+    return messages.slice(i + 1).filter((m) => m.senderType === "human").map((m) => m.text);
 }
 
 function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -176,7 +176,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         const savedSearch = localStorage.getItem("projects-board-search-query");
         const savedHideCompleted = localStorage.getItem("projects-board-hide-completed");
 
-        if (savedProject && (savedProject === "All Projects" || projects.some((project) => project.id === savedProject))) {
+        // A deep link (a record card in chat) wins over the saved filter.
+        const requestedProject = searchParams.get("project");
+        if (requestedProject && projects.some((project) => project.id === requestedProject)) {
+            setProjectFilter(requestedProject);
+        } else if (savedProject && (savedProject === "All Projects" || projects.some((project) => project.id === savedProject))) {
             setProjectFilter(savedProject);
         }
         const validAssignees = {
@@ -199,6 +203,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         if (savedHideCompleted === "0") setHideCompletedProjects(false);
         setFiltersHydrated(true);
     }, [agents, customers, members, projects, searchParams]);
+
+    // `?task=<id>` opens that task's detail once, e.g. from a task card in chat.
+    const openedTaskParamRef = useRef<string | null>(null);
+    useEffect(() => {
+        const requestedTask = searchParams.get("task");
+        if (!requestedTask || openedTaskParamRef.current === requestedTask) return;
+        const task = tasks.find((candidate) => candidate.id === requestedTask);
+        if (!task) return;
+        openedTaskParamRef.current = requestedTask;
+        setSelectedTask(task);
+    }, [searchParams, tasks]);
 
     // Save to localStorage when filters change
     useEffect(() => {

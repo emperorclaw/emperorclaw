@@ -9,6 +9,24 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- Live record cards in chat. An agent can link a task, project, or agent as
+  `[label](emperor://task/<id>)` and the chat shows its current state: a
+  status chip inside a sentence, or a card on a line of its own (assignee, due
+  date, project progress, agent load). Cards refresh every 30 seconds and on
+  tab focus, batched into one request, and follow the app's visibility rules.
+  Clicking opens the record; `/projects?project=…&task=…` now deep-links to a
+  task on the board.
+- ```` ```choices ```` quick-reply buttons for decisions. A click sends the
+  option's prompt as the operator's reply, and the block locks on the chosen
+  answer, including after a reload.
+- The Hermes bridge includes teammates' ids in the roster when rich replies
+  are on, so agents can link each other without a tool call, and summarizes
+  choices blocks in history context.
+
 ## [0.8.47] — 2026-09-27
 
 ### Fixed

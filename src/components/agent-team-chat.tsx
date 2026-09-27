@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
-import { hasRichBlocks } from "@/lib/rich-blocks";
+import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
@@ -346,8 +346,10 @@ export function AgentTeamChat({
                 setMessages((prev) => prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]);
                 setLastSeenAt(messageCursor(sentMessage.createdAt));
             }
+            return true;
         } catch (err) {
             console.error("Failed to send widget prompt", err);
+            return false;
         }
     }, []);
 
@@ -513,7 +515,11 @@ export function AgentTeamChat({
                                                 {isHuman ? (
                                                     <ParsedMessage text={msg.text} />
                                                 ) : (
-                                                    <AgentMessageActions agentName={getAgentName(senderId)} send={sendTeamWidgetPrompt}>
+                                                    <AgentMessageActions
+                                                        agentName={getAgentName(senderId)}
+                                                        send={sendTeamWidgetPrompt}
+                                                        laterReplies={hasChoicesBlock(msg.text) ? laterTeamReplies(messages, i, getAgentName(senderId)) : undefined}
+                                                    >
                                                         <ParsedMessage text={msg.text} />
                                                     </AgentMessageActions>
                                                 )}
@@ -680,16 +686,32 @@ export function AgentTeamChat({
     );
 }
 
+/** Operator replies to one agent after index `i`, with the `@Agent` prefix removed. */
+function laterTeamReplies(messages: TeamMessage[], i: number, agentName: string): string[] {
+    const prefix = `@${agentName}`.toLowerCase();
+    return messages.slice(i + 1)
+        .filter((m) => m.senderType === "human")
+        .map((m) => m.text.trim())
+        .filter((text) => text.toLowerCase().startsWith(prefix))
+        .map((text) => text.slice(prefix.length).trim());
+}
+
 function AgentMessageActions({
     agentName,
     send,
+    laterReplies,
     children,
 }: {
     agentName: string;
-    send: (text: string) => Promise<void>;
+    send: (text: string) => Promise<boolean>;
+    laterReplies?: string[];
     children: React.ReactNode;
 }) {
-    const value = useMemo(() => ({ sendPrompt: (prompt: string) => send(`@${agentName} ${prompt}`) }), [agentName, send]);
+    const replyKey = laterReplies?.join("\u0000");
+    const value = useMemo(
+        () => ({ sendPrompt: (prompt: string) => send(`@${agentName} ${prompt}`), laterReplies: replyKey === undefined ? undefined : replyKey ? replyKey.split("\u0000") : [] }),
+        [agentName, send, replyKey],
+    );
     return <RichMessageActionsContext.Provider value={value}>{children}</RichMessageActionsContext.Provider>;
 }
 

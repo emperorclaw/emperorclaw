@@ -6,6 +6,7 @@ import {
     hasRichBlocks,
     niceTicks,
     parseChartSpec,
+    parseChoices,
     parseStats,
     splitTabs,
     widgetTitle,
@@ -141,12 +142,13 @@ test("every example in the agent reply guide renders with the real parsers", asy
     const { RICH_REPLY_GUIDE } = await import("../../src/lib/rich-reply-guide");
     const fences = [...RICH_REPLY_GUIDE.matchAll(/^(`{3,})(\w+)\n([\s\S]*?)^\1$/gm)].map((m) => ({ lang: m[2], body: m[3] }));
     const langs = fences.map((f) => f.lang).sort();
-    assert.deepEqual(langs, ["chart", "html", "stats", "tabs"]);
+    assert.deepEqual(langs, ["chart", "choices", "html", "stats", "tabs"]);
     for (const { lang, body } of fences) {
         if (lang === "chart") assert.ok(parseChartSpec(body), "chart example parses");
         if (lang === "stats") assert.equal(parseStats(body)?.length, 3);
         if (lang === "tabs") assert.deepEqual(splitTabs(body)?.map((t) => t.label), ["Summary", "Details"]);
         if (lang === "html") assert.equal(widgetTitle(body), "Agent load");
+        if (lang === "choices") assert.deepEqual(parseChoices(body)?.options.map((o) => o.style), ["primary", "default", "danger"]);
     }
 });
 
@@ -194,4 +196,37 @@ test("repairMarkdownTables recovers a real flattened table with a bad delimiter"
     assert.equal(out[4], "| Builder | deepseek-v4-pro | online | 1 | 5 | 1 | 302,428 | $25.42 |");
     assert.equal(out[5], "| SEO (operator) | — | online | 0 | 0 | 0 | 0 | $0.00 |");
     assert.equal(out[6], "Totals: ~469,589 tokens, $29.84 this month.");
+});
+
+test("parseChoices accepts option objects and bare strings", () => {
+    const spec = parseChoices(JSON.stringify({ question: "Launch?", options: [{ label: "Launch now", prompt: "Yes, launch it", style: "primary" }, "Wait"] }));
+    assert.equal(spec?.question, "Launch?");
+    assert.deepEqual(spec?.options.map((o) => [o.label, o.prompt, o.style]), [["Launch now", "Yes, launch it", "primary"], ["Wait", "Wait", "default"]]);
+    assert.equal(parseChoices(JSON.stringify(["A", "B"]))?.options.length, 2);
+    assert.equal(parseChoices("{}"), null);
+    assert.equal(parseChoices("nope"), null);
+    assert.equal(parseChoices(JSON.stringify({ options: [{ style: "primary" }] })), null);
+});
+
+test("emperor:// record links parse only for known kinds and real uuids", async () => {
+    const { parseEntityUrl, parseEntityKey, entityKey } = await import("../../src/lib/emperor-entities");
+    const id = "6919fa3f-b79d-4516-b314-1224afe81290";
+    assert.deepEqual(parseEntityUrl(`emperor://task/${id}`), { kind: "task", id });
+    assert.deepEqual(parseEntityUrl(`emperor://agents/${id.toUpperCase()}/`), { kind: "agent", id });
+    assert.equal(parseEntityUrl(`emperor://customer/${id}`), null);
+    assert.equal(parseEntityUrl("emperor://task/not-a-uuid"), null);
+    assert.equal(parseEntityUrl(`https://example.com/task/${id}`), null);
+    assert.equal(entityKey({ kind: "project", id }), `project:${id}`);
+    assert.deepEqual(parseEntityKey(`project:${id}`), { kind: "project", id });
+    assert.equal(parseEntityKey(`secret:${id}`), null);
+    assert.equal(parseEntityKey("task:1 OR 1=1"), null);
+});
+
+test("entityTone maps record states to display tones", async () => {
+    const { entityTone } = await import("../../src/lib/emperor-entities");
+    const task = (state: string) => ({ kind: "task" as const, id: "x", title: "t", state, priority: 0, assignee: null, project: null, dueAt: null, updatedAt: "", href: "" });
+    assert.equal(entityTone(task("done")), "positive");
+    assert.equal(entityTone(task("in_progress")), "active");
+    assert.equal(entityTone(task("review")), "warning");
+    assert.equal(entityTone(task("inbox")), "muted");
 });

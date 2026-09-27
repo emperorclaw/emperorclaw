@@ -1259,6 +1259,21 @@ class TestRichReplies(unittest.TestCase):
             bridge.refresh_server_capabilities()
         self.assertIn("## Rich", bridge.format_reply_guidance())
 
+    def test_choices_blocks_are_summarized(self):
+        text = '```choices\n{"question":"Launch?","options":[{"label":"Launch now"},"Wait"]}\n```'
+        self.assertEqual(bridge.summarize_rich_blocks(text), "[choices: Launch now / Wait]")
+
+    def test_roster_carries_ids_only_with_rich_replies(self):
+        from unittest.mock import patch
+        roster = [{"id": "11111111-1111-1111-1111-111111111111", "name": "Ada"}]
+        bridge._server_capabilities, bridge._reply_format_guide = [], ""
+        with patch.object(bridge, "fetch_agent_roster", return_value=roster):
+            self.assertNotIn("11111111", bridge.format_agent_roster("x"))
+        bridge._server_capabilities, bridge._reply_format_guide = ["rich-blocks-v1"], "## Rich"
+        bridge.RICH_REPLIES_ENABLED = True
+        with patch.object(bridge, "fetch_agent_roster", return_value=roster):
+            self.assertIn("id 11111111-1111-1111-1111-111111111111", bridge.format_agent_roster("x"))
+
     def test_summarize_rich_blocks_compresses_history(self):
         text = (
             "Here is the week.\n"

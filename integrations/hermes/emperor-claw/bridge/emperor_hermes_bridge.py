@@ -274,6 +274,11 @@ def parse_server_capabilities(response: Any) -> tuple[List[str], str]:
     return capabilities, guide
 
 
+def rich_replies_active() -> bool:
+    """True when this server renders rich replies and sent the matching guide."""
+    return RICH_REPLIES_ENABLED and RICH_BLOCKS_CAPABILITY in _server_capabilities and bool(_reply_format_guide)
+
+
 def format_reply_guidance() -> str:
     """Formatting section of the turn prompt.
 
@@ -287,13 +292,13 @@ def format_reply_guidance() -> str:
         "Formatting: your reply is shown in Emperor Claw's web chat, a graphical app, not a terminal. "
         "Markdown renders (tables, code blocks, links, lists), so use it; ignore any earlier note that says Markdown does not render."
     )
-    if RICH_REPLIES_ENABLED and RICH_BLOCKS_CAPABILITY in _server_capabilities and _reply_format_guide:
+    if rich_replies_active():
         return base + "\n\n" + _reply_format_guide
     return base
 
 
 _RICH_FENCE_RE = re.compile(
-    r"^(?P<fence>`{3,}|~{3,})[ \t]*(?P<lang>chart|stats|kpi|tabs|html|widget)\b[^\n]*\n(?P<body>.*?)^(?P=fence)[ \t]*$",
+    r"^(?P<fence>`{3,}|~{3,})[ \t]*(?P<lang>chart|stats|kpi|tabs|html|widget|choices)\b[^\n]*\n(?P<body>.*?)^(?P=fence)[ \t]*$",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
 )
 
@@ -321,6 +326,18 @@ def _rich_block_label(lang: str, body: str) -> str:
             return f"[stats: {'; '.join(parts)}]" if parts else "[stats]"
         except (ValueError, TypeError):
             return "[stats]"
+    if lang == "choices":
+        try:
+            spec = json.loads(body)
+            options = spec.get("options") if isinstance(spec, dict) else spec
+            labels = [
+                str(o.get("label") if isinstance(o, dict) else o)
+                for o in (options if isinstance(options, list) else [])[:8]
+                if (isinstance(o, dict) and o.get("label")) or isinstance(o, (str, int))
+            ]
+            return f"[choices: {' / '.join(labels)}]" if labels else "[choices]"
+        except (ValueError, TypeError):
+            return "[choices]"
     if lang == "tabs":
         labels = re.findall(r"^\s*={3,}\s+(.+?)\s*=*\s*$", body, re.MULTILINE)
         return f"[tabs: {', '.join(labels[:8])}]" if labels else "[tabs]"
@@ -407,10 +424,14 @@ def format_agent_roster(agent_id: str) -> str:
         }
         unique_aliases = sorted((alias for alias in agent_name_aliases(name)
             if not re.search(r"\s", alias) and normalize_mention(alias) not in sibling_aliases), key=lambda alias: (len(alias), alias.lower()))
+        # With rich replies on, the id lets the agent link a teammate as a live
+        # card (emperor://agent/<id>) without spending a tool call to find it.
+        agent_ref = str(agent.get("id") or "")
+        id_suffix = f" · id {agent_ref}" if agent_ref and rich_replies_active() else ""
         if unique_aliases:
-            lines.append(f"- {name}{marker}: @{unique_aliases[0]}")
+            lines.append(f"- {name}{marker}: @{unique_aliases[0]}{id_suffix}")
         else:
-            lines.append(f"- {name}{marker}: no unambiguous alias; use an explicitly assigned task or ask for distinct agent names")
+            lines.append(f"- {name}{marker}: no unambiguous alias; use an explicitly assigned task or ask for distinct agent names{id_suffix}")
     return "Team roster aliases:\n" + "\n".join(lines)
 
 

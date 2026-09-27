@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   IconAlertTriangle,
@@ -13,6 +13,7 @@ import {
 import {
   MAX_WIDGET_HTML_CHARS,
   parseChartSpec,
+  parseChoices,
   parseStats,
   repairMarkdownTables,
   splitTabs,
@@ -21,6 +22,9 @@ import { ChartBlock } from '@/components/rich/chart-block';
 import { StatsBlock } from '@/components/rich/stats-block';
 import { TabsBlock } from '@/components/rich/tabs-block';
 import { HtmlWidget } from '@/components/rich/html-widget';
+import { ChoicesBlock } from '@/components/rich/choices-block';
+import { EntityCardGrid, EntityChip } from '@/components/rich/entity-link';
+import { parseEntityUrl, type EntityRef } from '@/lib/emperor-entities';
 
 interface MarkdownRendererProps {
   content: string;
@@ -124,7 +128,7 @@ interface HastNode {
   type: string;
   tagName?: string;
   value?: string;
-  properties?: { className?: unknown };
+  properties?: { className?: unknown; href?: unknown };
   children?: HastNode[];
 }
 
@@ -173,11 +177,43 @@ function RichFence({ language, code, depth }: { language: string; code: string; 
     } else if (language === 'tabs') {
       const tabs = splitTabs(code);
       if (tabs) return <TabsBlock tabs={tabs} renderMarkdown={(content) => <MarkdownRenderer content={content} depth={depth + 1} />} />;
+    } else if (language === 'choices') {
+      const spec = parseChoices(code);
+      if (spec) return <ChoicesBlock spec={spec} />;
     } else if ((language === 'html' || language === 'widget') && code.trim() && code.length <= MAX_WIDGET_HTML_CHARS) {
       return <HtmlWidget html={code} />;
     }
   }
   return <CodeBlock language={language} code={code} />;
+}
+
+/** Keep `emperor://` record links; everything else gets react-markdown's safe default. */
+function urlTransform(url: string): string {
+  return parseEntityUrl(url) ? url : defaultUrlTransform(url);
+}
+
+/**
+ * A paragraph made only of `emperor://` links (plus separators) renders as a
+ * grid of live record cards instead of a line of chips.
+ */
+function entityOnlyParagraph(node: HastNode | undefined): { entityRef: EntityRef; label: string }[] | null {
+  const children = node?.children ?? [];
+  const items: { entityRef: EntityRef; label: string }[] = [];
+  for (const child of children) {
+    if (child.type === 'text') {
+      if (/^[\s,·•|;-]*$/.test(child.value ?? '')) continue;
+      return null;
+    }
+    if (child.type === 'element' && child.tagName === 'br') continue;
+    if (child.type === 'element' && child.tagName === 'a') {
+      const ref = parseEntityUrl(String(child.properties?.href ?? ''));
+      if (!ref) return null;
+      items.push({ entityRef: ref, label: hastText(child) });
+      continue;
+    }
+    return null;
+  }
+  return items.length > 0 ? items : null;
 }
 
 export function MarkdownRenderer({ content, className = "", depth = 0 }: MarkdownRendererProps) {
@@ -187,7 +223,11 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
     h1: styled('h1', 'text-2xl font-bold mb-4 mt-6 text-zinc-100 border-b border-zinc-800 pb-2'),
     h2: styled('h2', 'text-xl font-bold mb-3 mt-5 text-zinc-100'),
     h3: styled('h3', 'text-lg font-bold mb-2 mt-4 text-zinc-100'),
-    p: styled('div', 'mb-4 leading-relaxed text-zinc-300'),
+    p: ({ node, ...props }) => {
+      const cards = entityOnlyParagraph(node as HastNode | undefined);
+      if (cards) return <EntityCardGrid items={cards} />;
+      return <div className="mb-4 leading-relaxed text-zinc-300" {...props} />;
+    },
     ul: styled('ul', 'list-disc pl-6 mb-4 text-zinc-300 space-y-1'),
     ol: styled('ol', 'list-decimal pl-6 mb-4 text-zinc-300 space-y-1'),
     li: styled('li', 'mb-1'),
@@ -228,8 +268,11 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
     tr: styled('tr', 'border-b border-zinc-800/80 last:border-0 transition-colors hover:bg-zinc-800/30 even:bg-zinc-900/30'),
     th: styled('th', 'whitespace-nowrap border-b border-zinc-800 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400'),
     td: styled('td', 'px-3 py-2 align-top text-zinc-300'),
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    a: ({ node, ...props }) => <a className="text-indigo-400 hover:text-indigo-300 underline" target="_blank" rel="noopener noreferrer" {...props} />,
+    a: ({ node, href, children, ...props }) => {
+      const ref = parseEntityUrl(href);
+      if (ref) return <EntityChip entityRef={ref} label={hastText(node as HastNode | undefined)} />;
+      return <a className="text-indigo-400 hover:text-indigo-300 underline" target="_blank" rel="noopener noreferrer" href={href} {...props}>{children}</a>;
+    },
     hr: styled('hr', 'border-zinc-800 my-8'),
     // Agents sometimes link a file that only exists on their own machine
     // (`/tmp/chart.png`, `file://…`). The browser can't load that, so say so
@@ -254,7 +297,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
     // Nested renderers (tab bodies) skip the `prose` hook class so chat
     // surfaces' `[&_.prose]:max-w-prose` never squeezes a chart inside a tab.
     <div className={`markdown-content ${depth === 0 ? 'prose prose-zinc prose-invert' : ''} max-w-none min-w-0 ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkCallouts]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkCallouts]} components={components} urlTransform={urlTransform}>
         {normalizedContent}
       </ReactMarkdown>
     </div>

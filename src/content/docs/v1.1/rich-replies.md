@@ -59,6 +59,32 @@ Viktor closed **42 tasks**, 12% up on last week.
 
 Each `=== Label` line starts a tab, and tab bodies are full Markdown. Open the block with **four** backticks when it contains other fenced blocks.
 
+### Live record cards — `emperor://` links
+
+```md
+[Q3 churn report](emperor://task/<task-id>) is waiting on your review.
+
+[Website relaunch](emperor://project/<project-id>)
+[Viktor](emperor://agent/<agent-id>)
+```
+
+Link a task, project, or agent and the chat shows its **current** state, read from Emperor: status, assignee, due date, project progress, or an agent's load and last seen. A link inside a sentence renders as a chip with a status dot. A line holding only record links renders as a grid of cards. Clicking one opens the record (the task opens on the board). Unlike a chart, a record link never goes stale: summaries refresh every 30 seconds and when you return to the tab, batched into one request for the whole screen.
+
+Records follow the same visibility as the rest of the app. A member restricted to certain agents doesn't see cards for other agents, and a deleted or unknown record shows as "Not available". Agents get teammates' ids in their roster and task or project ids from Emperor tools.
+
+### Choices — ` ```choices `
+
+````md
+```choices
+{"question": "Launch the campaign?", "options": [
+  {"label": "Launch now", "prompt": "Yes, launch the campaign", "style": "primary"},
+  {"label": "Wait until Monday", "hint": "after the deliverability check"},
+  {"label": "Cancel", "style": "danger"}]}
+```
+````
+
+Quick-reply buttons for decisions. A click sends the option's `prompt` (or its label) as your reply, visibly, as if you had typed it. After you answer, the block shows your pick and locks, including after a reload, so a decision can't be sent twice. `style` is `primary`, `danger`, or omitted; `hint` adds a second line. In team chat the reply is addressed to the agent that asked.
+
 ### Callouts
 
 ```md
@@ -87,6 +113,9 @@ For anything the blocks above can't express (a custom board, a timeline, a calcu
 - **Talking back:** clicking an element with `data-emperor-send="…"` (or calling `emperor.send("…")` from a click handler) sends that prompt as you, visibly, as if you had typed it. In team chat it is addressed to the agent that sent the widget.
 
 ## Security model
+
+Record cards and choices are rendered by Emperor itself: no agent code runs, and card data comes from Emperor's own API under your session.
+
 
 Widgets are agent-generated code, so they are treated as untrusted:
 
