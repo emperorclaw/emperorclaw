@@ -85,7 +85,7 @@ def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: 
         return {"ok": False, "error": str(exc)}
 
 
-def _multipart_upload(url: str, token: str, file_path: str, fields: Dict[str, str]) -> Dict[str, Any]:
+def _multipart_upload(url: str, token: str, file_path: str, fields: Dict[str, str], method: str = "POST") -> Dict[str, Any]:
     boundary = uuid.uuid4().hex
     filename = os.path.basename(file_path)
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -115,7 +115,7 @@ def _multipart_upload(url: str, token: str, file_path: str, fields: Dict[str, st
         "User-Agent": "hermes-emperor-claw-plugin/0.1.0",
         "Idempotency-Key": str(uuid.uuid4()),
     }
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    req = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
     try:
         with urllib.request.urlopen(req, timeout=120) as res:
             text = res.read().decode("utf-8", errors="replace")
@@ -176,6 +176,14 @@ def emperor_list_tasks(args: Dict[str, Any], **_: Any) -> str:
         "limit": args.get("limit") or 20,
     }
     return _json(_request("GET", "/tasks", query=query))
+
+
+def emperor_get_task_overview(args: Dict[str, Any], **_: Any) -> str:
+    query = {
+        "projectId": args.get("projectId"),
+        "maxItems": args.get("maxItems") or 10,
+    }
+    return _json(_request("GET", "/tasks/overview", query=query))
 
 
 def emperor_list_threads(args: Dict[str, Any], **_: Any) -> str:
@@ -243,6 +251,61 @@ def emperor_upload_artifact(args: Dict[str, Any], **_: Any) -> str:
     return _json(_multipart_upload(url, _token(), file_path, fields))
 
 
+def emperor_upload_artifacts(args: Dict[str, Any], **_: Any) -> str:
+    """Upload a bounded batch and report every per-file outcome.
+
+    This intentionally composes the single-file endpoint so each file keeps
+    its own idempotency key and rollback behavior. A partial failure is never
+    presented as all-or-nothing success.
+    """
+    files = args.get("files")
+    if not isinstance(files, list) or not files:
+        return _json({"error": "files must be a non-empty array"})
+    if len(files) > 25:
+        return _json({"error": "A batch may contain at most 25 files"})
+
+    shared = {key: value for key, value in args.items() if key != "files"}
+    results: list[Dict[str, Any]] = []
+    for entry in files:
+        item = dict(shared)
+        if isinstance(entry, str):
+            item["filePath"] = entry
+        elif isinstance(entry, dict):
+            item.update(entry)
+        else:
+            results.append({"ok": False, "error": "Each file must be a path string or object"})
+            continue
+        file_path = str(item.get("filePath") or "")
+        try:
+            result = json.loads(emperor_upload_artifact(item))
+        except Exception as exc:
+            result = {"ok": False, "error": str(exc)}
+        results.append({"filePath": file_path, **result})
+    succeeded = sum(1 for result in results if result.get("ok") is True)
+    return _json({
+        "ok": succeeded == len(results),
+        "succeeded": succeeded,
+        "failed": len(results) - succeeded,
+        "results": results,
+    })
+
+
+def emperor_replace_artifact(args: Dict[str, Any], **_: Any) -> str:
+    artifact_id = str(args.get("artifactId") or "").strip()
+    file_path = str(args.get("filePath") or "").strip()
+    if not artifact_id or not file_path:
+        return _json({"error": "artifactId and filePath are required"})
+    if not os.path.isfile(file_path):
+        return _json({"error": f"File not found: {file_path}"})
+    fields: Dict[str, str] = {}
+    for key in ("folderId", "name", "title", "contentType"):
+        value = args.get(key)
+        if value not in (None, ""):
+            fields[key] = str(value)
+    url = _api_url() + "/api/mcp/artifacts/" + urllib.parse.quote(artifact_id) + "/replace"
+    return _json(_multipart_upload(url, _token(), file_path, fields, method="PATCH"))
+
+
 def emperor_verify_artifact(args: Dict[str, Any], **_: Any) -> str:
     artifact_id = str(args.get("artifactId") or "").strip()
     if not artifact_id:
@@ -280,14 +343,15 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
 
 
 def emperor_context_hook(**_: Any) -> Dict[str, str]:
+    if os.environ.get("EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE") == "1":
+        return {"context": "Emperor Claw tools are available for durable state and exact company data."}
     return {
         "context": Path(__file__).with_name("operating-guide.md").read_text(encoding="utf-8") + "\n\n" + (
             "Use Emperor only when the request needs durable state, exact message history, or a real state change; otherwise answer normally. "
             "Do not preload, summarize, or mention projects/tasks/resources/artifacts by default. "
             "Lookup map: past chat/history -> emperor_list_threads then emperor_get_thread_messages; team roster -> GET /agents; "
-            "projects -> emperor_list_projects or GET /projects/{id}; tasks -> emperor_list_tasks or GET /tasks/{id}; "
+            "projects -> emperor_list_projects or GET /projects/{id}; task status -> emperor_get_task_overview first; selected task -> GET /tasks/{id}; "
             "task progress/history -> GET /tasks/{id}/notes; project memory -> GET /projects/{id}/memory; "
-            "Knowledge & Rules -> GET /resources/context for resolved doctrine, POST /resources with top-level status: active for reusable knowledge updates; use status: draft only when explicitly uncertain, GET /resources for lookup; Storage/files/deliverables -> GET /artifacts; "
             "When proposing Knowledge & Rules, use Obsidian-style markdown: frontmatter scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], Evidence, and Related sections. "
             "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope. "
             "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
@@ -417,6 +481,21 @@ def register(ctx: Any) -> None:
         description="List Emperor tasks",
     )
     ctx.register_tool(
+        "emperor_get_task_overview",
+        TOOLSET,
+        _schema(
+            "Get exact server-side task totals plus bounded priority, genuinely blocked, and pending-approval lists. Use this first for board/status questions instead of loading hundreds of tasks.",
+            {
+                "projectId": {"type": "string", "description": "Optional project restriction."},
+                "maxItems": {"type": "integer", "default": 10, "minimum": 1, "maximum": 25},
+            },
+        ),
+        emperor_get_task_overview,
+        check_fn=_available,
+        requires_env=requires,
+        description="Get compact Emperor task overview",
+    )
+    ctx.register_tool(
         "emperor_list_threads",
         TOOLSET,
         _schema(
@@ -511,6 +590,64 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Upload a local file to Emperor Storage",
+    )
+    ctx.register_tool(
+        "emperor_upload_artifacts",
+        TOOLSET,
+        _schema(
+            "Upload up to 25 local files to Emperor Storage and return a result for every file. Shared fields apply to the batch; each file object may override them. Partial failures are reported explicitly.",
+            {
+                "files": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 25,
+                    "items": {
+                        "oneOf": [
+                            {"type": "string", "description": "Absolute local file path."},
+                            {"type": "object", "properties": {
+                                "filePath": {"type": "string"},
+                                "kind": {"type": "string"},
+                                "title": {"type": "string"},
+                                "contentType": {"type": "string"},
+                            }, "required": ["filePath"]},
+                        ]
+                    },
+                },
+                "kind": {"type": "string", "description": "Shared artifact kind unless overridden per file."},
+                "projectId": {"type": "string"},
+                "taskId": {"type": "string"},
+                "customerId": {"type": "string"},
+                "folderId": {"type": "string"},
+                "artifactClass": {"type": "string"},
+                "importance": {"type": "string"},
+                "visibility": {"type": "string", "enum": ["private", "public"], "default": "private"},
+            },
+            ["files", "kind"],
+        ),
+        emperor_upload_artifacts,
+        check_fn=_available,
+        requires_env=requires,
+        description="Upload a bounded batch to Emperor Storage",
+    )
+    ctx.register_tool(
+        "emperor_replace_artifact",
+        TOOLSET,
+        _schema(
+            "Replace the bytes of an existing Storage artifact while preserving its identity. Verify it afterward for important deliverables.",
+            {
+                "artifactId": {"type": "string"},
+                "filePath": {"type": "string", "description": "Absolute path to replacement bytes."},
+                "folderId": {"type": "string"},
+                "name": {"type": "string"},
+                "title": {"type": "string"},
+                "contentType": {"type": "string"},
+            },
+            ["artifactId", "filePath"],
+        ),
+        emperor_replace_artifact,
+        check_fn=_available,
+        requires_env=requires,
+        description="Replace an Emperor Storage artifact",
     )
     ctx.register_tool(
         "emperor_verify_artifact",

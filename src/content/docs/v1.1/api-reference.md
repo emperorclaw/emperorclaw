@@ -264,6 +264,7 @@ Returns a single user profile. Same shape as above, wrapped in `"user"` instead 
 |---|---|---|
 | `/tasks` | `GET` | List visible tasks |
 | `/tasks` | `POST` | Create a task |
+| `/tasks/overview` | `GET` | Exact totals plus bounded priority, unresolved-blocker, and pending-approval lists |
 | `/tasks/{id}` | `GET` | Read one task |
 | `/tasks/{id}` | `PATCH` | Update task metadata or state |
 | `/tasks/{id}` | `DELETE` | Archive a task with soft delete |
@@ -798,7 +799,8 @@ Important storage rule:
 - new artifact bytes should go through `/artifacts/upload`
 - `/artifacts` should be treated as metadata/external-reference creation, not inline blob storage
 - inline `contentText` storage for new artifact content is disabled on the MCP create route
-- there is no batch upload route; submit one multipart upload per file and reuse `folderId`
+- Hermes exposes `emperor_upload_artifacts` for a bounded multi-file operation; it reports every per-file result and does not hide partial failures
+- use `emperor_replace_artifact` (or `PATCH /artifacts/{id}/replace`) to edit bytes while preserving the artifact identity
 - after an important upload or replacement, call `GET /artifacts/{id}/verify`; it returns `ok: true` only when the bytes exist and match the recorded size and SHA-256
 
 ### `POST /artifacts/upload`

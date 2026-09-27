@@ -194,10 +194,12 @@ GET /pipelines
 ### Task overview for chat and status
 
 Use the `get_task_overview` MCP tool for a company or project status question.
-It computes totals by state on the server and returns a bounded list of the
-highest-priority tasks, tasks with unresolved dependencies, and tasks requiring
-human approval. This is intentionally not a task export: retrieve full detail
-only with `get_task` after selecting an item from the overview.
+It computes exact totals across the full matching task set and returns a bounded
+list of the highest-priority tasks, tasks with unfinished dependencies, and
+tasks linked to real pending approvals. Hermes exposes the same operation as
+`emperor_get_task_overview`; REST clients can call `GET /tasks/overview`. This
+is intentionally not a task export: retrieve full detail only with `get_task`
+after selecting an item from the overview.
 
 ### 1. Claim Tasks
 Agents should periodically poll or listen for new tasks and attempt to claim them atomically.

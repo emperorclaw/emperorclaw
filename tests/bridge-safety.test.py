@@ -79,6 +79,14 @@ class TestRuntimeControls(unittest.TestCase):
 
 
 class TestRetryLedger(unittest.TestCase):
+    def test_retry_and_orphan_states_are_recoverable_even_if_locally_seen(self):
+        message = {"targetAgentId": "test-agent-id"}
+        for state in ("queued", "seen", "acting"):
+            self.assertTrue(bridge.is_recoverable_direct_message(message, state))
+        self.assertFalse(bridge.is_recoverable_direct_message(message, "resolved"))
+        self.assertFalse(bridge.is_recoverable_direct_message(message, "cancelled"))
+        self.assertFalse(bridge.is_recoverable_direct_message({"targetAgentId": "other"}, "queued"))
+
     def test_retry_is_durable_and_uses_bounded_exponential_backoff(self):
         state = {}
         self.assertTrue(bridge.retry_due(state, "message-1", now=100))
@@ -1168,16 +1176,18 @@ class TestOperatingGuide(unittest.TestCase):
 
 
 class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
-    """The default turn ceiling must be unlimited, and a failed turn must not
-    post a generic "I hit an error" line into the conversation."""
+    """A wedged turn is bounded and failures remain operational state, not a
+    fabricated chat reply."""
 
-    def test_default_turn_timeout_is_unlimited(self):
+    def test_default_turn_timeout_and_retry_count_are_bounded(self):
         # Read the source because the test harness overrides the env var.
         src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
         self.assertIn(
-            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0")',
+            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "600")',
             src,
         )
+        self.assertIn('os.environ.get("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS", "3")', src)
+        self.assertIn('execution_state="cancelled"', src)
 
     def test_no_generic_error_notice_in_chat(self):
         src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()

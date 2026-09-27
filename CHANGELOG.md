@@ -9,6 +9,28 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.51] — 2026-09-27
+
+### Added
+
+- Hermes now exposes the same exact, bounded task overview available through
+  MCP and `GET /tasks/overview`, plus bounded multi-file upload and artifact
+  replacement tools with explicit per-file outcomes.
+
+### Fixed
+
+- Direct prompts stranded in `queued`, `seen`, or `acting` now recover after a
+  bridge restart or a human Retry. Stopping the service also terminates the
+  complete Hermes process group instead of leaving an invisible child alive.
+- One failed turn can no longer monopolize an agent indefinitely: turns have a
+  ten-minute default ceiling and become visibly cancelled/retryable after three
+  failed attempts.
+- Bridge-originated turns inject the Emperor operating guide only once, and
+  task overviews now calculate full-set totals, genuine unfinished dependency
+  blockers, and actual pending approvals.
+- File uploads use atomic local writes, reject active-path collisions, and the
+  metadata route can no longer create an internal Storage record without bytes.
+
 ## [0.8.50] — 2026-09-27
 
 ### Added

@@ -31,15 +31,11 @@ HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 # travelled into the agent's reply.
 HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
-# Per-turn ceiling before the bridge kills a Hermes turn. 0 (the default) means
-# no ceiling: an agent can legitimately work for hours on a single turn (a long
-# coding session, a large documentation pass), and cutting that work off is far
-# worse than letting it finish. Control is not lost — the operator can always
-# stop a running turn via the runtime control, which the bridge polls during the
-# turn. Set EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS to a positive number of seconds
-# to reinstate a hard ceiling (a genuinely hung turn is then killed and resumed
-# from its checkpoint on the next dispatch).
-HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0"))
+# Per-turn ceiling before the bridge kills a Hermes turn. A finite default is
+# important because the bridge deliberately processes one direct-message queue
+# serially: one wedged Hermes process must not hide every later prompt forever.
+# Set this to 0 only for a deliberately unbounded long-running worker.
+HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "600"))
 # Grace window after SIGTERM before SIGKILL on a timed-out turn: lets Hermes
 # checkpoint/save its session transcript so the next dispatch can --resume
 # instead of restarting the whole slow turn from scratch.
@@ -47,6 +43,7 @@ HERMES_TIMEOUT_GRACE_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT
 STATE_PATH = Path(os.environ.get("EMPEROR_CLAW_HERMES_STATE_PATH", Path.home() / ".hermes" / "emperor-bridge-state.json"))
 RETRY_BASE_SECONDS = max(1, int(os.environ.get("EMPEROR_CLAW_HERMES_RETRY_BASE_SECONDS", "15")))
 RETRY_MAX_SECONDS = max(RETRY_BASE_SECONDS, int(os.environ.get("EMPEROR_CLAW_HERMES_RETRY_MAX_SECONDS", "300")))
+MAX_RETRY_ATTEMPTS = max(1, int(os.environ.get("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS", "3")))
 DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").strip()
 # Path to the operating guide prepended to every turn's system prompt. Unset,
 # the bridge uses the packaged `operating-guide.md` next to its parent directory
@@ -203,6 +200,12 @@ def schedule_retry(state: Dict[str, Any], message_id: str, now: float | None = N
 
 def clear_retry(state: Dict[str, Any], message_id: str) -> None:
     retry_entries(state).pop(message_id, None)
+
+
+def is_recoverable_direct_message(message: Dict[str, Any], delivery_state: str) -> bool:
+    """Whether a locally-seen direct prompt is still executable server-side."""
+    target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
+    return target == AGENT_ID and delivery_state in {"queued", "seen", "acting"}
 
 
 def _log_llm_guidance(provider: str) -> None:
@@ -1414,6 +1417,23 @@ def _terminate_turn(proc: subprocess.Popen[str]) -> None:
         pass
 
 
+_active_turn_proc: subprocess.Popen[str] | None = None
+
+
+def _handle_shutdown(signum: int, _frame: Any) -> None:
+    """Stop the whole Hermes process group when systemd stops the bridge.
+
+    Hermes runs in a new session so killing only the Python bridge can leave the
+    active `hermes chat` (and its tools) orphaned. The message then remains in
+    seen/acting while an invisible child keeps consuming resources.
+    """
+    global _active_turn_proc
+    proc = _active_turn_proc
+    if proc is not None and proc.poll() is None:
+        _terminate_turn(proc)
+    raise SystemExit(128 + signum)
+
+
 def _persist_killed_session(
     sessions: Dict[str, str],
     session_key: str,
@@ -1467,47 +1487,56 @@ def invoke_hermes(
     session_id: str = "",
     state: Dict[str, Any] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    global _active_turn_proc
     env = os.environ.copy()
     # Provider hint: pass EMPEROR_CLAW_LLM_PROVIDER so Hermes skills can auto-detect.
     # The actual API key is configured by the user in ~/.hermes/.env or environment.
     if _agent_llm_provider:
         env["EMPEROR_CLAW_LLM_PROVIDER"] = _agent_llm_provider
+    # The bridge already prepends operating-guide.md to this turn. Tell the
+    # Hermes plugin context hook not to inject the same guide a second time.
+    env["EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE"] = "1"
     # start_new_session puts Hermes (and any browser/tool children it spawns)
     # in their own process group, so a timeout can signal the whole tree.
     proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, start_new_session=True)
-    started = time.time()
-    last_status = 0.0
-    while proc.poll() is None:
-        elapsed = time.time() - started
-        if HERMES_TIMEOUT_SECONDS > 0 and elapsed > HERMES_TIMEOUT_SECONDS:
-            _terminate_turn(proc)
-            stdout, stderr = proc.communicate()
-            raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
-        if time.time() - last_status >= 3:
-            try:
-                control = fetch_runtime_control(message)
-            except Exception as exc:
-                # Temporary server failures do not abandon an otherwise healthy turn.
-                log(f"runtime control polling failed: {exc}")
-                control = {}
-            if control.get("commands") or control.get("cancelled"):
+    _active_turn_proc = proc
+    try:
+        started = time.time()
+        last_status = 0.0
+        while proc.poll() is None:
+            elapsed = time.time() - started
+            if HERMES_TIMEOUT_SECONDS > 0 and elapsed > HERMES_TIMEOUT_SECONDS:
                 _terminate_turn(proc)
-                proc.communicate()
-                apply_runtime_controls(control, state if state is not None else {})
-                raise TurnInterrupted("Stopped by operator")
-            # Preference order, most to least specific: the model's real
-            # reasoning, then a real tool call, then honest elapsed time.
-            # Nothing here is inferred or invented.
-            activity = (
-                latest_reasoning_activity(session_id, started)
-                or latest_tool_activity(started)
-                or format_turn_activity(elapsed, resumed)
-            )
-            update_chat_status(message, typing=True, execution_state="acting", activity=activity)
-            last_status = time.time()
-        time.sleep(0.5)
-    stdout, stderr = proc.communicate()
-    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+                stdout, stderr = proc.communicate()
+                raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
+            if time.time() - last_status >= 3:
+                try:
+                    control = fetch_runtime_control(message)
+                except Exception as exc:
+                    # Temporary server failures do not abandon an otherwise healthy turn.
+                    log(f"runtime control polling failed: {exc}")
+                    control = {}
+                if control.get("commands") or control.get("cancelled"):
+                    _terminate_turn(proc)
+                    proc.communicate()
+                    apply_runtime_controls(control, state if state is not None else {})
+                    raise TurnInterrupted("Stopped by operator")
+                # Preference order, most to least specific: the model's real
+                # reasoning, then a real tool call, then honest elapsed time.
+                # Nothing here is inferred or invented.
+                activity = (
+                    latest_reasoning_activity(session_id, started)
+                    or latest_tool_activity(started)
+                    or format_turn_activity(elapsed, resumed)
+                )
+                update_chat_status(message, typing=True, execution_state="acting", activity=activity)
+                last_status = time.time()
+            time.sleep(0.5)
+        stdout, stderr = proc.communicate()
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+    finally:
+        if _active_turn_proc is proc:
+            _active_turn_proc = None
 
 
 # Reasoning transcript of the most recent turn, or None.
@@ -1790,6 +1819,8 @@ def check_budget() -> bool:
 
 
 def main() -> int:
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+    signal.signal(signal.SIGINT, _handle_shutdown)
     ensure_runtime()
     agent_id = ensure_agent()
     send_heartbeat(0)
@@ -1827,15 +1858,14 @@ def main() -> int:
                     clear_retry(state, message_id)
                     remember_seen(state, message_id)
                     continue
-                # Older bridges recorded failed messages as seen. Recover only a
-                # direct message left in ``acting``: it had begun a turn but has
-                # no live process at the start of this loop. Old ``seen`` rows
-                # may simply be historical reads and must not be replayed.
+                # A direct prompt can be present in the local seen ledger while
+                # still active on the server after a crash, a service stop, or a
+                # human Retry. `seen` is a real execution state, not a terminal
+                # acknowledgement. Recover every targeted direct prompt whose
+                # server state is queued/seen/acting; resolved/cancelled rows
+                # were handled above and historical team reads remain skipped.
                 if message_id in (state.get("seen") or []):
-                    is_our_unfinished_direct = (
-                        str(message.get("targetAgentId") or message.get("target_agent_id") or "") == AGENT_ID
-                        and delivery_state == "acting"
-                    )
+                    is_our_unfinished_direct = is_recoverable_direct_message(message, delivery_state)
                     if not is_our_unfinished_direct:
                         continue
                     state["seen"] = [item for item in state.get("seen", []) if item != message_id]
@@ -1949,7 +1979,19 @@ def main() -> int:
                     except Exception as status_exc:
                         log(f"failed to requeue message {message_id}: {status_exc}")
                     attempts = schedule_retry(state, message_id)
-                    log(f"error processing message {message_id}; retry {attempts} scheduled: {exc}")
+                    if attempts >= MAX_RETRY_ATTEMPTS:
+                        # Do not let one poison prompt monopolize this serial
+                        # queue forever. Cancel is visible in the direct-chat
+                        # transcript and can be explicitly retried by the human.
+                        try:
+                            update_chat_status(message, typing=False, execution_state="cancelled")
+                        except Exception as status_exc:
+                            log(f"failed to expose exhausted message {message_id}: {status_exc}")
+                        clear_retry(state, message_id)
+                        remember_seen(state, message_id)
+                        log(f"message {message_id} cancelled visibly after {attempts} failed attempts: {exc}")
+                    else:
+                        log(f"error processing message {message_id}; retry {attempts} scheduled: {exc}")
                 finally:
                     try:
                         send_heartbeat(0)

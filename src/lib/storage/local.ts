@@ -56,7 +56,17 @@ export class LocalStorageAdapter implements StorageAdapter {
         const checksum = (params.checksum || this.computeChecksum(buffer)).toUpperCase();
         const contentType = params.contentType?.trim() || DEFAULT_CONTENT_TYPE;
 
-        await fs.writeFile(fullPath, buffer);
+        // Write beside the destination and rename only after all bytes reach
+        // disk. Readers therefore see either the previous complete file or the
+        // new complete file, never a partially-written blob after a crash.
+        const temporaryPath = `${fullPath}.upload-${process.pid}-${Date.now()}`;
+        try {
+            await fs.writeFile(temporaryPath, buffer, { flag: "wx" });
+            await fs.rename(temporaryPath, fullPath);
+        } catch (error) {
+            await fs.rm(temporaryPath, { force: true }).catch(() => {});
+            throw error;
+        }
 
         const stat = await fs.stat(fullPath);
 

@@ -150,12 +150,13 @@ test("Onboarding is server-owned, not hidden by stale localStorage", () => {
   );
 });
 
-test("Local agent provisioning does not pin a per-turn timeout", () => {
+test("Local agent provisioning bounds stuck turns and retries", () => {
   const provisioning = read("src/lib/hermes-provisioning.ts");
   assert.ok(
-    !provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS"),
-    "provisioning must not pin a turn timeout; the bridge default is unlimited",
+    provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=600"),
+    "provisioning must keep one stuck turn from monopolizing the serial queue",
   );
+  assert.ok(provisioning.includes("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS=3"));
 });
 
 test("The Hermes image pull gets a generous timeout", () => {

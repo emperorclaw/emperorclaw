@@ -27,6 +27,30 @@ class HermesHiringTests(unittest.TestCase):
         for phrase in ["Emperor minimum operating practices", "Human mentions are text", "3–8 words", "isShared=true", "status=\"draft\"", "Common scenarios"]:
             self.assertIn(phrase, context)
 
+    def test_bridge_turn_does_not_inject_operating_guide_twice(self):
+        with patch.dict(os.environ, {"EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE": "1"}):
+            context = plugin.emperor_context_hook()["context"]
+        self.assertNotIn("Emperor minimum operating practices", context)
+        self.assertIn("durable state", context)
+
+    def test_task_overview_uses_compact_endpoint(self):
+        with patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_get_task_overview({"projectId": "project-1", "maxItems": 7})
+        self.assertEqual(request.call_args.args[:2], ("GET", "/tasks/overview"))
+        self.assertEqual(request.call_args.kwargs["query"]["maxItems"], 7)
+
+    def test_batch_upload_reports_partial_failures(self):
+        responses = [json.dumps({"ok": True}), json.dumps({"ok": False, "error": "nope"})]
+        with patch.object(plugin, "emperor_upload_artifact", side_effect=responses):
+            result = json.loads(plugin.emperor_upload_artifacts({
+                "kind": "report",
+                "folderId": "folder-1",
+                "files": ["/tmp/a.pdf", "/tmp/b.pdf"],
+            }))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["succeeded"], 1)
+        self.assertEqual(result["failed"], 1)
+
     def test_hiring_tool_registered(self):
         class Context:
             tools = {}
@@ -39,6 +63,9 @@ class HermesHiringTests(unittest.TestCase):
         schema, fn = ctx.tools["emperor_create_agent"]
         self.assertEqual(schema["parameters"]["required"], ["name"])
         self.assertIs(fn, plugin.emperor_create_agent)
+        self.assertIn("emperor_get_task_overview", ctx.tools)
+        self.assertIn("emperor_upload_artifacts", ctx.tools)
+        self.assertIn("emperor_replace_artifact", ctx.tools)
 
 
 if __name__ == "__main__":

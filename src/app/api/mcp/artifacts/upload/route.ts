@@ -91,6 +91,17 @@ export async function POST(req: NextRequest) {
         const logicalPath = folder
             ? `${folder.path}/${sanitizeFilenameSegment(fileEntry.name)}`
             : sanitizeFilenameSegment(fileEntry.name);
+        const [pathCollision] = await db.select({ id: artifacts.id }).from(artifacts).where(and(
+            eq(artifacts.companyId, companyId),
+            eq(artifacts.path, logicalPath),
+            isNull(artifacts.deletedAt),
+        )).limit(1);
+        if (pathCollision) {
+            return NextResponse.json({
+                error: "A Storage artifact already exists at this path. Use the replace operation to edit it without creating a duplicate or overwriting its bytes.",
+                artifactId: pathCollision.id,
+            }, { status: 409 });
+        }
         const contentType =
             getFormStringValue(form, "contentType") ||
             fileEntry.type ||

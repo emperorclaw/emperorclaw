@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
+  approvalTaskLinks,
+  approvals,
   projects,
   recurringTaskDefinitions,
   taskEvents,
@@ -544,18 +546,57 @@ export async function getTaskOverviewForCompany(input: {
   maxItems?: number;
 }) {
   const maxItems = Math.min(Math.max(input.maxItems || 10, 1), 25);
-  const rows = await listTasksForCompany({
-    companyId: input.companyId,
-    projectId: input.projectId,
-    limit: 500,
-  });
-  const byState: Record<string, number> = {};
-  for (const task of rows) byState[task.state] = (byState[task.state] || 0) + 1;
+  const baseConditions: SQL<unknown>[] = [
+    eq(tasks.companyId, input.companyId),
+    isNull(tasks.deletedAt),
+  ];
+  if (input.projectId) baseConditions.push(eq(tasks.projectId, input.projectId));
 
-  const active = rows.filter((task) => task.state !== TASK_STATES.done && task.state !== TASK_STATES.failed);
-  const hasUnresolvedDependency = (task: typeof rows[number]) =>
-    Array.isArray(task.blockedByTaskIds) && task.blockedByTaskIds.length > 0;
-  const compact = (task: typeof rows[number]) => {
+  const isActive = sql`${tasks.state} NOT IN (${TASK_STATES.done}, ${TASK_STATES.failed})`;
+  const hasUnresolvedDependency = sql`EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements_text(COALESCE(${tasks.blockedByTaskIds}, '[]'::jsonb)) AS dependency_id(id)
+    JOIN tasks dependency
+      ON dependency.id::text = dependency_id.id
+     AND dependency.company_id = ${input.companyId}::uuid
+     AND dependency.deleted_at IS NULL
+     AND dependency.state <> ${TASK_STATES.done}
+  )`;
+  const hasPendingApproval = sql`EXISTS (
+    SELECT 1
+    FROM ${approvalTaskLinks}
+    JOIN ${approvals} ON ${approvals.id} = ${approvalTaskLinks.approvalId}
+    WHERE ${approvalTaskLinks.companyId} = ${input.companyId}::uuid
+      AND ${approvalTaskLinks.taskId} = ${tasks.id}
+      AND ${approvals.status} = 'pending'
+  )`;
+
+  const [stateRows, blockedCountRows, approvalCountRows, priorities, blocked, pendingApprovals] = await Promise.all([
+    db.select({ state: tasks.state, count: sql<number>`count(*)::int` })
+      .from(tasks).where(and(...baseConditions)).groupBy(tasks.state),
+    db.select({ count: sql<number>`count(*)::int` })
+      .from(tasks).where(and(...baseConditions, isActive, hasUnresolvedDependency)),
+    db.select({ count: sql<number>`count(*)::int` })
+      .from(tasks).where(and(...baseConditions, isActive, hasPendingApproval)),
+    db.select().from(tasks).where(and(...baseConditions, isActive))
+      .orderBy(desc(tasks.priority), asc(tasks.createdAt)).limit(maxItems),
+    db.select().from(tasks).where(and(...baseConditions, isActive, hasUnresolvedDependency))
+      .orderBy(desc(tasks.priority), asc(tasks.createdAt)).limit(maxItems),
+    db.select().from(tasks).where(and(...baseConditions, isActive, hasPendingApproval))
+      .orderBy(desc(tasks.priority), asc(tasks.createdAt)).limit(maxItems),
+  ]);
+
+  const byState: Record<string, number> = {};
+  for (const row of stateRows) byState[row.state] = Number(row.count);
+  const total = Object.values(byState).reduce((sum, count) => sum + count, 0);
+  const activeTotal = Object.entries(byState)
+    .filter(([state]) => state !== TASK_STATES.done && state !== TASK_STATES.failed)
+    .reduce((sum, [, count]) => sum + count, 0);
+  const blockedTotal = Number(blockedCountRows[0]?.count || 0);
+  const pendingApprovalTotal = Number(approvalCountRows[0]?.count || 0);
+
+  type OverviewTask = typeof priorities[number];
+  const compact = (task: OverviewTask, flags?: { blocked?: boolean; pendingApproval?: boolean }) => {
     const spec = task.inputJson && typeof task.inputJson === "object" ? task.inputJson as Record<string, unknown> : {};
     const title = [spec.title, spec.goal, spec.description, task.taskType]
       .find((value) => typeof value === "string" && value.trim()) as string;
@@ -567,23 +608,30 @@ export async function getTaskOverviewForCompany(input: {
       projectId: task.projectId,
       assignee: getTaskAssignee(task),
       blockedByTaskIds: Array.isArray(task.blockedByTaskIds) ? task.blockedByTaskIds : [],
-      approvalRequired: task.humanApprovalRequired,
+      blocked: flags?.blocked || false,
+      pendingApproval: flags?.pendingApproval || false,
       updatedAt: task.updatedAt,
     };
   };
-  const priorityOrder = (a: typeof rows[number], b: typeof rows[number]) =>
-    b.priority - a.priority || a.createdAt.getTime() - b.createdAt.getTime();
 
   return {
-    total: rows.length,
-    activeTotal: active.length,
+    total,
+    activeTotal,
     byState,
-    blockedTotal: active.filter(hasUnresolvedDependency).length,
-    approvalRequiredTotal: active.filter((task) => task.humanApprovalRequired).length,
-    priorities: active.sort(priorityOrder).slice(0, maxItems).map(compact),
-    blocked: active.filter(hasUnresolvedDependency).sort(priorityOrder).slice(0, maxItems).map(compact),
-    approvalRequired: active.filter((task) => task.humanApprovalRequired).sort(priorityOrder).slice(0, maxItems).map(compact),
-    truncated: active.length > maxItems,
+    blockedTotal,
+    pendingApprovalTotal,
+    // Compatibility aliases for the first overview release. The values now
+    // mean an actual pending approval, not merely a task configuration flag.
+    approvalRequiredTotal: pendingApprovalTotal,
+    priorities: priorities.map((task) => compact(task)),
+    blocked: blocked.map((task) => compact(task, { blocked: true })),
+    pendingApprovals: pendingApprovals.map((task) => compact(task, { pendingApproval: true })),
+    approvalRequired: pendingApprovals.map((task) => compact(task, { pendingApproval: true })),
+    truncated: {
+      priorities: activeTotal > priorities.length,
+      blocked: blockedTotal > blocked.length,
+      pendingApprovals: pendingApprovalTotal > pendingApprovals.length,
+    },
   };
 }
 

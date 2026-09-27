@@ -178,11 +178,11 @@ EMPEROR_CLAW_RUNTIME_ID="hermes-viktor-<hostname>"
 
 # Bridge settings
 EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
-# Per-turn ceiling in seconds. 0 (default) = no ceiling: an agent may work for
-# hours on one turn (a long coding session). The operator can always stop a
-# running turn with the runtime control; set a positive value only if you want
-# a hard cut-off for a genuinely hung turn.
-EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="0"
+# A finite ceiling prevents one wedged turn from monopolizing the serial queue.
+# Set 0 only for a deliberately unbounded worker. After three failed attempts
+# the prompt is visibly cancelled in chat and the operator can retry it.
+EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="600"
+EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS="3"
 EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state.json"
 HERMES_BIN="/home/<user>/.local/bin/hermes"
 HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
@@ -203,9 +203,9 @@ EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS="3"
 # read-only digest of the recent team channel so the agent can answer "what did
 # you and X talk about?". This only flows team -> DM; DM content never leaks
 # into the team. Set the limit to 0 to disable.
-EMPEROR_CLAW_MAIN_CHAT_CONTEXT_LIMIT="20"
-EMPEROR_CLAW_MAIN_CHAT_CONTEXT_MAX_CHARS="6000"
-EMPEROR_CLAW_MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS="600"
+EMPEROR_CLAW_MAIN_CHAT_CONTEXT_LIMIT="6"
+EMPEROR_CLAW_MAIN_CHAT_CONTEXT_MAX_CHARS="1800"
+EMPEROR_CLAW_MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS="300"
 
 # Model provider key (example: DeepSeek)
 DEEPSEEK_API_KEY="<key>"

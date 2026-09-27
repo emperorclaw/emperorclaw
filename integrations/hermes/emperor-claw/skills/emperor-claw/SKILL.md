@@ -197,12 +197,18 @@ emperor_upload_artifact(filePath="/home/<user>/BrandVirality/report.pdf", kind="
 
 ### Upload multiple files into the same folder
 
-Repeat `emperor_upload_artifact` with the same `folderId` for each file:
+Use one bounded batch call with the same `folderId`. The response reports every
+file separately, including partial failures:
 
 ```
-emperor_upload_artifact(filePath="/home/<user>/BrandVirality/summary.pdf",   kind="report",   projectId="<id>", folderId="<folder-id>")
-emperor_upload_artifact(filePath="/home/<user>/BrandVirality/raw_data.csv",   kind="export",   projectId="<id>", folderId="<folder-id>")
-emperor_upload_artifact(filePath="/home/<user>/BrandVirality/charts/bar.png", kind="evidence", projectId="<id>", folderId="<subfolder-id>")
+emperor_upload_artifacts(
+  files=[
+    {"filePath": "/home/<user>/BrandVirality/summary.pdf", "kind": "report"},
+    {"filePath": "/home/<user>/BrandVirality/raw_data.csv", "kind": "export"}
+  ],
+  projectId="<id>",
+  folderId="<folder-id>"
+)
 ```
 
 ### Verify what was uploaded
@@ -219,8 +225,10 @@ emperor_verify_artifact(artifactId="<artifact-id>")
 → returns ok=true only when the stored bytes match the recorded size and SHA-256
 ```
 
-There is no batch upload endpoint. Upload files one at a time with the same
-`folderId`, check every response, and verify the critical deliverables.
+The batch tool composes the safe single-file endpoint; it is not transactional
+across all files. Check `failed` and each result, then verify critical
+deliverables. To edit bytes without creating a duplicate record, call
+`emperor_replace_artifact(artifactId, filePath)` and verify afterward.
 
 ### Full example — upload a result set into a nested structure
 

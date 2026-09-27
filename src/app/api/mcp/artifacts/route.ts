@@ -239,6 +239,20 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
+        // This JSON route creates references, not bytes. Requiring a real
+        // external locator prevents an agent from inventing an internal path
+        // or storageKey and leaving a database row whose file never existed.
+        if (!storageUrl && !sourceRef) {
+            return NextResponse.json({
+                error: "Metadata-only artifacts require storageUrl or sourceRef. Use /artifacts/upload to create a file-backed artifact.",
+            }, { status: 400 });
+        }
+        if (storageKey && (!storageProvider || storageProvider === getStorageProviderName())) {
+            return NextResponse.json({
+                error: "Internal storageKey values cannot be registered without uploading bytes. Use /artifacts/upload.",
+            }, { status: 400 });
+        }
+
         let internalAgentId = null;
         if (agentId) {
             internalAgentId = await resolveAgentId(companyId, agentId);
