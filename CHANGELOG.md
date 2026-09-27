@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.50] — 2026-09-27
+
+### Added
+
+- `get_task_overview` provides a bounded server-side task summary for agent
+  status questions: totals by state plus priority, dependency-blocked, and
+  approval-required work. Full task detail remains on demand.
+
+### Fixed
+
+- Hermes bridge defaults now bound shared knowledge, team-chat history, and
+  rich-reply guidance so a status question cannot monopolize an agent queue.
+
 ## [0.8.49] — 2026-09-27
 
 ### Fixed
