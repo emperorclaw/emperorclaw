@@ -503,6 +503,23 @@ export function AgentDirectChat({
         finally { setIsSending(false); }
     };
 
+    const updateQueueItem = async (messageId: string, action: "cancel" | "retry") => {
+        if (isSending) return;
+        setIsSending(true);
+        setControlError(null);
+        try {
+            const res = await fetch(`/api/chat/messages/${messageId}`, { method: action === "cancel" ? "DELETE" : "POST" });
+            const data = await res.json() as { error?: string; message?: DirectMessage };
+            if (!res.ok || !data.message) throw new Error(data.error || "Could not update queued message");
+            setMessages((previous) => previous.map((message) => message.id === data.message!.id ? data.message! : message));
+            void loadMessages().catch(() => {});
+        } catch (error) {
+            setControlError(error instanceof Error ? error.message : "Could not update queued message");
+        } finally {
+            setIsSending(false);
+        }
+    };
+
     const handleSend = async (event: React.FormEvent) => {
         event.preventDefault();
         const text = draft.trim();
@@ -529,7 +546,7 @@ export function AgentDirectChat({
                 throw new Error(data.error || "Failed to send direct message");
             }
 
-            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage };
+            const data = await res.json() as { thread?: DirectThread; message?: DirectMessage; deduplicated?: boolean };
             if (data.thread) {
                 setThread(data.thread);
             }
@@ -548,6 +565,9 @@ export function AgentDirectChat({
                 schedulePoll(2000, true);   // 2s: poll with since
                 schedulePoll(5000, true);   // 5s: poll with since
                 schedulePoll(8000, false);  // 8s: FULL reload (no since) — catch anything missed
+            }
+            if (data.deduplicated) {
+                setControlError("That exact prompt is already active or queued. It was not sent twice.");
             }
         } catch (error) {
             console.error("Failed to send direct message", error);
@@ -598,6 +618,14 @@ export function AgentDirectChat({
         }
     }, [agentId, loadMessages]);
     const richActions = useMemo(() => ({ sendPrompt: sendWidgetPrompt }), [sendWidgetPrompt]);
+    const queueItems = useMemo(() => messages.filter((message) => (
+        message.senderType === "human" && ["queued", "seen", "acting"].includes(message.deliveryState || "")
+    )), [messages]);
+    const activeQueueItem = queueItems.find((message) => message.deliveryState === "acting");
+    const waitingQueueItems = queueItems.filter((message) => message.id !== activeQueueItem?.id);
+    const recentlyCancelledItems = useMemo(() => messages
+        .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
+        .slice(-3).reverse(), [messages]);
 
     return (
         <RichMessageActionsContext.Provider value={richActions}>
@@ -830,6 +858,45 @@ export function AgentDirectChat({
             )}
 
             <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
+                {(queueItems.length > 0 || recentlyCancelledItems.length > 0) && (
+                    <section aria-label="Agent message queue" className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-xs">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="font-semibold text-zinc-200">Message queue</span>
+                            <span className="text-zinc-500">{queueItems.length} pending</span>
+                        </div>
+                        {activeQueueItem && (
+                            <QueueItem
+                                message={activeQueueItem}
+                                stateLabel="Handling now"
+                                disabled={isSending}
+                                onCancel={() => void updateQueueItem(activeQueueItem.id, "cancel")}
+                            />
+                        )}
+                        {waitingQueueItems.map((message, index) => (
+                            <QueueItem
+                                key={message.id}
+                                message={message}
+                                stateLabel={`Waiting${waitingQueueItems.length > 1 ? ` · ${index + 1} of ${waitingQueueItems.length}` : ""}`}
+                                disabled={isSending}
+                                onCancel={() => void updateQueueItem(message.id, "cancel")}
+                            />
+                        ))}
+                        {recentlyCancelledItems.length > 0 && (
+                            <div className="mt-2 border-t border-zinc-800 pt-2">
+                                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Recently cancelled</p>
+                                {recentlyCancelledItems.map((message) => (
+                                    <QueueItem
+                                        key={message.id}
+                                        message={message}
+                                        stateLabel="Cancelled"
+                                        disabled={isSending}
+                                        onRetry={() => void updateQueueItem(message.id, "retry")}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                )}
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                     <button type="button" onClick={stopAgent} disabled={isSending}
                         className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300 hover:bg-red-500/10 disabled:opacity-50">
@@ -984,6 +1051,42 @@ export function AgentDirectChat({
 /** Operator messages after index `i`, so a choices block knows its answer. */
 function laterHumanTexts(messages: DirectMessage[], i: number): string[] {
     return messages.slice(i + 1).filter((m) => m.senderType === "human").map((m) => m.text);
+}
+
+function QueueItem({
+    message,
+    stateLabel,
+    disabled,
+    onCancel,
+    onRetry,
+}: {
+    message: DirectMessage;
+    stateLabel: string;
+    disabled: boolean;
+    onCancel?: () => void;
+    onRetry?: () => void;
+}) {
+    return (
+        <div className="flex items-center gap-2 py-1.5">
+            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", message.deliveryState === "acting" ? "bg-emerald-400 animate-pulse" : "bg-zinc-500")} />
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-zinc-300" title={message.text}>{message.text || "Attachment"}</p>
+                <p className="text-[10px] text-zinc-500">{stateLabel}</p>
+            </div>
+            {onCancel && (
+                <button type="button" onClick={onCancel} disabled={disabled}
+                    className="rounded border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-red-400/60 hover:text-red-300 disabled:opacity-50">
+                    Cancel
+                </button>
+            )}
+            {onRetry && (
+                <button type="button" onClick={onRetry} disabled={disabled}
+                    className="rounded border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-50">
+                    Retry
+                </button>
+            )}
+        </div>
+    );
 }
 
 function MessageContent({ text, isHuman }: { text: string; isHuman: boolean }) {

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { artifacts, threadParticipants } from "@/db/schema";
+import { artifacts, threadMessages, threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages, type ThreadMessageAttachment } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
@@ -21,6 +21,10 @@ function serializeMessage(message: ThreadMessageLike) {
         ...message,
         fromUserId: message.fromUserId || message.senderId || null,
     };
+}
+
+function normalizedPrompt(text: string) {
+    return text.trim().replace(/\s+/g, " ");
 }
 
 export async function GET(req: NextRequest) {
@@ -118,6 +122,25 @@ export async function POST(req: NextRequest) {
         const thread = resolvedTargetAgentId
             ? await ensureDirectThread(companyId, resolvedTargetAgentId, userId)
             : await ensureTeamThread(companyId);
+
+        // A double-click, a network retry, or two browser tabs must not turn one
+        // request into two expensive agent turns.  Attachments are intentionally
+        // excluded: two files with the same caption can be distinct requests.
+        if (resolvedTargetAgentId && resolvedAttachments.length === 0 && text) {
+            const prompt = normalizedPrompt(text);
+            const outstanding = await db.select().from(threadMessages).where(and(
+                eq(threadMessages.companyId, companyId),
+                eq(threadMessages.threadId, thread.id),
+                eq(threadMessages.senderType, "human"),
+                eq(threadMessages.senderId, userId),
+                inArray(threadMessages.deliveryState, ["queued", "seen", "acting"]),
+                ne(threadMessages.text, ""),
+            )).orderBy(threadMessages.createdAt).limit(100);
+            const duplicate = outstanding.find((message) => normalizedPrompt(message.text) === prompt);
+            if (duplicate) {
+                return NextResponse.json({ thread, message: serializeMessage(duplicate), deduplicated: true });
+            }
+        }
         const message = await appendThreadMessage({
             companyId,
             threadId: thread.id,
