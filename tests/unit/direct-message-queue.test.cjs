@@ -14,6 +14,7 @@ test("direct chat exposes a per-message queue instead of only a global stop", ()
     assert.match(ui, /onRetry/);
     assert.match(ui, /showCancelledHistory/);
     assert.match(ui, /Close/);
+    assert.match(ui, /queueItems\.length >= 2/);
 });
 
 test("queue mutations are sender-scoped and state-guarded", () => {

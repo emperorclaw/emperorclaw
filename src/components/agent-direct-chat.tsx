@@ -625,6 +625,9 @@ export function AgentDirectChat({
     )), [messages]);
     const activeQueueItem = queueItems.find((message) => message.deliveryState === "acting");
     const waitingQueueItems = queueItems.filter((message) => message.id !== activeQueueItem?.id);
+    // A single active turn is already represented in the transcript and typing
+    // indicator. The separate panel is useful only when it explains a backlog.
+    const hasQueueBacklog = queueItems.length >= 2;
     const recentlyCancelledItems = useMemo(() => messages
         .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
         .slice(-3).reverse(), [messages]);
@@ -860,20 +863,20 @@ export function AgentDirectChat({
             )}
 
             <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
-                {(queueItems.length > 0 || showCancelledHistory) && (
+                {(hasQueueBacklog || showCancelledHistory) && (
                     <section aria-label="Agent message queue" className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-xs">
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <span className="font-semibold text-zinc-200">Message queue</span>
                             <div className="flex items-center gap-3">
                                 <span className="text-zinc-500">{queueItems.length} pending</span>
-                                {queueItems.length === 0 && (
+                                {!hasQueueBacklog && (
                                     <button type="button" onClick={() => setShowCancelledHistory(false)} className="text-zinc-500 hover:text-zinc-200">
                                         Close
                                     </button>
                                 )}
                             </div>
                         </div>
-                        {activeQueueItem && (
+                        {hasQueueBacklog && activeQueueItem && (
                             <QueueItem
                                 message={activeQueueItem}
                                 stateLabel="Handling now"
@@ -881,7 +884,7 @@ export function AgentDirectChat({
                                 onCancel={() => void updateQueueItem(activeQueueItem.id, "cancel")}
                             />
                         )}
-                        {waitingQueueItems.map((message, index) => (
+                        {hasQueueBacklog && waitingQueueItems.map((message, index) => (
                             <QueueItem
                                 key={message.id}
                                 message={message}
