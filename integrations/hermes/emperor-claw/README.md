@@ -178,10 +178,12 @@ EMPEROR_CLAW_RUNTIME_ID="hermes-viktor-<hostname>"
 
 # Bridge settings
 EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
-# A finite ceiling prevents one wedged turn from monopolizing the serial queue.
-# Set 0 only for a deliberately unbounded worker. After three failed attempts
-# the prompt is visibly cancelled in chat and the operator can retry it.
-EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="600"
+# Long work has no wall-clock ceiling by default. The bridge continuously
+# drains Hermes output and only stops a turn after 15 minutes with no output,
+# agent-log activity, or session-store activity. Set the absolute timeout to a
+# positive value only when this particular worker needs a hard ceiling.
+EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="0"
+EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS="900"
 EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS="3"
 EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state.json"
 HERMES_BIN="/home/<user>/.local/bin/hermes"

@@ -1201,9 +1201,10 @@ class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
         # Read the source because the test harness overrides the env var.
         src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
         self.assertIn(
-            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "600")',
+            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0")',
             src,
         )
+        self.assertIn('os.environ.get("EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS", "900")', src)
         self.assertIn('os.environ.get("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS", "3")', src)
         self.assertIn('execution_state="cancelled"', src)
 
@@ -1221,6 +1222,7 @@ class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
             return {"commands": [], "cancelled": False}
 
         with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
+             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0), \
              patch.object(bridge, "fetch_runtime_control", side_effect=quiet), \
              patch.object(bridge, "update_chat_status"), \
              patch.object(bridge, "log"):
@@ -1228,10 +1230,42 @@ class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
         self.assertEqual(done.returncode, 0)
 
         with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0.2), \
+             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0), \
              patch.object(bridge, "fetch_runtime_control", side_effect=quiet), \
              patch.object(bridge, "update_chat_status"), \
              patch.object(bridge, "log"):
             with self.assertRaises(subprocess.TimeoutExpired):
+                bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(5)"], {"id": "w"})
+
+    def test_continuous_output_is_drained_and_renews_idle_watchdog(self):
+        """Progress may outlive the idle window, and output larger than an OS
+        pipe buffer must not deadlock the Hermes subprocess."""
+        from unittest.mock import patch
+
+        script = (
+            "import time\n"
+            "for _ in range(15):\n"
+            " print('x' * 8192, flush=True)\n"
+            " time.sleep(0.1)\n"
+        )
+        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
+             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0.3), \
+             patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}), \
+             patch.object(bridge, "update_chat_status"), \
+             patch.object(bridge, "log"):
+            done = bridge.invoke_hermes([sys.executable, "-c", script], {"id": "w"})
+        self.assertEqual(done.returncode, 0)
+        self.assertGreater(len(done.stdout), 64 * 1024)
+
+    def test_silent_turn_is_stopped_by_idle_watchdog(self):
+        from unittest.mock import patch
+
+        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
+             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0.2), \
+             patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}), \
+             patch.object(bridge, "update_chat_status"), \
+             patch.object(bridge, "log"):
+            with self.assertRaises(bridge.HermesIdleTimeout):
                 bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(5)"], {"id": "w"})
 
 

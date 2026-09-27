@@ -150,11 +150,12 @@ test("Onboarding is server-owned, not hidden by stale localStorage", () => {
   );
 });
 
-test("Local agent provisioning bounds stuck turns and retries", () => {
+test("Local agent provisioning allows long turns and bounds inactive ones", () => {
   const provisioning = read("src/lib/hermes-provisioning.ts");
   assert.ok(
-    provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=600"),
-    "provisioning must keep one stuck turn from monopolizing the serial queue",
+    provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=0") &&
+      provisioning.includes("EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS=900"),
+    "provisioning must allow long work while stopping turns with no progress",
   );
   assert.ok(provisioning.includes("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS=3"));
 });

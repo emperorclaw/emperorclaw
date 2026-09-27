@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.53] — 2026-09-27
+
+### Fixed
+
+- Long Hermes jobs are no longer killed by a ten-minute wall-clock limit. The
+  bridge now allows active work to continue and stops only after 15 minutes
+  without observable output, agent-log activity, or session-store activity.
+- Hermes stdout and stderr are drained continuously, preventing large tool
+  results from filling an OS pipe and freezing an otherwise healthy turn.
+
 ## [0.8.52] — 2026-09-27
 
 ### Fixed

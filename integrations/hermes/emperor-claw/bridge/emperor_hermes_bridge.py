@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -31,11 +32,16 @@ HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
 # travelled into the agent's reply.
 HERMES_TOOLSETS = os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution").strip()
 POLL_SECONDS = float(os.environ.get("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5"))
-# Per-turn ceiling before the bridge kills a Hermes turn. A finite default is
-# important because the bridge deliberately processes one direct-message queue
-# serially: one wedged Hermes process must not hide every later prompt forever.
-# Set this to 0 only for a deliberately unbounded long-running worker.
-HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "600"))
+# Optional absolute per-turn ceiling. Long-running operators legitimately need
+# more than 10 or 20 minutes, so the default is unbounded. Stalls are bounded by
+# the progress-aware idle timeout below instead of wall-clock duration.
+HERMES_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0"))
+# Kill only after this much time with no observable runtime progress. Output is
+# drained continuously (preventing a full stdout pipe from freezing Hermes),
+# and writes to Hermes's agent log/session store renew this timer. Individual
+# Hermes tools also have their own timeout, so 15 minutes leaves room for a
+# slow tool to fail cleanly and hand control back to the model.
+HERMES_IDLE_TIMEOUT_SECONDS = int(os.environ.get("EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS", "900"))
 # Grace window after SIGTERM before SIGKILL on a timed-out turn: lets Hermes
 # checkpoint/save its session transcript so the next dispatch can --resume
 # instead of restarting the whole slow turn from scratch.
@@ -210,6 +216,8 @@ def describe_processing_error(exc: BaseException) -> str:
     exception verbatim leaks doctrine/chat context and can add megabytes to a
     profile log.
     """
+    if isinstance(exc, HermesIdleTimeout):
+        return f"Hermes turn stalled after {exc.timeout} seconds without observable progress"
     if isinstance(exc, subprocess.TimeoutExpired):
         return f"Hermes turn timed out after {exc.timeout} seconds"
     if isinstance(exc, subprocess.CalledProcessError):
@@ -1476,6 +1484,34 @@ class TurnInterrupted(Exception):
     """An operator stopped this turn; it is not a runtime failure."""
 
 
+class HermesIdleTimeout(subprocess.TimeoutExpired):
+    """The runtime stayed alive but emitted no observable progress."""
+
+
+_MAX_CAPTURE_CHARS = 8 * 1024 * 1024
+
+
+def _runtime_progress_marker() -> tuple[tuple[str, int, int], ...]:
+    """Cheap marker for durable Hermes activity during the current turn.
+
+    Hermes writes model/tool lifecycle events to agent.log and incremental
+    session rows to state.db. Watching metadata for both catches progress that
+    is not printed to stream-json, without parsing another process's live DB.
+    """
+    hermes_home = os.environ.get("HERMES_HOME", "").strip()
+    if not hermes_home:
+        return ()
+    root = Path(hermes_home)
+    marker: list[tuple[str, int, int]] = []
+    for path in (root / "logs" / "agent.log", root / "state.db"):
+        try:
+            stat = path.stat()
+            marker.append((str(path), stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            continue
+    return tuple(marker)
+
+
 def fetch_runtime_control(message: Dict[str, Any] | None = None) -> Dict[str, Any]:
     query = {"agentId": AGENT_ID}
     if message and message.get("id"):
@@ -1517,16 +1553,68 @@ def invoke_hermes(
     # in their own process group, so a timeout can signal the whole tree.
     proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, start_new_session=True)
     _active_turn_proc = proc
+    captured: dict[str, list[str]] = {"stdout": [], "stderr": []}
+    captured_sizes = {"stdout": 0, "stderr": 0}
+    capture_lock = threading.Lock()
+    last_progress = [time.time()]
+
+    def drain(stream: Any, name: str) -> None:
+        if stream is None:
+            return
+        try:
+            for chunk in iter(stream.readline, ""):
+                if not chunk or not isinstance(chunk, str):
+                    break
+                with capture_lock:
+                    captured[name].append(chunk)
+                    captured_sizes[name] += len(chunk)
+                    while captured_sizes[name] > _MAX_CAPTURE_CHARS and len(captured[name]) > 1:
+                        captured_sizes[name] -= len(captured[name].pop(0))
+                    last_progress[0] = time.time()
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    readers = [
+        threading.Thread(target=drain, args=(proc.stdout, "stdout"), daemon=True),
+        threading.Thread(target=drain, args=(proc.stderr, "stderr"), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+
+    def finish_capture() -> tuple[str, str]:
+        try:
+            proc.wait(timeout=max(1.0, HERMES_TIMEOUT_GRACE_SECONDS + 2.0))
+        except subprocess.TimeoutExpired:
+            _terminate_turn(proc)
+            proc.wait()
+        for reader in readers:
+            reader.join(timeout=2.0)
+        with capture_lock:
+            return "".join(captured["stdout"]), "".join(captured["stderr"])
+
     try:
         started = time.time()
         last_status = 0.0
+        progress_marker = _runtime_progress_marker()
         while proc.poll() is None:
-            elapsed = time.time() - started
+            now = time.time()
+            elapsed = now - started
+            next_marker = _runtime_progress_marker()
+            if next_marker != progress_marker:
+                progress_marker = next_marker
+                last_progress[0] = now
             if HERMES_TIMEOUT_SECONDS > 0 and elapsed > HERMES_TIMEOUT_SECONDS:
                 _terminate_turn(proc)
-                stdout, stderr = proc.communicate()
+                stdout, stderr = finish_capture()
                 raise subprocess.TimeoutExpired(cmd, HERMES_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
-            if time.time() - last_status >= 3:
+            if HERMES_IDLE_TIMEOUT_SECONDS > 0 and now - last_progress[0] > HERMES_IDLE_TIMEOUT_SECONDS:
+                _terminate_turn(proc)
+                stdout, stderr = finish_capture()
+                raise HermesIdleTimeout(cmd, HERMES_IDLE_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
+            if now - last_status >= 3:
                 try:
                     control = fetch_runtime_control(message)
                 except Exception as exc:
@@ -1535,7 +1623,7 @@ def invoke_hermes(
                     control = {}
                 if control.get("commands") or control.get("cancelled"):
                     _terminate_turn(proc)
-                    proc.communicate()
+                    finish_capture()
                     apply_runtime_controls(control, state if state is not None else {})
                     raise TurnInterrupted("Stopped by operator")
                 # Preference order, most to least specific: the model's real
@@ -1549,7 +1637,7 @@ def invoke_hermes(
                 update_chat_status(message, typing=True, execution_state="acting", activity=activity)
                 last_status = time.time()
             time.sleep(0.5)
-        stdout, stderr = proc.communicate()
+        stdout, stderr = finish_capture()
         return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
     finally:
         if _active_turn_proc is proc:
