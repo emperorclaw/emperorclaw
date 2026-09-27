@@ -53,7 +53,11 @@ DOCTRINE_RESOURCE_ID = os.environ.get("EMPEROR_CLAW_DOCTRINE_RESOURCE_ID", "").s
 # (the repo/image layout). Set this when a deployment does not mirror that tree —
 # e.g. a flattened `emperor-bridge/` directory holding only the bridge script.
 OPERATING_GUIDE_PATH = os.environ.get("EMPEROR_CLAW_OPERATING_GUIDE_PATH", "").strip()
-MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "12000"))
+# Context is included on every Hermes turn, including quick direct questions.
+# Keep the default deliberately small: a larger corpus can always be retrieved
+# by the agent through Emperor tools, while repeatedly injecting it makes one
+# slow turn block this single-threaded bridge's entire message queue.
+MAX_SHARED_RESOURCE_CHARS = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CHARS", "6000"))
 # Per-resource ceiling within that total. Left unset, the server applies its
 # own default (8000 chars) regardless of how high MAX_SHARED_RESOURCE_CHARS
 # is raised — a single long doctrine/playbook note can silently eat that
@@ -64,9 +68,9 @@ MAX_CHARS_PER_RESOURCE = int(os.environ.get("EMPEROR_CLAW_SHARED_RESOURCE_MAX_CH
 # ask it "what did you and X talk about?" and it draws a blank. When replying in
 # a DM we inject a read-only digest of the recent team channel so it can answer.
 # Set the limit to 0 to disable the injection entirely.
-MAIN_CHAT_CONTEXT_LIMIT = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_LIMIT", "20"))
-MAIN_CHAT_CONTEXT_MAX_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_MAX_CHARS", "6000"))
-MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS", "600"))
+MAIN_CHAT_CONTEXT_LIMIT = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_LIMIT", "6"))
+MAIN_CHAT_CONTEXT_MAX_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_MAX_CHARS", "1800"))
+MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS", "300"))
 # Rich replies (charts, KPI tiles, tabs, sandboxed HTML widgets). The server
 # advertises support and ships the matching reply-format guide in its
 # /runtime/register response; a server that doesn't is never sent rich blocks.
@@ -76,7 +80,9 @@ RICH_BLOCKS_CAPABILITY = "rich-blocks-v1"
 # Re-run the /runtime/register handshake this often, so a server upgraded
 # after the bridge started is picked up without restarting the bridge.
 CAPABILITY_REFRESH_SECONDS = float(os.environ.get("EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS", "600"))
-MAX_REPLY_FORMAT_GUIDE_CHARS = 8000
+# The optional rich-reply guide is convenience documentation, not task
+# context. It must never dominate a lightweight chat turn.
+MAX_REPLY_FORMAT_GUIDE_CHARS = 1600
 # Loop guard: the @mention convention (reply once, then go silent) is a prompt
 # convention, not a hard rule — an LLM can still misjudge a "closing" reply as
 # needing another response. This is a mechanical backstop: once this agent has
