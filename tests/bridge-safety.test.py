@@ -79,6 +79,24 @@ class TestRuntimeControls(unittest.TestCase):
 
 
 class TestRetryLedger(unittest.TestCase):
+    def test_timeout_log_never_contains_the_command_prompt(self):
+        import subprocess
+        error = subprocess.TimeoutExpired(["hermes", "-q", "private prompt"], 600)
+        description = bridge.describe_processing_error(error)
+        self.assertEqual(description, "Hermes turn timed out after 600 seconds")
+        self.assertNotIn("private prompt", description)
+
+    def test_processing_error_is_bounded_and_redacts_token(self):
+        original = bridge.API_TOKEN
+        try:
+            bridge.API_TOKEN = "secret-token"
+            description = bridge.describe_processing_error(RuntimeError("secret-token\n" + "x" * 1200))
+        finally:
+            bridge.API_TOKEN = original
+        self.assertNotIn("secret-token", description)
+        self.assertLessEqual(len(description), 801)
+        self.assertNotIn("\n", description)
+
     def test_retry_and_orphan_states_are_recoverable_even_if_locally_seen(self):
         message = {"targetAgentId": "test-agent-id"}
         for state in ("queued", "seen", "acting"):

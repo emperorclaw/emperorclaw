@@ -202,6 +202,23 @@ def clear_retry(state: Dict[str, Any], message_id: str) -> None:
     retry_entries(state).pop(message_id, None)
 
 
+def describe_processing_error(exc: BaseException) -> str:
+    """Return a bounded, secret-safe log description.
+
+    TimeoutExpired and CalledProcessError include the entire command in their
+    default string. Our command contains the full model prompt, so logging the
+    exception verbatim leaks doctrine/chat context and can add megabytes to a
+    profile log.
+    """
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"Hermes turn timed out after {exc.timeout} seconds"
+    if isinstance(exc, subprocess.CalledProcessError):
+        return f"Hermes exited with status {exc.returncode}"
+    text = str(exc).replace(API_TOKEN, "[REDACTED]") if API_TOKEN else str(exc)
+    text = text.replace("\r", " ").replace("\n", " ")
+    return text[:800] + ("…" if len(text) > 800 else "")
+
+
 def is_recoverable_direct_message(message: Dict[str, Any], delivery_state: str) -> bool:
     """Whether a locally-seen direct prompt is still executable server-side."""
     target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
@@ -1989,9 +2006,9 @@ def main() -> int:
                             log(f"failed to expose exhausted message {message_id}: {status_exc}")
                         clear_retry(state, message_id)
                         remember_seen(state, message_id)
-                        log(f"message {message_id} cancelled visibly after {attempts} failed attempts: {exc}")
+                        log(f"message {message_id} cancelled visibly after {attempts} failed attempts: {describe_processing_error(exc)}")
                     else:
-                        log(f"error processing message {message_id}; retry {attempts} scheduled: {exc}")
+                        log(f"error processing message {message_id}; retry {attempts} scheduled: {describe_processing_error(exc)}")
                 finally:
                     try:
                         send_heartbeat(0)

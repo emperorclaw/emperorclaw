@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.52] — 2026-09-27
+
+### Fixed
+
+- Hermes timeout/failure logs no longer serialize the full subprocess command,
+  model prompt, doctrine, or chat context. Errors are redacted and capped.
+
 ## [0.8.51] — 2026-09-27
 
 ### Added
