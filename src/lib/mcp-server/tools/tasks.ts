@@ -7,15 +7,15 @@ import { jsonResult, errorResult } from "../result";
 export function registerTaskTools(server: McpServer, companyId: string) {
     server.registerTool("list_tasks", {
         title: "List Tasks",
-        description: "List tasks for this company, optionally filtered by project or state.",
+        description: "List a small page of tasks for this company. For a status question, filter by state first; use get_task for full detail. Do not use this as a full-company export.",
         inputSchema: {
             projectId: z.string().optional().describe("Restrict to a single project"),
             state: z.string().optional().describe("Task state, e.g. 'inbox', 'in_progress', 'done'"),
-            limit: z.number().int().min(1).max(500).optional(),
+            limit: z.number().int().min(1).max(50).optional().describe("Small page size (default 25, max 50). Filter by state or project before requesting more."),
         },
     }, async ({ projectId, state, limit }) => {
         try {
-            const tasks = await listTasksForCompany({ companyId, limit: limit || 100, state, projectId });
+            const tasks = await listTasksForCompany({ companyId, limit: limit || 25, state, projectId });
             return jsonResult({ tasks });
         } catch (e) {
             return errorResult(e);

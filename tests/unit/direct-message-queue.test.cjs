@@ -28,3 +28,10 @@ test("direct-chat duplicate prompts are rejected while still outstanding", () =>
     assert.match(route, /\["queued", "seen", "acting"\]/);
     assert.match(route, /deduplicated: true/);
 });
+
+test("task overview tool is paged so one question cannot dump the whole company", () => {
+    const tasks = read("src/lib/mcp-server/tools/tasks.ts");
+    assert.match(tasks, /max\(50\)/);
+    assert.match(tasks, /limit \|\| 25/);
+    assert.match(tasks, /full-company export/);
+});
