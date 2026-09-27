@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.49] — 2026-09-27
+
+### Fixed
+
+- Direct-message queue controls now preserve cancelled messages as dismissible
+  history, and the queue is shown only when two or more messages are pending.
+- Agent task overviews are paginated instead of loading an unbounded task list
+  into a Hermes turn.
+- Production update tooling serializes updates, checks available memory before
+  a build, and never performs an implicit Docker build during deployment.
+
 ## [0.8.48] — 2026-09-27
 
 ### Added
