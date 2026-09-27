@@ -1813,6 +1813,14 @@ def main() -> int:
                 message_id = str(message.get("id") or "")
                 if not message_id:
                     continue
+                delivery_state = str(message.get("deliveryState") or message.get("delivery_state") or "").lower()
+                # Retry IDs are sent explicitly to the sync endpoint. A legacy
+                # state file can retain an ID after its reply was stored; never
+                # let a resolved/cancelled message consume another Hermes turn.
+                if delivery_state in {"resolved", "cancelled"}:
+                    clear_retry(state, message_id)
+                    remember_seen(state, message_id)
+                    continue
                 # Older bridges recorded failed messages as seen. Recover only a
                 # direct message left in ``acting``: it had begun a turn but has
                 # no live process at the start of this loop. Old ``seen`` rows
@@ -1820,7 +1828,7 @@ def main() -> int:
                 if message_id in (state.get("seen") or []):
                     is_our_unfinished_direct = (
                         str(message.get("targetAgentId") or message.get("target_agent_id") or "") == AGENT_ID
-                        and str(message.get("deliveryState") or message.get("delivery_state") or "") == "acting"
+                        and delivery_state == "acting"
                     )
                     if not is_our_unfinished_direct:
                         continue
