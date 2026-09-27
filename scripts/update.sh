@@ -24,6 +24,30 @@ cd "$REPO_DIR"
 
 MODE="${1:-git}"
 
+# Production updates must be serialized. Two concurrent source builds can
+# exhaust small VPS instances before Docker or the OS has a chance to recover.
+LOCK_FILE="${EMPEROR_UPDATE_LOCK_FILE:-$REPO_DIR/.emperorclaw-update.lock}"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo -e "${RED}Another EmperorClaw update is already running; refusing to overlap it.${NC}"
+    exit 1
+fi
+
+require_build_headroom() {
+    # Keep at least 1 GiB immediately available before an operation that can
+    # allocate heavily (npm/Docker build). Operators may raise this floor, but
+    # should not set it lower on a small production VPS.
+    local required_kib="${EMPEROR_MIN_AVAILABLE_KIB:-1048576}"
+    local available_kib
+    available_kib="$(awk '/MemAvailable:/ { print $2 }' /proc/meminfo 2>/dev/null || true)"
+
+    if [[ -n "$available_kib" && "$available_kib" -lt "$required_kib" ]]; then
+        echo -e "${RED}Only $((available_kib / 1024)) MiB is immediately available; need at least $((required_kib / 1024)) MiB before updating.${NC}"
+        echo -e "${YELLOW}Wait for load to drop or deploy a pre-built image instead.${NC}"
+        exit 1
+    fi
+}
+
 # ── Check mode ───────────────────────────────────────────────────
 if [[ "$MODE" == "--check" ]]; then
     git fetch origin 2>/dev/null
@@ -44,6 +68,7 @@ echo ""
 
 # ── Docker mode ──────────────────────────────────────────────────
 if [[ "$MODE" == "--docker" ]]; then
+    require_build_headroom
     # The Compose file is part of the release contract. Pull it before the
     # image so upgrades can add optional services, volumes, or healthchecks.
     # --ff-only refuses to overwrite local operator changes.
@@ -72,6 +97,8 @@ if [[ "$MODE" == "--docker" ]]; then
 fi
 
 # ── Git mode (source build) ──────────────────────────────────────
+
+require_build_headroom
 
 # 1. Backup
 echo -e "${YELLOW}[1/5] Backing up database...${NC}"
@@ -114,7 +141,9 @@ if command -v pm2 &>/dev/null && pm2 list 2>/dev/null | grep -q emperorclaw; the
     pm2 restart emperorclaw
     echo -e "${GREEN}✓ EmperorClaw restarted via pm2${NC}"
 elif docker compose version &>/dev/null && docker compose ps 2>/dev/null | grep -q emperorclaw; then
-    docker compose up -d --build --remove-orphans
+    # Never add an implicit Docker build here. Build an image in CI/a release
+    # host, then deploy that immutable image with --docker.
+    docker compose up -d --remove-orphans
     echo -e "${GREEN}✓ EmperorClaw restarted via Docker Compose${NC}"
 else
     echo -e "${YELLOW}⚠ Could not detect process manager. Restart manually.${NC}"
