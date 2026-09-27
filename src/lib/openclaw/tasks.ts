@@ -531,6 +531,62 @@ export async function listTasksForCompany(input: {
     .limit(input.limit);
 }
 
+/**
+ * Compact, bounded task picture for chat/status turns.
+ *
+ * This deliberately summarizes on the server: handing an agent every open
+ * task for a "what is pending?" question makes a single slow turn monopolize
+ * its bridge queue. Call get_task for the one item that needs full detail.
+ */
+export async function getTaskOverviewForCompany(input: {
+  companyId: string;
+  projectId?: string | null;
+  maxItems?: number;
+}) {
+  const maxItems = Math.min(Math.max(input.maxItems || 10, 1), 25);
+  const rows = await listTasksForCompany({
+    companyId: input.companyId,
+    projectId: input.projectId,
+    limit: 500,
+  });
+  const byState: Record<string, number> = {};
+  for (const task of rows) byState[task.state] = (byState[task.state] || 0) + 1;
+
+  const active = rows.filter((task) => task.state !== TASK_STATES.done && task.state !== TASK_STATES.failed);
+  const hasUnresolvedDependency = (task: typeof rows[number]) =>
+    Array.isArray(task.blockedByTaskIds) && task.blockedByTaskIds.length > 0;
+  const compact = (task: typeof rows[number]) => {
+    const spec = task.inputJson && typeof task.inputJson === "object" ? task.inputJson as Record<string, unknown> : {};
+    const title = [spec.title, spec.goal, spec.description, task.taskType]
+      .find((value) => typeof value === "string" && value.trim()) as string;
+    return {
+      id: task.id,
+      title: title.slice(0, 180),
+      state: task.state,
+      priority: task.priority,
+      projectId: task.projectId,
+      assignee: getTaskAssignee(task),
+      blockedByTaskIds: Array.isArray(task.blockedByTaskIds) ? task.blockedByTaskIds : [],
+      approvalRequired: task.humanApprovalRequired,
+      updatedAt: task.updatedAt,
+    };
+  };
+  const priorityOrder = (a: typeof rows[number], b: typeof rows[number]) =>
+    b.priority - a.priority || a.createdAt.getTime() - b.createdAt.getTime();
+
+  return {
+    total: rows.length,
+    activeTotal: active.length,
+    byState,
+    blockedTotal: active.filter(hasUnresolvedDependency).length,
+    approvalRequiredTotal: active.filter((task) => task.humanApprovalRequired).length,
+    priorities: active.sort(priorityOrder).slice(0, maxItems).map(compact),
+    blocked: active.filter(hasUnresolvedDependency).sort(priorityOrder).slice(0, maxItems).map(compact),
+    approvalRequired: active.filter((task) => task.humanApprovalRequired).sort(priorityOrder).slice(0, maxItems).map(compact),
+    truncated: active.length > maxItems,
+  };
+}
+
 export async function listRecurringTaskDefinitionsForProject(companyId: string, projectId: string) {
   return db.select().from(recurringTaskDefinitions).where(and(
     eq(recurringTaskDefinitions.companyId, companyId),

@@ -191,6 +191,14 @@ GET /pipelines
 
 ## Task Lifecycle Operations
 
+### Task overview for chat and status
+
+Use the `get_task_overview` MCP tool for a company or project status question.
+It computes totals by state on the server and returns a bounded list of the
+highest-priority tasks, tasks with unresolved dependencies, and tasks requiring
+human approval. This is intentionally not a task export: retrieve full detail
+only with `get_task` after selecting an item from the overview.
+
 ### 1. Claim Tasks
 Agents should periodically poll or listen for new tasks and attempt to claim them atomically.
 

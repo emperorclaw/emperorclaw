@@ -1,10 +1,25 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { listTasksForCompany, createTaskForProject, updateTaskForCompany, claimNextTaskForAgent } from "@/lib/openclaw/tasks";
+import { listTasksForCompany, createTaskForProject, updateTaskForCompany, claimNextTaskForAgent, getTaskOverviewForCompany } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { jsonResult, errorResult } from "../result";
 
 export function registerTaskTools(server: McpServer, companyId: string) {
+    server.registerTool("get_task_overview", {
+        title: "Get Task Overview",
+        description: "Return a compact, server-side status summary: totals by state plus the highest-priority, blocked, and approval-required tasks. Use this first for status questions; use get_task only for a selected task's full detail.",
+        inputSchema: {
+            projectId: z.string().optional().describe("Restrict to one project"),
+            maxItems: z.number().int().min(1).max(25).optional().describe("Maximum compact items per section (default 10)"),
+        },
+    }, async ({ projectId, maxItems }) => {
+        try {
+            return jsonResult({ overview: await getTaskOverviewForCompany({ companyId, projectId, maxItems }) });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
     server.registerTool("list_tasks", {
         title: "List Tasks",
         description: "List a small page of tasks for this company. For a status question, filter by state first; use get_task for full detail. Do not use this as a full-company export.",

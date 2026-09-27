@@ -44,6 +44,13 @@ POST   /tasks/generate           { description, projectId } — AI generates tas
 POST   /tasks/{recurringId}/spawn  — spawn from recurring template
 ```
 
+### Status questions: summarize first
+
+For “what is pending?”, “what is blocked?”, or other status questions, use
+the `get_task_overview` MCP tool first. It returns server-side totals by state
+and a bounded priority/blocker/approval list. Do not fetch a full company task
+export into a chat turn. Use `get_task` only after choosing a specific task.
+
 `assignee` is the preferred hybrid-workforce field:
 
 ```json

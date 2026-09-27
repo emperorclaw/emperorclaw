@@ -1624,7 +1624,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "Where to look in Emperor:\n"
         "- Past chat/history: emperor_list_threads, then emperor_get_thread_messages.\n"
         "- Team roster: emperor_request GET /agents.\n"
-        "- Projects/tasks: emperor_list_projects, emperor_list_tasks, or scoped GET /projects/{id}, GET /tasks/{id}.\n"
+        "- Projects/tasks: use emperor_get_task_overview first for status questions; use emperor_get_task only for a selected task.\n"
         "- Task progress/history: emperor_request GET /tasks/{id}/notes.\n"
         "- Company Brain / Knowledge & Rules: emperor_request GET /resources/context for resolved context, POST /resources for established knowledge (active) or uncertain proposals (draft), with top-level status, GET /resources for lookup.\n"
         "- Storage/files: emperor_request GET /artifacts for lookup; emperor_create_folder + emperor_upload_artifact for uploads.\n"
