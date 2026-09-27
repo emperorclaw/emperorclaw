@@ -116,6 +116,7 @@ export function AgentDirectChat({
     const [isSending, setIsSending] = useState(false);
     const [sendMode, setSendMode] = useState<"queue" | "replace">("queue");
     const [controlError, setControlError] = useState<string | null>(null);
+    const [showCancelledHistory, setShowCancelledHistory] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -512,6 +513,7 @@ export function AgentDirectChat({
             const data = await res.json() as { error?: string; message?: DirectMessage };
             if (!res.ok || !data.message) throw new Error(data.error || "Could not update queued message");
             setMessages((previous) => previous.map((message) => message.id === data.message!.id ? data.message! : message));
+            if (action === "cancel") setShowCancelledHistory(true);
             void loadMessages().catch(() => {});
         } catch (error) {
             setControlError(error instanceof Error ? error.message : "Could not update queued message");
@@ -858,11 +860,18 @@ export function AgentDirectChat({
             )}
 
             <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
-                {(queueItems.length > 0 || recentlyCancelledItems.length > 0) && (
+                {(queueItems.length > 0 || showCancelledHistory) && (
                     <section aria-label="Agent message queue" className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-xs">
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <span className="font-semibold text-zinc-200">Message queue</span>
-                            <span className="text-zinc-500">{queueItems.length} pending</span>
+                            <div className="flex items-center gap-3">
+                                <span className="text-zinc-500">{queueItems.length} pending</span>
+                                {queueItems.length === 0 && (
+                                    <button type="button" onClick={() => setShowCancelledHistory(false)} className="text-zinc-500 hover:text-zinc-200">
+                                        Close
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         {activeQueueItem && (
                             <QueueItem
@@ -896,6 +905,11 @@ export function AgentDirectChat({
                             </div>
                         )}
                     </section>
+                )}
+                {queueItems.length === 0 && recentlyCancelledItems.length > 0 && !showCancelledHistory && (
+                    <button type="button" onClick={() => setShowCancelledHistory(true)} className="px-1 text-[10px] text-zinc-600 hover:text-zinc-300">
+                        {recentlyCancelledItems.length} recently cancelled · Review or retry
+                    </button>
                 )}
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                     <button type="button" onClick={stopAgent} disabled={isSending}
