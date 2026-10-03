@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
-import { updateAgentThreadParticipant, updateThreadExecutionState } from "@/lib/control-plane";
+import { markMessageFailedByRuntime, updateAgentThreadParticipant, updateThreadExecutionState } from "@/lib/control-plane";
+import { notifyRuntimeFailure } from "@/lib/notifications";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -44,6 +45,26 @@ export async function POST(req: NextRequest) {
                 lastReadAt: updates.lastReadAt,
                 currentActivity: updates.currentActivity,
             });
+        }
+
+        // A runtime that exhausted its retries reports "cancelled" for that one
+        // prompt. Older servers silently dropped this (it isn't an execution
+        // state), leaving the message "queued" forever with nobody told.
+        if (executionState === "cancelled" && typeof messageId === "string" && messageId) {
+            const failed = await markMessageFailedByRuntime({
+                companyId,
+                threadId,
+                messageId,
+                agentId: resolvedAgentId,
+                reason: typeof body.reason === "string" ? body.reason : null,
+            });
+            if (failed) {
+                broadcastMcpEvent(companyId, { type: "thread_message", threadId, message: failed });
+                await notifyRuntimeFailure(companyId, failed, resolvedAgentId).catch((error) => {
+                    console.warn("Failure notification not sent:", error instanceof Error ? error.message : error);
+                });
+            }
+            return NextResponse.json({ ok: true, failed: Boolean(failed) });
         }
 
         const derivedState = normalizeExecutionState(executionState)

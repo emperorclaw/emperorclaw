@@ -3,9 +3,10 @@ import { and, eq } from "drizzle-orm";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { messageThreads } from "@/db/schema";
-import { appendThreadMessage, getThreadMessages } from "@/lib/control-plane";
+import { appendThreadMessage, currentAgentStreak, getThreadMessages } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { GROUP_THREAD_TYPE, isAgentGroupMember } from "@/lib/groups";
+import { agentLoopHardCap } from "@/lib/message-routing";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -88,6 +89,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             if (resolvedSenderId && resolvedSenderId !== poster) {
                 return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
             }
+        }
+        if (senderType === "agent" && thread.type !== "direct" && (await currentAgentStreak(companyId, thread.id)) >= agentLoopHardCap()) {
+            return NextResponse.json({ error: "Loop guard: too many agent messages in a row in this thread; a person must write before agents can post again" }, { status: 429 });
         }
         const resolvedTargetAgentId = targetAgentId && !isGroup
             ? await resolveAgentId(companyId, targetAgentId)

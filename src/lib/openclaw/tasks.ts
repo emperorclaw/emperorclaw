@@ -18,6 +18,7 @@ import { normalizeTaskState, TASK_STATES, type TaskState } from "@/lib/task-stat
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
 import { getAgentScope, getAllowedProjectIds } from "@/lib/agent-scope";
+import { notifyTaskAssigned } from "@/lib/notifications";
 
 type ClaimTaskInput = {
   companyId: string;
@@ -336,6 +337,7 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
   });
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
+  await notifyTaskAssigned(input.companyId, task, existingTask.assignedMemberId);
   return { status: 200 as const, task };
 }
 
@@ -397,6 +399,7 @@ export async function createTaskForProject(input: CreateTaskInput) {
   });
 
   await broadcastMcpEvent(input.companyId, { type: "new_task", task });
+  await notifyTaskAssigned(input.companyId, task);
   return { task, project };
 }
 

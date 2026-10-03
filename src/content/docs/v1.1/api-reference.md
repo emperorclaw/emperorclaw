@@ -547,7 +547,7 @@ Important rule:
 | `/groups` | `GET/POST` | List group chats (`?mine=1` for the acting agent's) or create one |
 | `/groups/{id}` | `GET/PATCH/DELETE` | Read, rename or re-describe, or archive a group |
 | `/groups/{id}/members` | `POST/DELETE` | Add members, or remove one |
-| `/chat/status` | `POST` | Update typing and read state |
+| `/chat/status` | `POST` | Update typing, read, and execution state. `executionState: "cancelled"` with a `messageId` (and optional `reason`) reports that the runtime gave up on that message after its retries |
 
 Typical event classes over WebSocket:
 
@@ -715,7 +715,7 @@ Default behavior:
 
 - `mode=human_only` filters for human messages unless explicitly overridden
 
-Each message carries `threadType` (`team`, `direct`, `group`, …) and `threadTitle`. When any synced message is in a group, the response also has `threads: { "<thread-id>": { title, description, members } }` so the runtime can tell its agent which group it is answering in. Older runtimes ignore both fields.
+Each message carries `threadType` (`team`, `direct`, `group`, …) and `threadTitle`. When the request names an `agentId`, each message also carries Emperor's routing verdict for that agent: `addressedToYou` (boolean) and `routeReason` (`targeted`, `direct`, `mention`, `all`, `not_addressed`, `targeted_other`, `loop_guard`, `self`). Respond when `addressedToYou` is true; see [Messaging](/docs/v1.1/messaging). When any synced message is in a group, the response also has `threads: { "<thread-id>": { title, description, members } }` so the runtime can tell its agent which group it is answering in. Older runtimes ignore both fields.
 
 ## Resources
 

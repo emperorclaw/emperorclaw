@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     IconArrowLeft,
@@ -139,15 +139,28 @@ export function MessagingHub({
         return agents.filter((agent) => ids.has(agent.id));
     }, [activeGroup, agents]);
 
+    // Restore the conversation once per page load. The (app) layout refreshes
+    // server props every 15s, which hands this component new `agents`/`groups`
+    // arrays; re-running the restore then would yank the user back to the
+    // deep-linked conversation after they had moved on.
+    const restoredRef = useRef(false);
     useEffect(() => {
+        if (restoredRef.current) return;
+        restoredRef.current = true;
         // `?agent=<id>` is a deep link (onboarding "Open direct chat", shared
         // links). It wins over the last-remembered conversation for this load.
         const requestedAgent = new URLSearchParams(window.location.search).get("agent");
+        // `?group=<id>`: a notification or shared link opens that group.
+        const requestedGroup = new URLSearchParams(window.location.search).get("group");
         const savedConversation = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
         const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
 
-        if (requestedAgent && agents.some((agent) => agent.id === requestedAgent)) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (requestedGroup && groups.some((g) => g.id === requestedGroup)) {
+            setSelectedGroupId(requestedGroup);
+            setSelectedAgentId(null);
+            setMobileChatOpen(true);
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${GROUP_PREFIX}${requestedGroup}`);
+        } else if (requestedAgent && agents.some((agent) => agent.id === requestedAgent)) {
             setSelectedAgentId(requestedAgent);
             setMobileChatOpen(true);
             localStorage.setItem(ACTIVE_CONVERSATION_KEY, requestedAgent);

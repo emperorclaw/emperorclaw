@@ -4,6 +4,7 @@ import { tasks, taskEvents, incidents } from "@/db/schema";
 import { Pool } from "pg";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "./task-state";
 import { broadcastMcpEvent } from "./pubsub";
+import { notifyIncident } from "@/lib/notifications";
 
 let isWatchdogRunning = false;
 const WATCHDOG_INTERVAL_MS = 60000;
@@ -113,6 +114,7 @@ async function runWatchdog() {
                     type: "incident_updated",
                     incident,
                 });
+                await notifyIncident(task.companyId, incident);
             }
         }
 
@@ -148,6 +150,7 @@ async function runWatchdog() {
                     type: "incident_updated",
                     incident,
                 });
+                await notifyIncident(task.companyId, incident);
             }
         }
 
@@ -185,6 +188,7 @@ async function runWatchdog() {
                     type: "incident_updated",
                     incident,
                 });
+                await notifyIncident(task.companyId, incident);
             }
         }
 

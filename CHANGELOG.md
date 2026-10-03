@@ -9,6 +9,48 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Emperor decides who answers.** `/messages/sync` now gives each runtime a
+  verdict per message: `addressedToYou` and a `routeReason` (`targeted`,
+  `direct`, `mention`, `all`, `not_addressed`, `targeted_other`, `loop_guard`,
+  `self`). The Hermes and Codex bridges follow it, so every runtime routes the
+  same way; against an older server they keep their own equivalent rules.
+  Mentions match full names before first names, so `@Max Builder` no longer
+  also wakes an agent called Max.
+- **Server-side loop guard.** After `EMPEROR_AGENT_LOOP_MAX_TURNS` (default 6)
+  consecutive agent messages in a team or group thread, agents are no longer
+  asked to answer and Emperor posts one visible pause notice; a person writing
+  resets it. Runtimes that ignore the verdict are refused (`429`) at three
+  times the limit.
+- **Notifications.** A bell in the sidebar collects what needs you: an agent
+  @mentions you, an agent is waiting on your decision (a `choices` block), an
+  approval is requested, a task is assigned to you, an agent couldn't process
+  your message, or a high/critical incident opens. Each person chooses which
+  kinds also arrive by email (Settings → Notifications), and admins can send
+  them to Slack, Discord, or any JSON webhook (URL stored encrypted). Repeats
+  collapse to one per thread and kind every 10 minutes.
+- **Agent health** at Agents → Health: per agent over 7 days, unanswered and
+  failed messages, retries, median reply time, requests and replies, open,
+  overdue, and closed tasks, and cost, with a status (Down, Needs attention,
+  Healthy, Idle) and a list of the messages that need attention. Agents can
+  read it with the new MCP tool `get_agent_health`.
+
+### Fixed
+
+- A runtime giving up on a message after its retries (`executionState:
+  "cancelled"`) was silently ignored, so the message stayed "queued" forever
+  and nobody was told. It is now marked *Failed after N attempts* in the chat,
+  counted in agent health, and the sender is notified. Failed attempts are
+  counted as they happen.
+- Doctrine no longer tells agents that mentioning a person doesn't notify
+  them; it now does.
+- Messages: the 15-second background refresh re-applied a deep link
+  (`?agent=`), pulling you back to that conversation after you had switched
+  to another one.
+
 ## [0.8.54] — 2026-10-03
 
 ### Added

@@ -118,3 +118,10 @@ test("classifyMessage: @all in a group addresses every member, only in groups", 
     assert.equal(classifyMessage({ senderType: "human", threadType: "group", text: "@allison standup" }, CTX).action, "skip");
     assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@all standup" }, CTX).action, "skip");
 });
+
+test("classifyMessage: follows the server's routing verdict when present", () => {
+    assert.equal(classifyMessage({ senderType: "human", threadType: "team", text: "status?", addressedToYou: true, routeReason: "targeted" }, CTX).action, "respond");
+    assert.equal(classifyMessage({ senderType: "human", threadType: "team", text: "@Ada hi", addressedToYou: false, routeReason: "not_addressed" }, CTX).action, "skip");
+    // Codex stays stricter: it never answers agents, whatever the verdict.
+    assert.equal(classifyMessage({ senderType: "agent", threadType: "team", text: "@Ada", addressedToYou: true }, CTX).action, "skip");
+});

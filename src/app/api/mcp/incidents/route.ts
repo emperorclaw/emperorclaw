@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { incidents, tasks } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
 import { eq, and } from "drizzle-orm";
+import { notifyIncident } from "@/lib/notifications";
 
 export async function POST(req: NextRequest) {
     const authResult = await verifyMcpToken(req);
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
         }).returning();
 
         await logAudit(companyId, "agent", null, "create_incident", "incident", incident.id, { reasonCode, severity });
+        await notifyIncident(companyId, incident);
 
         const responseObj = { message: "Incident logged successfully", incident };
         await saveIdempotencyResponse(companyId, "/api/mcp/incidents", requestHash, responseObj);

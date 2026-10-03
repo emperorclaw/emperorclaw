@@ -125,7 +125,9 @@ export async function POST(req: NextRequest) {
             ? 404
             : message.startsWith("Access denied")
                 ? 403
-                : 500;
+                : message.startsWith("Loop guard")
+                    ? 429
+                    : 500;
         return NextResponse.json({ error: message }, { status });
     }
 }

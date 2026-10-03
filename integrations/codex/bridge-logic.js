@@ -25,9 +25,19 @@ function classifyMessage(msg, ctx) {
     const resetLoop = senderType === "human";
 
     // Never respond to other agents' messages (prevents agent↔agent loops).
+    // This stays stricter than the server's verdict on purpose: Codex is
+    // on-demand and never takes sibling handoffs.
     if (senderType === "agent") return { action: "skip", reason: "agent-sender", resetLoop };
     // Ignore empty messages.
     if (!text) return { action: "skip", reason: "empty", resetLoop };
+    // The server decides who answers (mentions, @all, groups, direct threads)
+    // the same way for every runtime. Older servers send no verdict, and the
+    // rules below apply instead.
+    if (typeof msg.addressedToYou === "boolean") {
+        return msg.addressedToYou
+            ? { action: "respond", reason: `server:${msg.routeReason || "addressed"}`, resetLoop }
+            : { action: "skip", reason: `server:${msg.routeReason || "not-addressed"}`, resetLoop };
+    }
     // Direct message addressed to a different agent.
     if (targetId && targetId !== ctx.agentId) return { action: "skip", reason: "other-target", resetLoop };
     // Team chat and group chats: only respond when @mentioned by name. A group

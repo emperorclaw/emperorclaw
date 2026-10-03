@@ -3,8 +3,24 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listAgentsForCompany, getAgentForCompany, createAgentForCompany, updateAgentForCompany } from "@/lib/agents-crud";
 import { jsonResult, errorResult } from "../result";
+import { computeCompanyHealth } from "@/lib/agent-health";
 
 export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+    server.registerTool("get_agent_health", {
+        title: "Get Agent Health",
+        description: "Health of every agent over the last 7 days: unanswered and failed messages, median response time, retries, open/overdue/done tasks, cost, and a status (healthy, attention, down, idle) with reasons. Includes the messages that need attention. Use it to check on the team before reporting status or reassigning work.",
+        inputSchema: {
+            agentId: z.string().optional().describe("Limit to one agent (id)"),
+        },
+    }, async ({ agentId }) => {
+        try {
+            const health = await computeCompanyHealth(companyId, agentId ? { agentIds: [agentId] } : {});
+            return jsonResult(health);
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
     server.registerTool("list_agents", {
         title: "List Agents",
         description: "List agents registered for this company, most recently created first.",

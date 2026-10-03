@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
-import { companies, messageThreads, threadMessages } from "@/db/schema";
-import { eq, and, gt, desc, sql, ne, inArray } from "drizzle-orm";
+import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
+import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
 import { GROUP_THREAD_TYPE, loadGroupMembers } from "@/lib/groups";
+import { agentStreaks, decideDelivery, type RouteDecision } from "@/lib/message-routing";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -158,6 +159,14 @@ export async function GET(req: NextRequest) {
                             console.warn("Thread details unavailable for sync:", error instanceof Error ? error.message : error);
                             return { threadInfo: new Map<string, { type: string; title: string | null }>(), threads: {} };
                         });
+                    // The server's verdict on who answers each message, so every
+                    // runtime routes the same way (see lib/message-routing.ts).
+                    const routing = resolvedAgentId
+                        ? await routeForAgent(companyId, resolvedAgentId, filtered, threadInfo).catch((error) => {
+                            console.warn("Routing verdicts unavailable for sync:", error instanceof Error ? error.message : error);
+                            return null;
+                        })
+                        : null;
                     return NextResponse.json({
                         ok: true,
                         mode,
@@ -167,6 +176,7 @@ export async function GET(req: NextRequest) {
                             ...m,
                             threadType: threadInfo.get(m.threadId)?.type ?? null,
                             threadTitle: threadInfo.get(m.threadId)?.title ?? null,
+                            ...(routing?.get(m.id) ?? {}),
                         })),
                     });
                 }
@@ -209,4 +219,44 @@ async function describeThreads(companyId: string, threadIds: string[]) {
         }
     }
     return { threadInfo, threads };
+}
+
+/** Per-message routing verdicts for the agent that is syncing. */
+async function routeForAgent(
+    companyId: string,
+    agentId: string,
+    messages: (typeof threadMessages.$inferSelect)[],
+    threadInfo: Map<string, { type: string; title: string | null }>,
+): Promise<Map<string, RouteDecision>> {
+    const roster = await db.select({ id: agents.id, name: agents.name }).from(agents)
+        .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+
+    // Consecutive-agent streaks per thread, from the recent tail of each thread.
+    const streaks = new Map<string, number>();
+    const byThread = new Map<string, Date>();
+    for (const m of messages) {
+        const latest = byThread.get(m.threadId);
+        if (!latest || m.createdAt > latest) byThread.set(m.threadId, m.createdAt);
+    }
+    await Promise.all([...byThread.entries()].map(async ([threadId, latest]) => {
+        if (threadInfo.get(threadId)?.type === "direct") return;
+        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType })
+            .from(threadMessages)
+            .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId), lte(threadMessages.createdAt, latest)))
+            .orderBy(desc(threadMessages.createdAt))
+            .limit(200);
+        for (const [id, streak] of agentStreaks(tail.reverse())) streaks.set(id, streak);
+    }));
+
+    const verdicts = new Map<string, RouteDecision>();
+    for (const m of messages) {
+        verdicts.set(m.id, decideDelivery({
+            agentId,
+            message: { senderType: m.senderType, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text },
+            threadType: threadInfo.get(m.threadId)?.type ?? null,
+            roster,
+            agentStreak: streaks.get(m.id) ?? 0,
+        }));
+    }
+    return verdicts;
 }

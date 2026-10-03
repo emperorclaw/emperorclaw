@@ -20,6 +20,8 @@ import { and, desc, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
+import { agentLoopMaxTurns } from "./message-routing";
+import { notifyAgentMessage } from "./notifications";
 
 type SenderType = "human" | "agent" | "system";
 
@@ -372,6 +374,49 @@ export async function getThreadMessageReasoning(companyId: string, messageId: st
     return row ?? null;
 }
 
+/**
+ * Consecutive agent-authored messages at the end of a thread (0 when the
+ * last counted message is a human's). System notices neither count nor reset.
+ */
+export async function currentAgentStreak(companyId: string, threadId: string, window = 100): Promise<number> {
+    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType })
+        .from(threadMessages)
+        .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId)))
+        .orderBy(desc(threadMessages.createdAt))
+        .limit(window);
+    let streak = 0;
+    for (const m of tail) {
+        if (m.senderType === "human") break;
+        if (m.senderType === "agent") streak += 1;
+    }
+    return streak;
+}
+
+/**
+ * The moment a shared thread's agent streak passes the routing limit, post one
+ * visible notice. Runtimes stop answering at that point (the server's routing
+ * verdict says "loop_guard"), so without it the silence would be unexplained.
+ */
+async function postLoopGuardNoticeIfNeeded(companyId: string, threadId: string) {
+    try {
+        const max = agentLoopMaxTurns();
+        const [thread] = await db.select({ type: messageThreads.type }).from(messageThreads)
+            .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))).limit(1);
+        if (!thread || thread.type === "direct") return;
+        if ((await currentAgentStreak(companyId, threadId, max + 5)) !== max + 1) return;
+        await db.insert(threadMessages).values({
+            threadId,
+            companyId,
+            senderType: "system",
+            text: `Agent replies are paused in this thread: agents posted ${max + 1} messages in a row without a person. Send a message here to resume.`,
+            metadataJson: { loopGuard: true, maxAgentTurns: max },
+            deliveryState: "resolved",
+        });
+    } catch (error) {
+        console.warn("Loop-guard notice failed:", error instanceof Error ? error.message : error);
+    }
+}
+
 export async function appendThreadMessage(input: {
     companyId: string;
     threadId: string;
@@ -407,6 +452,12 @@ export async function appendThreadMessage(input: {
         platformMessageId: input.platformMessageId || null,
         createdAt: input.createdAt || new Date(),
     }).returning();
+
+    if (input.senderType === "agent") {
+        await postLoopGuardNoticeIfNeeded(input.companyId, input.threadId);
+        // Mentions of people and pending decisions (```choices) notify them.
+        await notifyAgentMessage(input.companyId, threadMessage);
+    }
 
     if (input.mirrorToLegacyChat) {
         await db.insert(chatMessages).values({
@@ -454,19 +505,66 @@ export async function updateThreadExecutionState(input: {
     if (toUpdate.length === 0) return [];
 
     const updated = await Promise.all(toUpdate.map(async (m) => {
+        const metadata = (m.metadataJson as Record<string, unknown>) || {};
+        // A runtime putting an in-flight prompt back in the queue means that
+        // attempt failed and it will retry. Count it: agent health reads it.
+        const isRetry = input.actorType === "agent" && m.deliveryState === "acting" && targetState === "queued";
         const [row] = await db.update(threadMessages).set({
             deliveryState: targetState,
             metadataJson: {
-                ...(m.metadataJson as Record<string, unknown> || {}),
+                ...metadata,
                 executionStateUpdatedAt: new Date().toISOString(),
                 executionStateUpdatedBy: input.actorType,
                 executionActorId: input.actorId || null,
+                ...(isRetry ? {
+                    failedAttempts: (Number(metadata.failedAttempts) || 0) + 1,
+                    lastFailedAt: new Date().toISOString(),
+                } : {}),
             },
         }).where(and(eq(threadMessages.id, m.id), ne(threadMessages.deliveryState, "cancelled"))).returning();
         return row;
     }));
 
     return updated.filter((row): row is typeof threadMessages.$inferSelect => Boolean(row));
+}
+
+/**
+ * A runtime gave up on a prompt after exhausting its retries. Mark that one
+ * human message as failed (cancelled + runtimeFailure) so it is visible in the
+ * transcript, agent health, and a notification — instead of sitting "queued"
+ * forever. Returns the updated message, or null when nothing applies.
+ */
+export async function markMessageFailedByRuntime(input: {
+    companyId: string;
+    threadId: string;
+    messageId: string;
+    agentId: string;
+    reason?: string | null;
+}) {
+    const [message] = await db.select().from(threadMessages).where(and(
+        eq(threadMessages.id, input.messageId),
+        eq(threadMessages.companyId, input.companyId),
+        eq(threadMessages.threadId, input.threadId),
+        eq(threadMessages.senderType, "human"),
+    )).limit(1);
+    if (!message || message.deliveryState === "resolved" || message.deliveryState === "cancelled") return null;
+    const metadata = (message.metadataJson as Record<string, unknown>) || {};
+    const [row] = await db.update(threadMessages).set({
+        deliveryState: "cancelled",
+        metadataJson: {
+            ...metadata,
+            runtimeFailure: {
+                agentId: input.agentId,
+                at: new Date().toISOString(),
+                attempts: Number(metadata.failedAttempts) || null,
+                reason: input.reason ? String(input.reason).slice(0, 300) : null,
+            },
+            executionStateUpdatedAt: new Date().toISOString(),
+            executionStateUpdatedBy: "agent",
+            executionActorId: input.agentId,
+        },
+    }).where(and(eq(threadMessages.id, message.id), ne(threadMessages.deliveryState, "cancelled"))).returning();
+    return row ?? null;
 }
 
 export async function getThreadMessages(

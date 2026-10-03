@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { UpdateSettingsTab } from "@/components/update-settings-tab";
 import MembersClient from "./members/members-client";
+import { NotificationSettingsTab } from "./notification-settings-tab";
 
 type SettingsToken = {
     id: string;
@@ -21,7 +22,7 @@ type SettingsToken = {
     expiresAt: string;
 };
 
-type SettingsTab = "profile" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
+type SettingsTab = "profile" | "notifications" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
 
 type Member = {
     id: string;
@@ -221,6 +222,7 @@ export default function SettingsClient({
             <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950/60 p-1.5 sm:p-2">
                 {([
                     ["profile", "Profile"],
+                    ["notifications", "Notifications"],
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
                     ["updates", "Updates"],
@@ -253,6 +255,10 @@ export default function SettingsClient({
                     onLoad={loadProfile}
                     loaded={profileLoaded}
                 />
+            )}
+
+            {activeTab === "notifications" && (
+                <NotificationSettingsTab isAdmin={instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin"} />
             )}
 
             {activeTab === "connections" && (

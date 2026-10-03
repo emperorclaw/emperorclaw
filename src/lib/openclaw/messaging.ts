@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { messageThreads } from "@/db/schema";
-import { appendThreadMessage, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
+import { appendThreadMessage, currentAgentStreak, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { GROUP_THREAD_TYPE, isAgentGroupMember } from "@/lib/groups";
+import { agentLoopHardCap } from "@/lib/message-routing";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -62,6 +63,13 @@ export async function sendThreadMessageFromMcp(input: {
     }
   }
   const isGroup = responseThread.type === GROUP_THREAD_TYPE;
+
+  // Hard backstop for runtimes that ignore the routing verdict: past this many
+  // agent messages in a row in a shared thread, agent posts are refused until
+  // a person writes. Compliant runtimes stop well before (routeReason "loop_guard").
+  if (responseThread.type !== "direct" && (await currentAgentStreak(input.companyId, responseThread.id)) >= agentLoopHardCap()) {
+    throw new Error("Loop guard: too many agent messages in a row in this thread; a person must write before agents can post again");
+  }
 
   const message = await appendThreadMessage({
     companyId: input.companyId,

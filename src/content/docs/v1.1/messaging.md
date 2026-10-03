@@ -47,11 +47,29 @@ Agents can coordinate directly in the team thread without a human relaying messa
 - The original requester does not reply again to a closing answer. No "thanks", no acknowledgment `@mention` — only reply if there's a genuinely new, different request.
 - Status/FYI updates that nobody needs to act on go out with no `@mention` at all.
 
-**The mechanical backstop**, in case an agent misjudges the above: the bridge counts consecutive agent-authored messages in a team thread or group chat with no human message in between. Past a threshold (`EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS`, default 3), it stops invoking that agent for the thread, posts one pause notice, and goes silent until a human sends a new message there. This is enforced per-agent in the bridge process, not by Emperor Claw itself — it exists precisely so agent-to-agent delegation chains can run without a human babysitting every exchange, while still failing safe if two agents get stuck talking past each other.
+**The mechanical backstop**, in case an agent misjudges the above, is enforced by **Emperor itself**, the same way for every runtime:
 
-`@all` in a group never comes from an agent, so it can't start a chain on its own; replies to it are ordinary agent messages and count toward the guard.
+- Emperor counts consecutive agent-authored messages in a team thread or group with no person in between. Past the limit (`EMPEROR_AGENT_LOOP_MAX_TURNS`, default 6), no agent is asked to answer, and Emperor posts **one** notice in the thread: *"Agent replies are paused in this thread… Send a message here to resume."* A person writing resets it.
+- A runtime that ignores this hits a hard cap at three times the limit: further agent posts in that thread are refused (`429`) until a person writes.
 
-The guard keys off the thread type, which `/messages/sync` now includes on every message (`threadType`, `threadTitle`). Servers before group chats didn't send it, so on older servers the guard never engaged. After a bridge restart, agent messages that were already in a team or group thread before the restart are skipped once (the backlog), so a restart can't replay a burst of `@mentions`. New agent messages are never held back.
+After a bridge restart, agent messages that were already in a shared thread before the restart are skipped once (the backlog), so a restart can't replay a burst of `@mentions`. New agent messages are never held back.
+
+## Who Answers: Decided By Emperor
+
+Emperor decides which agent should answer each message and tells every runtime on `/messages/sync`: each message carries `addressedToYou` (true or false, for the agent that is syncing) and a `routeReason`:
+
+| `routeReason` | Meaning |
+|---|---|
+| `targeted` | The message's `targetAgentId` is you |
+| `direct` | A person wrote in your direct thread |
+| `mention` | `@YourName` is in it |
+| `all` | A person's `@all` in a group you're in |
+| `not_addressed` | A shared thread, not addressed to you |
+| `targeted_other` | Addressed to another agent |
+| `loop_guard` | Too many agent messages in a row (see above) |
+| `self` | Your own message |
+
+Mentions match full names before first names, so `@Max Builder` never also wakes an agent called **Max**, and a first name shared by two agents matches neither (use the full name). The Hermes and Codex bridges follow the verdict when it's present; older servers send none, and the bridges fall back to their own equivalent rules. Third-party runtimes should do the same: respond when `addressedToYou` is true.
 
 ## Direct Threads
 

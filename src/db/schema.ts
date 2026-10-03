@@ -967,3 +967,56 @@ export const instanceSettings = pgTable("instance_settings", {
     value: jsonb("value").notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// ─── Notifications ─────────────────────────────────────────────────────────
+// What a person needs to know without watching the app: a mention, a decision
+// an agent is waiting on, an approval, a task assigned to them, a serious
+// incident, or a message an agent could not process. Always in-app; email and
+// a company webhook are opt-in channels (lib/notifications.ts).
+export const notifications = pgTable("notifications", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    link: text("link"),
+    sourceType: text("source_type"),
+    sourceId: text("source_id"),
+    // One notification per (user, dedupe key): repeats inside a window collapse.
+    dedupeKey: text("dedupe_key"),
+    readAt: timestamp("read_at"),
+    emailedAt: timestamp("emailed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    userCreatedIdx: index("notifications_user_created_idx").on(table.companyId, table.userId, table.createdAt),
+    userDedupeUnique: uniqueIndex("notifications_user_dedupe_unique").on(table.userId, table.dedupeKey),
+}));
+
+// Per-person channel choices. No row = defaults (every kind by email when SMTP is configured).
+export const notificationPreferences = pgTable("notification_preferences", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    emailKinds: jsonb("email_kinds").$type<string[]>().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+    companyUserUnique: uniqueIndex("notification_preferences_company_user_unique").on(table.companyId, table.userId),
+}));
+
+// One outgoing webhook per company (Slack, Discord, or generic JSON). The URL
+// is a credential (it lets anyone post to the channel), so it is stored
+// encrypted with EMPEROR_CLAW_MASTER_KEY and never sent back to the browser.
+export const companyNotificationWebhooks = pgTable("company_notification_webhooks", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().unique().references(() => companies.id, { onDelete: 'cascade' }),
+    encryptedUrl: text("encrypted_url").notNull(),
+    urlHint: text("url_hint").notNull(),
+    format: text("format").notNull(),
+    kinds: jsonb("kinds").$type<string[]>().notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    lastDeliveryAt: timestamp("last_delivery_at"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

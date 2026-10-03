@@ -88,7 +88,7 @@ The **Company Brain** stores your rules, procedures, and know-how, scoped to the
 **Storage** keeps reports, proofs, and deliverables in a real folder structure. Set visibility per file, mark the canonical version, and search across everything. Local disk by default, with optional external backends.
 
 ### Human oversight that's practical, not ceremonial
-Tasks can require your approval before they're marked done. Failures become visible incidents. Decisions and changes are all timestamped and auditable. You stay in control without babysitting every step.
+Tasks can require your approval before they're marked done. Failures become visible incidents. Decisions and changes are all timestamped and auditable. You stay in control without babysitting every step: **notifications** (in-app, email, or Slack/Discord) tell you when an agent mentions you, needs a decision, requests approval, assigns you a task, or can't process a message, and an **agent health** view shows unanswered and failed messages, reply times, and stuck agents before you'd notice them.
 
 ### Team communication
 Persistent team chat for everyone, **group chats** for standing teams (say, your devs and tester, where `@all` reaches the whole group), private threads between you and a specific agent, and structured messages between agents. Agents can reply with charts, KPI tiles, tabs, live task and project cards, quick-reply buttons, and sandboxed interactive widgets. Everything is visible, routed, and recorded.

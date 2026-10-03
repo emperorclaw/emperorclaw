@@ -715,11 +715,25 @@ def mentions_everyone(text: str) -> bool:
     return bool(_EVERYONE_MENTION_RE.search(str(text or "")))
 
 
+def server_routed(message: Dict[str, Any]) -> bool:
+    """Did the server decide who answers this message (`addressedToYou`)?
+
+    Servers since the routing change send a per-agent verdict with every
+    synced message. When present it is authoritative — mentions, @all, the
+    agent-to-agent loop guard and its notice are all applied server-side, the
+    same way for every runtime. Older servers send none, and the bridge falls
+    back to its own equivalent rules below.
+    """
+    return isinstance(message.get("addressedToYou"), bool)
+
+
 def is_for_agent(message: Dict[str, Any], agent_id: str, state: Dict[str, Any]) -> bool:
     sender_type = str(message.get("senderType") or "").lower()
     sender_id = str(message.get("senderId") or message.get("sender_id") or message.get("fromUserId") or "")
     if sender_type == "agent" and sender_id == agent_id:
         return False
+    if server_routed(message):
+        return bool(message.get("addressedToYou"))
     text = str(message.get("text") or "")
     thread_type = str(message.get("threadType") or message.get("thread_type") or "")
     thread_id = str(message.get("threadId") or message.get("thread_id") or "")
@@ -2099,7 +2113,9 @@ def main() -> int:
                 if not check_budget():
                     # Preserve this message and everything after it for retry.
                     break
-                if not check_loop_guard(message, state):
+                # The server's verdict already includes its loop guard (and posts
+                # one visible notice); the local guard is only for older servers.
+                if not server_routed(message) and not check_loop_guard(message, state):
                     thread_id = str(message.get("threadId") or message.get("thread_id") or "")
                     entry = state.get("loop_guard", {}).get(thread_id, {})
                     if not entry.get("notified"):

@@ -799,9 +799,9 @@ export function AgentDirectChat({
                                                     )} />
                                                     <span className={cn(
                                                         "text-[10px] font-medium",
-                                                        message.deliveryState === "acting" ? "text-emerald-500" : "text-zinc-600"
-                                                    )}>
-                                                        {message.deliveryState === "cancelled" ? "Cancelled" : message.deliveryState === "acting" ? "Being handled" : "Queued"}
+                                                        message.deliveryState === "acting" ? "text-emerald-500" : runtimeFailureOf(message) ? "text-rose-400" : "text-zinc-600"
+                                                    )} title={runtimeFailureOf(message)?.reason ?? undefined}>
+                                                        {message.deliveryState === "cancelled" ? (failureLabel(message) ?? "Cancelled") : message.deliveryState === "acting" ? "Being handled" : "Queued"}
                                                     </span>
                                                 </div>
                                             ) : isHuman && isLastInGroup && (
@@ -900,7 +900,7 @@ export function AgentDirectChat({
                                     <QueueItem
                                         key={message.id}
                                         message={message}
-                                        stateLabel="Cancelled"
+                                        stateLabel={failureLabel(message) ?? "Cancelled"}
                                         disabled={isSending}
                                         onRetry={() => void updateQueueItem(message.id, "retry")}
                                     />
@@ -1063,6 +1063,19 @@ export function AgentDirectChat({
         </div>
         </RichMessageActionsContext.Provider>
     );
+}
+
+/** Set when the runtime gave up on this message after its retries (vs. an operator cancel). */
+function runtimeFailureOf(message: DirectMessage): { attempts?: number | null; reason?: string | null } | null {
+    const metadata = (message.metadataJson as Record<string, unknown> | null) || {};
+    const failure = metadata.runtimeFailure;
+    return failure && typeof failure === "object" ? failure as { attempts?: number | null; reason?: string | null } : null;
+}
+
+function failureLabel(message: DirectMessage): string | null {
+    const failure = runtimeFailureOf(message);
+    if (!failure) return null;
+    return failure.attempts ? `Failed after ${failure.attempts} attempt${failure.attempts === 1 ? "" : "s"}` : "Failed";
 }
 
 /** Operator messages after index `i`, so a choices block knows its answer. */

@@ -24,7 +24,7 @@ class HermesHiringTests(unittest.TestCase):
     def test_baseline_loads_without_kb_or_network(self):
         with patch.object(plugin, "_request", side_effect=AssertionError("baseline must not fetch KB")):
             context = plugin.emperor_context_hook()["context"]
-        for phrase in ["Emperor minimum operating practices", "Human mentions are text", "3–8 words", "isShared=true", "status=\"draft\"", "Common scenarios"]:
+        for phrase in ["Emperor minimum operating practices", "Human mentions never route to an agent", "3–8 words", "isShared=true", "status=\"draft\"", "Common scenarios"]:
             self.assertIn(phrase, context)
 
     def test_bridge_turn_does_not_inject_operating_guide_twice(self):

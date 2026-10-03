@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
 import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconTerminal2, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconWallet } from "@tabler/icons-react";
 import { ThemeToggle } from "./theme-toggle";
+import { NotificationBell } from "./notification-bell";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
@@ -162,6 +163,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
             </nav>
 
             <div className={cn("border-t border-border", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
+                    <NotificationBell collapsed={collapsed} />
                     {/* Collapse / Expand toggle */}
                     <button
                         type="button"

@@ -13,7 +13,8 @@ For a new installation, follow [Installation](/docs/v1.1/installation) first.
 6. Create a short project (for example **Acme Launch**), add a task with expected
    output and acceptance criteria, and assign it to the worker.
 7. In team chat, use the **@ picker** to address an agent. No mention is needed
-   in private chat. Human @names are text, not guaranteed notifications.
+   in private chat. When an agent @mentions a person by name, that person gets a
+   notification (see [Notifications & Agent Health](/docs/v1.1/notifications-health)).
 8. Put reusable instructions in Knowledge & Rules. Enable auto-injection only
    for short rules needed repeatedly in that scope. Put deliverables in Storage.
 

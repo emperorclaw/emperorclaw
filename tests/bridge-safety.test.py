@@ -1418,5 +1418,30 @@ class TestGroupChats(unittest.TestCase):
         self.assertFalse(bridge.is_backlog(None))
         self.assertFalse(bridge.is_backlog("not a date"))
 
+
+class TestServerRouting(unittest.TestCase):
+    """The server's addressedToYou verdict is authoritative when present."""
+
+    def test_server_verdict_wins_over_local_rules(self):
+        state = {"direct_threads": {}}
+        # Mentioned locally, but the server says the loop guard applies.
+        msg = {"senderType": "agent", "senderId": "x", "threadId": "t", "threadType": "team",
+               "text": "@TestAgent again", "addressedToYou": False, "routeReason": "loop_guard"}
+        self.assertTrue(bridge.server_routed(msg))
+        self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", state))
+        # Not mentioned, but the server addressed it.
+        msg = {"senderType": "human", "threadId": "t", "threadType": "team", "text": "status?",
+               "addressedToYou": True, "routeReason": "targeted"}
+        self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", state))
+
+    def test_own_messages_are_ignored_even_if_the_server_says_otherwise(self):
+        msg = {"senderType": "agent", "senderId": "test-agent-id", "addressedToYou": True}
+        self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", {}))
+
+    def test_older_servers_fall_back_to_local_rules(self):
+        msg = {"senderType": "human", "threadId": "t", "threadType": "team", "text": "@TestAgent hi"}
+        self.assertFalse(bridge.server_routed(msg))
+        self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", {"direct_threads": {}}))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

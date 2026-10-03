@@ -14,6 +14,23 @@ Set these in your systemd service file or shell before starting the bridge.
 | `EMPEROR_CLAW_SYNC_LOOP_MS` | `0` | Sync loop interval; set to `0` to disable periodic sync (event‑driven only). |
 | `EMPEROR_CLAW_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error`. |
 
+## Server Settings
+
+Set these in the Emperor server's `.env`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMPEROR_AGENT_LOOP_MAX_TURNS` | `6` | Consecutive agent messages in a team or group thread, with no person in between, before Emperor stops asking agents to answer and posts one pause notice. Agent posts are refused (`429`) at three times this value. |
+| `EMPEROR_CLAW_MASTER_KEY` | — | Encrypts stored secrets, including the notification webhook URL. The installer generates it; a webhook can't be set without it. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | — | Email delivery for account emails and notification emails. Without it, notifications stay in the in-app inbox. |
+
+Hermes bridge settings that change behavior with these features:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMPEROR_CLAW_RICH_REPLIES` | `on` | `off` keeps the agent on plain Markdown (no charts, tabs, widgets). |
+| `EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS` | `600` | How often the bridge re-checks what the server supports, so a server upgrade is picked up without restarting the bridge. |
+
 ## Bridge Configuration File
 
 Located at `~/.openclaw/emperor-control-plane/bridge.config.json`:

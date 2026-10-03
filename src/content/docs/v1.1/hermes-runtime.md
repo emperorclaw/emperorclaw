@@ -260,7 +260,7 @@ Mutating Emperor calls include an `Idempotency-Key` header.
 
 ### Message Routing
 
-Emperor messages carry a `targetAgentId` field. The bridge applies this priority order:
+Emperor decides who answers: each synced message carries `addressedToYou` and a `routeReason` for this agent (see [Messaging](/docs/v1.1/messaging)), and the bridge follows that verdict, including Emperor's agent-to-agent loop guard. Against an older Emperor that sends no verdict, the bridge applies its own equivalent rules, in this priority order:
 
 1. If `targetAgentId` matches this agent's ID → respond.
 2. If `targetAgentId` is set to a *different* agent's ID → skip (even if it looks like a direct thread).

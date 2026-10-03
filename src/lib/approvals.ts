@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { approvalTaskLinks, approvals, projects, taskEvents, tasks } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
 import { TASK_STATES } from "./task-state";
+import { notifyApprovalRequested } from "./notifications";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -57,6 +58,7 @@ export async function createApprovalRequest(input: {
     approval,
     taskIds: input.taskIds,
   });
+  await notifyApprovalRequested(input.companyId, approval);
 
   return approval;
 }
