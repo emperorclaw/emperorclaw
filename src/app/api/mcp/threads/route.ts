@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { verifyMcpToken } from "@/lib/mcp";
+import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { messageThreads, threadParticipants, projects, tasks } from "@/db/schema";
 import { ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
+import { createGroup, GroupError, GROUP_THREAD_TYPE } from "@/lib/groups";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -66,6 +67,24 @@ export async function POST(req: NextRequest) {
 
         if (type === "team") {
             return NextResponse.json({ thread: await ensureTeamThread(companyId) }, { status: 201 });
+        }
+
+        if (type === GROUP_THREAD_TYPE) {
+            // A group needs members to be useful: only its agent members
+            // receive it. Same path as POST /api/mcp/groups.
+            const agentId = await resolveBoundAgentId(companyId, auth.companyToken!, typeof body.agentId === "string" ? body.agentId : null);
+            try {
+                const group = await createGroup(companyId, agentId ? { type: "agent", id: agentId } : { type: "system", id: null }, {
+                    title,
+                    description: body.description,
+                    agentIds: body.agentIds ?? body.members,
+                    humanUserIds: body.humanUserIds,
+                });
+                return NextResponse.json({ thread: { ...group, type: GROUP_THREAD_TYPE }, group }, { status: 201 });
+            } catch (error) {
+                if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
+                throw error;
+            }
         }
 
         if (type === "direct") {

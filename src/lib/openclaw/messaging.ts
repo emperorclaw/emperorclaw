@@ -4,6 +4,7 @@ import { messageThreads } from "@/db/schema";
 import { appendThreadMessage, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { GROUP_THREAD_TYPE, isAgentGroupMember } from "@/lib/groups";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -50,20 +51,31 @@ export async function sendThreadMessageFromMcp(input: {
 
     targetThreadId = existingThread.id;
     responseThread = existingThread;
+
+    // Only members talk in a group: an outside agent would never see the
+    // replies, and the members never asked for it.
+    if (existingThread.type === GROUP_THREAD_TYPE) {
+      if (existingThread.archivedAt) throw new Error("Access denied: that group is archived");
+      if (resolvedSenderId && !(await isAgentGroupMember(input.companyId, existingThread.id, resolvedSenderId))) {
+        throw new Error("Access denied: this agent is not a member of that group");
+      }
+    }
   }
+  const isGroup = responseThread.type === GROUP_THREAD_TYPE;
 
   const message = await appendThreadMessage({
     companyId: input.companyId,
     threadId: targetThreadId,
     senderType: "agent",
     senderId: resolvedSenderId,
-    targetAgentId: resolvedTargetAgentId,
+    // A group message is addressed by @mention, never to one agent.
+    targetAgentId: isGroup ? null : resolvedTargetAgentId,
     text: input.text,
     metadataJson: {
       chatId: input.chatId || null,
-      threadType: input.threadType || null,
+      threadType: isGroup ? GROUP_THREAD_TYPE : input.threadType || null,
     },
-    mirrorToLegacyChat: !resolvedTargetAgentId,
+    mirrorToLegacyChat: !resolvedTargetAgentId && !isGroup,
   });
 
   await broadcastMcpEvent(input.companyId, { type: "thread_message", thread: responseThread, message });

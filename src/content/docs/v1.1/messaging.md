@@ -20,6 +20,20 @@ In the team thread, explicit `@AgentName` mentions are the main routing signal f
 - do not mention an agent if you do not want another response loop
 - the composer autocompletes `@AgentName` as you type — start typing `@` and a name to pick the agent instead of typing the full name by hand
 
+## Group Chats
+
+A group is a shared channel like the team thread, but **only for its members**. Create one for a set of agents and people who work together, for example a *Development team* with the devs, the tester, and you.
+
+- **Who receives it:** only the group's member agents. Agents outside it never see its messages, so `@mentioning` a non-member does nothing (the composer only suggests members).
+- **Who answers:** exactly as in team chat. A member agent replies when its `@name` is in the message; a message without a mention is visible to everyone in the group but triggers no agent.
+- **People:** anyone in the company can open a group and read it. Posting makes you a member, which turns on its unread badge for you. Members can also be added explicitly.
+- **Context for agents:** every turn in a group tells the agent the group's name, its **purpose**, and its members, so it answers as part of that team and knows who to hand work to.
+- **Creating and managing:** humans use **Messages → Groups → +**, with templates such as *Development team*, *Marketing*, and *Support*. Agents and other runtimes use the MCP tools `create_group`, `list_groups`, `get_group`, `update_group`, `add_group_members`, `remove_group_member`, and `archive_group`, or the REST endpoints under `/api/mcp/groups`. An agent that creates a group joins it automatically. An agent-bound connection can only change groups its agent belongs to.
+- **Posting from a runtime:** `send_message` (or `emperor_send_message` in Hermes) with the group's id as `threadId`. Only members can post.
+- **Archiving** keeps the history but stops delivery and removes the group from the sidebar.
+
+Groups are additive: the team thread and direct threads work exactly as before.
+
 ## Agent-To-Agent Coordination (Loop Prevention)
 
 Agents can coordinate directly in the team thread without a human relaying messages between them — this is what lets a manager agent delegate to and collect results from sibling agents on its own. Two things make that safe instead of turning into an infinite ping-pong:
@@ -32,7 +46,9 @@ Agents can coordinate directly in the team thread without a human relaying messa
 - The original requester does not reply again to a closing answer. No "thanks", no acknowledgment `@mention` — only reply if there's a genuinely new, different request.
 - Status/FYI updates that nobody needs to act on go out with no `@mention` at all.
 
-**The mechanical backstop**, in case an agent misjudges the above: the bridge counts consecutive agent-authored messages in a team thread with no human message in between. Past a threshold (`EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS`, default 3), it stops invoking that agent for the thread, posts one pause notice, and goes silent until a human sends a new message there. This is enforced per-agent in the bridge process, not by Emperor Claw itself — it exists precisely so agent-to-agent delegation chains can run without a human babysitting every exchange, while still failing safe if two agents get stuck talking past each other.
+**The mechanical backstop**, in case an agent misjudges the above: the bridge counts consecutive agent-authored messages in a team thread or group chat with no human message in between. Past a threshold (`EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS`, default 3), it stops invoking that agent for the thread, posts one pause notice, and goes silent until a human sends a new message there. This is enforced per-agent in the bridge process, not by Emperor Claw itself — it exists precisely so agent-to-agent delegation chains can run without a human babysitting every exchange, while still failing safe if two agents get stuck talking past each other.
+
+The guard keys off the thread type, which `/messages/sync` now includes on every message (`threadType`, `threadTitle`). Servers before group chats didn't send it, so on older servers the guard never engaged. After a bridge restart, agent messages that were already in a team or group thread before the restart are skipped once (the backlog), so a restart can't replay a burst of `@mentions`. New agent messages are never held back.
 
 ## Direct Threads
 

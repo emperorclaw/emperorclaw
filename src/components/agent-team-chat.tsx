@@ -107,13 +107,29 @@ export function AgentTeamChat({
     agents = [],
     sendable = false,
     teamThreadId,
+    groupId,
+    mentionAgents,
+    placeholder = "Message the team… (@ to mention)",
 }: {
     initialMessages: TeamMessage[];
     initialHasMore?: boolean;
     agents: Agent[];
     sendable?: boolean;
     teamThreadId?: string;
+    /** Render a group chat instead of the team channel. */
+    groupId?: string;
+    /** Agents offered by @-autocomplete; defaults to every agent. A group passes its members. */
+    mentionAgents?: Agent[];
+    placeholder?: string;
 }) {
+    // Same component for the team channel and group chats: a group just adds
+    // its id to every request, and marks itself read under that id.
+    const readThreadId = groupId ?? teamThreadId;
+    const withThread = useCallback((params: URLSearchParams) => {
+        if (groupId) params.set("threadId", groupId);
+        const query = params.toString();
+        return query ? `/api/chat?${query}` : "/api/chat";
+    }, [groupId]);
     const { data: session } = useSession();
     // session.user.id is set in the auth session callback at runtime but not
     // part of next-auth's default user type — access it with the same cast the
@@ -163,7 +179,7 @@ export function AgentTeamChat({
                 before: String(messages[0].createdAt),
                 limit: String(CHAT_PAGE_SIZE),
             });
-            const res = await fetch(`/api/chat?${params.toString()}`);
+            const res = await fetch(withThread(params));
             if (!res.ok) return;
 
             const data = await res.json() as ChatResponse;
@@ -180,18 +196,20 @@ export function AgentTeamChat({
         } finally {
             setIsLoadingOlder(false);
         }
-    }, [hasOlderMessages, isLoadingOlder, messages]);
+    }, [hasOlderMessages, isLoadingOlder, messages, withThread]);
 
     useEffect(() => {
         const fetchUpdates = async () => {
             try {
-                const url = lastSeenAt ? `/api/chat?since=${encodeURIComponent(lastSeenAt)}` : "/api/chat";
-                const res = await fetch(url);
+                const res = await fetch(withThread(new URLSearchParams(lastSeenAt ? { since: lastSeenAt } : {})));
                 if (!res.ok) return;
                 const data = await res.json() as ChatResponse;
                 if (data.participants) {
                     setParticipants(data.participants);
                 }
+                // A group loads its history client-side; the first page tells
+                // us whether there is older history to page back through.
+                if (!lastSeenAt && typeof data.hasMore === "boolean") setHasOlderMessages(data.hasMore);
                 const nextMessages = data.messages;
                 if (nextMessages && nextMessages.length > 0) {
                     setMessages((prev) => {
@@ -216,9 +234,12 @@ export function AgentTeamChat({
             }
         };
 
+        // A group starts empty (no server-rendered history): load it now
+        // instead of waiting for the first poll.
+        if (groupId && !lastSeenAt) void fetchUpdates();
         const interval = setInterval(fetchUpdates, 5000);
         return () => clearInterval(interval);
-    }, [lastSeenAt, isAtBottom]);
+    }, [lastSeenAt, isAtBottom, groupId, withThread]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -257,13 +278,13 @@ export function AgentTeamChat({
     // bottom and messages exist — otherwise lastReadAt on this thread never
     // advances and the sidebar unread badge never clears.
     useEffect(() => {
-        if (!teamThreadId || !isAtBottom || messages.length === 0) return;
+        if (!readThreadId || !isAtBottom || messages.length === 0) return;
         void fetch("/api/chat/status", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ threadId: teamThreadId, markRead: true }),
+            body: JSON.stringify({ threadId: readThreadId, markRead: true }),
         });
-    }, [teamThreadId, isAtBottom, messages]);
+    }, [readThreadId, isAtBottom, messages]);
 
     const handleAttachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || []);
@@ -304,7 +325,7 @@ export function AgentTeamChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, attachments: pendingAttachments.map((a) => a.id) }),
+                body: JSON.stringify({ text, attachments: pendingAttachments.map((a) => a.id), ...(groupId ? { threadId: groupId } : {}) }),
             });
             if (!res.ok) throw new Error("Failed to send");
             const data = await res.json() as ChatResponse;
@@ -337,7 +358,7 @@ export function AgentTeamChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, attachments: [] }),
+                body: JSON.stringify({ text, attachments: [], ...(groupId ? { threadId: groupId } : {}) }),
             });
             if (!res.ok) throw new Error("Failed to send");
             const data = await res.json() as ChatResponse;
@@ -351,7 +372,7 @@ export function AgentTeamChat({
             console.error("Failed to send widget prompt", err);
             return false;
         }
-    }, []);
+    }, [groupId]);
 
     const getAgentName = (id: string | null | undefined) => {
         if (!id) return "System";
@@ -374,7 +395,8 @@ export function AgentTeamChat({
 
     const agentReadTimes: Record<string, number> = {};
     const onlineAgents = agents.filter(a => a.status === "online");
-    const offlineAgents = agents.filter(a => a.status !== "online");
+    // Presence is about who can answer here: a group counts only its members.
+    const offlineAgents = (mentionAgents ?? agents).filter(a => a.status !== "online");
     for (const p of participants) {
         if (p.participantType === "agent" && p.participantId && p.lastReadAt) {
             agentReadTimes[p.participantId] = new Date(p.lastReadAt).getTime();
@@ -385,7 +407,7 @@ export function AgentTeamChat({
         <div className="relative flex h-full flex-col">
             <div className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800/80 px-3 py-2 sm:px-4">
                 <div className="flex min-w-0 items-center gap-2 sm:space-x-3">
-                    <h2 className="hidden text-sm font-medium text-zinc-300 lg:block">Agent Team Chat</h2>
+                    <h2 className="hidden text-sm font-medium text-zinc-300 lg:block">{groupId ? "Group chat" : "Agent Team Chat"}</h2>
                     {unreadCount > 0 && (
                         <span className="rounded-full border border-rose-500/30 bg-rose-500/20 px-2 py-0.5 text-[10px] text-rose-300">
                             {unreadCount} new
@@ -415,7 +437,7 @@ export function AgentTeamChat({
 
             <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {messages.length === 0 ? (
-                    <div className="flex h-full items-center justify-center text-sm italic text-zinc-600">No communications yet.</div>
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-zinc-600">{groupId ? "No messages yet. @mention a member to get their reply." : "No communications yet."}</div>
                 ) : (
                     <div>
                         {hasOlderMessages && (
@@ -660,9 +682,9 @@ export function AgentTeamChat({
                             ref={teamTextareaRef}
                             value={draft}
                             onValueChange={setDraft}
-                            agents={agents}
+                            agents={mentionAgents ?? agents}
                             onSubmit={sendMessage}
-                            placeholder="Message the team… (@ to mention)"
+                            placeholder={placeholder}
                             rows={1}
                             className="min-h-11 w-full resize-none overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/70 sm:px-4"
                         />

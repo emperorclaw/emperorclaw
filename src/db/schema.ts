@@ -774,6 +774,8 @@ export const messageThreads = pgTable("message_threads", {
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
     type: text("type").default('team').notNull(),
     title: text("title"),
+    // A group's purpose ('group' threads); shown to members and to agents.
+    description: text("description"),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
     incidentId: uuid("incident_id").references(() => incidents.id, { onDelete: 'set null' }),
@@ -781,7 +783,9 @@ export const messageThreads = pgTable("message_threads", {
     createdById: uuid("created_by_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     archivedAt: timestamp("archived_at"),
-});
+}, (table) => ({
+    companyTypeIdx: index("message_threads_company_type_idx").on(table.companyId, table.type),
+}));
 
 export const threadParticipants = pgTable("thread_participants", {
     id: uuid("id").primaryKey().defaultRandom(),

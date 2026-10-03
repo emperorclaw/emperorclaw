@@ -102,3 +102,12 @@ test("replyFormatGuide: EMPEROR_CLAW_RICH_REPLIES=off opts out", () => {
     const res = { serverCapabilities: ["rich-blocks-v1"], replyFormatGuide: "## Rich" };
     assert.equal(replyFormatGuide(res, { EMPEROR_CLAW_RICH_REPLIES: "off" }), "");
 });
+
+test("classifyMessage: a group chat needs an @mention, like team chat", () => {
+    assert.equal(classifyMessage({ senderType: "human", threadType: "group", text: "status?" }, CTX).action, "skip");
+    assert.equal(classifyMessage({ senderType: "human", threadType: "group", text: "@Ada status?" }, CTX).action, "respond");
+    // An unknown thread type is never treated as a private thread.
+    assert.equal(classifyMessage({ senderType: "human", threadType: "channel", text: "hi" }, CTX).action, "skip");
+    // Direct threads keep answering without a mention.
+    assert.equal(classifyMessage({ senderType: "human", threadType: "direct", targetAgentId: "agent-1", text: "hi" }, CTX).action, "respond");
+});

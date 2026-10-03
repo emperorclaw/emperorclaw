@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { messageThreads } from "@/db/schema";
 import { appendThreadMessage, getThreadMessages } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { GROUP_THREAD_TYPE, isAgentGroupMember } from "@/lib/groups";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -75,10 +76,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const resolvedSenderId = senderType === "agent" && senderId
             ? await resolveAgentId(companyId, senderId)
             : senderId || null;
-        const resolvedTargetAgentId = targetAgentId
+        const isGroup = thread.type === GROUP_THREAD_TYPE;
+        // Groups are members-only: whoever posts (the token's bound agent, or
+        // the named sender) must belong to it, and nothing is single-targeted.
+        if (isGroup) {
+            if (thread.archivedAt) return NextResponse.json({ error: "Access denied: that group is archived" }, { status: 403 });
+            const poster = auth.companyToken!.agentId || (senderType === "agent" ? resolvedSenderId : null);
+            if (!poster || !(await isAgentGroupMember(companyId, thread.id, poster))) {
+                return NextResponse.json({ error: "Access denied: only group members can post in a group" }, { status: 403 });
+            }
+            if (resolvedSenderId && resolvedSenderId !== poster) {
+                return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+            }
+        }
+        const resolvedTargetAgentId = targetAgentId && !isGroup
             ? await resolveAgentId(companyId, targetAgentId)
             : null;
-        const shouldMirrorToLegacyChat = mirrorToLegacyChat || thread.type === "team";
+        const shouldMirrorToLegacyChat = !isGroup && (mirrorToLegacyChat || thread.type === "team");
 
         const message = await appendThreadMessage({
             companyId,

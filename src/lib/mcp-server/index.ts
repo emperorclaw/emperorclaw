@@ -18,7 +18,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     registerTaskTools(server, companyId);
     registerProjectTools(server, companyId);
     registerKnowledgeTools(server, companyId);
-    registerMessagingTools(server, companyId);
+    registerMessagingTools(server, companyId, callerAgentId);
 
     return server;
 }

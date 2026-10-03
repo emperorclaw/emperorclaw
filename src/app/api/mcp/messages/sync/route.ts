@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
-import { companies, threadMessages } from "@/db/schema";
-import { eq, and, gt, desc, sql, ne } from "drizzle-orm";
+import { companies, messageThreads, threadMessages } from "@/db/schema";
+import { eq, and, gt, desc, sql, ne, inArray } from "drizzle-orm";
+import { GROUP_THREAD_TYPE, loadGroupMembers } from "@/lib/groups";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -144,11 +145,29 @@ export async function GET(req: NextRequest) {
 
                 if (filtered.length > 0) {
                     const [comp] = await db.select({ contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId));
+                    // Say which kind of thread each message is in. Runtimes
+                    // route on it (team/group answer only when @mentioned,
+                    // direct always) and their loop guards key off it; without
+                    // it every message looked type-less and those guards never
+                    // engaged. Group threads also carry their purpose and
+                    // members once, in `threads`, for the agent's context.
+                    // Enrichment must never cost delivery: on any failure (e.g. a
+                    // database not yet migrated) messages go out as before.
+                    const { threadInfo, threads } = await describeThreads(companyId, filtered.map((m) => m.threadId))
+                        .catch((error) => {
+                            console.warn("Thread details unavailable for sync:", error instanceof Error ? error.message : error);
+                            return { threadInfo: new Map<string, { type: string; title: string | null }>(), threads: {} };
+                        });
                     return NextResponse.json({
                         ok: true,
                         mode,
                         contextNotes: comp?.contextNotes || null,
-                        messages: filtered.reverse()
+                        threads,
+                        messages: filtered.reverse().map((m) => ({
+                            ...m,
+                            threadType: threadInfo.get(m.threadId)?.type ?? null,
+                            threadTitle: threadInfo.get(m.threadId)?.title ?? null,
+                        })),
                     });
                 }
             }
@@ -165,4 +184,29 @@ export async function GET(req: NextRequest) {
         console.error("Failed to sync messages:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
+}
+
+async function describeThreads(companyId: string, threadIds: string[]) {
+    const ids = [...new Set(threadIds.filter(Boolean))];
+    const threadInfo = new Map<string, { type: string; title: string | null }>();
+    const threads: Record<string, { id: string; type: string; title: string | null; description: string | null; members: { kind: string; id: string; name: string; role: string }[] }> = {};
+    if (ids.length === 0) return { threadInfo, threads };
+    const rows = await db.select({ id: messageThreads.id, type: messageThreads.type, title: messageThreads.title, description: messageThreads.description })
+        .from(messageThreads)
+        .where(and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, ids)));
+    for (const row of rows) threadInfo.set(row.id, { type: row.type, title: row.title });
+    const groupIds = rows.filter((r) => r.type === GROUP_THREAD_TYPE).map((r) => r.id);
+    if (groupIds.length) {
+        const members = await loadGroupMembers(companyId, groupIds);
+        for (const row of rows.filter((r) => r.type === GROUP_THREAD_TYPE)) {
+            threads[row.id] = {
+                id: row.id,
+                type: row.type,
+                title: row.title,
+                description: row.description,
+                members: (members.get(row.id) ?? []).map(({ kind, id, name, role }) => ({ kind, id, name, role })),
+            };
+        }
+    }
+    return { threadInfo, threads };
 }

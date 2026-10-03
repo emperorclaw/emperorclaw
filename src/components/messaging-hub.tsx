@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
     IconArrowLeft,
     IconCheck,
@@ -8,8 +9,11 @@ import {
     IconLayoutSidebarLeftCollapse,
     IconLayoutSidebarLeftExpand,
     IconMessages,
+    IconPlus,
     IconSearch,
+    IconSettings,
     IconUsers,
+    IconUsersGroup,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import {
@@ -22,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
+import { GroupDialog, type GroupDialogHuman } from "./group-dialog";
 
 type Agent = {
     id: string;
@@ -52,6 +57,18 @@ type DirectThreadSummary = {
     lastMessageAt: string | null;
 };
 
+export type GroupThreadSummary = {
+    id: string;
+    title: string;
+    description: string | null;
+    members: { kind: "agent" | "human"; id: string; name: string; role: string; avatarUrl?: string | null }[];
+    unreadCount: number;
+    lastMessageText: string | null;
+    lastMessageAt: string | null;
+};
+
+const GROUP_PREFIX = "group:";
+
 const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
 const FOCUS_MODE_KEY = "emperor-messages-focus-mode";
 const TEAM_CONVERSATION = "team";
@@ -78,6 +95,9 @@ export function MessagingHub({
     initialTeamHasMore = false,
     teamThreadId,
     teamUnreadCount = 0,
+    groups = [],
+    humans = [],
+    currentUserId = null,
 }: {
     agents: Agent[];
     directThreads: DirectThreadSummary[];
@@ -85,8 +105,14 @@ export function MessagingHub({
     initialTeamHasMore?: boolean;
     teamThreadId: string;
     teamUnreadCount?: number;
+    groups?: GroupThreadSummary[];
+    humans?: GroupDialogHuman[];
+    currentUserId?: string | null;
 }) {
+    const router = useRouter();
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+    const [groupDialog, setGroupDialog] = useState<{ mode: "create" } | { mode: "edit"; groupId: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [mobileChatOpen, setMobileChatOpen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
@@ -101,6 +127,17 @@ export function MessagingHub({
         return agents.find(a => a.id === selectedAgentId);
     }, [agents, selectedAgentId]);
 
+    const activeGroup = useMemo(() => groups.find((g) => g.id === selectedGroupId) ?? null, [groups, selectedGroupId]);
+    const filteredGroups = useMemo(
+        () => groups.filter((group) => group.title.toLowerCase().includes(searchQuery.toLowerCase())),
+        [groups, searchQuery],
+    );
+    const groupAgents = useMemo(() => {
+        if (!activeGroup) return [];
+        const ids = new Set(activeGroup.members.filter((m) => m.kind === "agent").map((m) => m.id));
+        return agents.filter((agent) => ids.has(agent.id));
+    }, [activeGroup, agents]);
+
     useEffect(() => {
         // `?agent=<id>` is a deep link (onboarding "Open direct chat", shared
         // links). It wins over the last-remembered conversation for this load.
@@ -113,6 +150,10 @@ export function MessagingHub({
             setSelectedAgentId(requestedAgent);
             setMobileChatOpen(true);
             localStorage.setItem(ACTIVE_CONVERSATION_KEY, requestedAgent);
+        } else if (savedConversation?.startsWith(GROUP_PREFIX) && groups.some((g) => `${GROUP_PREFIX}${g.id}` === savedConversation)) {
+            setSelectedGroupId(savedConversation.slice(GROUP_PREFIX.length));
+            setSelectedAgentId(null);
+            setMobileChatOpen(true);
         } else if (savedConversation === TEAM_CONVERSATION) {
             setSelectedAgentId(null);
             setMobileChatOpen(true);
@@ -124,15 +165,25 @@ export function MessagingHub({
         }
 
         if (savedFocusMode) setIsFocused(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [agents]);
 
+    const openGroup = (groupId: string) => {
+        setSelectedAgentId(null);
+        setSelectedGroupId(groupId);
+        setMobileChatOpen(true);
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${GROUP_PREFIX}${groupId}`);
+    };
+
     const openTeamChannel = () => {
+        setSelectedGroupId(null);
         setSelectedAgentId(null);
         setMobileChatOpen(true);
         localStorage.setItem(ACTIVE_CONVERSATION_KEY, TEAM_CONVERSATION);
     };
 
     const openDirectThread = (agentId: string) => {
+        setSelectedGroupId(null);
         setSelectedAgentId(agentId);
         setMobileChatOpen(true);
         localStorage.setItem(ACTIVE_CONVERSATION_KEY, agentId);
@@ -146,10 +197,14 @@ export function MessagingHub({
         });
     };
 
-    const conversationTitle = activeAgent?.name || "Team Channel";
-    const conversationDescription = activeAgent
-        ? activeAgent.role || "Direct agent conversation"
-        : "Everyone can see & reply. @mention an agent to get replies.";
+    const conversationTitle = activeGroup?.title || activeAgent?.name || "Team Channel";
+    const conversationDescription = activeGroup
+        ? activeGroup.description || `${groupAgents.length} agent${groupAgents.length === 1 ? "" : "s"} · @mention a member to get a reply`
+        : activeAgent
+            ? activeAgent.role || "Direct agent conversation"
+            : "Everyone can see & reply. @mention an agent to get replies.";
+    const teamSelected = selectedAgentId === null && selectedGroupId === null;
+    const editingGroup = groupDialog?.mode === "edit" ? groups.find((g) => g.id === groupDialog.groupId) ?? null : null;
 
     return (
         <div className="flex min-w-0 flex-1 overflow-hidden">
@@ -189,14 +244,14 @@ export function MessagingHub({
                             onClick={openTeamChannel}
                             className={cn(
                                 "group flex min-h-14 w-full items-center gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
-                                selectedAgentId === null
+                                teamSelected
                                     ? "border border-cyan-400/30 bg-cyan-400/10"
                                     : "border border-transparent hover:bg-zinc-900/70"
                             )}
                         >
                             <div className={cn(
                                 "w-10 h-10 rounded-xl flex items-center justify-center border transition-colors",
-                                selectedAgentId === null
+                                teamSelected
                                     ? "bg-cyan-400/15 border-cyan-400/35 text-cyan-300"
                                     : "bg-zinc-800 border-zinc-700 text-zinc-500 group-hover:text-zinc-300"
                             )}>
@@ -206,7 +261,7 @@ export function MessagingHub({
                                 <div className="flex flex-col">
                                     <span className={cn(
                                         "text-sm font-semibold tracking-tight",
-                                        selectedAgentId === null ? "text-cyan-100" : "text-zinc-300"
+                                        teamSelected ? "text-cyan-100" : "text-zinc-300"
                                     )}>
                                         Team Channel
                                     </span>
@@ -219,6 +274,61 @@ export function MessagingHub({
                                 )}
                             </div>
                         </button>
+
+                        <div className="mt-6 mb-1 flex items-center justify-between px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
+                            Groups
+                            <button
+                                type="button"
+                                onClick={() => setGroupDialog({ mode: "create" })}
+                                aria-label="New group"
+                                title="New group"
+                                className="grid h-6 w-6 place-items-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                            >
+                                <IconPlus className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                        {filteredGroups.map((group) => {
+                            const agentCount = group.members.filter((m) => m.kind === "agent").length;
+                            const selected = selectedGroupId === group.id;
+                            return (
+                                <button
+                                    key={group.id}
+                                    onClick={() => openGroup(group.id)}
+                                    className={cn(
+                                        "group flex min-h-14 w-full items-center gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
+                                        selected ? "border border-cyan-400/30 bg-cyan-400/10" : "border border-transparent hover:bg-zinc-900/70"
+                                    )}
+                                >
+                                    <div className={cn(
+                                        "grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition-colors",
+                                        selected ? "border-cyan-400/35 bg-cyan-400/15 text-cyan-300" : "border-zinc-700 bg-zinc-800 text-zinc-500 group-hover:text-zinc-300"
+                                    )}>
+                                        <IconUsersGroup className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className={cn("truncate text-sm font-semibold tracking-tight", selected ? "text-cyan-100" : "text-zinc-300")}>{group.title}</span>
+                                            {group.unreadCount > 0 && (
+                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{group.unreadCount}</span>
+                                            )}
+                                        </div>
+                                        <span className="block truncate text-[11px] text-zinc-500">
+                                            {group.lastMessageText || `${agentCount} agent${agentCount === 1 ? "" : "s"} · ${formatRelativeMessageTime(group.lastMessageAt)}`}
+                                        </span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                        {groups.length === 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setGroupDialog({ mode: "create" })}
+                                className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-800 px-3 py-2.5 text-left text-xs text-zinc-500 transition-colors hover:border-cyan-400/40 hover:text-cyan-200"
+                            >
+                                <IconPlus className="h-3.5 w-3.5" />
+                                Create a group for a team, like your devs and tester
+                            </button>
+                        )}
 
                         <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
                             Direct Messages
@@ -309,7 +419,11 @@ export function MessagingHub({
                                     title="Switch conversation"
                                     className="group flex min-w-0 items-center gap-2.5 rounded-xl px-1.5 py-1 transition-colors hover:bg-zinc-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 sm:pr-2"
                                 >
-                                    {activeAgent ? (
+                                    {activeGroup ? (
+                                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-cyan-300">
+                                            <IconUsersGroup className="h-4 w-4" />
+                                        </div>
+                                    ) : activeAgent ? (
                                         <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-zinc-800">
                                             <img
                                                 src={activeAgent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(activeAgent.id)}`}
@@ -352,8 +466,35 @@ export function MessagingHub({
                                             {teamUnreadCount}
                                         </span>
                                     )}
-                                    {selectedAgentId === null && <IconCheck className="h-4 w-4 text-cyan-400" />}
+                                    {teamSelected && <IconCheck className="h-4 w-4 text-cyan-400" />}
                                 </DropdownMenuItem>
+                                {groups.length > 0 && (
+                                    <>
+                                        <DropdownMenuSeparator className="my-1.5 bg-zinc-800" />
+                                        <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+                                            Groups
+                                        </DropdownMenuLabel>
+                                        {groups.map((group) => (
+                                            <DropdownMenuItem
+                                                key={group.id}
+                                                onSelect={() => openGroup(group.id)}
+                                                className="min-h-12 cursor-pointer rounded-lg px-2.5 py-2 focus:bg-cyan-400/10 focus:text-zinc-100"
+                                            >
+                                                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-400">
+                                                    <IconUsersGroup className="h-4 w-4" />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="truncate text-sm font-medium">{group.title}</div>
+                                                    <div className="text-[10px] text-zinc-500">{group.members.filter((m) => m.kind === "agent").length} agents</div>
+                                                </div>
+                                                {group.unreadCount > 0 && (
+                                                    <span className="min-w-5 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{group.unreadCount}</span>
+                                                )}
+                                                {selectedGroupId === group.id && <IconCheck className="h-4 w-4 text-cyan-400" />}
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </>
+                                )}
                                 <DropdownMenuSeparator className="my-1.5 bg-zinc-800" />
                                 <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
                                     Direct messages
@@ -386,6 +527,30 @@ export function MessagingHub({
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
+                    {activeGroup && (
+                        <button
+                            type="button"
+                            onClick={() => setGroupDialog({ mode: "edit", groupId: activeGroup.id })}
+                            aria-label="Manage group members"
+                            title="Members & settings"
+                            className="ml-auto flex h-10 shrink-0 items-center gap-2 rounded-xl border border-zinc-800 px-2 text-zinc-400 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                        >
+                            <span className="hidden -space-x-2 sm:flex">
+                                {groupAgents.slice(0, 4).map((agent) => (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        key={agent.id}
+                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
+                                        alt=""
+                                        title={agent.name}
+                                        className="h-6 w-6 rounded-full border-2 border-zinc-950 bg-zinc-800 object-cover"
+                                    />
+                                ))}
+                            </span>
+                            <span className="text-xs tabular-nums">{activeGroup.members.length}</span>
+                            <IconSettings className="h-4 w-4" />
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={toggleFocusMode}
@@ -396,7 +561,23 @@ export function MessagingHub({
                         {isFocused ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
                     </button>
                 </header>
-                {selectedAgentId === null ? (
+                {activeGroup ? (
+                    <div className="flex min-h-0 flex-1 flex-col">
+                        <div className="relative min-h-0 flex-1 overflow-hidden">
+                            <div className="h-full">
+                                <AgentTeamChat
+                                    key={activeGroup.id}
+                                    initialMessages={[]}
+                                    agents={agents}
+                                    mentionAgents={groupAgents}
+                                    sendable={true}
+                                    groupId={activeGroup.id}
+                                    placeholder={`Message ${activeGroup.title}… (@ to mention a member)`}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ) : selectedAgentId === null ? (
                     <div className="flex min-h-0 flex-1 flex-col">
                         <div className="relative min-h-0 flex-1 overflow-hidden">
                             <div className="h-full">
@@ -416,6 +597,25 @@ export function MessagingHub({
                     </div>
                 )}
             </section>
+            {groupDialog && (
+                <GroupDialog
+                    key={groupDialog.mode === "edit" ? groupDialog.groupId : "create"}
+                    open
+                    onOpenChange={(open) => { if (!open) setGroupDialog(null); }}
+                    agents={agents}
+                    humans={humans}
+                    currentUserId={currentUserId}
+                    group={editingGroup}
+                    onSaved={(groupId) => {
+                        router.refresh();
+                        openGroup(groupId);
+                    }}
+                    onArchived={() => {
+                        router.refresh();
+                        openTeamChannel();
+                    }}
+                />
+            )}
         </div>
     );
 }

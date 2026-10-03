@@ -9,6 +9,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
 import { requestAgentControl } from "@/lib/agent-control";
+import { getGroupThread, GroupError, joinGroupAsHuman } from "@/lib/groups";
 
 type ThreadMessageLike = {
     fromUserId?: string | null;
@@ -37,12 +38,17 @@ export async function GET(req: NextRequest) {
         const before = searchParams.get("before");
         const limit = Math.min(parseInt(searchParams.get("limit") || "25", 10), 200);
         const targetAgentId = searchParams.get("targetAgentId");
+        const groupId = searchParams.get("threadId");
         const sinceDate = since ? new Date(since) : null;
         const beforeDate = before ? new Date(before) : null;
 
-        const thread = targetAgentId
-            ? await ensureDirectThread(companyId, targetAgentId, await getUserId())
-            : await ensureTeamThread(companyId);
+        // `threadId` selects a group; without it this is the team channel or,
+        // with targetAgentId, an agent's direct thread — exactly as before.
+        const thread = groupId
+            ? await getGroupThread(companyId, groupId)
+            : targetAgentId
+                ? await ensureDirectThread(companyId, targetAgentId, await getUserId())
+                : await ensureTeamThread(companyId);
 
         const messages = await getThreadMessages(
             companyId,
@@ -60,6 +66,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore });
     } catch (error: unknown) {
+        if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;
         console.error("[/api/chat] GET error:", error);
@@ -73,11 +80,12 @@ export async function POST(req: NextRequest) {
     if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        const { text, targetAgentId, attachments } = await req.json();
+        const { text, targetAgentId, attachments, threadId: groupId } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
+        if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
         const command = typeof text === "string" ? parseAgentControlCommand(text) : null;
         if (command) {
-            if (!targetAgentId) return NextResponse.json({ error: "Use runtime commands in an agent’s direct chat" }, { status: 400 });
+            if (!targetAgentId || groupId) return NextResponse.json({ error: "Use runtime commands in an agent’s direct chat" }, { status: 400 });
             const error = validateAgentControl(command.action, command.prompt);
             if (error) return NextResponse.json({ error }, { status: 400 });
             if (Array.isArray(attachments) && attachments.length) return NextResponse.json({ error: "Send attachments as a normal message" }, { status: 400 });
@@ -116,12 +124,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Text or attachment is required" }, { status: 400 });
         }
 
-        const resolvedTargetAgentId = targetAgentId
+        // A group message has no single target: agents in the group answer
+        // when @mentioned, like the team channel.
+        const resolvedTargetAgentId = targetAgentId && !groupId
             ? await resolveAgentId(companyId, targetAgentId)
             : null;
-        const thread = resolvedTargetAgentId
-            ? await ensureDirectThread(companyId, resolvedTargetAgentId, userId)
-            : await ensureTeamThread(companyId);
+        const thread = groupId
+            ? await getGroupThread(companyId, groupId)
+            : resolvedTargetAgentId
+                ? await ensureDirectThread(companyId, resolvedTargetAgentId, userId)
+                : await ensureTeamThread(companyId);
+        // Posting in a group makes you a member of it.
+        if (groupId) await joinGroupAsHuman(companyId, thread.id, userId);
 
         // A double-click, a network retry, or two browser tabs must not turn one
         // request into two expensive agent turns.  Attachments are intentionally
@@ -149,7 +163,7 @@ export async function POST(req: NextRequest) {
             targetAgentId: resolvedTargetAgentId,
             text: text || "",
             attachments: resolvedAttachments,
-            mirrorToLegacyChat: !resolvedTargetAgentId,
+            mirrorToLegacyChat: !resolvedTargetAgentId && !groupId,
         });
 
         broadcastMcpEvent(companyId, {
@@ -160,6 +174,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (error: unknown) {
+        if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;
         console.error("[/api/chat] POST error:", error);

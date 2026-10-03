@@ -30,8 +30,10 @@ function classifyMessage(msg, ctx) {
     if (!text) return { action: "skip", reason: "empty", resetLoop };
     // Direct message addressed to a different agent.
     if (targetId && targetId !== ctx.agentId) return { action: "skip", reason: "other-target", resetLoop };
-    // Team chat: only respond when @mentioned by name.
-    const isTeamChat = threadType === "team" || (!threadType && !targetId);
+    // Team chat and group chats: only respond when @mentioned by name. A group
+    // is a members-only team channel; a type the bridge doesn't know is
+    // treated the same way, never as a private thread.
+    const isTeamChat = threadType === "team" || threadType === "group" || (!targetId && threadType !== "direct");
     const mentioned = text.includes(`@${ctx.agentName}`);
     if (isTeamChat && !targetId && !mentioned) return { action: "skip", reason: "team-no-mention", resetLoop };
 

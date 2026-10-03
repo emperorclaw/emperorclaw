@@ -742,7 +742,7 @@ def check_loop_guard(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
     message shows up again.
     """
     thread_type = str(message.get("threadType") or message.get("thread_type") or "")
-    if thread_type != "team":
+    if thread_type not in SHARED_THREAD_TYPES:
         return True
     thread_id = str(message.get("threadId") or message.get("thread_id") or "")
     if not thread_id:
@@ -766,8 +766,75 @@ def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     if retry_ids:
         query["retryMessageIds"] = ",".join(retry_ids[-100:])
     payload = api("GET", "/messages/sync", query=query)
+    remember_thread_details(payload.get("threads") if isinstance(payload, dict) else None)
     messages = payload.get("messages") if isinstance(payload, dict) else []
     return messages if isinstance(messages, list) else []
+
+
+# Group details (purpose, members) the server sends alongside synced messages,
+# keyed by thread id. Servers older than group chats send none; the agent
+# then just sees an ordinary @mention-routed thread.
+_thread_details: Dict[str, Dict[str, Any]] = {}
+MAX_THREAD_DETAILS = 200
+
+
+def remember_thread_details(threads: Any) -> None:
+    if not isinstance(threads, dict):
+        return
+    for thread_id, detail in threads.items():
+        if isinstance(detail, dict):
+            _thread_details[str(thread_id)] = detail
+    while len(_thread_details) > MAX_THREAD_DETAILS:
+        _thread_details.pop(next(iter(_thread_details)))
+
+
+BRIDGE_STARTED_AT = time.time()
+
+
+def is_backlog(created_at: Any) -> bool:
+    """Was this message posted before this bridge process started?"""
+    if not created_at:
+        return False
+    try:
+        from datetime import datetime
+        stamp = datetime.fromisoformat(str(created_at).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return False
+    return stamp < BRIDGE_STARTED_AT
+
+
+# Thread kinds where agents answer only when @mentioned and the loop/cold-start
+# guards apply: the shared team channel and members-only group chats.
+SHARED_THREAD_TYPES = {"team", "group"}
+
+
+def format_group_context(message: Dict[str, Any]) -> str:
+    """Who and what a group chat is for, so the agent answers as a member."""
+    thread_type = str(message.get("threadType") or message.get("thread_type") or "")
+    if thread_type != "group":
+        return ""
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
+    detail = _thread_details.get(thread_id) or {}
+    title = str(detail.get("title") or message.get("threadTitle") or "this group")
+    lines = [f'You are replying in the group chat "{title}" (members only).']
+    description = str(detail.get("description") or "").strip()
+    if description:
+        lines.append(f"Group purpose: {description[:600]}")
+    members = detail.get("members") if isinstance(detail.get("members"), list) else []
+    agent_names = [str(m.get("name")) for m in members if isinstance(m, dict) and m.get("kind") == "agent" and m.get("name")]
+    human_names = [str(m.get("name")) for m in members if isinstance(m, dict) and m.get("kind") == "human" and m.get("name")]
+    if agent_names:
+        lines.append("Agent members: " + ", ".join(
+            f"{name}{' (you)' if name == AGENT_NAME else ''}" for name in agent_names[:24]
+        ))
+    if human_names:
+        lines.append("Human members: " + ", ".join(human_names[:24]))
+    lines.append(
+        "Group rules: it works like team chat but only these members see it. Reply in this group. "
+        "To hand work to a member, @mention them once with one concrete request; agents outside the group "
+        "do not receive it, so use team chat or a direct message for them."
+    )
+    return "\n".join(lines)
 
 
 def update_chat_status(
@@ -1741,6 +1808,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     # A DM runs in its own session, so it needs the team channel read into the
     # turn explicitly; team turns already carry it in their own session.
     main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
+    group_context = format_group_context(message)
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
@@ -1772,6 +1840,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Your answer is delivered to the current thread automatically. Do NOT call emperor_send_message to reply to the message you are answering — that posts a duplicate. Use emperor_send_message only to message a DIFFERENT thread (a sibling handoff in team chat).\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
+        "- Group chats are members-only team channels (e.g. a development team): the same @mention rules apply, and only their members receive them. Find yours with emperor_list_groups.\n"
         "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
         "- To ask a sibling to do something: post in team chat with @SiblingName and one concrete request (use the roster aliases below for the exact @name).\n"
         "- When a sibling @mentions you with a request, complete the work then reply with the answer and @mention them ONCE so it routes back: '@Viktor done, here are the results...'. That reply CLOSES the request.\n"
@@ -1782,6 +1851,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         f"{roster_context}\n\n"
         + f"{shared_context}\n\n"
         + (f"{main_chat_context}\n\n" if main_chat_context else "")
+        + (f"{group_context}\n\n" if group_context else "")
         + f"Thread: {thread_id}\n"
         + f"Latest message: {text}"
     )
@@ -1990,25 +2060,22 @@ def main() -> int:
                 if m_target and m_thread:
                     state.setdefault("direct_threads", {})[m_thread] = m_target
                 ts = message.get("createdAt")
-                # ── Cold-start guard (per-thread): after bridge restart, each ──
-                #     team-chat thread is frozen until a human message appears in
-                #     THAT specific thread. This prevents agent reply storms when
-                #     bridges restart and loop-guard counters are fresh, without
-                #     the risk of one human message unfreezing all threads globally.
+                # ── Cold-start guard: skip the agent-authored BACKLOG of shared
+                #    threads (team, groups) — messages posted before this bridge
+                #    started — so a restart can't replay a burst of sibling
+                #    @mentions into a reply storm. Live agent messages are never
+                #    held back: the loop guard covers runaway exchanges, and a
+                #    group created by an agent (with no human message yet) must
+                #    still work.
                 sender_type = str(message.get("senderType") or "").lower()
                 thread_type = str(message.get("threadType") or message.get("thread_type") or "")
                 thread_id = str(message.get("threadId") or message.get("thread_id") or "")
-                if thread_type == "team" and thread_id:
-                    cold_state = state.setdefault("cold_start_threads", {})
-                    if sender_type == "human":
-                        cold_state[thread_id] = False
-                    elif cold_state.get(thread_id, True):
-                        # Thread is still frozen — skip agent messages silently
-                        remember_seen(state, message_id)
-                        if ts:
-                            state["lastSeenAt"] = ts
-                        save_state(state)  # Persist cold_start_threads
-                        continue
+                if thread_type in SHARED_THREAD_TYPES and thread_id and sender_type == "agent" and is_backlog(ts):
+                    remember_seen(state, message_id)
+                    if ts:
+                        state["lastSeenAt"] = ts
+                    save_state(state)
+                    continue
                 if not is_for_agent(message, agent_id, state):
                     remember_seen(state, message_id)
                     if ts:

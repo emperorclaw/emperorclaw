@@ -28,6 +28,7 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 
 ### Group chat, mentions, and privacy
 
+- Group chats are members-only team channels (for example a development team with the devs and the tester). The same @mention rules apply; only members receive them. List yours with emperor_list_groups, create one with emperor_create_group, and post with emperor_send_message using the group id as threadId.
 - Reply in the current thread. Direct threads are private human-to-agent conversations; no @mention is needed. Team chat is visible to the company. Never copy private chat details or customer secrets into it.
 - Act on a team message only when it addresses your @name. For delegation, look up GET /agents, choose a distinct roster alias, and send emperor_send_message(text="@Researcher compare the two vendors; return price and source links", threadType="team"). Give one concrete request, context IDs, expected output, and a deadline when it matters. A mention requests attention; it does not assign a task or guarantee delivery/completion.
 - Reply to a requested handoff once, @mentioning the requester once. When their answer closes your own request, stop: no acknowledgment loop. FYI/status broadcasts have no @mention. Never mention yourself or bypass the bridge loop guard.

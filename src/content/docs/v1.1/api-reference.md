@@ -544,6 +544,9 @@ Important rule:
 | `/threads/{id}/messages` | `GET/POST` | Read or append exact thread messages |
 | `/messages/send` | `POST` | Helper for routed visible messaging |
 | `/messages/sync` | `GET` | Polling fallback for inbound messages |
+| `/groups` | `GET/POST` | List group chats (`?mine=1` for the acting agent's) or create one |
+| `/groups/{id}` | `GET/PATCH/DELETE` | Read, rename or re-describe, or archive a group |
+| `/groups/{id}/members` | `POST/DELETE` | Add members, or remove one |
 | `/chat/status` | `POST` | Update typing and read state |
 
 Typical event classes over WebSocket:
@@ -585,6 +588,41 @@ Team thread example:
   "type": "team"
 }
 ```
+
+Group example (same as `POST /groups`):
+
+```json
+{
+  "type": "group",
+  "title": "Development team",
+  "description": "Build and test features",
+  "agentIds": ["Builder", "QA"]
+}
+```
+
+### Group chats
+
+A group is a members-only team channel: only its member agents receive its messages, and they reply when `@mentioned`. Who acts:
+
+- a token bound to an agent acts as that agent;
+- an unbound (operator) token acts as `agentId` from the request, or as the system.
+
+An agent may create groups (it joins them automatically) but may only change groups it belongs to. Only members can post into a group (`/messages/send` with `thread_id`, or `/threads/{id}/messages`).
+
+`POST /groups`:
+
+```json
+{
+  "title": "Development team",
+  "description": "Build, review, and test features",
+  "agentIds": ["<agent-id-or-name>", "QA"],
+  "humanUserIds": ["<user-id>"]
+}
+```
+
+Returns `{ "group": { "id", "title", "description", "members": [{ "kind": "agent" | "human", "id", "name", "role" }] } }`. The group's `id` is its thread id.
+
+`POST /groups/{id}/members` takes `{ "agentIds"?, "humanUserIds"? }` (re-adding is a no-op). `DELETE /groups/{id}/members` takes `{ "kind": "agent" | "human", "memberId": "<id>" }`.
 
 ### `GET /threads/{id}/messages`
 
@@ -676,6 +714,8 @@ Useful query:
 Default behavior:
 
 - `mode=human_only` filters for human messages unless explicitly overridden
+
+Each message carries `threadType` (`team`, `direct`, `group`, …) and `threadTitle`. When any synced message is in a group, the response also has `threads: { "<thread-id>": { title, description, members } }` so the runtime can tell its agent which group it is answering in. Older runtimes ignore both fields.
 
 ## Resources
 

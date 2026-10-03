@@ -1354,5 +1354,58 @@ class TestRichReplies(unittest.TestCase):
         self.assertIn("print('kept')", out)
         self.assertEqual(bridge.summarize_rich_blocks("plain text"), "plain text")
 
+
+class TestGroupChats(unittest.TestCase):
+    """Members-only group threads route like team chat and carry their context."""
+
+    def setUp(self):
+        bridge._thread_details.clear()
+
+    def test_group_message_needs_a_mention(self):
+        state = {"direct_threads": {}}
+        msg = {"senderType": "human", "threadId": "g1", "threadType": "group", "text": "status please"}
+        self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", state))
+        msg["text"] = "@TestAgent status please"
+        self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", state))
+        self.assertFalse(bridge.is_direct_thread(msg, state))
+
+    def test_loop_guard_applies_to_groups(self):
+        state = {}
+        msg = {"senderType": "agent", "threadId": "g1", "threadType": "group"}
+        results = [bridge.check_loop_guard(dict(msg), state) for _ in range(bridge.LOOP_GUARD_MAX_AGENT_TURNS + 1)]
+        self.assertFalse(results[-1], "consecutive agent turns in a group must trip the guard")
+        self.assertTrue(bridge.check_loop_guard({"senderType": "human", "threadId": "g1", "threadType": "group"}, state))
+
+    def test_group_context_lists_purpose_and_members(self):
+        bridge.remember_thread_details({"g1": {
+            "title": "Development team",
+            "description": "Build and test features",
+            "members": [
+                {"kind": "agent", "name": "TestAgent"},
+                {"kind": "agent", "name": "QA"},
+                {"kind": "human", "name": "José"},
+            ],
+        }})
+        text = bridge.format_group_context({"threadId": "g1", "threadType": "group"})
+        self.assertIn('"Development team"', text)
+        self.assertIn("Build and test features", text)
+        self.assertIn("TestAgent (you)", text)
+        self.assertIn("QA", text)
+        self.assertIn("José", text)
+        self.assertEqual(bridge.format_group_context({"threadId": "t1", "threadType": "team"}), "")
+
+    def test_group_context_degrades_without_details(self):
+        text = bridge.format_group_context({"threadId": "g2", "threadType": "group", "threadTitle": "Ops"})
+        self.assertIn('"Ops"', text)
+
+    def test_cold_start_only_skips_backlog(self):
+        import datetime
+        before = datetime.datetime.fromtimestamp(bridge.BRIDGE_STARTED_AT - 60, datetime.timezone.utc).isoformat()
+        after = datetime.datetime.fromtimestamp(bridge.BRIDGE_STARTED_AT + 60, datetime.timezone.utc).isoformat()
+        self.assertTrue(bridge.is_backlog(before))
+        self.assertFalse(bridge.is_backlog(after))
+        self.assertFalse(bridge.is_backlog(None))
+        self.assertFalse(bridge.is_backlog("not a date"))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -9,6 +9,39 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- Group chats: members-only channels that work like the team channel. Create
+  one for a set of agents and people (e.g. a *Development team* with the devs
+  and the tester) from **Messages → Groups → +**, with templates, or from any
+  runtime. Only member agents receive a group's messages, and they reply when
+  @mentioned. Every turn tells the agent the group's name, purpose, and
+  members. Anyone in the company can open a group; posting makes you a member
+  and turns on its unread badge.
+- Group management for agents and runtimes: MCP tools `create_group`,
+  `list_groups`, `get_group`, `update_group`, `add_group_members`,
+  `remove_group_member`, and `archive_group`; REST under `/api/mcp/groups`;
+  Hermes plugin tools `emperor_list_groups`, `emperor_create_group`,
+  `emperor_add_group_members`, and `emperor_remove_group_member`. An agent
+  that creates a group joins it, and an agent-bound token can only change
+  groups its agent belongs to. Only members can post into a group.
+- `/messages/sync` now tags every message with `threadType` and `threadTitle`,
+  plus group details in `threads`. Older runtimes ignore the new fields.
+
+### Fixed
+
+- The Hermes bridge's agent-to-agent loop guard and restart guard never
+  engaged, because synced messages carried no thread type. With it now present,
+  the loop guard protects team chat and groups. The restart guard is narrowed to
+  skip only agent messages from before the restart, so it can no longer freeze
+  a thread until a human writes.
+- The Codex bridge treats group chats and unknown thread types like team chat
+  (reply only when @mentioned) instead of answering every message.
+- `/api/chat/status` could create a read-cursor row for a thread id from
+  another company; it now only touches the caller's company's threads.
+
 ## [0.8.53] — 2026-09-27
 
 ### Fixed

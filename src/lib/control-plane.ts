@@ -234,13 +234,20 @@ export async function markThreadRead(companyId: string, threadId: string, userId
     if (existing) {
         await db.update(threadParticipants).set({ lastReadAt: sql`now()` }).where(eq(threadParticipants.id, existing.id));
     } else {
+        // Only threads of this company. Opening a group records a read cursor
+        // but doesn't make you a member: that happens when you post or are added.
+        const [thread] = await db.select({ type: messageThreads.type }).from(messageThreads)
+            .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
+            .limit(1);
+        if (!thread) return;
         await db.insert(threadParticipants).values({
             threadId,
             companyId,
             participantType: "human",
             participantRef: userId,
+            role: thread.type === "group" ? "reader" : "member",
             lastReadAt: sql`now()`,
-        });
+        }).onConflictDoNothing();
     }
 }
 

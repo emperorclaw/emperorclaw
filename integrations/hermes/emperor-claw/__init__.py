@@ -196,6 +196,52 @@ def emperor_list_threads(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", "/threads", query=query))
 
 
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        value = [part for part in value.split(",")]
+    return [str(item).strip() for item in (value or []) if str(item).strip()] if isinstance(value, list) else []
+
+
+def emperor_list_groups(args: Dict[str, Any], **_: Any) -> str:
+    query = {"mine": "1" if args.get("mine", True) else None, "agentId": _agent_ref()}
+    return _json(_request("GET", "/groups", query={k: v for k, v in query.items() if v}))
+
+
+def emperor_create_group(args: Dict[str, Any], **_: Any) -> str:
+    title = str(args.get("title") or "").strip()
+    if not title:
+        return _json({"error": "title is required"})
+    body = {
+        "title": title,
+        "description": args.get("description"),
+        "agentIds": _string_list(args.get("agentIds") or args.get("agents")),
+        "humanUserIds": _string_list(args.get("humanUserIds")),
+        "agentId": _agent_ref(),
+    }
+    return _json(_request("POST", "/groups", body={k: v for k, v in body.items() if v not in (None, "", [])}))
+
+
+def emperor_add_group_members(args: Dict[str, Any], **_: Any) -> str:
+    group_id = str(args.get("groupId") or args.get("threadId") or "").strip()
+    if not group_id:
+        return _json({"error": "groupId is required"})
+    body = {
+        "agentIds": _string_list(args.get("agentIds") or args.get("agents")),
+        "humanUserIds": _string_list(args.get("humanUserIds")),
+        "agentId": _agent_ref(),
+    }
+    return _json(_request("POST", f"/groups/{urllib.parse.quote(group_id)}/members", body={k: v for k, v in body.items() if v}))
+
+
+def emperor_remove_group_member(args: Dict[str, Any], **_: Any) -> str:
+    group_id = str(args.get("groupId") or args.get("threadId") or "").strip()
+    member_id = str(args.get("memberId") or "").strip()
+    kind = str(args.get("kind") or "agent")
+    if not group_id or not member_id:
+        return _json({"error": "groupId and memberId are required"})
+    return _json(_request("DELETE", f"/groups/{urllib.parse.quote(group_id)}/members", body={"kind": kind, "memberId": member_id, "agentId": _agent_ref()}))
+
+
 def emperor_get_thread_messages(args: Dict[str, Any], **_: Any) -> str:
     thread_id = str(args.get("threadId") or args.get("thread_id") or "").strip()
     if not thread_id:
@@ -501,7 +547,7 @@ def register(ctx: Any) -> None:
         _schema(
             "List Emperor message threads. Use this to find team, direct, project, or task threads before reading chat history.",
             {
-                "type": {"type": "string", "enum": ["direct", "team", "project", "task", "incident"]},
+                "type": {"type": "string", "enum": ["direct", "team", "group", "project", "task", "incident"]},
                 "agentId": {"type": "string"},
                 "projectId": {"type": "string"},
                 "taskId": {"type": "string"},
@@ -689,7 +735,7 @@ def register(ctx: Any) -> None:
                 "text": {"type": "string"},
                 "agentId": {"type": "string", "description": "Optional sender Emperor agent id/name. Defaults to this Hermes profile's configured agent."},
                 "threadId": {"type": "string"},
-                "threadType": {"type": "string", "enum": ["direct", "team"]},
+                "threadType": {"type": "string", "enum": ["direct", "team", "group"]},
                 "chatId": {"type": "string"},
                 "targetAgentId": {"type": "string", "description": "Target Emperor agent id for direct private messages."},
             },
@@ -699,6 +745,70 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Send Emperor message",
+    )
+    ctx.register_tool(
+        "emperor_list_groups",
+        TOOLSET,
+        _schema(
+            "List Emperor group chats: members-only team channels (e.g. a development team) with their purpose and members. By default only the groups you belong to; mine=false lists all.",
+            {"mine": {"type": "boolean"}},
+        ),
+        emperor_list_groups,
+        check_fn=_available,
+        requires_env=requires,
+        description="List Emperor groups",
+    )
+    ctx.register_tool(
+        "emperor_create_group",
+        TOOLSET,
+        _schema(
+            "Create an Emperor group chat for a set of agents (and optionally humans), e.g. 'Development team' with the devs and the tester. You join it automatically. Only members receive it and they answer when @mentioned. Post into it with emperor_send_message using the returned group id as threadId.",
+            {
+                "title": {"type": "string"},
+                "description": {"type": "string", "description": "The group's purpose, shown to every member"},
+                "agentIds": {"type": "array", "items": {"type": "string"}, "description": "Agent ids or exact names"},
+                "humanUserIds": {"type": "array", "items": {"type": "string"}},
+            },
+            ["title"],
+        ),
+        emperor_create_group,
+        check_fn=_available,
+        requires_env=requires,
+        description="Create Emperor group",
+    )
+    ctx.register_tool(
+        "emperor_add_group_members",
+        TOOLSET,
+        _schema(
+            "Add agents and/or humans to an Emperor group chat you belong to.",
+            {
+                "groupId": {"type": "string"},
+                "agentIds": {"type": "array", "items": {"type": "string"}},
+                "humanUserIds": {"type": "array", "items": {"type": "string"}},
+            },
+            ["groupId"],
+        ),
+        emperor_add_group_members,
+        check_fn=_available,
+        requires_env=requires,
+        description="Add Emperor group members",
+    )
+    ctx.register_tool(
+        "emperor_remove_group_member",
+        TOOLSET,
+        _schema(
+            "Remove one agent or human from an Emperor group chat you belong to.",
+            {
+                "groupId": {"type": "string"},
+                "kind": {"type": "string", "enum": ["agent", "human"]},
+                "memberId": {"type": "string", "description": "Agent id/name or human user id"},
+            },
+            ["groupId", "memberId"],
+        ),
+        emperor_remove_group_member,
+        check_fn=_available,
+        requires_env=requires,
+        description="Remove Emperor group member",
     )
     ctx.register_tool(
         "emperor_create_agent",
