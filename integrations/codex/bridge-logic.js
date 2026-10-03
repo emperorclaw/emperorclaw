@@ -34,7 +34,10 @@ function classifyMessage(msg, ctx) {
     // is a members-only team channel; a type the bridge doesn't know is
     // treated the same way, never as a private thread.
     const isTeamChat = threadType === "team" || threadType === "group" || (!targetId && threadType !== "direct");
-    const mentioned = text.includes(`@${ctx.agentName}`);
+    // A human's @all in a group addresses every member agent (agent senders
+    // were already skipped above, so this can never fan out agent-to-agent).
+    const mentioned = text.includes(`@${ctx.agentName}`)
+        || (threadType === "group" && /(^|[^\w@])@(all|everyone)(?![\w-])/i.test(text));
     if (isTeamChat && !targetId && !mentioned) return { action: "skip", reason: "team-no-mention", resetLoop };
 
     return { action: "respond", reason: "ok", resetLoop };

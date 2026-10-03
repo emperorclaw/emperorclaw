@@ -20,6 +20,7 @@ Use the right thread surface:
 
 - direct thread: human to one agent
 - team thread: visible coordination across the fleet
+- group chat: a members-only channel for a standing team, such as your devs and tester. Use `@all` to address every member at once
 
 In team chat, use `@AgentName` when you want a specific agent to respond or act.
 

@@ -8,7 +8,12 @@ export type MentionAgent = {
     name: string;
     avatarUrl?: string | null;
     status?: string | null;
+    /** Shown under the name, e.g. "Everyone in this group" for @all. */
+    hint?: string;
 };
+
+/** The `@all` entry a group chat offers first. */
+export const EVERYONE_MENTION: MentionAgent = { id: "__everyone__", name: "all", hint: "Everyone in this group" };
 
 type MentionTextareaProps = {
     value: string;
@@ -145,11 +150,15 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                                 )}
                             >
                                 <div className="relative shrink-0">
+                                    {agent.id === EVERYONE_MENTION.id ? (
+                                        <div className="grid h-6 w-6 place-items-center rounded-full bg-cyan-400/15 text-[10px] font-bold text-cyan-300">@</div>
+                                    ) : (
                                     <img
                                         src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
                                         className="h-6 w-6 rounded-full object-cover"
                                         alt=""
                                     />
+                                    )}
                                     {agent.status && (
                                         <div className={cn(
                                             "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-zinc-900",
@@ -157,7 +166,10 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                                         )} />
                                     )}
                                 </div>
-                                <span className="truncate text-sm text-zinc-300">{agent.name}</span>
+                                <span className="min-w-0">
+                                    <span className="block truncate text-sm text-zinc-300">{agent.name}</span>
+                                    {agent.hint && <span className="block truncate text-[11px] text-zinc-500">{agent.hint}</span>}
+                                </span>
                             </button>
                         ))}
                     </div>

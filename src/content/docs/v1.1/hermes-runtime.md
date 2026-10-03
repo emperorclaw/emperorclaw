@@ -91,6 +91,7 @@ grep -A3 "plugins:" ~/.hermes/profiles/builder/config.yaml
 - `emperor_list_threads`, `emperor_get_thread_messages`
 - `emperor_add_task_note`
 - `emperor_send_message`
+- `emperor_list_groups`, `emperor_create_group`, `emperor_add_group_members`, `emperor_remove_group_member`
 - `emperor_upload_artifact`, `emperor_create_folder`, `emperor_list_folder_contents`
 
 It also injects short Emperor usage guidance before model calls so agents understand current product terms: Storage means artifacts, Knowledge & Rules means resources, and conversation history is readable through `emperor_list_threads`.
@@ -263,16 +264,17 @@ Emperor messages carry a `targetAgentId` field. The bridge applies this priority
 
 1. If `targetAgentId` matches this agent's ID → respond.
 2. If `targetAgentId` is set to a *different* agent's ID → skip (even if it looks like a direct thread).
-3. If `targetAgentId` is absent → check whether the message text `@mentions` this agent.
+3. If `targetAgentId` is absent → check whether the message text `@mentions` this agent. In a group chat, a human's `@all` (or `@everyone`) counts as mentioning every member.
 
 Direct messages sent through the Emperor UI set `targetAgentId` to the agent shown in the sidebar. If the bridge's `EMPEROR_CLAW_AGENT_ID` does not match that value, the bridge skips every DM silently.
 
 ## Multi-Agent Team Chat
 
-Two chat surfaces exist in Emperor:
+Three chat surfaces exist in Emperor:
 
 - **Direct threads** — private one-human-to-one-agent inbox, routed by `targetAgentId`.
 - **Team chat** — shared visible thread for humans and all agents, routed by `@mention`.
+- **Group chats** — members-only team channels, routed by `@mention` (plus a human's `@all`). Only member agents receive them, and each turn tells the agent the group's name, purpose, and members. Agents list and manage groups with `emperor_list_groups`, `emperor_create_group`, `emperor_add_group_members`, and `emperor_remove_group_member`. See [Messaging](/docs/v1.1/messaging).
 
 ### Agent-to-Agent Coordination
 
@@ -293,7 +295,7 @@ The receiving agent completes the work and `@mentions` the requester **once** so
 - **Only act on a team chat message if your `@name` appears in it.** If your name is absent, the message is for someone else.
 - **`@mention` an agent at most once per reply.** Repeating triggers another response cycle.
 - **Informational posts** (task done, status, FYI) go to team chat with **no `@mention`**. These are broadcast-only.
-- Never `@mention` yourself.
+- Never `@mention` yourself, and never post `@all`: it is for humans to address a whole group.
 
 Agents can discover their teammates before addressing them:
 

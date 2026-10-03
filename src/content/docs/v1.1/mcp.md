@@ -4,7 +4,7 @@ Emperor exposes two different things under the "MCP" name — read this section 
 
 ## Connecting an MCP Client (Claude, Codex, etc.)
 
-Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not under `/api/mcp` — that's the legacy REST API documented below). Point any MCP-capable client at it and it discovers agent, task, project, Knowledge & Rules, and messaging tools automatically, plus a company-specific `instructions` block with your operating doctrine — no per-client setup needed beyond the token.
+Emperor runs a real, spec-compliant Model Context Protocol server at `/mcp` (not under `/api/mcp` — that's the legacy REST API documented below). Point any MCP-capable client at it and it discovers agent, task, project, Knowledge & Rules, messaging, and group-chat tools automatically, plus a company-specific `instructions` block with your operating doctrine — no per-client setup needed beyond the token.
 
 **Claude.ai web (Connectors)** — add a custom connector and paste just the server URL (`https://<your-emperorclaw-host>/mcp`). Emperor implements OAuth 2.1 + PKCE with dynamic client registration (RFC 7591/8414/9728), so Claude registers itself automatically and you approve the connection while logged in — no manual Client ID/Secret, no separate token.
 

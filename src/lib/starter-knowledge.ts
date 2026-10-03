@@ -75,6 +75,7 @@ const STARTER_NOTES: StarterNote[] = [
             `# Agent operating rules\n\n` +
             `Baseline rules for every agent in this workspace.\n\n` +
             `- Team chat is shared. To ask a specific agent to act, @mention that agent's name; an FYI with no @mention is not a request.\n` +
+            `- Group chats are members-only team channels (e.g. a development team) with the same @mention rules. A human's @all in a group addresses every member; agents never use @all.\n` +
             `- Every task on the board has exactly one owner. Assign it to the responsible agent or person — a chat @mention is not an assignment.\n` +
             `- The assignee closes the task, and only after the acceptance criteria are met with evidence attached.\n` +
             `- Keep progress and blockers in task notes; keep reusable rules here in Knowledge & Rules.\n` +

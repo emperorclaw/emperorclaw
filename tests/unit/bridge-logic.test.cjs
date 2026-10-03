@@ -111,3 +111,10 @@ test("classifyMessage: a group chat needs an @mention, like team chat", () => {
     // Direct threads keep answering without a mention.
     assert.equal(classifyMessage({ senderType: "human", threadType: "direct", targetAgentId: "agent-1", text: "hi" }, CTX).action, "respond");
 });
+
+test("classifyMessage: @all in a group addresses every member, only in groups", () => {
+    assert.equal(classifyMessage({ senderType: "human", threadType: "group", text: "@all standup" }, CTX).action, "respond");
+    assert.equal(classifyMessage({ senderType: "human", threadType: "team", text: "@all standup" }, CTX).action, "skip");
+    assert.equal(classifyMessage({ senderType: "human", threadType: "group", text: "@allison standup" }, CTX).action, "skip");
+    assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@all standup" }, CTX).action, "skip");
+});

@@ -7,7 +7,7 @@ import { IconPaperclip, IconUser, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
 import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
-import { MentionTextarea } from "@/components/mention-textarea";
+import { EVERYONE_MENTION, MentionTextarea } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
 import { cn } from "@/lib/utils";
@@ -396,7 +396,7 @@ export function AgentTeamChat({
     const agentReadTimes: Record<string, number> = {};
     const onlineAgents = agents.filter(a => a.status === "online");
     // Presence is about who can answer here: a group counts only its members.
-    const offlineAgents = (mentionAgents ?? agents).filter(a => a.status !== "online");
+    const offlineAgents = (mentionAgents ?? agents).filter(a => a.id !== EVERYONE_MENTION.id && a.status !== "online");
     for (const p of participants) {
         if (p.participantType === "agent" && p.participantId && p.lastReadAt) {
             agentReadTimes[p.participantId] = new Date(p.lastReadAt).getTime();

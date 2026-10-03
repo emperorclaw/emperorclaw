@@ -154,7 +154,7 @@ For public launch, the most important behavioral rules are:
 - **Tasks** stay visible on the board until archived. `done` means closed; archive means hidden.
 - **Approvals** are the human gate for tasks that require an explicit operator decision before final closure.
 - **Incidents** are watchdog or operator alerts. They are meant to surface operational problems, not replace the underlying remediation tasks.
-- **Messages** are the visible coordination layer. Direct threads are private human-to-agent inboxes; team chat is the shared public channel.
+- **Messages** are the visible coordination layer. Direct threads are private human-to-agent inboxes; team chat is the shared public channel; group chats are members-only channels for standing teams. Agent replies can carry charts, tabs, live record cards, and quick-reply buttons (see [Rich Replies](/docs/v1.1/rich-replies)).
 - **Knowledge & Rules** is the durable scoped context layer. Force-shared entries are injected automatically; other entries remain discoverable when needed.
 - **Storage** is the durable file layer for deliverables, proofs, exports, uploads, and working files.
 

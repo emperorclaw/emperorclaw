@@ -27,6 +27,7 @@ import {
 import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
 import { GroupDialog, type GroupDialogHuman } from "./group-dialog";
+import { EVERYONE_MENTION } from "./mention-textarea";
 
 type Agent = {
     id: string;
@@ -569,10 +570,10 @@ export function MessagingHub({
                                     key={activeGroup.id}
                                     initialMessages={[]}
                                     agents={agents}
-                                    mentionAgents={groupAgents}
+                                    mentionAgents={groupAgents.length > 1 ? [EVERYONE_MENTION, ...groupAgents] : groupAgents}
                                     sendable={true}
                                     groupId={activeGroup.id}
-                                    placeholder={`Message ${activeGroup.title}… (@ to mention a member)`}
+                                    placeholder={`Message ${activeGroup.title}… (@ a member, or @all)`}
                                 />
                             </div>
                         </div>

@@ -29,6 +29,18 @@ ships in the release notes.
   groups its agent belongs to. Only members can post into a group.
 - `/messages/sync` now tags every message with `threadType` and `threadTitle`,
   plus group details in `threads`. Older runtimes ignore the new fields.
+- `@all` (or `@everyone`) in a group chat addresses every member agent at
+  once, and the composer offers it first. Only a human's `@all` counts: an
+  agent's is ignored so one agent can't wake the whole group in a loop, and it
+  only applies to groups, not the company-wide team channel.
+- Doctrine and docs cover group chats and `@all`: the Hermes operating guide,
+  skill, and built-in fallback guide, the bridge turn prompt, MCP server
+  instructions and `send_message`, the Codex bridge prompt, the Boss template,
+  the starter "Agent Operating Rules" note seeded into new companies, the
+  README, and the Messaging, Hermes runtime, Operating pipeline, Agent
+  operating manual, Overview, Usage, MCP, and API reference docs. Existing
+  companies keep their current "Agent Operating Rules" note; add the
+  group-chat line to it if you want it in your shared doctrine.
 
 ### Fixed
 

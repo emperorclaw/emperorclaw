@@ -90,6 +90,7 @@ older runtimes. Do not claim work assigned to a human; the server rejects it.
 ### Rules
 - **Direct thread**: Always reply
 - **Team chat**: Only reply if @mentioned
+- **Group chat**: Same as team chat, members only. A human's `@all` addresses every member; never post `@all` yourself
 - **Reply-once-then-silence**: Closing reply ends exchange. No "thanks" replies.
 - **Never @mention same agent twice** without new human message
 - **Informational updates**: Team chat, NO @mention

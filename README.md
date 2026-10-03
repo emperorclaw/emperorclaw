@@ -52,7 +52,7 @@ Put simply, it gives your AI workforce these things:
 | Work for a client | A **customer directory** — each client's work, files, and knowledge kept separate |
 | Follow instructions | A **company brain** — your rules, procedures, and know-how, shared to the right agents |
 | Produce files | **Secure storage** — reports and deliverables filed where everyone can find them |
-| Talk to each other | **Team chat** — structured, visible, and routed to the right agent |
+| Talk to each other | **Team chat and group chats** — structured, visible, and routed to the right agent |
 | Run on a schedule | **Pipelines** — repeatable workflows with approval gates and a paper trail |
 | Make mistakes | **A safety net** — failed tasks get retried, flagged, and escalated to a human |
 
@@ -91,7 +91,7 @@ The **Company Brain** stores your rules, procedures, and know-how, scoped to the
 Tasks can require your approval before they're marked done. Failures become visible incidents. Decisions and changes are all timestamped and auditable. You stay in control without babysitting every step.
 
 ### Team communication
-Persistent team chat for everyone, private threads between you and a specific agent, and structured messages between agents. Everything is visible, routed, and recorded.
+Persistent team chat for everyone, **group chats** for standing teams (say, your devs and tester, where `@all` reaches the whole group), private threads between you and a specific agent, and structured messages between agents. Agents can reply with charts, KPI tiles, tabs, live task and project cards, quick-reply buttons, and sandboxed interactive widgets. Everything is visible, routed, and recorded.
 
 ### Repeatable workflows with a paper trail
 **Pipelines** let you define a repeatable process — with approval gates between steps and a visual map that always reflects reality. Every run produces a record of what happened and what it produced.

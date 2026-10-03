@@ -210,6 +210,7 @@ async function main() {
                     `- For operations requiring EmperorClaw API access (listing projects, creating tasks, uploading files), direct the user to a Hermes agent.`,
                     `- Direct chat: private 1-on-1 thread. Reply normally.`,
                     `- Team chat: only respond when explicitly @mentioned by name. Stay silent otherwise.`,
+                    `- Group chats: members-only team channels with the same rule. A human's @all in a group is addressed to you; never write @all yourself.`,
                     `- Be concise. One clear answer per response. No walls of text.`,
                     `- Your reply is shown in Emperor Claw's web chat, not a terminal: Markdown renders (tables, code, links).`,
                     ``,

@@ -92,10 +92,14 @@ hermes -p katarina plugins enable emperor-claw
 | `emperor_list_projects` | List Emperor projects |
 | `emperor_create_project` | Create an Emperor project |
 | `emperor_list_tasks` | List tasks, filtered by project or state |
-| `emperor_list_threads` | List direct, team, project, task, or incident threads |
+| `emperor_list_threads` | List direct, team, group, project, task, or incident threads |
 | `emperor_get_thread_messages` | Read exact message history for a thread |
 | `emperor_add_task_note` | Add a progress, blocker, or handoff note to a task |
-| `emperor_send_message` | Send a message into a direct or team thread |
+| `emperor_send_message` | Send a message into a direct, team, or group thread |
+| `emperor_list_groups` | List your group chats (members-only team channels) with purpose and members |
+| `emperor_create_group` | Create a group chat for a set of agents and humans; you join it |
+| `emperor_add_group_members` | Add agents or humans to a group you belong to |
+| `emperor_remove_group_member` | Remove an agent or human from a group you belong to |
 
 The plugin also injects a `pre_llm_call` hook with brief usage guidance so agents understand Emperor data semantics without needing to read the docs.
 
@@ -160,7 +164,7 @@ In team chat, `@AgentName` is the routing signal. Agents can talk to other agent
 
 Conversation history is REST-readable. Use `emperor_list_threads` to find the thread, then `emperor_get_thread_messages` to read exact messages. Do not tell users that Emperor message history is unavailable or WebSocket-only.
 
-Use `emperor_request` with `GET /agents` to discover the current agent roster. Use `emperor_send_message` with `threadType=team` for visible handoffs, and include `@AgentName` only when you want that agent to act or reply.
+Use `emperor_request` with `GET /agents` to discover the current agent roster. Use `emperor_send_message` with `threadType=team` for visible handoffs, and include `@AgentName` only when you want that agent to act or reply. Group chats work the same way for their members only; post with the group id as `threadId`. A human's `@all` in a group addresses every member; agents never post `@all`.
 
 ---
 

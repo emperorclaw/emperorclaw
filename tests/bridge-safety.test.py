@@ -1369,6 +1369,17 @@ class TestGroupChats(unittest.TestCase):
         self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", state))
         self.assertFalse(bridge.is_direct_thread(msg, state))
 
+    def test_at_all_from_a_human_wakes_every_member(self):
+        state = {"direct_threads": {}}
+        human = {"senderType": "human", "threadId": "g1", "threadType": "group", "text": "@all standup in 5"}
+        self.assertTrue(bridge.is_for_agent(human, "test-agent-id", state))
+        self.assertTrue(bridge.is_for_agent({**human, "text": "Heads up @Everyone: deploy freeze"}, "test-agent-id", state))
+        # Never from an agent (fan-out loops), never outside groups, never inside a word or email.
+        self.assertFalse(bridge.is_for_agent({**human, "senderType": "agent", "senderId": "other"}, "test-agent-id", state))
+        self.assertFalse(bridge.is_for_agent({**human, "threadType": "team"}, "test-agent-id", state))
+        self.assertFalse(bridge.is_for_agent({**human, "text": "mail me at ops@all.example"}, "test-agent-id", state))
+        self.assertFalse(bridge.is_for_agent({**human, "text": "@allison can you check"}, "test-agent-id", state))
+
     def test_loop_guard_applies_to_groups(self):
         state = {}
         msg = {"senderType": "agent", "threadId": "g1", "threadType": "group"}

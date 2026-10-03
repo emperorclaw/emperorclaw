@@ -707,6 +707,14 @@ def mentions_agent(text: str, agent_name: str) -> bool:
     return bool(mention_keys & alias_keys)
 
 
+# `@all` (or `@everyone`) in a group chat addresses every member agent.
+_EVERYONE_MENTION_RE = re.compile(r"(?<![\w@])@(all|everyone)(?![\w-])", re.IGNORECASE)
+
+
+def mentions_everyone(text: str) -> bool:
+    return bool(_EVERYONE_MENTION_RE.search(str(text or "")))
+
+
 def is_for_agent(message: Dict[str, Any], agent_id: str, state: Dict[str, Any]) -> bool:
     sender_type = str(message.get("senderType") or "").lower()
     sender_id = str(message.get("senderId") or message.get("sender_id") or message.get("fromUserId") or "")
@@ -726,6 +734,11 @@ def is_for_agent(message: Dict[str, Any], agent_id: str, state: Dict[str, Any]) 
     if thread_id and thread_id in direct_threads:
         return direct_threads[thread_id] == agent_id
     if thread_type == "direct":
+        return True
+    # A human's @all in a group wakes every member agent (delivery is already
+    # members-only). An agent's @all never does: one agent fanning out to the
+    # whole group, each reply fanning out again, is how loops start.
+    if thread_type == "group" and sender_type == "human" and mentions_everyone(text):
         return True
     return mentions_agent(text, AGENT_NAME)
 
@@ -832,7 +845,8 @@ def format_group_context(message: Dict[str, Any]) -> str:
     lines.append(
         "Group rules: it works like team chat but only these members see it. Reply in this group. "
         "To hand work to a member, @mention them once with one concrete request; agents outside the group "
-        "do not receive it, so use team chat or a direct message for them."
+        "do not receive it, so use team chat or a direct message for them. "
+        "When a human writes @all, every member is asked: answer for your own part only. Never write @all yourself."
     )
     return "\n".join(lines)
 
@@ -1734,6 +1748,7 @@ Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rul
 
 - Reply in the current thread. Direct threads are private; no @mention is needed. Team chat is visible to the company — never copy private details or secrets into it.
 - Act on a team message only when it addresses your @name. To ask a sibling to act, look up GET /agents and send one concrete @SiblingName request with context IDs, expected output, and a deadline. A mention requests attention; it does not assign a task.
+- Group chats are members-only team channels with the same @mention rules; only their members receive them. A human's @all in a group addresses every member; never write @all yourself.
 - Reply to a requested handoff once. When a reply closes your own request, stop — no acknowledgment loop. FYI/status updates have no @mention.
 
 ### Projects and tasks
@@ -1840,7 +1855,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Direct threads are private one-human-to-one-agent conversations. Reply normally in direct threads.\n"
         "- Your answer is delivered to the current thread automatically. Do NOT call emperor_send_message to reply to the message you are answering — that posts a duplicate. Use emperor_send_message only to message a DIFFERENT thread (a sibling handoff in team chat).\n"
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
-        "- Group chats are members-only team channels (e.g. a development team): the same @mention rules apply, and only their members receive them. Find yours with emperor_list_groups.\n"
+        "- Group chats are members-only team channels (e.g. a development team): the same @mention rules apply, and only their members receive them. Find yours with emperor_list_groups. A human's @all in a group is addressed to you; never write @all yourself.\n"
         "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
         "- To ask a sibling to do something: post in team chat with @SiblingName and one concrete request (use the roster aliases below for the exact @name).\n"
         "- When a sibling @mentions you with a request, complete the work then reply with the answer and @mention them ONCE so it routes back: '@Viktor done, here are the results...'. That reply CLOSES the request.\n"

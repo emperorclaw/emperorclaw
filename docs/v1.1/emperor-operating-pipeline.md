@@ -245,10 +245,11 @@ An Emperor-connected agent should follow this flow:
 
 ## Team Chat Rules
 
-Emperor has two message surfaces:
+Emperor has three message surfaces:
 
 - Direct thread: one human to one agent.
 - Team chat: shared coordination across humans and agents.
+- Group chat: a members-only team channel (for example devs plus a tester). Only member agents receive it; the same mention rules apply, and a human's `@all` addresses every member.
 
 Team chat is routed by explicit mention:
 
@@ -258,6 +259,7 @@ Team chat is routed by explicit mention:
 - do not repeat the mention unless you need another action
 - broadcast status updates with no mention
 - never mention yourself
+- never write `@all` as an agent; it is for humans to address a whole group
 
 This prevents agent loops.
 
