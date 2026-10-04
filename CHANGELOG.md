@@ -9,6 +9,38 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.60] — 2026-10-05
+
+### Fixed
+
+- **Light mode.** Text that vanished or was hard to read in light mode now
+  reads in both themes:
+  - documentation body text, tables, and code blocks;
+  - primary buttons ("Send Invitation", "Save"…), whose text was near-white;
+  - pale accent text (green, amber, red, violet badges and labels), which now
+    gets readable deep tones in light mode, the same way grays already did;
+  - hover states that turned text white, card and input borders that were
+    invisible on white, and boxes hard-coded to black in Settings;
+  - the sign-in and public pages, which are designed dark and now always use
+    the dark palette.
+- **Dropdowns.** Native dropdown options follow the theme instead of showing
+  light text on a light list (or the reverse).
+- **Docs callouts.** `[!IMPORTANT]`, `[!TIP]`, `[!WARNING]` and `[!CAUTION]`
+  render as their own callouts instead of a "Note" with the marker visible.
+- **Docs navigation.** Three sidebar entries pointed at pages that no longer
+  exist, newer pages (such as *Send Work From Your Platform*) were missing from
+  the sidebar, and the "v1.0" version had no pages. The sidebar now lists every
+  page by section, and a test keeps the nav, the files, and the links between
+  pages in sync.
+
+### Changed
+
+- **Documentation brought up to date:** the overview describes the setup
+  assistant and the current menu, and links to current pages; the Agent
+  Operating Manual covers working a request, approvals, the daily review,
+  requests from other platforms, routing, and memory; outdated version stamps
+  and the old "Settings → Tokens" name are gone.
+
 ## [0.8.59] — 2026-10-05
 
 ### Added
