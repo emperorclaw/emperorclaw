@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
-import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconTerminal2, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconWallet } from "@tabler/icons-react";
+import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationBell } from "./notification-bell";
 import { clsx, type ClassValue } from "clsx";
@@ -30,6 +30,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
     const [unreadMessages, setUnreadMessages] = useState(0);
+    const [pendingApprovals, setPendingApprovals] = useState(0);
     const [hoveredNav, setHoveredNav] = useState<string | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -45,10 +46,10 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
         let cancelled = false;
         const poll = async () => {
             try {
-                const res = await fetch("/api/chat/unread-count");
-                if (!res.ok || cancelled) return;
-                const data = await res.json();
-                if (!cancelled) setUnreadMessages(data.count || 0);
+                const [res, approvalsRes] = await Promise.all([fetch("/api/chat/unread-count"), fetch("/api/approvals/pending-count")]);
+                if (cancelled) return;
+                if (res.ok) setUnreadMessages((await res.json()).count || 0);
+                if (approvalsRes.ok) setPendingApprovals((await approvalsRes.json()).count || 0);
             } catch {
                 // Non-critical — badge just stays at its last known value.
             }
@@ -79,23 +80,28 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
     const userName = session?.user?.name || lastUserRef.current.name || userEmail.split("@")[0] || "User";
     const userInitial = (userName[0] || "U").toUpperCase();
 
-    const links = [
-        { name: "Dashboard", href: "/", icon: IconLayoutDashboard },
-        { name: "Projects", href: "/projects", icon: IconFolder },
-        { name: "Automations", href: "/pipelines", icon: IconGitBranch },
-        { name: "Knowledge base", href: "/resources", icon: IconFileText },
-        { name: "Messages", href: "/messages", icon: IconMessage },
-        { name: "Approvals", href: "/approvals", icon: IconRosetteDiscountCheck },
-        { name: "Agents", href: "/agents", icon: IconRobot },
-        { name: "Customers", href: "/customers", icon: IconShieldCheck },
-        { name: "Files", href: "/artifacts", icon: IconDeviceSdCard },
-        { name: "Budgets", href: "/budgets", icon: IconWallet },
-        { name: "Settings", href: "/settings", icon: IconKey },
+    // Grouped by what you come to do. Budgets lives with Agents (it is their
+    // spending) and Ops with Settings; both routes are unchanged.
+    const sections: { title: string; links: { name: string; href: string; icon: typeof IconFolder; badge?: number; activeFor?: string[] }[] }[] = [
+        { title: "Work", links: [
+            { name: "Dashboard", href: "/", icon: IconLayoutDashboard },
+            { name: "Messages", href: "/messages", icon: IconMessage, badge: unreadMessages },
+            { name: "Projects", href: "/projects", icon: IconFolder },
+            { name: "Approvals", href: "/approvals", icon: IconRosetteDiscountCheck, badge: pendingApprovals },
+        ] },
+        { title: "Team", links: [
+            { name: "Agents", href: "/agents", icon: IconRobot, activeFor: ["/budgets"] },
+            { name: "Customers", href: "/customers", icon: IconShieldCheck },
+        ] },
+        { title: "Library", links: [
+            { name: "Knowledge base", href: "/resources", icon: IconFileText },
+            { name: "Files", href: "/artifacts", icon: IconDeviceSdCard },
+            { name: "Automations", href: "/pipelines", icon: IconGitBranch },
+        ] },
+        { title: "", links: [
+            { name: "Settings", href: "/settings", icon: IconKey, activeFor: isPlatformAdmin ? ["/ops"] : [] },
+        ] },
     ];
-
-    if (isPlatformAdmin) {
-        links.push({ name: "Ops", href: "/ops", icon: IconTerminal2 });
-    }
 
     return (
         <>
@@ -122,10 +128,15 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
             </div>
 
             <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-visible px-1.5 py-3 sm:space-y-1 sm:px-4 sm:py-5">
-                {links.map((link) => {
+                {sections.map((section) => (
+                <div key={section.title || "system"} className="pb-2">
+                    {section.title && !collapsed && <div className="hidden px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/60 md:block">{section.title}</div>}
+                    {collapsed && section.title && <div className="mx-auto my-1.5 h-px w-6 bg-border" aria-hidden />}
+                {section.links.map((link) => {
                     const Icon = link.icon;
-                    const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
-                    const showUnread = link.name === "Messages" && unreadMessages > 0;
+                    const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`)) || (link.activeFor ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
+                    const badge = link.badge ?? 0;
+                    const showUnread = badge > 0;
                     return (
                         <Link
                             key={link.name}
@@ -154,12 +165,14 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                             <span className={cn("hidden min-w-0 flex-1 truncate", collapsed ? "" : "md:inline")}>{link.name}</span>
                             {showUnread && !collapsed && (
                                 <span className="hidden shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white md:inline-block">
-                                    {unreadMessages > 99 ? "99+" : unreadMessages}
+                                    {badge > 99 ? "99+" : badge}
                                 </span>
                             )}
                         </Link>
                     );
                 })}
+                </div>
+                ))}
             </nav>
 
             <div className={cn("border-t border-border", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>

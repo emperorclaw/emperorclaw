@@ -202,6 +202,15 @@ def _string_list(value: Any) -> list[str]:
     return [str(item).strip() for item in (value or []) if str(item).strip()] if isinstance(value, list) else []
 
 
+def emperor_request_approval(args: Dict[str, Any], **_: Any) -> str:
+    task_id = str(args.get("taskId") or args.get("task_id") or "").strip()
+    rationale = str(args.get("rationale") or "").strip()
+    if not task_id or not rationale:
+        return _json({"error": "taskId and rationale are required"})
+    body = {"taskId": task_id, "rationale": rationale, "actionType": args.get("actionType") or "task_done", "requesterAgentId": _agent_ref()}
+    return _json(_request("POST", "/approvals", body=body))
+
+
 def emperor_list_groups(args: Dict[str, Any], **_: Any) -> str:
     query = {"mine": "1" if args.get("mine", True) else None, "agentId": _agent_ref()}
     return _json(_request("GET", "/groups", query={k: v for k, v in query.items() if v}))
@@ -745,6 +754,23 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Send Emperor message",
+    )
+    ctx.register_tool(
+        "emperor_request_approval",
+        TOOLSET,
+        _schema(
+            "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, customer messages), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins; the decision and note arrive in your direct chat. Approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason. Do not ask in chat instead, and do not act until it is approved.",
+            {
+                "taskId": {"type": "string"},
+                "rationale": {"type": "string", "description": "What exactly needs approval and why, with the evidence needed to decide"},
+                "actionType": {"type": "string", "description": "task_done (default), send_email, spend, publish, delete"},
+            },
+            ["taskId", "rationale"],
+        ),
+        emperor_request_approval,
+        check_fn=_available,
+        requires_env=requires,
+        description="Request Emperor approval",
     )
     ctx.register_tool(
         "emperor_list_groups",

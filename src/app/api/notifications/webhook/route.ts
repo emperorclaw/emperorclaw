@@ -8,7 +8,7 @@ import { detectWebhookFormat, NOTIFICATION_KINDS, type WebhookFormat } from "@/l
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_WEBHOOK_KINDS = ["decision", "approval", "agent_failed", "incident"];
+const DEFAULT_WEBHOOK_KINDS = ["decision", "approval", "agent_failed", "agent_down", "incident"];
 
 function hintFor(url: URL): string {
     return `${url.protocol}//${url.hostname}/…${url.pathname.slice(-4)}`;

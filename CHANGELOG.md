@@ -9,6 +9,55 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Today dashboard.** The dashboard now shows what needs you (approvals
+  waiting and how long, unread notifications, your open tasks, agents needing
+  attention, open incidents) and a card per agent and person: what they are
+  working on right now, what is waiting on a person, what is next (overdue
+  flagged), and what they finished today. Filter by agents, people, or your
+  own work.
+- **Daily review.** Each morning Emperor posts a review in every agent's
+  direct chat with its open tasks as live cards and asks it to move each one
+  forward, report blockers, and reply with a summary. Agents without open
+  tasks get nothing. Set the time, timezone, and weekdays in
+  **Settings → Routines**, or send it now. On by default at 09:00 UTC on
+  weekdays.
+- **Agents request approvals.** New MCP tool `request_approval`, Hermes tool
+  `emperor_request_approval`, and `POST /api/mcp/approvals` now accepts just a
+  `taskId` (the project is derived). The task waits in review until a person
+  decides.
+- **Agent down alerts.** An agent that stops checking in for 5 minutes is
+  marked offline; if it had open tasks or waiting messages, owners and admins
+  get an **Agent down** notification (bell, email, webhook).
+
+### Changed
+
+- **Approvals page.** Each request shows who asked, for what, how long ago, a
+  link to the task, and the rationale. Approve, or send back with a required
+  note; a recent-decisions list shows what was decided. The decision and note
+  are posted to the agent's direct chat.
+- **Approvals close correctly.** Approving `task_done` closes the task;
+  approving any other action (send an email, spend, publish) returns it to in
+  progress so the agent does it; rejecting returns it to in progress instead
+  of leaving it in review. Decisions are final, and requests are checked
+  against the company's own tasks.
+- **Simpler menu**, grouped into Work (Dashboard, Messages, Projects,
+  Approvals), Team (Agents, Customers), and Library. Approvals shows a pending
+  badge. Budgets moved into Agents, and Ops into Settings.
+- **Doctrine: working a request.** Agents are told to open a task for each
+  substantial request, keep its state true, request approval before
+  spending, sending outside the company, publishing, deleting, or sign-off
+  closes, and to work through the daily review. Update the Hermes plugin on
+  your runtimes to get the new tool and guide.
+- Failed and dead-letter tasks no longer count as open work in health.
+
+### Upgrade notes
+
+- Migration `0047` adds the routine settings to companies; it runs on start.
+
 ## [0.8.55] — 2026-10-04
 
 ### Added

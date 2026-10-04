@@ -5,6 +5,7 @@ import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
 import { GROUP_THREAD_TYPE, loadGroupMembers } from "@/lib/groups";
 import { agentStreaks, decideDelivery, type RouteDecision } from "@/lib/message-routing";
+import { touchAgentLiveness } from "@/lib/lifecycle";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest) {
             resolvedAgentId = UUID_RE.test(agentId) ? agentId : null;
         }
     }
+    // Polling is a sign of life: a runtime syncing is not down.
+    if (resolvedAgentId && UUID_RE.test(resolvedAgentId)) await touchAgentLiveness(companyId, resolvedAgentId);
     const scopeAgentId = resolvedAgentId && UUID_RE.test(resolvedAgentId) ? resolvedAgentId : null;
 
     const MAX_POLL_TIME_MS = 25000;

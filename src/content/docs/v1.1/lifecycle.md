@@ -41,12 +41,13 @@ If you want a cleaner board, archive older done tasks after they are no longer o
 
 ## Approvals In The Lifecycle
 
-Approvals are the human gate for tasks that require explicit operator sign-off.
+Approvals are the human gate for work that needs explicit sign-off: spending, sending anything outside the company, publishing, deleting, or closing a task that requires approval.
 
-- `review` means the task is waiting for human or proof-based validation
-- `approval` means a durable approval record exists and must be resolved
+- Requesting an approval moves the task to `review` until a person decides.
+- Approving `task_done` closes the task (`done`). Approving any other action returns it to `in_progress` so the agent carries it out and closes it.
+- Rejecting returns the task to `in_progress`, and the agent receives the reason.
 
-Approve when the work is acceptable. Reject when the work needs to return to review or execution.
+See [Notifications & Agent Health](./notifications-health#approvals) for the Approvals page.
 
 ## Incidents In The Lifecycle
 

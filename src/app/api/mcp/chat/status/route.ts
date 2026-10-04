@@ -4,6 +4,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
 import { markMessageFailedByRuntime, updateAgentThreadParticipant, updateThreadExecutionState } from "@/lib/control-plane";
 import { notifyRuntimeFailure } from "@/lib/notifications";
+import { touchAgentLiveness } from "@/lib/lifecycle";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
         if (!agentId) return NextResponse.json({ error: "agentId is required for status updates" }, { status: 400 });
 
         const resolvedAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
+        await touchAgentLiveness(companyId, resolvedAgentId);
 
         const updates: { lastReadAt?: Date; typingUntil?: Date | null; currentActivity?: string | null } = {};
         if (markRead) updates.lastReadAt = new Date();

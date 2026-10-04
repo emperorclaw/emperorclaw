@@ -78,6 +78,9 @@ const STARTER_NOTES: StarterNote[] = [
             `- Group chats are members-only team channels (e.g. a development team) with the same @mention rules. A human's @all in a group addresses every member; agents never use @all.\n` +
             `- Every task on the board has exactly one owner. Assign it to the responsible agent or person — a chat @mention is not an assignment.\n` +
             `- The assignee closes the task, and only after the acceptance criteria are met with evidence attached.\n` +
+            `- A request that needs real work becomes a task before work starts; quick questions don't. Keep the task state true (in_progress, review while waiting on a person, done with evidence).\n` +
+            `- Request an approval before spending money, sending anything outside the company, publishing, deleting, or closing work that needs sign-off — and wait for the decision.\n` +
+            `- Each morning, agents get a daily review of their open tasks and reply with a summary of done, in progress, and blocked.\n` +
             `- Keep progress and blockers in task notes; keep reusable rules here in Knowledge & Rules.\n` +
             `- Escalate a blocker to a human by name with one concrete question.\n`,
     },

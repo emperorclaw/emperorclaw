@@ -2,6 +2,9 @@ import { and, eq, gte, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, messageThreads, tasks, threadMessages, threadParticipants } from "@/db/schema";
 import { mentionedAgentIds } from "@/lib/message-routing";
+import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
+
+const OPEN_STATES = new Set<string>(SLA_TRACKED_TASK_STATES);
 
 /**
  * Agent health: is each agent actually doing its job? Computed on demand from
@@ -221,8 +224,9 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
     const health: AgentHealth[] = agentRows.map((a) => {
         const s = stats.get(a.id)!;
         const own = taskRows.filter((t) => t.assignedAgentId === a.id);
-        const openTasks = own.filter((t) => t.state !== "done").length;
-        const overdueTasks = own.filter((t) => t.state !== "done" && t.slaDueAt && t.slaDueAt.getTime() < now.getTime()).length;
+        const open = own.filter((t) => OPEN_STATES.has(t.state));
+        const openTasks = open.length;
+        const overdueTasks = open.filter((t) => t.slaDueAt && t.slaDueAt.getTime() < now.getTime()).length;
         const doneTasks = own.filter((t) => t.state === "done" && t.updatedAt.getTime() >= since.getTime()).length;
         const online = Boolean(a.lastSeenAt && now.getTime() - a.lastSeenAt.getTime() < OFFLINE_AFTER_MS);
         const { status, reasons } = scoreAgent({

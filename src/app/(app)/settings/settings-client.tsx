@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { UpdateSettingsTab } from "@/components/update-settings-tab";
 import MembersClient from "./members/members-client";
 import { NotificationSettingsTab } from "./notification-settings-tab";
+import { RoutineSettingsTab } from "./routine-settings-tab";
 
 type SettingsToken = {
     id: string;
@@ -22,7 +23,7 @@ type SettingsToken = {
     expiresAt: string;
 };
 
-type SettingsTab = "profile" | "notifications" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
+type SettingsTab = "profile" | "notifications" | "routines" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
 
 type Member = {
     id: string;
@@ -68,6 +69,7 @@ export default function SettingsClient({
     initialMembers,
     agents,
     customersData,
+    isPlatformAdmin = false,
 }: {
     initialTokens: SettingsToken[];
     companyRole: string;
@@ -78,6 +80,8 @@ export default function SettingsClient({
     initialMembers?: Member[];
     agents?: { id: string; name: string }[];
     customersData?: { id: string; name: string }[];
+    /** Ops (runtimes, errors, users across companies) lives here now, not in the main menu. */
+    isPlatformAdmin?: boolean;
 }) {
     const searchParams = useSearchParams();
     const [tokens, setTokens] = useState(initialTokens);
@@ -223,6 +227,7 @@ export default function SettingsClient({
                 {([
                     ["profile", "Profile"],
                     ["notifications", "Notifications"],
+                    ["routines", "Routines"],
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
                     ["updates", "Updates"],
@@ -242,6 +247,11 @@ export default function SettingsClient({
                         {label}
                     </button>
                 ))}
+                {isPlatformAdmin && (
+                    <Link href="/ops" className="rounded-xl px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-white/[0.045] hover:text-zinc-100">
+                        Ops ↗
+                    </Link>
+                )}
             </div>
 
             {activeTab === "profile" && (
@@ -255,6 +265,10 @@ export default function SettingsClient({
                     onLoad={loadProfile}
                     loaded={profileLoaded}
                 />
+            )}
+
+            {activeTab === "routines" && (
+                <RoutineSettingsTab isAdmin={instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin"} />
             )}
 
             {activeTab === "notifications" && (

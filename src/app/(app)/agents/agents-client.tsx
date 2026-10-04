@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { IconHeartbeat, IconLoader2, IconRobot, IconSearch } from "@tabler/icons-react";
+import { IconHeartbeat, IconLoader2, IconRobot, IconSearch, IconWallet } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
@@ -103,6 +103,13 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                         >
                             <IconHeartbeat className="h-4 w-4" />
                             Health
+                        </Link>
+                        <Link
+                            href="/budgets"
+                            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
+                        >
+                            <IconWallet className="h-4 w-4" />
+                            Budgets
                         </Link>
                         <EasySetupDialog onAgentCreated={handleAgentCreated} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
                         <CreateAgentDialog onAgentCreated={handleAgentCreated} open={advancedDialogOpen}

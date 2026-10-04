@@ -35,6 +35,7 @@ const KIND_ICON: Record<string, typeof IconBell> = {
     approval: IconRosetteDiscountCheck,
     task_assigned: IconUserCheck,
     agent_failed: IconAlertTriangle,
+    agent_down: IconAlertTriangle,
     incident: IconChecklist,
 };
 
@@ -157,7 +158,7 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
                             >
                                 <span className={cn(
                                     "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg",
-                                    item.kind === "agent_failed" || item.kind === "incident" ? "bg-rose-500/10 text-rose-300" : "bg-zinc-800 text-zinc-400",
+                                    item.kind === "agent_failed" || item.kind === "agent_down" || item.kind === "incident" ? "bg-rose-500/10 text-rose-300" : "bg-zinc-800 text-zinc-400",
                                 )}>
                                     <Icon className="h-4 w-4" />
                                 </span>

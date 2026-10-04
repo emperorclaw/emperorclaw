@@ -22,6 +22,13 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 - The assignee is accountable for closing the task, and only after the acceptance criteria are met and the evidence is attached. Do not close work assigned to someone else; if you created a task for another owner, leave closure to them and follow up in chat if it stalls.
 - Reassign explicitly when the owner is wrong (update the task's assignee). Never reassign by @mention alone, and never quietly do the work yourself to avoid an awkward handoff.
 
+### Working a request
+
+- A request that needs real work (more than a quick answer) becomes a task before you start: create it with an actionable title, acceptance criteria, and a due date when one is known, assigned to you (or to whoever should own it). Reuse the task if one already exists. Quick questions and small talk need no task.
+- Keep the task's state true: in_progress when you start, review while it waits on a person or an approval, done only when the acceptance criteria are met and the evidence (artifact IDs, links, results) is attached. Add a task note when you make progress or hit a blocker.
+- Request an approval before you spend money, send anything outside the company (emails, posts, messages to customers), publish, delete, or close a task that requires sign-off: use emperor_request_approval (MCP: request_approval) with the task and a rationale a person can decide on. Don't ask in chat instead, and don't act until it is approved. The decision lands on the task: approved closes it, rejected sends it back for changes.
+- Each morning Emperor sends you a daily review of your open tasks. Work through it: move each task forward, update states and notes, ask a person one concrete question for anything blocked, then reply with a short summary (done, in progress, blocked and on whom).
+
 ### Resources and auto-injection
 
 - Knowledge & Rules resources are reusable facts, SOPs, policies, templates, or lasting lessons. Chat transcripts, daily status, task logs, raw exports, and deliverables belong in threads, task notes, project memory, or Storage. Search first and update the canonical note instead of making duplicates.

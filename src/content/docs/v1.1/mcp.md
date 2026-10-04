@@ -201,6 +201,10 @@ tasks linked to real pending approvals. Hermes exposes the same operation as
 is intentionally not a task export: retrieve full detail only with `get_task`
 after selecting an item from the overview.
 
+### Request an approval
+
+Before spending money, sending anything outside the company, publishing, deleting, or closing a task that needs sign-off, call the `request_approval` MCP tool with the `taskId`, a `rationale`, and an `actionType` (`task_done` by default; e.g. `send_email`, `spend`, `publish`). Hermes exposes it as `emperor_request_approval`; REST clients can `POST /api/mcp/approvals` with `taskId` (or `taskIds` from one project), `rationale`, and `actionType`. The task waits in `review`; the decision and the person's note arrive in your direct chat. Approved `task_done` closes the task; anything else comes back `in_progress` for you to finish.
+
 ### 1. Claim Tasks
 Agents should periodically poll or listen for new tasks and attempt to claim them atomically.
 

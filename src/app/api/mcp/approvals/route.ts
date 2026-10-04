@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { createApprovalRequest, listApprovalsForCompany } from "@/lib/approvals";
+import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
+import { ApprovalRequestError, listApprovalsForCompany, requestApprovalForTasks } from "@/lib/approvals";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -32,34 +32,24 @@ export async function POST(req: NextRequest) {
     try {
         const companyId = auth.companyToken!.companyId;
         const body = await req.json();
-        const { projectId, taskIds, requesterAgentId, rationale, confidence = 0, actionType = "task_done" } = body;
+        const { taskIds, taskId, requesterAgentId, rationale, confidence = 0, actionType = "task_done" } = body;
 
-        if (!projectId || !Array.isArray(taskIds) || taskIds.length === 0) {
-            return NextResponse.json({ error: "projectId and taskIds are required" }, { status: 400 });
-        }
-
-        const resolvedRequesterAgentId = requesterAgentId
-            ? await resolveAgentId(companyId, requesterAgentId)
-            : null;
-
-        const approval = await createApprovalRequest({
+        // The token's bound agent is the requester; an operator token may name one.
+        const resolvedRequesterAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, requesterAgentId || null);
+        const approval = await requestApprovalForTasks({
             companyId,
-            projectId,
-            taskIds,
+            taskIds: Array.isArray(taskIds) ? taskIds : taskId ? [taskId] : [],
             requesterAgentId: resolvedRequesterAgentId,
-            rationale: rationale || null,
+            rationale,
             confidence,
             actionType,
-            metadataJson: {
-                createdBy: "mcp",
-            },
         });
 
         return NextResponse.json({ approval }, { status: 201 });
     } catch (error) {
         console.error("MCP approval create error:", error);
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        const status = message.startsWith("Agent not found") ? 404 : 500;
+        const status = error instanceof ApprovalRequestError ? error.status : message.startsWith("Agent not found") ? 404 : message.startsWith("Access denied") ? 403 : 500;
         return NextResponse.json({ error: message }, { status });
     }
 }

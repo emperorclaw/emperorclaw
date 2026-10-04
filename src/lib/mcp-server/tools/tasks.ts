@@ -3,8 +3,29 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listTasksForCompany, createTaskForProject, updateTaskForCompany, claimNextTaskForAgent, getTaskOverviewForCompany } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { jsonResult, errorResult } from "../result";
+import { requestApprovalForTasks } from "@/lib/approvals";
+import { resolveAgentId } from "@/lib/mcp";
 
-export function registerTaskTools(server: McpServer, companyId: string) {
+export function registerTaskTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+    server.registerTool("request_approval", {
+        title: "Request Approval",
+        description: "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, messages to customers), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins; the decision and the person's note arrive in your direct chat. Approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason. Don't ask in chat instead, and don't act until it is approved.",
+        inputSchema: {
+            taskId: z.string().describe("The task this approval is for"),
+            rationale: z.string().min(1).describe("What exactly needs approval and why, with the evidence a person needs to decide"),
+            actionType: z.string().optional().describe("e.g. task_done (default), send_email, spend, publish, delete"),
+            agentId: z.string().optional().describe("Requesting agent id or name (operator connections only)"),
+        },
+    }, async ({ taskId, rationale, actionType, agentId }) => {
+        try {
+            const requester = callerAgentId ?? (agentId ? await resolveAgentId(companyId, agentId) : null);
+            const approval = await requestApprovalForTasks({ companyId, taskIds: [taskId], requesterAgentId: requester, rationale, actionType });
+            return jsonResult({ approval, status: "pending", next: "Wait for the decision; check it with get_task." });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
     server.registerTool("get_task_overview", {
         title: "Get Task Overview",
         description: "Return a compact, server-side status summary: totals by state plus the highest-priority, blocked, and approval-required tasks. Use this first for status questions; use get_task only for a selected task's full detail.",

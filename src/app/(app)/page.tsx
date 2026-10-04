@@ -1,478 +1,270 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { and, count, desc, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm";
+import { IconAlertTriangle, IconArrowRight, IconBell, IconCircleCheck, IconHeartbeat, IconRosetteDiscountCheck, IconUserCheck } from "@tabler/icons-react";
 import { db } from "@/db";
-import { agents, tasks, incidents, users, companyMembers, threadMessages, projects, artifacts, scopedResources, pipelines, pipelineRuns, companies } from "@/db/schema";
-import { eq, and, sql, isNull, desc, gte } from "drizzle-orm";
-import { AgentTeamChat } from "@/components/agent-team-chat";
+import { agents, approvals, companies, companyMembers, incidents, notifications, projects, tasks, threadParticipants, users } from "@/db/schema";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { ACTIVE_TASK_STATES, TASK_STATES } from "@/lib/task-state";
-import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
+import { computeCompanyHealth, type HealthStatus } from "@/lib/agent-health";
+import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
-import { opsEvents } from "@/db/schema";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type WorkloadTask = {
-  id: string;
-  taskType: string;
+type WorkFilter = "all" | "mine" | "human" | "agent";
+
+type BoardTask = { id: string; projectId: string; title: string; state: string; dueAt: Date | null; projectName: string | null };
+type Worker = {
+    key: string;
+    kind: "agent" | "human";
+    id: string;
+    name: string;
+    subtitle: string | null;
+    avatarUrl: string | null;
+    status: HealthStatus | null;
+    activity: string | null;
+    working: BoardTask[];
+    waiting: BoardTask[];
+    next: BoardTask[];
+    doneToday: number;
+    href: string;
 };
 
-type RecentActivity = {
-  id: string;
-  kind: string;
-  actorLabel: string;
-  actor: string;
-  title: string;
-  detail: string;
-  time: Date;
-  tone: "default" | "good" | "warning" | "critical" | "info";
+const STATUS_STYLE: Record<HealthStatus, { label: string; className: string }> = {
+    down: { label: "Down", className: "bg-rose-500/12 text-rose-300 ring-rose-500/30" },
+    attention: { label: "Needs attention", className: "bg-amber-500/12 text-amber-200 ring-amber-500/30" },
+    healthy: { label: "Online", className: "bg-emerald-500/12 text-emerald-300 ring-emerald-500/25" },
+    idle: { label: "Idle", className: "bg-zinc-500/12 text-zinc-400 ring-zinc-500/25" },
 };
 
-type WorkFilter = "all" | "mine" | "human" | "agent" | "unassigned";
+function taskTitle(inputJson: unknown, taskType: string): string {
+    const input = inputJson && typeof inputJson === "object" ? inputJson as Record<string, unknown> : {};
+    return typeof input.title === "string" && input.title.trim() ? input.title.trim() : taskType;
+}
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ work?: string }>;
-}) {
-  const session = await getValidatedServerSession();
-  const requestedWorkFilter = (await searchParams).work;
-  const workFilter: WorkFilter = ["mine", "human", "agent", "unassigned"].includes(requestedWorkFilter || "")
-    ? requestedWorkFilter as WorkFilter
-    : "all";
-  const companyId = await getCompanyId();
-  if (!companyId) {
-    // A fresh self-hosted install has no company yet. Send the operator to
-    // account creation instead of a login form no account can satisfy.
-    const [companyCount] = await db
-      .select({ count: sql<number>`COUNT(*)::int` })
-      .from(companies)
-      .where(isNull(companies.deletedAt));
-    redirect((companyCount?.count ?? 0) === 0 ? "/signup" : "/login");
-  }
+function ago(date: Date): string {
+    const minutes = Math.round((Date.now() - date.getTime()) / 60_000);
+    if (minutes < 60) return `${Math.max(1, minutes)}m`;
+    if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
+    return `${Math.round(minutes / 1440)}d`;
+}
 
-  const [currentUser] = session?.user?.id
-    ? await db.select({
-      onboardingCompletedAt: users.onboardingCompletedAt,
-      onboardingDismissedAt: users.onboardingDismissedAt,
-    }).from(users).where(eq(users.id, session.user.id)).limit(1)
-    : [];
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ work?: string }> }) {
+    const session = await getValidatedServerSession();
+    const requested = (await searchParams).work;
+    const workFilter: WorkFilter = ["mine", "human", "agent"].includes(requested || "") ? requested as WorkFilter : "all";
+    const companyId = await getCompanyId();
+    if (!companyId) {
+        // A fresh self-hosted install has no company yet. Send the operator to
+        // account creation instead of a login form no account can satisfy.
+        const [companyCount] = await db.select({ count: sql<number>`COUNT(*)::int` }).from(companies).where(isNull(companies.deletedAt));
+        redirect((companyCount?.count ?? 0) === 0 ? "/signup" : "/login");
+    }
+    const userId = session?.user?.id ?? null;
+    const now = new Date();
+    const dayAgo = new Date(now.getTime() - 86_400_000);
 
-  const members = await db.select({
-    id: companyMembers.id,
-    userId: users.id,
-    displayName: users.displayName,
-    email: users.email,
-  }).from(companyMembers)
-    .innerJoin(users, eq(users.id, companyMembers.userId))
-    .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt)));
-  const currentMemberId = members.find((member) => member.userId === session?.user?.id)?.id || null;
-  const memberNameById = new Map(members.map((member) => [
-    member.id,
-    member.displayName || member.email,
-  ]));
+    const [[currentUser], members, agentRows, openTasks, doneRecently, pendingApprovals, [myUnread], [openIncidents], typing, health, projectRows] = await Promise.all([
+        userId
+            ? db.select({ onboardingCompletedAt: users.onboardingCompletedAt, onboardingDismissedAt: users.onboardingDismissedAt }).from(users).where(eq(users.id, userId)).limit(1)
+            : Promise.resolve([]),
+        db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email, roleTitle: users.roleTitle })
+            .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
+            .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
+        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl }).from(agents)
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
+        db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
+            .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt)))
+            .orderBy(desc(tasks.priority), tasks.createdAt),
+        db.select({ id: tasks.id, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
+            .from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt)))
+            .orderBy(desc(tasks.updatedAt)).limit(50),
+        db.select({ id: approvals.id, requestedAt: approvals.requestedAt }).from(approvals)
+            .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending"))).orderBy(approvals.requestedAt),
+        userId
+            ? db.select({ value: count() }).from(notifications).where(and(eq(notifications.companyId, companyId), eq(notifications.userId, userId), isNull(notifications.readAt))).catch(() => [{ value: 0 }])
+            : Promise.resolve([{ value: 0 }]),
+        db.select({ value: count() }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt))),
+        db.select({ agentId: threadParticipants.participantId, activity: threadParticipants.currentActivity }).from(threadParticipants)
+            .where(and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), gt(threadParticipants.typingUntil, now))),
+        computeCompanyHealth(companyId, { now }),
+        db.select({ id: projects.id, goal: projects.goal }).from(projects).where(eq(projects.companyId, companyId)),
+    ]);
 
-  // 1. Top Level KPIs
-  const [{ count: totalAgents }] = await db.select({ count: sql<number>`count(*)` }).from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-  const dashboardTasks = await db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt)));
-  const filteredWorkTasks = dashboardTasks.filter((task) => {
-    if (workFilter === "mine") return Boolean(currentMemberId && task.assignedMemberId === currentMemberId);
-    if (workFilter === "human") return Boolean(task.assignedMemberId);
-    if (workFilter === "agent") return Boolean(task.assignedAgentId);
-    if (workFilter === "unassigned") return !task.assignedMemberId && !task.assignedAgentId;
-    return true;
-  });
-  const queuedTasks = filteredWorkTasks.filter((task) => task.state === TASK_STATES.inbox).length;
-  const needsReview = filteredWorkTasks.filter((task) => task.state === TASK_STATES.review).length;
-  const myOpenTasks = currentMemberId
-    ? dashboardTasks.filter((task) => task.assignedMemberId === currentMemberId && task.state !== TASK_STATES.done && task.state !== TASK_STATES.failed && task.state !== TASK_STATES.deadLetter).length
-    : 0;
-  const [{ count: openIncidents }] = await db.select({ count: sql<number>`count(*)` }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, 'open'), isNull(incidents.deletedAt)));
-  const [{ count: recentErrors }] = await db.select({ count: sql<number>`count(*)` }).from(opsEvents).where(and(
-    eq(opsEvents.companyId, companyId),
-    eq(opsEvents.level, "error"),
-    gte(opsEvents.createdAt, sql`now() - interval '24 hours'`),
-  ));
+    const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
+    const healthById = new Map(health.agents.map((a) => [a.id, a]));
+    const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, t.activity || "working…"]));
+    const currentMemberId = members.find((m) => m.userId === userId)?.id ?? null;
+    const toBoardTask = (t: (typeof openTasks)[number]): BoardTask => ({ id: t.id, projectId: t.projectId, title: taskTitle(t.inputJson, t.taskType), state: t.state, dueAt: t.slaDueAt, projectName: projectName.get(t.projectId) ?? null });
 
-  // 2. Workforce Health / Agent Load
-  const allAgents = await db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
-  const activeTasks = dashboardTasks.filter((task) => (ACTIVE_TASK_STATES as readonly string[]).includes(task.state));
-  const agentNameById = new Map(allAgents.map(agent => [agent.id, agent.name]));
-
-  // 3. Recent Activity
-  const [
-    recentMessages,
-    recentTasks,
-    recentProjects,
-    recentAgents,
-    recentArtifacts,
-    recentResources,
-    recentIncidents,
-    activePipelines,
-    recentPipelineRuns,
-  ] = await Promise.all([
-    db.select().from(threadMessages).where(eq(threadMessages.companyId, companyId)).orderBy(desc(threadMessages.createdAt)).limit(8),
-    db.select().from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt))).orderBy(desc(tasks.updatedAt)).limit(50),
-    db.select().from(projects).where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt))).orderBy(desc(projects.updatedAt)).limit(4),
-    db.select().from(agents).where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))).orderBy(desc(agents.createdAt)).limit(4),
-    db.select().from(artifacts).where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt))).orderBy(desc(artifacts.createdAt)).limit(4),
-    db.select().from(scopedResources).where(and(eq(scopedResources.companyId, companyId), isNull(scopedResources.deletedAt))).orderBy(desc(scopedResources.createdAt)).limit(4),
-    db.select().from(incidents).where(and(eq(incidents.companyId, companyId), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(4),
-    db.select().from(pipelines).where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt))).orderBy(desc(pipelines.updatedAt)).limit(20),
-    db.select().from(pipelineRuns).where(eq(pipelineRuns.companyId, companyId)).orderBy(desc(pipelineRuns.startedAt)).limit(6),
-  ]);
-
-  const pipelineNameById = new Map(activePipelines.map(pipeline => [pipeline.id, pipeline.name]));
-
-  const recentActivities: RecentActivity[] = [
-    ...recentMessages.map((message): RecentActivity => {
-      const senderName = message.senderType === "agent" && message.senderId
-        ? agentNameById.get(message.senderId) || "Agent"
-        : message.senderType === "human" ? "Human" : "System";
-      return {
-        id: `message-${message.id}`,
-        kind: "Message",
-        actorLabel: "From",
-        actor: senderName,
-        title: "Message sent",
-        detail: truncate(message.text, 120),
-        time: message.createdAt,
-        tone: message.senderType === "human" ? "info" : "default",
-      };
-    }),
-    ...recentTasks.filter((task) => filteredWorkTasks.some((candidate) => candidate.id === task.id)).slice(0, 6).map((task): RecentActivity => ({
-      id: `task-${task.id}`,
-      kind: "Task",
-      actorLabel: "Owner",
-      actor: task.assignedMemberId
-        ? memberNameById.get(task.assignedMemberId) || "Assigned person"
-        : task.assignedAgentId
-          ? agentNameById.get(task.assignedAgentId) || "Assigned agent"
-          : "Unassigned",
-      title: `Task ${task.state}`,
-      detail: `${task.taskType} · TASK-${task.id.substring(0, 8)}`,
-      time: task.updatedAt,
-      tone: task.state === TASK_STATES.review ? "warning" : task.state === TASK_STATES.done ? "good" : "default",
-    })),
-    ...recentProjects.map((project): RecentActivity => ({
-      id: `project-${project.id}`,
-      kind: "Project",
-      actorLabel: "Lead",
-      actor: project.leadAgentId ? agentNameById.get(project.leadAgentId) || "Lead agent" : "No lead",
-      title: `Project ${project.status}`,
-      detail: truncate(project.goal, 120),
-      time: project.updatedAt,
-      tone: project.status === "active" ? "info" : project.status === "completed" ? "good" : "default",
-    })),
-    ...recentAgents.map((agent): RecentActivity => ({
-      id: `agent-${agent.id}`,
-      kind: "Agent",
-      actorLabel: "Agent",
-      actor: agent.name,
-      title: `${agent.name} registered`,
-      detail: agent.role || "operator",
-      time: agent.createdAt,
-      tone: agent.status === "online" ? "good" : "default",
-    })),
-    ...recentArtifacts.map((artifact): RecentActivity => ({
-      id: `artifact-${artifact.id}`,
-      kind: "Storage",
-      actorLabel: "Added by",
-      actor: artifact.agentId ? agentNameById.get(artifact.agentId) || "Agent" : artifact.createdByType || "System",
-      title: artifact.title || artifact.originalFilename || "Storage item added",
-      detail: artifact.path || `${artifact.kind} · ${artifact.contentType}`,
-      time: artifact.createdAt,
-      tone: "info",
-    })),
-    ...recentResources.map((resource): RecentActivity => ({
-      id: `resource-${resource.id}`,
-      kind: "Rules",
-      actorLabel: "Scope",
-      actor: resource.scopeType === "agent" && resource.scopeId ? agentNameById.get(resource.scopeId) || "Agent" : "System",
-      title: resource.displayName || resource.name,
-      detail: `${resource.scopeType} · ${resource.resourceType}`,
-      time: resource.createdAt,
-      tone: "default",
-    })),
-    ...recentPipelineRuns.map((run): RecentActivity => ({
-      id: `pipeline-run-${run.id}`,
-      kind: "Pipeline",
-      actorLabel: "Run by",
-      actor: run.agentId ? agentNameById.get(run.agentId) || "Agent" : "Runtime",
-      title: `${pipelineNameById.get(run.pipelineId) || "Pipeline"} ${run.status}`,
-      detail: truncate(run.summary, 120) || `run ${run.id.substring(0, 8)}`,
-      time: run.startedAt,
-      tone: run.status === "succeeded" ? "good" : run.status === "failed" ? "critical" : run.status === "partial" ? "warning" : "info",
-    })),
-    ...recentIncidents.map((incident): RecentActivity => ({
-      id: `incident-${incident.id}`,
-      kind: "Attention",
-      actorLabel: "Source",
-      actor: "Watchdog",
-      title: incident.summary,
-      detail: `${incident.severity} - ${incident.status}`,
-      time: incident.createdAt,
-      tone: incident.status === "resolved" ? "default" : incident.severity === "high" ? "critical" : "warning",
-    })),
-  ]
-    .sort((a, b) => b.time.getTime() - a.time.getTime())
-    .slice(0, 8);
-
-  const agentWorkload = allAgents.map(agent => {
-    const assignedTasks = activeTasks.filter(t => t.assignedAgentId === agent.id && t.state === TASK_STATES.inProgress);
-    const assignedReview = activeTasks.filter(t => t.assignedAgentId === agent.id && t.state === TASK_STATES.review);
-    const loadPercent = agent.concurrencyLimit > 0
-      ? Math.round((assignedTasks.length / agent.concurrencyLimit) * 100)
-      : 0;
-
-    return {
-      id: agent.id,
-      name: agent.name,
-      avatarUrl: agent.avatarUrl,
-      online: agent.status === 'online',
-      load: Math.min(loadPercent, 100),
-      workingOn: assignedTasks.map(({ id, taskType }) => ({ id, taskType })),
-      reviewing: assignedReview.map(({ id, taskType }) => ({ id, taskType }))
+    const workers: Worker[] = [];
+    const build = (mine: (t: { assignedAgentId: string | null; assignedMemberId: string | null }) => boolean): Pick<Worker, "working" | "waiting" | "next" | "doneToday"> => {
+        const own = openTasks.filter(mine);
+        return {
+            working: own.filter((t) => t.state === TASK_STATES.inProgress).map(toBoardTask),
+            waiting: own.filter((t) => t.state === TASK_STATES.review).map(toBoardTask),
+            next: own.filter((t) => t.state === TASK_STATES.inbox).slice(0, 3).map(toBoardTask),
+            doneToday: doneRecently.filter(mine).length,
+        };
     };
-  });
+    if (workFilter === "all" || workFilter === "agent") {
+        for (const a of agentRows) {
+            const h = healthById.get(a.id);
+            workers.push({
+                key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, subtitle: a.role, avatarUrl: a.avatarUrl,
+                status: h?.status ?? null, activity: activityByAgent.get(a.id) ?? null, href: `/agents/${a.id}`,
+                ...build((t) => t.assignedAgentId === a.id),
+            });
+        }
+    }
+    if (workFilter !== "agent") {
+        for (const m of members) {
+            if (workFilter === "mine" && m.id !== currentMemberId) continue;
+            workers.push({
+                key: `human:${m.id}`, kind: "human", id: m.id, name: m.displayName || m.email, subtitle: m.roleTitle, avatarUrl: null,
+                status: null, activity: null, href: `/projects?assignee=human:${m.id}`,
+                ...build((t) => t.assignedMemberId === m.id),
+            });
+        }
+    }
+    // Busy first; people and agents with nothing open stay out of the way.
+    const rank = (w: Worker) => (w.status === "down" ? 0 : w.status === "attention" ? 1 : 2) * 1000 - (w.working.length * 3 + w.waiting.length * 2 + w.next.length);
+    const active = workers.filter((w) => w.working.length + w.waiting.length + w.next.length + w.doneToday > 0 || w.status === "down" || w.status === "attention" || w.activity).sort((a, b) => rank(a) - rank(b));
+    const quiet = workers.filter((w) => !active.includes(w));
 
-  // 4. Agent Team Thread Feed
-  const teamThread = await ensureTeamThread(companyId);
-  const teamMessages = await getThreadMessages(companyId, teamThread.id, 50);
+    const myTasks = currentMemberId ? openTasks.filter((t) => t.assignedMemberId === currentMemberId).length : 0;
+    const agentsNeedingAttention = health.agents.filter((a) => a.status === "down" || a.status === "attention").length;
+    const oldestApproval = pendingApprovals[0]?.requestedAt ?? null;
+    const workerName = (t: { assignedAgentId: string | null; assignedMemberId: string | null }) =>
+        t.assignedAgentId ? agentRows.find((a) => a.id === t.assignedAgentId)?.name : t.assignedMemberId ? members.find((m) => m.id === t.assignedMemberId)?.displayName : null;
 
-  return (
-    <div className="mx-auto max-w-[1800px] space-y-8 animate-in fade-in duration-500">
-      <PageHeader
-        eyebrow="Dashboard"
-        title="Overview"
-        description="Your people, agents, recent work, and team communication — all in one place."
-      />
+    return (
+        <div className="mx-auto max-w-[1600px] space-y-6 animate-in fade-in duration-500">
+            <PageHeader eyebrow="Dashboard" title="Today" description="What needs you, and what every agent and person is working on right now." />
 
-      {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
-        <OnboardingTour hasExistingAgents={allAgents.length > 0} />
-      )}
+            {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
+                <OnboardingTour hasExistingAgents={agentRows.length > 0} />
+            )}
 
-      <nav aria-label="Dashboard work filter" className="flex flex-wrap items-center gap-2">
-        {([
-          ["all", "All work"],
-          ["mine", "My work"],
-          ["human", "People"],
-          ["agent", "Agents"],
-          ["unassigned", "Unassigned"],
-        ] as const).map(([value, label]) => (
-          <Link
-            key={value}
-            href={value === "all" ? "/" : `/?work=${value}`}
-            aria-current={workFilter === value ? "page" : undefined}
-            className={`inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${workFilter === value ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"}`}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+            <section aria-label="Needs you" className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-5">
+                <NeedCard href="/approvals" icon={IconRosetteDiscountCheck} label="Approvals waiting" value={pendingApprovals.length} hint={oldestApproval ? `oldest ${ago(oldestApproval)} ago` : "nothing waiting"} alert={pendingApprovals.length > 0} />
+                <NeedCard href="/messages" icon={IconBell} label="Unread for you" value={Number(myUnread?.value) || 0} hint="mentions, decisions, alerts" alert={(Number(myUnread?.value) || 0) > 0} />
+                <NeedCard href={currentMemberId ? `/projects?assignee=human:${currentMemberId}` : "/projects"} icon={IconUserCheck} label="Your open tasks" value={myTasks} hint="assigned to you" />
+                <NeedCard href="/agents/health" icon={IconHeartbeat} label="Agents needing attention" value={agentsNeedingAttention} hint={health.totals.unanswered ? `${health.totals.unanswered} unanswered message${health.totals.unanswered === 1 ? "" : "s"}` : "all answering"} alert={agentsNeedingAttention > 0} />
+                <NeedCard href="/projects?attention=1" icon={IconAlertTriangle} label="Open incidents" value={Number(openIncidents?.value) || 0} hint="failed tasks & SLA breaches" alert={(Number(openIncidents?.value) || 0) > 0} />
+            </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-        <KpiCard title="Total Agents" value={totalAgents.toString()} trend="Live" trendLabel="registered" />
-        <KpiCard title="My work" value={myOpenTasks.toString()} trend="Live" trendLabel="assigned to you" href={currentMemberId ? `/projects?assignee=human:${currentMemberId}` : "/projects"} />
-        <KpiCard title="To do" value={queuedTasks.toString()} trend="Scope" trendLabel="in current filter" href={projectsAssigneeHref(workFilter, currentMemberId)} />
-        <KpiCard title="Needs review" value={needsReview.toString()} trend="Scope" trendLabel="in current filter" alert={needsReview > 0} href={`${projectsAssigneeHref(workFilter, currentMemberId)}${projectsAssigneeHref(workFilter, currentMemberId).includes("?") ? "&" : "?"}attention=1`} />
-        <KpiCard title="Open issues" value={openIncidents.toString()} trend="Live" trendLabel="failed tasks & SLA breaches" alert={openIncidents > 0} good={openIncidents === 0} href="/projects?attention=1" />
-        <KpiCard title="System errors" value={recentErrors.toString()} trend="24h" trendLabel="platform errors" alert={recentErrors > 0} good={recentErrors === 0} href="/ops/errors" />
-      </div>
+            <nav aria-label="Dashboard work filter" className="flex flex-wrap items-center gap-2">
+                {([["all", "Everyone"], ["agent", "Agents"], ["human", "People"], ["mine", "My work"]] as const).map(([value, label]) => (
+                    <Link key={value} href={value === "all" ? "/" : `/?work=${value}`} aria-current={workFilter === value ? "page" : undefined}
+                        className={cn("inline-flex min-h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                            workFilter === value ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200")}>
+                        {label}
+                    </Link>
+                ))}
+            </nav>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
-        <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-lg font-medium text-zinc-200">Recent Activity</h2>
-          <div className="emperor-panel overflow-hidden rounded-2xl">
-            <div className="divide-y divide-zinc-800/50">
-              {recentActivities.length === 0 ? (
-                <div className="p-4 text-sm text-zinc-500 text-center">No recent activity yet.</div>
-              ) : (
-                recentActivities.map(activity => (
-                  <ActivityRow
-                    key={activity.id}
-                    kind={activity.kind}
-                    actorLabel={activity.actorLabel}
-                    actor={activity.actor}
-                    title={activity.title}
-                    detail={activity.detail}
-                    time={activity.time}
-                    tone={activity.tone}
-                  />
-                ))
-              )}
+            <section aria-label="Team board" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                {active.map((w) => <WorkerCard key={w.key} worker={w} now={now} />)}
+                {active.length === 0 && (
+                    <div className="emperor-panel col-span-full rounded-2xl p-10 text-center text-sm text-zinc-500">
+                        Nobody has open work right now. Ask an agent for something in <Link href="/messages" className="text-cyan-300 hover:text-cyan-200">Messages</Link>, or plan work in <Link href="/projects" className="text-cyan-300 hover:text-cyan-200">Projects</Link>.
+                    </div>
+                )}
+            </section>
+            {quiet.length > 0 && (
+                <p className="text-xs text-zinc-600">
+                    No open work: {quiet.map((w, i) => <span key={w.key}>{i ? ", " : ""}<Link href={w.href} className="hover:text-zinc-300">{w.name}</Link></span>)}
+                </p>
+            )}
+
+            {doneRecently.length > 0 && (
+                <section className="emperor-panel rounded-2xl p-4">
+                    <h2 className="mb-1 flex items-center gap-2 px-1 text-sm font-semibold text-zinc-200"><IconCircleCheck className="h-4 w-4 text-emerald-400" />Done in the last 24 hours</h2>
+                    <ul className="divide-y divide-zinc-800/70">
+                        {doneRecently.slice(0, 12).map((t) => (
+                            <li key={t.id}>
+                                <Link href={`/projects?project=${t.projectId}&task=${t.id}`} className="flex items-center gap-3 rounded-lg px-1 py-2 hover:bg-zinc-900">
+                                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-300">{taskTitle(t.inputJson, t.taskType)}</span>
+                                    <span className="shrink-0 text-xs text-zinc-500">{workerName(t) ?? "—"}</span>
+                                    <span className="w-10 shrink-0 text-right text-[11px] text-zinc-600">{ago(t.updatedAt)}</span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
+        </div>
+    );
+}
+
+function NeedCard({ href, icon: Icon, label, value, hint, alert }: { href: string; icon: typeof IconBell; label: string; value: number; hint: string; alert?: boolean }) {
+    return (
+        <Link href={href} className={cn("emperor-panel group rounded-2xl p-3.5 transition-colors hover:border-zinc-600 sm:p-4", alert && "border-amber-500/30")}>
+            <div className="flex items-center justify-between gap-2">
+                <span className="line-clamp-2 text-[11px] font-medium uppercase leading-tight tracking-wider text-zinc-500">{label}</span>
+                <Icon className={cn("h-4 w-4 shrink-0", alert ? "text-amber-300" : "text-zinc-600")} />
             </div>
-          </div>
-        </div>
+            <div className={cn("mt-1 text-2xl font-semibold tabular-nums", alert ? "text-amber-100" : "text-zinc-100")}>{value}</div>
+            <div className="mt-0.5 truncate text-xs text-zinc-500">{hint}</div>
+        </Link>
+    );
+}
 
-        <div className="space-y-4">
-          <h2 className="text-lg font-medium text-zinc-200">Agent status</h2>
-          <div className="emperor-panel max-h-72 sm:max-h-[400px] space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5">
-            {agentWorkload.length === 0 ? (
-              <div className="text-sm text-zinc-500 text-center">No agents registered.</div>
-            ) : (
-              agentWorkload.map(aw => (
-                <HealthItem
-                  key={aw.id}
-                  id={aw.id}
-                  name={aw.name}
-                  avatarUrl={aw.avatarUrl}
-                  load={aw.load}
-                  online={aw.online}
-                  warning={aw.load >= 90}
-                  workingOn={aw.workingOn}
-                />
-              ))
-            )}
-          </div>
+function TaskLine({ task, now, tone }: { task: BoardTask; now: Date; tone: "working" | "waiting" | "next" }) {
+    const overdue = task.dueAt && task.dueAt.getTime() < now.getTime();
+    return (
+        <li>
+            <Link href={`/projects?project=${task.projectId}&task=${task.id}`} className="group flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-zinc-900">
+                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone === "working" ? "bg-cyan-400" : tone === "waiting" ? "bg-amber-400" : "bg-zinc-600")} />
+                <span className="min-w-0 flex-1 truncate text-sm text-zinc-300 group-hover:text-zinc-100">{task.title}</span>
+                {overdue && <span className="shrink-0 rounded bg-rose-500/15 px-1.5 text-[10px] font-medium text-rose-300">overdue</span>}
+            </Link>
+        </li>
+    );
+}
 
-          <h2 className="text-lg font-medium text-zinc-200">Automations</h2>
-          <div className="emperor-panel space-y-3 rounded-2xl p-4 sm:p-5">
-            {activePipelines.length === 0 ? (
-              <div className="text-sm text-zinc-500">
-                No automations yet. Agents set these up from their own runtimes.
-              </div>
-            ) : (
-              activePipelines.slice(0, 5).map(pipeline => (
-                <div key={pipeline.id} className="flex items-center gap-2 text-sm">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pipeline.status === "active" ? "bg-emerald-400" : pipeline.status === "paused" ? "bg-amber-400" : "bg-zinc-600"}`} />
-                  <span className="text-zinc-200 truncate flex-1">{pipeline.name}</span>
-                  {pipeline.lastRunStatus && (
-                    <span className={`text-xs ${pipeline.lastRunStatus === "succeeded" ? "text-emerald-400" : pipeline.lastRunStatus === "failed" ? "text-red-400" : "text-zinc-500"}`}>
-                      {pipeline.lastRunStatus}
-                    </span>
-                  )}
-                  <span className="text-xs text-zinc-600">{pipeline.runCount} runs</span>
+function WorkerCard({ worker, now }: { worker: Worker; now: Date }) {
+    const status = worker.status ? STATUS_STYLE[worker.status] : null;
+    return (
+        <article className="emperor-panel flex min-w-0 flex-col gap-3 rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+                {worker.kind === "agent" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={worker.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(worker.id)}`} alt="" className="h-9 w-9 shrink-0 rounded-xl border border-zinc-800 bg-zinc-900 object-cover" />
+                ) : (
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-zinc-800 bg-zinc-900 text-sm font-semibold text-zinc-400">{worker.name.slice(0, 1).toUpperCase()}</span>
+                )}
+                <div className="min-w-0 flex-1">
+                    <Link href={worker.href} className="block truncate text-sm font-semibold text-zinc-100 hover:text-white">{worker.name}</Link>
+                    <div className="truncate text-xs text-zinc-500">{worker.activity ? <span className="text-cyan-300">{worker.activity}</span> : worker.subtitle || (worker.kind === "human" ? "Person" : "Agent")}</div>
                 </div>
-              ))
+                {status && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", status.className)}>{status.label}</span>}
+            </div>
+            {worker.working.length > 0 && (
+                <div>
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Working on</div>
+                    <ul>{worker.working.map((t) => <TaskLine key={t.id} task={t} now={now} tone="working" />)}</ul>
+                </div>
             )}
-            <Link href="/pipelines" className="block pt-1 text-xs font-medium text-cyan-300 transition-colors hover:text-cyan-200">
-              View all pipelines →
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 pt-4 pb-12">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-zinc-200">Team Channel</h2>
-            <Link href="/messages" className="text-xs font-medium text-cyan-300 transition-colors hover:text-cyan-200">
-              Open full channel →
-            </Link>
-          </div>
-          <div className="emperor-panel h-[360px] sm:h-[480px] overflow-hidden rounded-2xl">
-            <AgentTeamChat initialMessages={teamMessages} agents={allAgents} sendable={true} teamThreadId={teamThread.id} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function KpiCard({ title, value, trend, trendLabel, alert, good, href }: { title: string, value: string, trend: string, trendLabel: string, alert?: boolean, good?: boolean, href?: string }) {
-  const card = (
-    <div className={`emperor-panel group relative flex h-28 sm:h-36 flex-col justify-between overflow-hidden rounded-2xl p-3.5 sm:p-5 transition-colors ${href ? 'cursor-pointer hover:border-cyan-400/30' : 'hover:border-zinc-700/80'}`}>
-      {alert && <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-bl-full blur-xl" />}
-      {good && <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-500/10 rounded-bl-full blur-xl" />}
-      <div className="text-xs sm:text-sm font-medium text-zinc-500 truncate">{title}</div>
-      <div>
-        <div className="text-2xl sm:text-3xl font-semibold text-zinc-100 mt-1 sm:mt-2">{value}</div>
-        <div className="text-[10px] sm:text-xs mt-1.5 sm:mt-2 flex items-center space-x-1">
-          <span className={alert ? "text-red-400" : good ? "text-cyan-400" : "text-zinc-300"}>{trend}</span>
-          <span className="text-zinc-600 truncate">{trendLabel}</span>
-          {href && <span className="text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1">→</span>}
-        </div>
-      </div>
-    </div>
-  );
-  if (href) return <Link href={href}>{card}</Link>;
-  return card;
-}
-
-function truncate(value: string | null | undefined, maxLength: number) {
-  const text = (value || "").trim();
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trim()}...`;
-}
-
-function projectsAssigneeHref(workFilter: WorkFilter, currentMemberId: string | null) {
-  const assignee = workFilter === "mine"
-    ? currentMemberId ? `human:${currentMemberId}` : null
-    : workFilter === "human" || workFilter === "agent" || workFilter === "unassigned"
-      ? workFilter
-      : null;
-  return assignee ? `/projects?assignee=${encodeURIComponent(assignee)}` : "/projects";
-}
-
-function ActivityRow({ kind, actorLabel, actor, title, detail, time, tone }: { kind: string, actorLabel: string, actor: string, title: string, detail: string, time: Date, tone: RecentActivity["tone"] }) {
-  const colors = {
-    default: "bg-zinc-500/15 text-zinc-300 border-zinc-500/20",
-    good: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
-    warning: "bg-amber-500/15 text-amber-300 border-amber-500/25",
-    critical: "bg-red-500/15 text-red-300 border-red-500/25",
-    info: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
-  }[tone];
-
-  return (
-    <div className="p-3 sm:p-4 flex items-start justify-between gap-3 sm:gap-4 hover:bg-zinc-800/30 transition-colors group">
-      <div className="min-w-0 flex items-start space-x-3 sm:space-x-4">
-        <div className={`shrink-0 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 sm:px-2 py-0.5 rounded border ${colors}`}>
-          {kind}
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100 transition-colors truncate">{title}</div>
-          <div className="text-xs text-zinc-500 mt-0.5 sm:mt-1 truncate">{actorLabel}: {actor}</div>
-          {detail && <div className="text-xs text-zinc-500 mt-0.5 sm:mt-1 line-clamp-2">{detail}</div>}
-        </div>
-      </div>
-      <div className="shrink-0 text-[10px] sm:text-xs text-zinc-500 whitespace-nowrap pt-0.5">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-    </div>
-  );
-}
-
-function HealthItem({ id, name, avatarUrl, load, online, warning, workingOn }: { id: string, name: string, avatarUrl: string | null, load: number, online: boolean, warning?: boolean, workingOn?: WorkloadTask[] }) {
-  return (
-    <div className="flex flex-col space-y-2">
-      <div className="flex justify-between items-center text-sm">
-        <div className="flex items-center space-x-2">
-          <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-800">
-            <img 
-               src={avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(id || name)}`} 
-               className="w-full h-full object-cover"
-               alt=""
-            />
-          </div>
-          <div className={`w-1.5 h-1.5 rounded-full ${online ? (warning ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-zinc-600'}`} />
-          <span className="font-medium text-zinc-300">{name}</span>
-        </div>
-        <span className="text-zinc-500 tracking-tight font-mono text-xs">{load}% load</span>
-      </div>
-      <div className="h-1.5 w-full bg-zinc-800/80 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-1000 ${!online ? 'bg-zinc-700' : warning ? 'bg-amber-500' : 'bg-cyan-500'}`}
-          style={{ width: `${load}%` }}
-        />
-      </div>
-
-      <div className="pt-1">
-        {workingOn && workingOn.length > 0 ? (
-          <div className="space-y-1">
-            {workingOn.map((t) => (
-              <div key={t.id} className="text-[10px] font-mono text-zinc-500 flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/50 animate-pulse" />
-                <span className="truncate">Working on: TASK-{t.id.substring(0, 8)} ({t.taskType})</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-[10px] font-mono text-zinc-600 flex items-center space-x-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
-            <span>Idle / Available</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+            {worker.waiting.length > 0 && (
+                <div>
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Waiting on a person</div>
+                    <ul>{worker.waiting.map((t) => <TaskLine key={t.id} task={t} now={now} tone="waiting" />)}</ul>
+                </div>
+            )}
+            {worker.next.length > 0 && (
+                <div>
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Next up</div>
+                    <ul>{worker.next.map((t) => <TaskLine key={t.id} task={t} now={now} tone="next" />)}</ul>
+                </div>
+            )}
+            <div className="mt-auto flex items-center justify-between border-t border-zinc-800/80 pt-2.5 text-xs text-zinc-500">
+                <span><span className="tabular-nums text-zinc-300">{worker.doneToday}</span> done today</span>
+                <Link href={worker.href} className="inline-flex items-center gap-1 hover:text-zinc-300">Details<IconArrowRight className="h-3 w-3" /></Link>
+            </div>
+        </article>
+    );
 }

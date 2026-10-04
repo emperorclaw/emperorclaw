@@ -13,6 +13,7 @@ const WEBHOOK_LABELS: Record<string, string> = {
     approval: "Approvals",
     task_assigned: "Assigned tasks",
     agent_failed: "Agent failures",
+    agent_down: "Agents down",
     incident: "Serious incidents",
 };
 

@@ -28,7 +28,7 @@ import { decryptSecretPayload } from "@/lib/secrets";
  * catches its own failures.
  */
 
-export const NOTIFICATION_KINDS = ["mention", "decision", "approval", "task_assigned", "agent_failed", "incident"] as const;
+export const NOTIFICATION_KINDS = ["mention", "decision", "approval", "task_assigned", "agent_failed", "agent_down", "incident"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
@@ -37,6 +37,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
     approval: "An approval is requested",
     task_assigned: "A task is assigned to you",
     agent_failed: "An agent could not process your message",
+    agent_down: "An agent goes offline with work waiting",
     incident: "A serious incident opens",
 };
 
@@ -378,5 +379,26 @@ export async function notifyIncident(companyId: string, incident: { id: string; 
         });
     } catch (error) {
         console.warn("[notifications] incident:", error instanceof Error ? error.message : error);
+    }
+}
+
+/** An agent stopped sending heartbeats while it had work waiting. */
+export async function notifyAgentDown(companyId: string, agent: { id: string; name: string }, pending: { openTasks: number; waitingMessages: number }): Promise<void> {
+    try {
+        const parts = [
+            pending.waitingMessages ? `${pending.waitingMessages} message${pending.waitingMessages === 1 ? "" : "s"} waiting` : null,
+            pending.openTasks ? `${pending.openTasks} open task${pending.openTasks === 1 ? "" : "s"}` : null,
+        ].filter(Boolean);
+        await notify(companyId, await companyAdminIds(companyId), {
+            kind: "agent_down",
+            title: `${agent.name} went offline with work waiting`,
+            body: `${parts.join(" and ")}. Its runtime stopped checking in; restart it or reassign the work.`,
+            link: "/agents/health",
+            sourceType: "agent",
+            sourceId: agent.id,
+            dedupeKey: `agent_down:${agent.id}`,
+        });
+    } catch (error) {
+        console.warn("[notifications] agent down:", error instanceof Error ? error.message : error);
     }
 }

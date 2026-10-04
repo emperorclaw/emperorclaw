@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import SettingsClient from "./settings-client";
 import { serializeCompanyToken } from "@/lib/mcp";
+import { getPlatformAdminSession } from "@/lib/platform-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,7 @@ export default async function SettingsPage() {
                 initialMembers={membersList}
                 agents={allAgents}
                 customersData={allCustomers}
+                isPlatformAdmin={(await getPlatformAdminSession())?.isPlatformAdmin === true}
             />
         </Suspense>
     );
