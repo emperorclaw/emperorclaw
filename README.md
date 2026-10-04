@@ -130,11 +130,13 @@ and storage, then checks that the app can create local workers. Open
 
 ### From install to useful work
 
-1. On the dashboard choose **Hire an Agent**, pick a role and short name.
-2. Select your LLM provider and enter its API key. Emperor configures Hermes,
-   its plugin, connection, and agent-bound token automatically.
-3. Wait for **online**, send **Hello! Reply with ACK working.**, and finish
-   onboarding after the reply.
+1. **Emperor setup** opens on first sign-in: describe your company, paste a model
+   API key (OpenRouter recommended, free model by default; checked before
+   anything starts), and pick a suggested team.
+2. Launch. Emperor configures Hermes, its plugin, connection, and agent-bound
+   token automatically, and your lead agent documents the company in Knowledge &
+   Rules while you watch.
+3. When your lead is online, open its direct chat and say hello.
 4. Create a short project, add a task with a clear expected result, and assign
    it to your worker.
 5. Use the **@ picker** in group chat to address agents. Private chat needs no mention.

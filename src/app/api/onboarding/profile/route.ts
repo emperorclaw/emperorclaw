@@ -5,6 +5,7 @@ import { companies } from "@/db/schema";
 import { requireRole, AuthError } from "@/lib/roles";
 import { seedStarterKnowledge } from "@/lib/starter-knowledge";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +17,18 @@ type ProfileInput = {
     whatYouDo?: string;
     industry?: string;
     website?: string;
+    businessType?: string;
+    houseRules?: string;
 };
 
 function clean(value: unknown, max: number): string {
     return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : "";
+}
+
+/** House rules keep their line breaks: one rule per line, as bullets. */
+function rulesList(value: unknown): string[] {
+    if (typeof value !== "string") return [];
+    return value.split("\n").map((l) => l.replace(/^\s*[-*•]\s*/, "").trim().slice(0, 300)).filter(Boolean).slice(0, 20);
 }
 
 function buildProfileBlock(input: {
@@ -27,15 +36,22 @@ function buildProfileBlock(input: {
     whatYouDo: string;
     industry: string;
     website: string;
+    businessType?: string;
+    houseRules?: string[];
 }): string {
     const lines = [`${PROFILE_HEADING}`, ""];
     if (input.companyName) lines.push(`- **Company:** ${input.companyName}`);
     if (input.whatYouDo) lines.push(`- **What we do:** ${input.whatYouDo}`);
+    if (input.businessType) lines.push(`- **Type of business:** ${input.businessType}`);
     if (input.industry) lines.push(`- **Industry:** ${input.industry}`);
     if (input.website) lines.push(`- **Website:** ${input.website}`);
     lines.push("");
     lines.push("### Business rules");
     lines.push("");
+    if (input.houseRules?.length) {
+        for (const rule of input.houseRules) lines.push(`- ${rule}`);
+        return lines.join("\n");
+    }
     lines.push("Starter rules — edit these in Settings so every agent works the same way.");
     lines.push("");
     lines.push("- Every task has exactly one owner; the assignee closes it once the acceptance criteria are met.");
@@ -106,6 +122,9 @@ export async function POST(req: NextRequest) {
         const whatYouDo = clean(body.whatYouDo, 600);
         const industry = clean(body.industry, 120);
         const website = clean(body.website, 200);
+        const typeId = clean(body.businessType, 40);
+        const businessType = BUSINESS_TYPES.find((t) => t.id === typeId)?.label ?? "";
+        const houseRules = rulesList(body.houseRules);
 
         const [company] = await db
             .select({ name: companies.name, contextNotes: companies.contextNotes })
@@ -120,7 +139,7 @@ export async function POST(req: NextRequest) {
         }
 
         const companyName = requestedName || company.name;
-        const block = buildProfileBlock({ companyName, whatYouDo, industry, website });
+        const block = buildProfileBlock({ companyName, whatYouDo, industry, website, businessType: businessType && typeId !== "other" ? businessType : "", houseRules });
         const contextNotes = upsertProfileBlock(company.contextNotes ?? "", block);
 
         const [updated] = await db

@@ -46,14 +46,15 @@ Then open localhost:3000 on your laptop while the tunnel is connected.
 
 ## 3. Create your first Hermes worker
 
-On the dashboard choose **Hire an Agent** in the first-agent setup. Pick a role
-and short name, select your LLM provider, and enter your API key. Keep the dialog
-open while the worker starts. Hermes, the plugin, an agent-bound token, and the
-connection are configured automatically. Your provider supplies the model and
-bills API usage; the key is the one external credential you supply.
+After you create your account, **Emperor setup** opens on the dashboard: tell it
+about your company, paste a model API key (OpenRouter is recommended and starts on
+a free model; the key is checked before anything starts), pick a suggested team,
+and launch. Hermes, the plugin, an agent-bound token, and the connection are
+configured automatically. Your provider supplies the model and bills API usage;
+the key is the one external credential you supply. Your lead agent then documents
+the company in Knowledge & Rules while you watch.
 
-Wait for **online**, send **Hello! Reply with ACK working.** in the onboarding
-chat, and finish setup only after a reply. Then create a short project, add a
+When your lead is online, open its direct chat and say hello. Then create a short project, add a
 bounded task, and assign it to the worker. In team chat use the @ picker to
 address agents. See [First agent walkthrough](/docs/v1.1/agent-quickstart).
 

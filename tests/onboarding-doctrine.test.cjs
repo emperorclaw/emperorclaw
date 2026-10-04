@@ -62,10 +62,10 @@ test("Provisioning passes role doctrine to the Hermes runtime", () => {
 });
 
 test("Onboarding confirms the created agent and opens its direct chat", () => {
-  const tour = read("src/components/onboarding-tour.tsx");
-  assert.match(tour, /is created/i, "the tour should confirm the agent was created");
-  assert.ok(tour.includes("Open direct chat"), "the tour should offer to open the direct chat");
-  assert.ok(tour.includes("/messages?agent="), "the tour should deep-link into the agent's direct thread");
+  const tour = read("src/components/setup-wizard.tsx");
+  assert.match(tour, /is created/i, "the setup wizard should confirm the agent was created");
+  assert.ok(tour.includes("Open direct chat"), "the setup wizard should offer to open the direct chat");
+  assert.ok(tour.includes("/messages?agent="), "the setup wizard should deep-link into the agent's direct thread");
 
   const hub = read("src/components/messaging-hub.tsx");
   assert.ok(hub.includes('get("agent")'), "the messaging hub should read the ?agent= deep link");
@@ -124,10 +124,10 @@ test("Hermes entrypoint recreates the profile wrapper when it is missing", () =>
 });
 
 test("Onboarding gates the direct chat on the agent coming online", () => {
-  const tour = read("src/components/onboarding-tour.tsx");
+  const tour = read("src/components/setup-wizard.tsx");
   assert.ok(tour.includes("disabled={!online}"), "the chat button should be disabled until the agent is online");
-  assert.ok(tour.includes("recreate-runtime"), "the tour should be able to retry provisioning");
-  assert.ok(tour.includes("offlineTooLong"), "the tour should only offer a retry after a grace period");
+  assert.ok(tour.includes("recreate-runtime"), "the setup wizard should be able to retry provisioning");
+  assert.ok(tour.includes("offlineTooLong"), "the setup wizard should only offer a retry after a grace period");
 });
 
 test("Agents directory routes to the direct chat after hiring", () => {
@@ -138,15 +138,15 @@ test("Agents directory routes to the direct chat after hiring", () => {
 });
 
 test("Onboarding is server-owned, not hidden by stale localStorage", () => {
-  const tour = read("src/components/onboarding-tour.tsx");
+  const tour = read("src/components/setup-wizard.tsx");
   assert.ok(
     !tour.includes("window.localStorage"),
-    "the tour must not gate on localStorage, or a server-side reset can never re-show it",
+    "the setup wizard must not gate on localStorage, or a server-side reset can never re-show it",
   );
   const page = read("src/app/(app)/page.tsx");
   assert.ok(
     page.includes("onboardingCompletedAt") && page.includes("onboardingDismissedAt"),
-    "the dashboard should gate the tour on the server onboarding state",
+    "the dashboard should gate the setup wizard on the server onboarding state",
   );
 });
 
@@ -177,4 +177,15 @@ test("Company profile onboarding seeds the starter Knowledge & Rules scaffold", 
   ["Company", "Agents", "Projects", "Customers"].forEach((folder) => {
     assert.ok(starter.includes(`"${folder}"`), `the scaffold should define the ${folder} folder`);
   });
+});
+
+test("First-run setup requires a working model key and offers company documentation", () => {
+  const wizard = read("src/components/setup-wizard.tsx");
+  assert.ok(wizard.includes("/api/onboarding/validate-key"), "the key is checked with the provider before agents start");
+  assert.ok(wizard.includes("disabled={!apiKey.trim()"), "the model step cannot continue without a key");
+  assert.ok(wizard.includes("/api/onboarding/document"), "the lead agent can be asked to document the company");
+  const onboarding = read("src/lib/onboarding.ts");
+  assert.ok(onboarding.includes('deliveryState: "queued"'), "the documentation job is queued so runtimes pick it up");
+  const page = read("src/app/(app)/page.tsx");
+  assert.ok(page.includes('["owner", "admin"]'), "only owners and admins see first-run setup");
 });

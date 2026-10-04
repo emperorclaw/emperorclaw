@@ -9,6 +9,28 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Emperor setup.** First sign-in opens a full-screen setup assistant for
+  owners and admins: your company (what it does, kind of company, website,
+  house rules), an AI model key, a team suggested for your kind of company,
+  and launch. The model key is now required and checked with the provider
+  (OpenRouter or DeepSeek) before agents start, since agents can't answer
+  without one; OpenRouter starts on a free model.
+- **Your lead documents the company.** When the lead agent comes online, it
+  gets its first job: turn the profile and website into Knowledge & Rules
+  notes (overview, products and services, customers, brand voice) and ask the
+  owner what it couldn't find. The assistant shows its progress live, with
+  links to its chat and the task.
+
+### Changed
+
+- The old first-agent card on the dashboard is replaced by the assistant.
+  **Set up later** closes it; with no agents, the dashboard links to hiring
+  one.
+
 ## [0.8.57] — 2026-10-04
 
 ### Added

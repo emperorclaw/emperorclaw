@@ -7,7 +7,8 @@ import { agents, approvals, companies, companyMembers, incidents, notifications,
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { computeCompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
-import { OnboardingTour } from "@/components/onboarding-tour";
+import { SetupWizard } from "@/components/setup-wizard";
+import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
@@ -137,6 +138,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const myTasks = currentMemberId ? openTasks.filter((t) => t.assignedMemberId === currentMemberId).length : 0;
     const agentsNeedingAttention = health.agents.filter((a) => a.status === "down" || a.status === "attention").length;
     const oldestApproval = pendingApprovals[0]?.requestedAt ?? null;
+    const setup = await (async () => {
+        if (!userId || currentUser?.onboardingCompletedAt || currentUser?.onboardingDismissedAt) return null;
+        const [[membership], [company]] = await Promise.all([
+            db.select({ role: companyMembers.role }).from(companyMembers).where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId))).limit(1),
+            db.select({ name: companies.name, contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId)).limit(1),
+        ]);
+        if (!membership || !["owner", "admin"].includes(membership.role)) return null;
+        const profileComplete = Boolean(company?.contextNotes?.trim());
+        if (profileComplete && agentRows.length > 0) return null;
+        // The profile records the kind of company by its label; map it back so the team suggestion survives a reload.
+        const businessType = BUSINESS_TYPES.find((t) => company?.contextNotes?.includes(`**Type of business:** ${t.label}`))?.id ?? "";
+        return { companyName: company?.name ?? "", profileComplete, businessType };
+    })();
+
     const workerName = (t: { assignedAgentId: string | null; assignedMemberId: string | null }) =>
         t.assignedAgentId ? agentRows.find((a) => a.id === t.assignedAgentId)?.name : t.assignedMemberId ? members.find((m) => m.id === t.assignedMemberId)?.displayName : null;
 
@@ -144,8 +159,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <div className="mx-auto max-w-[1600px] space-y-6 animate-in fade-in duration-500">
             <PageHeader eyebrow="Dashboard" title="Today" description="What needs you, and what every agent and person is working on right now." />
 
-            {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && (
-                <OnboardingTour hasExistingAgents={agentRows.length > 0} />
+            {/* First-run setup: owners and admins, until they finish or skip it,
+                while the company has no agents or no profile yet. */}
+            {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && setup && (
+                <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} />
             )}
 
             <section aria-label="Needs you" className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-5">
@@ -170,7 +187,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 {active.map((w) => <WorkerCard key={w.key} worker={w} now={now} />)}
                 {active.length === 0 && (
                     <div className="emperor-panel col-span-full rounded-2xl p-10 text-center text-sm text-zinc-500">
-                        Nobody has open work right now. Ask an agent for something in <Link href="/messages" className="text-cyan-300 hover:text-cyan-200">Messages</Link>, or plan work in <Link href="/projects" className="text-cyan-300 hover:text-cyan-200">Projects</Link>.
+                        {agentRows.length === 0 ? (
+                            <>No agents yet. <Link href="/agents" className="text-cyan-300 hover:text-cyan-200">Hire your first agent</Link> to get started.</>
+                        ) : (
+                            <>Nobody has open work right now. Ask an agent for something in <Link href="/messages" className="text-cyan-300 hover:text-cyan-200">Messages</Link>, or plan work in <Link href="/projects" className="text-cyan-300 hover:text-cyan-200">Projects</Link>.</>
+                        )}
                     </div>
                 )}
             </section>
