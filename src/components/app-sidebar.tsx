@@ -25,6 +25,8 @@ function cn(...inputs: ClassValue[]) {
 
 const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 
+const UTILITY_BUTTON = "flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+
 export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, appVersion }: { isPlatformAdmin?: boolean; isCompanyAdmin?: boolean; appVersion?: string }) {
     const pathname = usePathname();
     const { data: session } = useSession();
@@ -115,30 +117,22 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
     return (
         <>
         <aside className={cn("flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar shadow-2xl shadow-black/10 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
-            <div className={cn("border-b border-border", collapsed ? "p-3" : "p-3.5 sm:p-5")}>
-                <div className={cn(
-                    "flex items-center",
-                    collapsed
-                        ? "justify-center"
-                        : "gap-3 rounded-2xl border border-border bg-muted/40 p-2.5 sm:p-3"
-                )}>
-                    {collapsed ? (
-                        /* Collapsed: show only the emblem, centered */
-                        <div className="grid h-9 w-9 shrink-0 place-items-center sm:h-10 sm:w-10">
-                            <CustomLogo className="h-9 w-9 sm:h-10 sm:w-10" />
-                        </div>
-                    ) : (
-                        /* Expanded: show only the text */
-                        <div className={cn("min-w-0 flex-1 transition-opacity duration-200", collapsed ? "opacity-0" : "hidden md:block")}>
-                            <div className="truncate text-base tracking-[0.15em] text-foreground" style={{ fontFamily: "var(--font-silkscreen)" }}>EMPEROR<span className="text-primary">CLAW</span></div>
-                        </div>
-                    )}
-                </div>
+            <div className={cn("flex h-14 shrink-0 items-center border-b border-border", collapsed ? "justify-center px-2" : "px-3 sm:px-5")}>
+                {collapsed ? (
+                    <CustomLogo className="h-7 w-7" />
+                ) : (
+                    <>
+                        <CustomLogo className="h-7 w-7 md:hidden" />
+                        <Link href="/" className="hidden min-w-0 truncate text-[13px] tracking-[0.14em] text-foreground md:block" style={{ fontFamily: "var(--font-silkscreen)" }}>
+                            EMPEROR<span className="text-primary">CLAW</span>
+                        </Link>
+                    </>
+                )}
             </div>
 
-            <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-visible px-1.5 py-3 sm:space-y-1 sm:px-4 sm:py-5">
+            <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-visible px-1.5 py-2 sm:px-3 sm:py-3">
                 {sections.map((section) => (
-                <div key={section.title || "system"} className="pb-2">
+                <div key={section.title || "system"} className="pb-1.5">
                     {section.title && !collapsed && <div className="hidden px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/85 md:block">{section.title}</div>}
                     {collapsed && section.title && <div className="mx-auto my-1.5 h-px w-6 bg-border" aria-hidden />}
                 {section.links.map((link) => {
@@ -158,7 +152,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
                             }}
                             onMouseLeave={() => { setHoveredNav(null); setTooltipPos(null); }}
                             className={cn(
-                                "relative flex items-center rounded-xl px-2.5 py-2.5 text-sm font-medium transition-all duration-200",
+                                "relative flex items-center rounded-xl px-2.5 py-2 text-sm font-medium transition-all duration-200",
                                 collapsed ? "justify-center gap-0" : "gap-3",
                                 isActive
                                     ? "border border-primary/20 bg-primary/10 text-foreground shadow-sm"
@@ -184,55 +178,22 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
                 ))}
             </nav>
 
-            <div className={cn("border-t border-border", collapsed ? "space-y-2 p-2" : "space-y-2 sm:space-y-3 p-3 sm:p-4")}>
+            <div className={cn("space-y-1.5 border-t border-border", collapsed ? "p-1.5" : "p-2 sm:p-3")}>
                     <NotificationBell collapsed={collapsed} />
-                    {/* Collapse / Expand toggle */}
-                    <button
-                        type="button"
-                        onClick={toggleCollapsed}
-                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                        className={cn(
-                            "flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground",
-                            collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
-                        )}
-                    >
-                        {collapsed ? <IconLayoutSidebarLeftExpand className="h-4 w-4" /> : <IconLayoutSidebarLeftCollapse className="h-4 w-4" />}
-                        <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>{collapsed ? "" : "Collapse"}</span>
-                    </button>
-                    <Link
-                        href="/docs"
-                        onMouseEnter={(e) => {
-                            if (!collapsed) return;
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setTooltipPos({ top: rect.top + rect.height / 2, left: rect.right + 12 });
-                            setHoveredNav("Documentation");
-                        }}
-                        onMouseLeave={() => { setHoveredNav(null); setTooltipPos(null); }}
-                        className={cn(
-                            "relative flex items-center rounded-xl text-sm font-medium transition-all duration-200",
-                            collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
-                            pathname?.startsWith("/docs")
-                                ? "border border-cyan-400/20 bg-cyan-400/10 text-foreground"
-                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                        )}
-                    >
-                        <IconBook className={cn("h-4 w-4", pathname?.startsWith("/docs") ? "text-cyan-300" : "text-muted-foreground")} />
-                        <span className={cn("transition-opacity duration-200", collapsed ? "hidden" : "md:inline")}>Documentation</span>
-                    </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className={cn(
-                                "group relative flex w-full cursor-pointer items-center rounded-2xl border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent",
-                                collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 sm:gap-3 px-2.5 py-2.5 sm:px-3 sm:py-3"
+                                "group relative flex w-full cursor-pointer items-center rounded-xl border border-border bg-muted/40 text-left transition-colors hover:border-border hover:bg-accent",
+                                collapsed ? "justify-center px-1.5 py-1.5" : "justify-center gap-2.5 px-1.5 py-1.5 md:justify-start md:px-2"
                             )}
                                 title={collapsed ? `${userName}\n${userEmail}` : undefined}
                             >
-                                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full border border-border bg-muted text-xs font-bold text-foreground">
+                                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-border bg-muted text-xs font-bold text-foreground">
                                     {userInitial}
                                 </div>
-                                <div className={cn("min-w-0 flex-1 flex-col transition-opacity duration-200", collapsed ? "hidden" : "md:flex")}>
+                                <div className={cn("min-w-0 flex-1 flex-col transition-opacity duration-200", collapsed ? "hidden" : "hidden md:flex")}>
                                     <span className="truncate text-sm font-medium text-foreground">{userName}</span>
-                                    <span className="text-xs text-muted-foreground">{userEmail}</span>
+                                    <span className="truncate text-[11px] text-muted-foreground">{userEmail}</span>
                                 </div>
                             </button>
                         </DropdownMenuTrigger>
@@ -252,13 +213,33 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <div className={cn("flex items-center justify-between gap-2 px-1 text-[10px] text-muted-foreground", collapsed ? "justify-center" : "")}>
+                    {/* Small utilities on one line: docs, theme, collapse. */}
+                    <div className={cn("flex items-center gap-1 text-muted-foreground", collapsed ? "flex-col" : "flex-col md:flex-row md:justify-between md:pl-1.5")}>
                         {!collapsed && (
-                            <span className="truncate transition-opacity duration-200">
-                                v{appVersion || "0.8.7"} · emperorclaw.com
-                            </span>
+                            <a href="https://emperorclaw.com" target="_blank" rel="noreferrer" className="hidden truncate text-[10px] hover:text-foreground md:block" title="emperorclaw.com">
+                                v{appVersion || "0.8.7"}
+                            </a>
                         )}
-                        <ThemeToggle collapsed={collapsed} mini={true} />
+                        <div className={cn("flex items-center gap-0.5", collapsed ? "flex-col" : "flex-col md:flex-row")}>
+                            <Link
+                                href="/docs"
+                                aria-label="Documentation"
+                                title="Documentation"
+                                className={cn(UTILITY_BUTTON, pathname?.startsWith("/docs") && "bg-primary/10 text-primary")}
+                            >
+                                <IconBook className="h-3.5 w-3.5" />
+                            </Link>
+                            <ThemeToggle collapsed={collapsed} mini={true} />
+                            <button
+                                type="button"
+                                onClick={toggleCollapsed}
+                                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                                className={cn(UTILITY_BUTTON, "hidden md:flex")}
+                            >
+                                {collapsed ? <IconLayoutSidebarLeftExpand className="h-3.5 w-3.5" /> : <IconLayoutSidebarLeftCollapse className="h-3.5 w-3.5" />}
+                            </button>
+                        </div>
                     </div>
                 </div>
         </aside>

@@ -102,7 +102,7 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
                     aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
                     className={cn(
                         "relative flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground",
-                        collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
+                        collapsed ? "justify-center px-2 py-2" : "gap-3 px-2.5 py-2",
                     )}
                 >
                     <IconBell className={cn("h-4 w-4", unread > 0 && "text-cyan-300")} />

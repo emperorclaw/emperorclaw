@@ -47,5 +47,5 @@ test("Shared UI primitives use the professional dark system", () => {
 
   const sidebar = read("src/components/app-sidebar.tsx");
   assertContains(sidebar, "md:w-64", "sidebar should keep mobile navigation as a compact rail");
-  assertContains(sidebar, "text-cyan-300", "sidebar should use the standardized accent color");
+  assertContains(sidebar, "text-primary", "sidebar should use the theme accent (primary) color");
 });

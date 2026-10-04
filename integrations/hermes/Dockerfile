@@ -38,7 +38,7 @@ ENV PATH="/home/hermes/.local/bin:${PATH}"
 # Install the Hermes Agent CLI using its own documented installer.
 #
 # ASSUMPTION TO VERIFY: there is no official `hermes-agent` PyPI package as of
-# writing this Dockerfile — `docs/v1.1/hermes-runtime.md` (this repo) and
+# writing this Dockerfile — `src/content/docs/v1.1/hermes-runtime.md` (this repo) and
 # `integrations/hermes/emperor-claw/README.md` both document installation only
 # via this curl | bash script from NousResearch/hermes-agent, not `pip
 # install`. That script is run here as the non-root `hermes` user (not root)

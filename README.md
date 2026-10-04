@@ -145,8 +145,8 @@ and storage, then checks that the app can create local workers. Open
 
 [Full installation guide](src/content/docs/v1.1/installation.md) covers Docker
 prerequisites, automatic HTTPS for your domain, remote-server access, updates,
-and recovery. [First agent walkthrough](docs/CONNECT-FIRST-AGENT.md) includes
-troubleshooting. Use a machine that stays on while workers are working. The
+and recovery. See [your first agent](src/content/docs/v1.1/agent-quickstart.md) and
+[troubleshooting](src/content/docs/v1.1/troubleshooting.md). Use a machine that stays on while workers are working. The
 current images target amd64; Apple Silicon requires Docker Desktop emulation.
 
 **Hosted alternative:** [Deploy the app to Render](https://render.com/deploy?repo=https://github.com/emperorclaw/emperorclaw).
