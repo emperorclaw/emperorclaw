@@ -12,7 +12,7 @@ For the shared operating contract across Hermes and OpenClaw agents, read [Emper
 
 If you need the repo-level architecture and the difference between repo `agents/*`, plugin state, and live OpenClaw workspaces, read:
 
-- [Project & Runtime Architecture](/docs/v1.1/project-architecture)
+- [Core Concepts](/docs/v1.1/concepts)
 
 ## What OpenClaw Actually Loads
 

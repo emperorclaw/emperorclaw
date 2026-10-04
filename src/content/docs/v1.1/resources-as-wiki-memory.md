@@ -218,6 +218,6 @@ If the fact is only progress, a blocker, a result, or proof, it does not belong 
 ## Related Reading
 
 - [Company Brain](/docs/v1.1/company-brain) — the underlying data model for wikilinks, backlinks, the local graph, and version history
-- [Why Emperor Around Local Agents](/docs/v1.1/why-emperor-vs-openclaw)
+- [Core Concepts](/docs/v1.1/concepts)
 - [Messaging & Inbox Rules](/docs/v1.1/messaging)
 - [API Reference](/docs/v1.1/api-reference)

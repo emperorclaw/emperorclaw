@@ -1,8 +1,8 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { type Components } from 'react-markdown';
-import { IconCopy, IconCheck, IconInfoCircle, IconAlertTriangle, IconBulb } from "@tabler/icons-react";
-import { useState } from 'react';
+import { IconCopy, IconCheck, IconInfoCircle, IconAlertTriangle, IconBulb, IconAlertOctagon } from "@tabler/icons-react";
+import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from 'react';
 
 interface DocsMarkdownRendererProps {
   content: string;
@@ -39,11 +39,50 @@ const CodeBlock = ({ children, className }: { children: any; className?: string 
             </div>
           </div>
         </div>
-        <code className="text-indigo-100/90">{children}</code>
+        <code className="text-foreground/90">{children}</code>
       </pre>
     </div>
   );
 };
+
+
+// GitHub-style callouts: a blockquote starting with [!NOTE], [!TIP],
+// [!IMPORTANT], [!WARNING] or [!CAUTION]. By the time it renders, the marker
+// sits inside a paragraph element, so read and strip it through the tree.
+const CALLOUT_MARKER = /\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/;
+
+function nodeText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join('');
+  if (isValidElement(node)) return nodeText((node.props as { children?: ReactNode }).children);
+  return '';
+}
+
+function stripMarker(node: ReactNode): ReactNode {
+  let done = false;
+  const walk = (n: ReactNode): ReactNode => {
+    if (done) return n;
+    if (typeof n === 'string') {
+      if (CALLOUT_MARKER.test(n)) { done = true; return n.replace(CALLOUT_MARKER, ''); }
+      return n;
+    }
+    if (Array.isArray(n)) return n.map(walk);
+    if (isValidElement(n)) {
+      const el = n as ReactElement<{ children?: ReactNode }>;
+      return cloneElement(el, undefined, ...Children.toArray(walk(el.props.children)));
+    }
+    return n;
+  };
+  return walk(node);
+}
+
+const CALLOUTS = {
+  NOTE: { label: 'Note', icon: IconInfoCircle, border: 'border-indigo-500/50', bg: 'bg-indigo-500/5', text: 'text-indigo-600 dark:text-indigo-300' },
+  TIP: { label: 'Tip', icon: IconBulb, border: 'border-emerald-500/50', bg: 'bg-emerald-500/5', text: 'text-emerald-600 dark:text-emerald-300' },
+  IMPORTANT: { label: 'Important', icon: IconAlertOctagon, border: 'border-violet-500/50', bg: 'bg-violet-500/5', text: 'text-violet-600 dark:text-violet-300' },
+  WARNING: { label: 'Warning', icon: IconAlertTriangle, border: 'border-amber-500/50', bg: 'bg-amber-500/5', text: 'text-amber-600 dark:text-amber-300' },
+  CAUTION: { label: 'Caution', icon: IconAlertTriangle, border: 'border-rose-500/50', bg: 'bg-rose-500/5', text: 'text-rose-600 dark:text-rose-300' },
+} as const;
 
 export function DocsMarkdownRenderer({ content }: DocsMarkdownRendererProps) {
   return (
@@ -54,10 +93,20 @@ export function DocsMarkdownRenderer({ content }: DocsMarkdownRendererProps) {
           h1: ({ children }) => <h1 className="text-4xl font-bold mb-10 mt-0 text-foreground tracking-tight">{children}</h1>,
           h2: ({ children }) => <h2 className="text-2xl font-semibold mb-6 mt-16 text-foreground border-b border-border pb-3">{children}</h2>,
           h3: ({ children }) => <h3 className="text-xl font-semibold mb-4 mt-10 text-foreground">{children}</h3>,
-          p: ({ children }) => <p className="mb-6 text-zinc-800 dark:text-zinc-300 leading-relaxed text-[16px]">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc pl-6 space-y-3 mb-8 text-zinc-800 dark:text-zinc-300">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-6 space-y-3 mb-8 text-zinc-800 dark:text-zinc-300">{children}</ol>,
+          p: ({ children }) => <p className="mb-6 text-zinc-300 leading-relaxed text-[16px]">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc pl-6 space-y-3 mb-8 text-zinc-300">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-6 space-y-3 mb-8 text-zinc-300">{children}</ol>,
           li: ({ children }) => <li className="pl-1">{children}</li>,
+          // Tables scroll sideways on narrow screens instead of squeezing their columns.
+          table: ({ children }) => (
+            <div className="not-prose my-8 overflow-x-auto rounded-xl border border-border">
+              <table className="w-full border-collapse text-left text-sm">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="bg-muted/60">{children}</thead>,
+          th: ({ children }) => <th className="border-b border-border px-4 py-2.5 font-semibold text-foreground">{children}</th>,
+          td: ({ children }) => <td className="border-b border-border px-4 py-2.5 align-top leading-relaxed text-zinc-300">{children}</td>,
+          tr: ({ children }) => <tr className="last:[&>td]:border-b-0">{children}</tr>,
           code: ({ children, className }) => {
             const isInline = !className;
             if (isInline) {
@@ -66,44 +115,19 @@ export function DocsMarkdownRenderer({ content }: DocsMarkdownRendererProps) {
             return <CodeBlock className={className}>{children}</CodeBlock>;
           },
           blockquote: ({ children }) => {
-            const text = String(children);
-            const isNote = text.includes('[!NOTE]');
-            const isTip = text.includes('[!TIP]');
-            const isWarning = text.includes('[!WARNING]');
-            
-            let icon = <IconInfoCircle className="w-5 h-5" />;
-            let borderColor = 'border-indigo-500/50';
-            let bgColor = 'bg-indigo-500/5';
-            let textColor = 'text-indigo-600 dark:text-indigo-300';
-            let label = 'Note';
-
-            if (isTip) {
-              icon = <IconBulb className="w-5 h-5" />;
-              borderColor = 'border-emerald-500/50';
-              bgColor = 'bg-emerald-500/5';
-              textColor = 'text-emerald-600 dark:text-emerald-300';
-              label = 'Tip';
-            } else if (isWarning) {
-              icon = <IconAlertTriangle className="w-5 h-5" />;
-              borderColor = 'border-rose-500/50';
-              bgColor = 'bg-rose-500/5';
-              textColor = 'text-rose-600 dark:text-rose-300';
-              label = 'Warning';
+            const kind = (CALLOUT_MARKER.exec(nodeText(children))?.[1] ?? null) as keyof typeof CALLOUTS | null;
+            if (!kind) {
+              return <blockquote className="my-6 border-l-4 border-border pl-5 text-zinc-400 italic">{children}</blockquote>;
             }
-
-            const cleanChildren = Array.isArray(children) 
-              ? children.map(c => typeof c === 'string' ? c.replace(/\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]\n?/, '') : c)
-              : typeof children === 'string' ? children.replace(/\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]\n?/, '') : children;
-
+            const callout = CALLOUTS[kind];
+            const Icon = callout.icon;
             return (
-              <div className={`my-8 border-l-4 ${borderColor} ${bgColor} p-6 rounded-r-2xl shadow-inner relative overflow-hidden group`}>
-                <div className={`flex items-center gap-3 mb-3 ${textColor} font-semibold text-sm uppercase tracking-wider`}>
-                  {icon}
-                  <span>{label}</span>
+              <div className={`not-prose my-8 border-l-4 ${callout.border} ${callout.bg} rounded-r-2xl p-5 sm:p-6`}>
+                <div className={`mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider ${callout.text}`}>
+                  <Icon className="h-5 w-5" />
+                  <span>{callout.label}</span>
                 </div>
-                <div className="text-zinc-800 dark:text-zinc-300 italic leading-relaxed">
-                  {cleanChildren}
-                </div>
+                <div className="leading-relaxed text-zinc-300 [&>p:last-child]:mb-0">{stripMarker(children)}</div>
               </div>
             );
           },

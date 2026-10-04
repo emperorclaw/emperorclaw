@@ -139,7 +139,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
             <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-visible px-1.5 py-3 sm:space-y-1 sm:px-4 sm:py-5">
                 {sections.map((section) => (
                 <div key={section.title || "system"} className="pb-2">
-                    {section.title && !collapsed && <div className="hidden px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/60 md:block">{section.title}</div>}
+                    {section.title && !collapsed && <div className="hidden px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/85 md:block">{section.title}</div>}
                     {collapsed && section.title && <div className="mx-auto my-1.5 h-px w-6 bg-border" aria-hidden />}
                 {section.links.map((link) => {
                     const Icon = link.icon;

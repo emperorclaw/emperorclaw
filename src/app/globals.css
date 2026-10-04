@@ -50,11 +50,47 @@
   --color-zinc-800: var(--zinc-800);
   --color-zinc-900: var(--zinc-900);
   --color-zinc-950: var(--zinc-950);
+  --color-cyan-50: var(--cyan-50);
   --color-cyan-100: var(--cyan-100);
   --color-cyan-200: var(--cyan-200);
   --color-cyan-300: var(--cyan-300);
   --color-cyan-400: var(--cyan-400);
   --color-cyan-500: var(--cyan-500);
+  --color-emerald-50: var(--emerald-50);
+  --color-emerald-100: var(--emerald-100);
+  --color-emerald-200: var(--emerald-200);
+  --color-emerald-300: var(--emerald-300);
+  --color-emerald-400: var(--emerald-400);
+  --color-amber-50: var(--amber-50);
+  --color-amber-100: var(--amber-100);
+  --color-amber-200: var(--amber-200);
+  --color-amber-300: var(--amber-300);
+  --color-amber-400: var(--amber-400);
+  --color-rose-50: var(--rose-50);
+  --color-rose-100: var(--rose-100);
+  --color-rose-200: var(--rose-200);
+  --color-rose-300: var(--rose-300);
+  --color-rose-400: var(--rose-400);
+  --color-red-50: var(--red-50);
+  --color-red-100: var(--red-100);
+  --color-red-200: var(--red-200);
+  --color-red-300: var(--red-300);
+  --color-red-400: var(--red-400);
+  --color-indigo-50: var(--indigo-50);
+  --color-indigo-100: var(--indigo-100);
+  --color-indigo-200: var(--indigo-200);
+  --color-indigo-300: var(--indigo-300);
+  --color-indigo-400: var(--indigo-400);
+  --color-violet-50: var(--violet-50);
+  --color-violet-100: var(--violet-100);
+  --color-violet-200: var(--violet-200);
+  --color-violet-300: var(--violet-300);
+  --color-violet-400: var(--violet-400);
+  --color-fuchsia-50: var(--fuchsia-50);
+  --color-fuchsia-100: var(--fuchsia-100);
+  --color-fuchsia-200: var(--fuchsia-200);
+  --color-fuchsia-300: var(--fuchsia-300);
+  --color-fuchsia-400: var(--fuchsia-400);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -112,11 +148,51 @@
   --zinc-950: oklch(1 0 0);
 
   /* Light mode cyan: higher contrast, darker and rich */
+  --cyan-50: oklch(0.18 0.03 215);
   --cyan-100: oklch(0.20 0.04 215);
   --cyan-200: oklch(0.28 0.06 215);
   --cyan-300: oklch(0.40 0.10 215);
   --cyan-400: oklch(0.55 0.15 215);
   --cyan-500: oklch(0.50 0.16 215);
+
+  /* Light mode: pale accent shades (50–400, made for dark backgrounds) become
+     deep, readable tones, the same way zinc inverts. Dark mode keeps
+     Tailwind's defaults below. */
+  --emerald-50: oklch(0.24 0.06 166);
+  --emerald-100: oklch(0.3 0.08 166);
+  --emerald-200: oklch(0.37 0.11 166);
+  --emerald-300: oklch(0.45 0.14 166);
+  --emerald-400: oklch(0.54 0.16 166);
+  --amber-50: oklch(0.24 0.06 85);
+  --amber-100: oklch(0.3 0.08 85);
+  --amber-200: oklch(0.37 0.11 85);
+  --amber-300: oklch(0.45 0.14 85);
+  --amber-400: oklch(0.54 0.16 85);
+  --rose-50: oklch(0.24 0.06 12);
+  --rose-100: oklch(0.3 0.08 12);
+  --rose-200: oklch(0.37 0.11 12);
+  --rose-300: oklch(0.45 0.14 12);
+  --rose-400: oklch(0.54 0.16 12);
+  --red-50: oklch(0.24 0.06 20);
+  --red-100: oklch(0.3 0.08 20);
+  --red-200: oklch(0.37 0.11 20);
+  --red-300: oklch(0.45 0.14 20);
+  --red-400: oklch(0.54 0.16 20);
+  --indigo-50: oklch(0.24 0.06 275);
+  --indigo-100: oklch(0.3 0.08 275);
+  --indigo-200: oklch(0.37 0.11 275);
+  --indigo-300: oklch(0.45 0.14 275);
+  --indigo-400: oklch(0.54 0.16 275);
+  --violet-50: oklch(0.24 0.06 293);
+  --violet-100: oklch(0.3 0.08 293);
+  --violet-200: oklch(0.37 0.11 293);
+  --violet-300: oklch(0.45 0.14 293);
+  --violet-400: oklch(0.54 0.16 293);
+  --fuchsia-50: oklch(0.24 0.06 320);
+  --fuchsia-100: oklch(0.3 0.08 320);
+  --fuchsia-200: oklch(0.37 0.11 320);
+  --fuchsia-300: oklch(0.45 0.14 320);
+  --fuchsia-400: oklch(0.54 0.16 320);
 
   --chat-gradient-start: rgba(255, 255, 255, 0.55);
   --chat-gradient-end: rgba(244, 244, 245, 0.95);
@@ -169,11 +245,49 @@
   --zinc-950: oklch(0.10 0.01 286);
 
   /* Dark mode keeps bright cyan scale */
+  --cyan-50: oklch(0.984 0.019 200.873);
   --cyan-100: oklch(0.88 0.04 215);
   --cyan-200: oklch(0.82 0.06 215);
   --cyan-300: oklch(0.70 0.10 215);
   --cyan-400: oklch(0.64 0.15 215);
   --cyan-500: oklch(0.58 0.16 215);
+
+  /* Tailwind's default accent shades */
+  --emerald-50: oklch(0.979 0.021 166.113);
+  --emerald-100: oklch(0.95 0.052 163.051);
+  --emerald-200: oklch(0.905 0.093 164.15);
+  --emerald-300: oklch(0.845 0.143 164.978);
+  --emerald-400: oklch(0.765 0.177 163.223);
+  --amber-50: oklch(0.987 0.022 95.277);
+  --amber-100: oklch(0.962 0.059 95.617);
+  --amber-200: oklch(0.924 0.12 95.746);
+  --amber-300: oklch(0.879 0.169 91.605);
+  --amber-400: oklch(0.828 0.189 84.429);
+  --rose-50: oklch(0.969 0.015 12.422);
+  --rose-100: oklch(0.941 0.03 12.58);
+  --rose-200: oklch(0.892 0.058 10.001);
+  --rose-300: oklch(0.81 0.117 11.638);
+  --rose-400: oklch(0.712 0.194 13.428);
+  --red-50: oklch(0.971 0.013 17.38);
+  --red-100: oklch(0.936 0.032 17.717);
+  --red-200: oklch(0.885 0.062 18.334);
+  --red-300: oklch(0.808 0.114 19.571);
+  --red-400: oklch(0.704 0.191 22.216);
+  --indigo-50: oklch(0.962 0.018 272.314);
+  --indigo-100: oklch(0.93 0.034 272.788);
+  --indigo-200: oklch(0.87 0.065 274.039);
+  --indigo-300: oklch(0.785 0.115 274.713);
+  --indigo-400: oklch(0.673 0.182 276.935);
+  --violet-50: oklch(0.969 0.016 293.756);
+  --violet-100: oklch(0.943 0.029 294.588);
+  --violet-200: oklch(0.894 0.057 293.283);
+  --violet-300: oklch(0.811 0.111 293.571);
+  --violet-400: oklch(0.702 0.183 293.541);
+  --fuchsia-50: oklch(0.977 0.017 320.058);
+  --fuchsia-100: oklch(0.952 0.037 318.852);
+  --fuchsia-200: oklch(0.903 0.076 319.62);
+  --fuchsia-300: oklch(0.833 0.145 321.434);
+  --fuchsia-400: oklch(0.74 0.238 322.16);
 
   --chat-gradient-start: rgba(24, 24, 27, 0.55);
   --chat-gradient-end: rgba(9, 9, 11, 0.95);
@@ -263,6 +377,27 @@
   .dark ::selection {
     background: rgba(34, 211, 238, 0.28);
     color: white;
+  }
+
+  /* Native dropdowns: the option list is drawn by the browser, which ignored
+     the select's translucent background and kept its light text, so options
+     were unreadable in one theme or the other. Give them the theme's popover. */
+  select {
+    color-scheme: light;
+  }
+
+  .dark select {
+    color-scheme: dark;
+  }
+
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  select option:disabled {
+    color: var(--muted-foreground);
   }
 
   :focus-visible {

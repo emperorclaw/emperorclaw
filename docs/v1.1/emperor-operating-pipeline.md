@@ -14,7 +14,7 @@ Emperor is the durable company control plane. The local runtime is the worker. C
 
 If an agent remembers one rule, it should remember this:
 
-> If the fact must be shared, audited, reused, or trusted later, put it in Emperor â€” not only in chat.
+> If the fact must be shared, audited, reused, or trusted later, put it in Emperor — not only in chat.
 
 ## The Mental Model
 

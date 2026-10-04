@@ -17,7 +17,7 @@ export function SetupOutputLog({ outputs }: { outputs: SetupOutputEntry[] }) {
     return (
         <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
             {outputs.map((o, i) => (
-                <div key={i} className={`rounded px-2 py-1 font-mono text-[10px] ${o.exitCode === 0 ? "bg-black/30 text-emerald-100/60" : "bg-black/30 text-rose-100/60"}`}>
+                <div key={i} className={`rounded px-2 py-1 font-mono text-[10px] ${o.exitCode === 0 ? "bg-zinc-950/60 text-emerald-100/60" : "bg-zinc-950/60 text-rose-100/60"}`}>
                     <div className="text-zinc-500 mb-0.5">$ {o.command}</div>
                     {o.stdout && <div className="text-zinc-300">{o.stdout}</div>}
                     {o.stderr && <div className="text-rose-300/70">{o.stderr}</div>}

@@ -958,7 +958,6 @@ Apply an update (git pull → npm install → db migrate → build → restart).
 
 ---
 
-> **Last updated**: v0.3.3 — July 2026
 
 Optional parts:
 

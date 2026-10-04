@@ -148,7 +148,7 @@ function Divider() {
 
 function ToolbarButton(props: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactElement }) {
     return (
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={props.label} title={props.label} disabled={props.disabled} onMouseDown={(event) => event.preventDefault()} onClick={props.onClick} className="text-zinc-300 hover:bg-white/10 hover:text-white [&_svg]:size-4">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={props.label} title={props.label} disabled={props.disabled} onMouseDown={(event) => event.preventDefault()} onClick={props.onClick} className="text-zinc-300 hover:bg-white/10 hover:text-zinc-50 [&_svg]:size-4">
             {props.children}
         </Button>
     );

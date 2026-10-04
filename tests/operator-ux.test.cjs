@@ -41,8 +41,10 @@ test("Operator navigation and docs expose the right pages without hiding key man
   assertNotContains(sidebar, 'name: "Alerts"', "sidebar should no longer route to the removed Alerts/Incidents page");
 
   const docs = read("src/components/docs-viewer.tsx");
-  ["Operator Manual", "Runtime Setup", "company-brain", "resources-as-wiki-memory", "project-architecture", "pipelines"].forEach((needle) => {
-    assertContains(docs, needle, `docs navigation should include ${needle}`);
+  assertContains(docs, "DOC_SECTIONS", "the docs sidebar groups pages by their section, so no page is hidden");
+  const nav = read("src/content/docs/versions.ts");
+  ["Using Emperor", "Agent Runtimes", "company-brain", "resources-as-wiki-memory", "pipelines", "hermes-runtime", "agent-operating-manual"].forEach((needle) => {
+    assertContains(nav, needle, `docs navigation should include ${needle}`);
   });
 });
 

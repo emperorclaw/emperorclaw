@@ -259,7 +259,7 @@ function WorkerCard({ worker, now }: { worker: Worker; now: Date }) {
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-zinc-800 bg-zinc-900 text-sm font-semibold text-zinc-400">{worker.name.slice(0, 1).toUpperCase()}</span>
                 )}
                 <div className="min-w-0 flex-1">
-                    <Link href={worker.href} className="block truncate text-sm font-semibold text-zinc-100 hover:text-white">{worker.name}</Link>
+                    <Link href={worker.href} className="block truncate text-sm font-semibold text-zinc-100 hover:text-zinc-50">{worker.name}</Link>
                     <div className="truncate text-xs text-zinc-500">{worker.activity ? <span className="text-cyan-300">{worker.activity}</span> : worker.subtitle || (worker.kind === "human" ? "Person" : "Agent")}</div>
                 </div>
                 {status && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", status.className)}>{status.label}</span>}

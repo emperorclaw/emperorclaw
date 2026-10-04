@@ -103,7 +103,7 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
                     </span>
                 )}
                 <div className="min-w-0 flex-1">
-                    <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-100 group-hover/entity:text-white">{value.title}</div>
+                    <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-100 group-hover/entity:text-zinc-50">{value.title}</div>
                     <div className="mt-0.5 truncate text-xs text-zinc-500">
                         {value.kind === "task" && (value.project || "Task")}
                         {value.kind === "project" && (value.lead ? `Lead: ${value.lead}` : "Project")}

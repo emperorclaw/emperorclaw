@@ -146,7 +146,7 @@ export function UpdateSettingsTab() {
 
                 <div className="mt-5 space-y-4">
                     {/* Docker upgrade */}
-                    <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
                             <IconDownload className="h-4 w-4 text-cyan-300" />
                             Docker (recommended)
@@ -168,7 +168,7 @@ export function UpdateSettingsTab() {
                     </div>
 
                     {/* Manual upgrade */}
-                    <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
                             <IconTerminal2 className="h-4 w-4 text-zinc-400" />
                             Manual (without Docker)
@@ -194,7 +194,7 @@ export function UpdateSettingsTab() {
                     </div>
 
                     {/* Backup scripts */}
-                    <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
                         <h3 className="text-sm font-semibold text-zinc-200">Backup scripts</h3>
                         <p className="mt-1 text-sm text-zinc-400">
                             Convenience scripts to back up your database before upgrading.
@@ -235,7 +235,7 @@ export function UpdateSettingsTab() {
                     <h2 className="flex items-center text-lg font-semibold text-zinc-100">
                         <IconDownload className="mr-2 h-5 w-5 text-cyan-300" /> Changelog — v{data.latestVersion}
                     </h2>
-                    <div className="mt-4 max-h-[600px] overflow-y-auto rounded-xl border border-white/10 bg-black/25 p-4 sm:p-6">
+                    <div className="mt-4 max-h-[600px] overflow-y-auto rounded-xl border border-border bg-zinc-950/60 p-4 sm:p-6">
                         <div className="prose prose-invert prose-sm max-w-none [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-cyan-200 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-zinc-200 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:text-zinc-400 [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_strong]:text-zinc-200">
                             {/* Render the markdown changelog safely */}
                             <ChangelogContent body={data.changelog} />

@@ -566,7 +566,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                   <div className="flex flex-col gap-3 rounded-[1.25rem] sm:rounded-[1.75rem] border border-zinc-800 bg-zinc-950/80 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <div className="text-xs font-bold uppercase tracking-[0.22em] text-zinc-500">Visual Map</div>
-                      <h2 className="mt-1 text-2xl font-semibold text-white">{selectedPipeline.name}</h2>
+                      <h2 className="mt-1 text-2xl font-semibold text-zinc-50">{selectedPipeline.name}</h2>
                       <p className="mt-1 text-sm text-zinc-400">{scopeLabel(selectedPipeline, agentsMap, projectsMap, customersMap)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -588,7 +588,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
                 <div className="space-y-6">
                   <section>
                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-violet-300"><IconFileText className="h-4 w-4" />Documentation</div>
-                    <h2 className="mt-2 text-xl font-semibold text-white">Human-readable contract</h2>
+                    <h2 className="mt-2 text-xl font-semibold text-zinc-50">Human-readable contract</h2>
                   </section>
 
                   <section className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-4">
@@ -643,7 +643,7 @@ export default function PipelinesClient({ initialPipelines, initialRuns, agentsM
 
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><IconSparkles className="h-4 w-4" />Copy-ready markdown</h3>
-                    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-black/35 p-3 text-xs leading-5 text-zinc-400">{selectedMarkdown}</pre>
+                    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-950/60 p-3 text-xs leading-5 text-zinc-400">{selectedMarkdown}</pre>
                   </section>
                 </div>
               )}

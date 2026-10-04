@@ -74,7 +74,7 @@ const proofSignals = [
 export function PublicHomePage() {
   return (
     <div
-      className={`${spaceGrotesk.variable} ${dmSans.variable} ${syncopate.variable} min-h-screen overflow-hidden bg-[#02030a] font-[var(--font-dm-sans)] text-white selection:bg-cyan-300 selection:text-slate-950`}
+      className={`dark ${spaceGrotesk.variable} ${dmSans.variable} ${syncopate.variable} min-h-screen overflow-hidden bg-[#02030a] font-[var(--font-dm-sans)] text-white selection:bg-cyan-300 selection:text-slate-950`}
     >
       <style>{`
         @keyframes emperor-orbit { from { transform: rotateX(62deg) rotateZ(0deg); } to { transform: rotateX(62deg) rotateZ(360deg); } }

@@ -66,7 +66,7 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                         <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-200">{action}</span>
                         <span className="inline-flex items-center gap-1"><IconClockHour4 className="h-3 w-3" />{ago(item.requestedAt)}</span>
                     </div>
-                    <Link href={taskHref(item)} className="group mt-1.5 inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-zinc-100 hover:text-white">
+                    <Link href={taskHref(item)} className="group mt-1.5 inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-zinc-100 hover:text-zinc-50">
                         <span className="truncate">{item.task.title}</span>
                         <IconArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-300" />
                     </Link>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { versions, type DocVersion, type DocPage } from '@/content/docs/versions';
+import { versions, DOC_SECTIONS, type DocVersion, type DocPage } from '@/content/docs/versions';
 import { DocsMarkdownRenderer } from './docs-markdown-renderer';
 import { IconChevronRight, IconFileText, IconMenu2, IconX, IconArrowLeft } from "@tabler/icons-react";
 import { CustomLogo } from './custom-logo';
@@ -25,11 +25,11 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
   const currentPageSlug = slug.length > 0 ? slug.join('/') : 'overview';
   const currentPage = selectedVersion.pages.find((p: DocPage) => p.slug === currentPageSlug) || selectedVersion.pages[0];
 
-  // Group pages by category (heuristic: use sections or just list them)
-  const introPages = selectedVersion.pages.filter((p: DocPage) => ['overview', 'agent-quickstart', 'emperor-operating-pipeline', 'why-emperor-vs-openclaw', 'installation', 'activation'].includes(p.slug));
-  const conceptPages = selectedVersion.pages.filter((p: DocPage) => ['concepts', 'company-brain', 'resources-as-wiki-memory', 'project-architecture', 'lifecycle', 'pipelines', 'messaging', 'rich-replies', 'notifications-health', 'incidents', 'retention', 'limits'].includes(p.slug));
-  const runtimePages = selectedVersion.pages.filter((p: DocPage) => ['hermes-runtime', 'openclaw-agents'].includes(p.slug));
-  const referencePages = selectedVersion.pages.filter((p: DocPage) => ['api-reference', 'mcp', 'configuration', 'best-practices', 'usage', 'skill-development', 'troubleshooting'].includes(p.slug));
+  // Sidebar groups come from each page's section, so a new page always shows up.
+  const groups = [...DOC_SECTIONS, 'More'].map((title) => ({
+    title,
+    pages: selectedVersion.pages.filter((p: DocPage) => (p.section ?? 'More') === title),
+  })).filter((g) => g.pages.length > 0);
 
   const filteredPages = selectedVersion.pages.filter((p: DocPage) => 
     p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -172,41 +172,16 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                   </div>
                 ) : (
                   <>
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
-                        Getting Started
-                      </h3>
-                      <div className="space-y-1">
-                        {introPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
+                    {groups.map((group) => (
+                      <div key={group.title}>
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
+                          {group.title}
+                        </h3>
+                        <div className="space-y-1">
+                          {group.pages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
+                        </div>
                       </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
-                        Operator Manual
-                      </h3>
-                      <div className="space-y-1">
-                        {conceptPages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
-                        Runtime Setup
-                      </h3>
-                      <div className="space-y-1">
-                        {runtimePages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4 px-1">
-                        References
-                      </h3>
-                      <div className="space-y-1">
-                        {referencePages.map((page: DocPage) => <SidebarLink key={page.slug} page={page} />)}
-                      </div>
-                    </div>
+                    ))}
                   </>
                 )}
               </nav>
@@ -250,7 +225,7 @@ export function DocsViewer({ version: initialVersion, slug }: DocsViewerProps) {
                   <span>Emperor Claw v1.1.2</span>
                 </div>
                 <div className="h-4 w-px bg-zinc-800" />
-                <span className="text-zinc-600">Â© {new Date().getFullYear()}</span>
+                <span className="text-zinc-500">© {new Date().getFullYear()}</span>
               </div>
             </footer>
           </main>

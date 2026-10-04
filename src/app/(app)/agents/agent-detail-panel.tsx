@@ -868,7 +868,7 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
 
             {/* Setup prompt — always show for remote, optional for local */}
             <div className={cn(
-                "rounded-xl border bg-black/30 overflow-hidden",
+                "rounded-xl border bg-zinc-950/60 overflow-hidden",
                 isLocal
                     ? "border-emerald-500/20"
                     : "border-amber-500/20"

@@ -281,9 +281,9 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
     return (
         <div role="dialog" aria-modal="true" aria-labelledby="setup-title" className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/80 p-0 backdrop-blur-md sm:p-6">
-            <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-white/10 bg-zinc-950 shadow-2xl sm:h-[min(760px,100%)] sm:flex-row sm:rounded-3xl sm:border">
+            <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-border bg-zinc-950 shadow-2xl sm:h-[min(760px,100%)] sm:flex-row sm:rounded-3xl sm:border">
                 {/* Step rail */}
-                <aside className="hidden w-60 shrink-0 flex-col border-r border-white/10 bg-white/[0.02] p-6 sm:flex">
+                <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-white/[0.02] p-6 sm:flex">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Emperor setup</p>
                     <ol className="mt-8 space-y-1">
                         {stepsShown.map((s, i) => {
@@ -307,7 +307,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
                 <main className="flex min-h-0 flex-1 flex-col">
                     {/* Mobile progress */}
-                    <div className="flex items-center justify-between border-b border-white/10 px-5 py-3 sm:hidden">
+                    <div className="flex items-center justify-between border-b border-border px-5 py-3 sm:hidden">
                         <span className="text-xs text-zinc-400">Step {stepIndex + 1} of {stepsShown.length} · {STEPS[stepIndex].label}</span>
                         <button type="button" onClick={() => void setUpLater()} className="text-xs text-zinc-500 underline">Later</button>
                     </div>
@@ -331,7 +331,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         { icon: IconUsersGroup, title: "Your team", body: "A lead plus the specialists you need" },
                                         { icon: IconBook2, title: "Documented", body: "Your lead writes the company handbook" },
                                     ].map(({ icon: Icon, title, body }) => (
-                                        <li key={title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                                        <li key={title} className="rounded-2xl border border-border bg-white/[0.03] p-4">
                                             <Icon className="h-5 w-5 text-cyan-300" />
                                             <p className="mt-3 font-medium text-zinc-100">{title}</p>
                                             <p className="mt-1 text-xs leading-5 text-zinc-500">{body}</p>
@@ -354,14 +354,14 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                 <label className="block space-y-2">
                                     <span className="text-sm font-medium text-zinc-200">What does it do, and for whom?</span>
                                     <textarea value={whatYouDo} onChange={(e) => setWhatYouDo(e.target.value)} rows={3} placeholder="We build warehouse robots for mid-size logistics companies in Europe."
-                                        className="w-full resize-y rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
+                                        className="w-full resize-y rounded-xl border border-border bg-white/[0.035] px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                 </label>
                                 <fieldset className="space-y-2">
                                     <legend className="text-sm font-medium text-zinc-200">What kind of company is it?</legend>
                                     <div className="grid gap-2 sm:grid-cols-3">
                                         {BUSINESS_TYPES.map((t) => (
                                             <button key={t.id} type="button" aria-pressed={businessType === t.id} onClick={() => setBusinessType(t.id)}
-                                                className={cn("rounded-xl border p-3 text-left transition-colors", businessType === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-white/10 bg-white/[0.02] hover:border-white/20")}>
+                                                className={cn("rounded-xl border p-3 text-left transition-colors", businessType === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-white/[0.02] hover:border-zinc-600")}>
                                                 <span className="block text-sm font-medium text-zinc-100">{t.label}</span>
                                                 <span className="mt-0.5 block text-xs text-zinc-500">{t.hint}</span>
                                             </button>
@@ -376,7 +376,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     <label className="block space-y-2">
                                         <span className="text-sm font-medium text-zinc-200">House rules <span className="font-normal text-zinc-500">(optional, one per line)</span></span>
                                         <textarea value={houseRules} onChange={(e) => setHouseRules(e.target.value)} rows={2} placeholder={"Never quote prices without approval\nReply to customers in Spanish"}
-                                            className="w-full resize-y rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
+                                            className="w-full resize-y rounded-xl border border-border bg-white/[0.035] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                     </label>
                                 </div>
                                 {!hasAgents && (
@@ -413,7 +413,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                             {PROVIDERS.map((p) => (
                                                 <button key={p.id} type="button" aria-pressed={provider === p.id}
                                                     onClick={() => { setProvider(p.id); setModel(p.defaultModel); setKeyState({ status: "idle", message: "" }); }}
-                                                    className={cn("rounded-2xl border p-4 text-left transition-colors", provider === p.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-white/10 bg-white/[0.02] hover:border-white/20")}>
+                                                    className={cn("rounded-2xl border p-4 text-left transition-colors", provider === p.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-white/[0.02] hover:border-zinc-600")}>
                                                     <span className="flex items-center justify-between text-sm font-medium text-zinc-100">{p.label}{p.id === "openrouter" && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">Recommended</span>}</span>
                                                     <span className="mt-1 block text-xs leading-5 text-zinc-500">{p.hint}</span>
                                                 </button>
@@ -430,7 +430,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                             {keyState.status === "unknown" && <p className="text-xs text-amber-200">{keyState.message} Click Continue again to go on.</p>}
                                         </label>
                                         {provider === "openrouter" && (
-                                            <p className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-xs leading-5 text-zinc-400">
+                                            <p className="rounded-xl border border-border bg-white/[0.02] p-3 text-xs leading-5 text-zinc-400">
                                                 Starts on a <strong className="text-zinc-200">free model</strong>, so you can try everything at no cost. Switch to a stronger model per agent later.
                                             </p>
                                         )}
@@ -459,7 +459,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         const member = team.find((m) => m.templateId === t.id);
                                         const full = !member && team.length >= MAX_WIZARD_AGENTS;
                                         return (
-                                            <li key={t.id} className={cn("flex items-center gap-3 rounded-2xl border p-3 transition-colors", member ? "border-cyan-400/40 bg-cyan-400/[0.06]" : "border-white/10 bg-white/[0.02]", full && "opacity-50")}>
+                                            <li key={t.id} className={cn("flex items-center gap-3 rounded-2xl border p-3 transition-colors", member ? "border-cyan-400/40 bg-cyan-400/[0.06]" : "border-border bg-white/[0.02]", full && "opacity-50")}>
                                                 <input type="checkbox" checked={Boolean(member)} disabled={full} onChange={() => toggleMember(t.id)} aria-label={`Hire ${t.title}`} className="h-4 w-4 shrink-0 accent-cyan-400" />
                                                 <span className="text-xl" aria-hidden>{t.emoji}</span>
                                                 <div className="min-w-0 flex-1">
@@ -494,7 +494,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                             const t = getAgentTemplate(r.templateId);
                                             const up = isOnline(r.agentId);
                                             return (
-                                                <li key={r.name} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+                                                <li key={r.name} className="flex items-center gap-3 rounded-2xl border border-border bg-white/[0.02] p-3">
                                                     <span className="text-xl" aria-hidden>{t?.emoji ?? "🤖"}</span>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-sm font-medium text-zinc-100">{r.name}</p>
@@ -540,7 +540,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                     </div>
 
                     {/* Footer actions */}
-                    <footer className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-4 sm:px-12">
+                    <footer className="flex items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-12">
                         <div>
                             {stepIndex > 0 && (step !== "launch" || (!created && !launching)) && (
                                 <Button variant="ghost" onClick={() => { setError(""); setStep(STEPS[stepIndex - 1].id); }}><IconArrowLeft className="h-4 w-4" />Back</Button>

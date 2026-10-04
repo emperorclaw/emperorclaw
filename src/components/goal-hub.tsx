@@ -131,7 +131,7 @@ export function GoalHub() {
                                         <IconBrain className="w-6 h-6 text-indigo-400" />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-bold text-white uppercase tracking-tight">{suggestion.projectName}</h3>
+                                        <h3 className="text-lg font-bold text-zinc-50 uppercase tracking-tight">{suggestion.projectName}</h3>
                                         <p className="text-sm text-zinc-500">{suggestion.projectDescription}</p>
                                     </div>
                                 </div>

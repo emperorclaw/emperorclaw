@@ -256,7 +256,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
 
             {/* ── Invite Form ─────────────────────────────────────────── */}
             {canInvite && (
-                <div className="emperor-panel rounded-2xl border border-white/10 bg-zinc-950/70 p-6">
+                <div className="emperor-panel rounded-2xl border border-border bg-zinc-950/70 p-6">
                     <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
                         <IconMail className="w-5 h-5 text-indigo-400" />
                         Invite Member
@@ -290,7 +290,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             )}
 
             {/* ── Members List ─────────────────────────────────────────── */}
-            <div className="emperor-panel rounded-2xl border border-white/10 bg-zinc-950/70 p-6">
+            <div className="emperor-panel rounded-2xl border border-border bg-zinc-950/70 p-6">
                 <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
                     <IconUsers className="w-5 h-5 text-indigo-400" />
                     Team Members ({members.length})
@@ -299,7 +299,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-white/10 text-zinc-500 text-left">
+                            <tr className="border-b border-border text-zinc-500 text-left">
                                 <th className="pb-3 font-medium">Email</th>
                                 <th className="pb-3 font-medium">Company Role</th>
                                 <th className="pb-3 font-medium">Instance Role</th>
@@ -309,7 +309,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                         </thead>
                         <tbody>
                             {members.map((member) => (
-                                <tr key={member.id} className="border-b border-white/5">
+                                <tr key={member.id} className="border-b border-border">
                                     <td className="py-3 text-zinc-200">
                                         {member.displayName && <span className="font-medium">{member.displayName}</span>}
                                         {member.displayName && <br />}
@@ -368,7 +368,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
 
             {/* ── Pending Invitations ──────────────────────────────────── */}
             {canInvite && invitations.length > 0 && (
-                <div className="emperor-panel rounded-2xl border border-white/10 bg-zinc-950/70 p-6">
+                <div className="emperor-panel rounded-2xl border border-border bg-zinc-950/70 p-6">
                     <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
                         <IconClock className="w-5 h-5 text-indigo-400" />
                         Pending Invitations ({invitations.length})
@@ -376,7 +376,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b border-white/10 text-zinc-500 text-left">
+                                <tr className="border-b border-border text-zinc-500 text-left">
                                     <th className="pb-3 font-medium">Email</th>
                                     <th className="pb-3 font-medium">Role</th>
                                     <th className="pb-3 font-medium">Created</th>
@@ -387,7 +387,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                             </thead>
                             <tbody>
                                 {invitations.map((inv) => (
-                                    <tr key={inv.id} className="border-b border-white/5">
+                                    <tr key={inv.id} className="border-b border-border">
                                         <td className="py-3 text-zinc-200">{inv.email}</td>
                                         <td className="py-3">{roleBadge(inv.role)}</td>
                                         <td className="py-3 text-zinc-500">
@@ -439,7 +439,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {/* ── Role Change Dialog ────────────────────────────────────── */}
             {changingRoleFor && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                    <div className="bg-zinc-900 border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                         <h3 className="text-lg font-semibold text-zinc-100 mb-4">Change Role</h3>
                         <select
                             value={newRole}
@@ -467,7 +467,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {/* ── Remove Member Confirmation ───────────────────────────── */}
             {removingMember && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                    <div className="bg-zinc-900 border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                         <div className="flex items-start gap-3 mb-4">
                             <IconAlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                             <div>
@@ -495,7 +495,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {/* ── Scope Dialog ─────────────────────────────────────────── */}
             {scopeFor && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="emperor-panel w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl">
+                    <div className="emperor-panel w-full max-w-lg rounded-2xl border border-border bg-zinc-950 p-6 shadow-2xl">
                         <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
                             <IconShield className="w-5 h-5 text-cyan-400" />
                             Access Scope

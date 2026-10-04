@@ -8,7 +8,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto rounded-xl border border-white/10 bg-zinc-950/50"
+      className="relative w-full overflow-x-auto rounded-xl border border-border bg-zinc-950/50"
     >
       <table
         data-slot="table"
@@ -23,7 +23,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("bg-white/[0.035] text-zinc-300 [&_tr]:border-b [&_tr]:border-white/10", className)}
+      className={cn("bg-white/[0.035] text-zinc-300 [&_tr]:border-b [&_tr]:border-border", className)}
       {...props}
     />
   );
@@ -44,7 +44,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t border-white/10 bg-white/[0.035] font-medium [&>tr]:last:border-b-0",
+        "border-t border-border bg-white/[0.035] font-medium [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -57,7 +57,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b border-white/10 transition-colors hover:bg-white/[0.035] data-[state=selected]:bg-cyan-400/10",
+        "border-b border-border transition-colors hover:bg-white/[0.035] data-[state=selected]:bg-cyan-400/10",
         className
       )}
       {...props}

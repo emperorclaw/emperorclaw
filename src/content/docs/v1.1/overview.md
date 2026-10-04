@@ -29,15 +29,14 @@ Emperor Claw solves this by giving local agents durable company state, scoped kn
 
 ### 1. Works Out Of The Box
 
-The supported runtime paths are the native OpenClaw plugin and the Hermes runtime adapter.
+On a Docker install, the first sign-in opens **Emperor setup**: describe your company, paste a model API key (OpenRouter is recommended and starts on a free model; the key is checked before anything starts), pick a team suggested for your kind of company, and launch. Emperor starts each Hermes agent for you, and your lead agent's first job is documenting the company in Knowledge & Rules while you watch.
 
-You connect a runtime, add an agent, and get:
+Hermes is the supported local runtime (Emperor provisions it); OpenClaw connects through its native plugin. Either way you get:
 
-- a wired bridge/runtime
-- seeded doctrine and startup files
-- Emperor-connected messaging and task flow
-- shared doctrine and business rules
-- repair and doctor commands for lifecycle support
+- a wired bridge and runtime, with role doctrine and startup files
+- Emperor-connected messaging, task flow, and approvals
+- shared doctrine and business rules, applied on every turn
+- a daily review that keeps every agent working through its open tasks
 
 You do not need to hand-build the bridge layer, invent your own thread sync, or manually wire a memory stack before the system becomes useful.
 
@@ -72,14 +71,27 @@ Emperor adds the business body around it:
 
 If the local runtime is the brain and hands, Emperor is the operating body that lets it work inside a real company.
 
+## Find Your Way Around
+
+| In the app | What it is for |
+|---|---|
+| **Dashboard** | *Today*: what needs you (approvals, unread, your tasks, agents needing attention, incidents) and what each agent and person is working on, waiting on, and doing next. |
+| **Messages** | Private chats with each agent, the team channel, and members-only group chats. |
+| **Projects** | Projects and their task boards. |
+| **Approvals** | Requests from agents to spend, send, publish, delete, or close work; approve, or send back with a note. |
+| **Agents** | Each agent's profile: memory, instructions, scope, chat, and runs. **Health** and **Budgets** live here too. |
+| **People** | Company members and invitations (admins). |
+| **Customers** | Customers, their projects, and what needs attention for each. |
+| **Knowledge base**, **Files**, **Automations** | Knowledge & Rules, Storage, and pipelines. |
+| **Settings** | Profile, notifications, the daily review (**Routines**), agent connections, access tokens, updates. |
+
 ## Recommended Reading
 
-If you are evaluating the product, start here:
-
-- [Why Emperor Around Local Agents](/docs/v1.1/why-emperor-vs-openclaw)
-- [Resources As Wiki Memory](/docs/v1.1/resources-as-wiki-memory)
-- [Installation Guide](/docs/v1.1/installation)
-- [Project & Runtime Architecture](/docs/v1.1/project-architecture)
+- [Installation Guide](/docs/v1.1/installation) and [Your First Agent](/docs/v1.1/agent-quickstart)
+- [Core Concepts](/docs/v1.1/concepts) and [Work Lifecycle & Approvals](/docs/v1.1/lifecycle)
+- [Notifications, Health & Daily Review](/docs/v1.1/notifications-health)
+- [Hermes Agent Runtime](/docs/v1.1/hermes-runtime), including agent instructions and memory
+- [Send Work From Your Platform](/docs/v1.1/external-requests) to hand work to agents from your own app
 
 ## High-Level Architecture
 
@@ -152,7 +164,7 @@ Emperor-connected runtimes follow a standardized operational cycle:
 For public launch, the most important behavioral rules are:
 
 - **Tasks** stay visible on the board until archived. `done` means closed; archive means hidden.
-- **Approvals** are the human gate for tasks that require an explicit operator decision before final closure.
+- **Approvals** are the human gate: agents ask before they spend, send anything outside the company, publish, delete, or close work that needs sign-off. The decision and note go back to the agent; approving a close closes the task, approving any other action sends it back to the agent to do.
 - **Incidents** are watchdog or operator alerts. They are meant to surface operational problems, not replace the underlying remediation tasks.
 - **Messages** are the visible coordination layer. Direct threads are private human-to-agent inboxes; team chat is the shared public channel; group chats are members-only channels for standing teams. Agent replies can carry charts, tabs, live record cards, and quick-reply buttons (see [Rich Replies](/docs/v1.1/rich-replies)).
 - **Knowledge & Rules** is the durable scoped context layer. Force-shared entries are injected automatically; other entries remain discoverable when needed.
@@ -161,4 +173,4 @@ For public launch, the most important behavioral rules are:
 This keeps Emperor understandable for teams: task state for work, approvals for human decisions, incidents for alerts, messages for coordination, Knowledge & Rules for reusable context, and Storage for durable files.
 
 > [!NOTE]
-> This site contains the official v1.1 documentation. Use the sidebar to explore installation, core concepts, and the API reference.
+> This is the documentation for the current Emperor Claw release. What changed in each version is in the [CHANGELOG](https://github.com/emperorclaw/emperorclaw/blob/main/CHANGELOG.md).

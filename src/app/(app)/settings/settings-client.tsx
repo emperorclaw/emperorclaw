@@ -234,19 +234,19 @@ export default function SettingsClient({
                 description="Connect agent runtimes, manage access tokens, and keep dangerous setup details behind an advanced section."
                 actions={
                     <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full sm:min-w-80">
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:p-4">
+                        <div className="rounded-2xl border border-border bg-white/[0.035] p-3 sm:p-4">
                             <div className="text-[10px] sm:text-xs uppercase tracking-wider text-zinc-500">Active tokens</div>
-                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-white">{tokens.length}</div>
+                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-zinc-50">{tokens.length}</div>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:p-4">
+                        <div className="rounded-2xl border border-border bg-white/[0.035] p-3 sm:p-4">
                             <div className="text-[10px] sm:text-xs uppercase tracking-wider text-zinc-500">Runtimes</div>
-                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-white">2</div>
+                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-zinc-50">2</div>
                         </div>
                     </div>
                 }
             />
 
-            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950/60 p-1.5 sm:p-2">
+            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-border bg-zinc-950/60 p-1.5 sm:p-2">
                 {([
                     ["profile", "Profile"],
                     ["notifications", "Notifications"],
@@ -306,7 +306,7 @@ export default function SettingsClient({
                                 <div className="grid h-11 w-11 place-items-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10">
                                     <IconPlugConnected className="h-5 w-5 text-cyan-300" />
                                 </div>
-                                <h2 className="text-xl font-semibold text-white">{runtime.title}</h2>
+                                <h2 className="text-xl font-semibold text-zinc-50">{runtime.title}</h2>
                             </div>
                             <p className="mt-4 text-sm leading-6 text-zinc-400">{runtime.body}</p>
                             <a href={runtime.href} className="mt-5 inline-flex text-sm font-semibold text-cyan-300 hover:text-cyan-200">
@@ -330,7 +330,7 @@ export default function SettingsClient({
                         </p>
                         <div className="mt-4 grid gap-4 sm:grid-cols-2">
                             {/* Hermes prompt */}
-                            <div className="rounded-xl border border-emerald-500/30 bg-black/30 overflow-hidden">
+                            <div className="rounded-xl border border-emerald-500/30 bg-zinc-950/60 overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
                                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">Hermes agent</span>
                                     <CopyPromptButton text={`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
@@ -369,7 +369,7 @@ Ask me for any info you need along the way.`}</pre>
                             </div>
 
                             {/* OpenClaw prompt */}
-                            <div className="rounded-xl border border-emerald-500/30 bg-black/30 overflow-hidden">
+                            <div className="rounded-xl border border-emerald-500/30 bg-zinc-950/60 overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
                                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">OpenClaw agent</span>
                                     <CopyPromptButton text={`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
@@ -449,7 +449,7 @@ Walk me through step by step.`}</pre>
                                 <select
                                     value={newTokenScope}
                                     onChange={(event) => setNewTokenScope(event.target.value as TokenScope)}
-                                    className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.035] px-3 text-sm text-zinc-100 outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                                    className="h-10 w-full rounded-xl border border-border bg-white/[0.035] px-3 text-sm text-zinc-100 outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
                                 >
                                     <option value="mcp_full">Agent access</option>
                                     <option value="mcp_danger">Secret leasing</option>
@@ -483,9 +483,9 @@ Walk me through step by step.`}</pre>
                                         <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-100/75">Copy it now. Emperor will not show this secret again.</p>
                                     </div>
                                 </div>
-                                <div className="mt-4 flex overflow-hidden rounded-xl border border-white/10 bg-black/35">
+                                <div className="mt-4 flex overflow-hidden rounded-xl border border-border bg-zinc-950/60">
                                     <code className="flex-1 overflow-x-auto px-4 py-3 font-mono text-sm text-zinc-300">{activeSecret.secret}</code>
-                                    <button onClick={copyToClipboard} className="cursor-pointer border-l border-white/10 px-4 text-zinc-400 transition-colors hover:bg-white/[0.045] hover:text-white">
+                                    <button onClick={copyToClipboard} className="cursor-pointer border-l border-border px-4 text-zinc-400 transition-colors hover:bg-white/[0.045] hover:text-zinc-50">
                                         {copied ? <IconCircleCheck className="h-4 w-4 text-emerald-300" /> : <IconCopy className="h-4 w-4" />}
                                     </button>
                                 </div>
@@ -493,8 +493,8 @@ Walk me through step by step.`}</pre>
                         )}
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-zinc-950/70">
-                        <div className="border-b border-white/10 p-4 sm:p-5">
+                    <div className="overflow-hidden rounded-2xl sm:rounded-3xl border border-border bg-zinc-950/70">
+                        <div className="border-b border-border p-4 sm:p-5">
                             <h2 className="text-lg font-semibold text-zinc-100">Active tokens</h2>
                             <p className="mt-1 text-sm text-zinc-500">Revoke anything that is no longer attached to a real runtime.</p>
                         </div>
@@ -545,17 +545,17 @@ Walk me through step by step.`}</pre>
                             <IconPlugConnected className="mr-2 h-5 w-5 text-cyan-300" /> Connect Claude, Codex, or another MCP client
                         </h2>
                         <p className="text-sm leading-6 text-zinc-400">
-                            Emperor exposes a real Model Context Protocol server at <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-xs text-zinc-300">/mcp</code> — point any MCP-capable client at it with an <strong>Agent access</strong> token from above to get every agent/task/project/Knowledge &amp; Rules/messaging tool, plus your company&apos;s operating doctrine, automatically.
+                            Emperor exposes a real Model Context Protocol server at <code className="rounded bg-zinc-950/60 px-1 py-0.5 font-mono text-xs text-zinc-300">/mcp</code> — point any MCP-capable client at it with an <strong>Agent access</strong> token from above to get every agent/task/project/Knowledge &amp; Rules/messaging tool, plus your company&apos;s operating doctrine, automatically.
                         </p>
-                        <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-zinc-950 p-4">
+                        <div className="mt-4 space-y-2 rounded-xl border border-border bg-zinc-950 p-4">
                             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">URL</p>
                             <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">{`${typeof window !== "undefined" ? window.location.origin : ""}/mcp`}</code>
                             <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">Header</p>
                             <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">Authorization: Bearer &lt;your token&gt;</code>
                         </div>
-                        <details className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-4">
+                        <details className="mt-3 rounded-2xl border border-border bg-zinc-950/60 p-4">
                             <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Claude Desktop config example</summary>
-                            <pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-zinc-950 p-4 font-mono text-xs leading-6 text-zinc-300">{`{
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-zinc-950 p-4 font-mono text-xs leading-6 text-zinc-300">{`{
   "mcpServers": {
     "emperorclaw": {
       "url": "${typeof window !== "undefined" ? window.location.origin : "https://your-emperorclaw-host"}/mcp",
@@ -569,7 +569,7 @@ Walk me through step by step.`}</pre>
                                 Edit this in Claude Desktop&apos;s config file directly.
                             </p>
                         </details>
-                        <details className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-4">
+                        <details className="mt-3 rounded-2xl border border-border bg-zinc-950/60 p-4">
                             <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Connect via claude.ai web (Connectors)</summary>
                             <p className="mt-3 text-xs leading-5 text-zinc-500">
                                 Add a custom connector and paste just the URL above — no manual Client ID/Secret needed. Emperor registers Claude automatically and you&apos;ll be asked to approve the connection while logged in here; no separate token is required for this path.
@@ -593,16 +593,16 @@ Walk me through step by step.`}</pre>
                         <p className="mt-2 text-sm leading-6 text-zinc-400">
                             Use this when manually validating a local companion, bridge, heartbeats, checkpoints, or token permissions. Most operators only need the runtime guides above.
                         </p>
-                        <details className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+                        <details className="mt-5 rounded-2xl border border-border bg-zinc-950/60 p-4">
                             <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Show OpenClaw plugin commands</summary>
-                            <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-zinc-950 p-4">
+                            <div className="mt-4 space-y-3 rounded-xl border border-border bg-zinc-950 p-4">
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw plugins install clawhub:emperor-claw-os-plugin</code>
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw emperor add-agent --agent-name &quot;Operator One&quot; --local-brain-agent-id operator-one --token &quot;your_token_here&quot; --profile operator</code>
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor doctor</code>
                                 <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor status</code>
                             </div>
                         </details>
-                        <details className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-4">
+                        <details className="mt-3 rounded-2xl border border-border bg-zinc-950/60 p-4">
                             <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Show token scope internals</summary>
                             <p className="mt-3 text-sm leading-6 text-zinc-400">
                                 Agent access maps to the normal MCP access scope. Secret leasing maps to the privileged scope required for managed secret leases and should only be used on trusted runtimes.
@@ -731,7 +731,7 @@ function InstanceSettingsTab() {
                 </p>
 
                 <div className="mt-6 space-y-4">
-                    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 p-4">
+                    <div className="flex items-center justify-between rounded-xl border border-border bg-zinc-950/60 p-4">
                         <div>
                             <h3 className="font-medium text-zinc-100">Registration mode</h3>
                             <p className="mt-1 text-sm text-zinc-400">
@@ -754,7 +754,7 @@ function InstanceSettingsTab() {
                         </Button>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
                         <h3 className="font-medium text-zinc-100">Instance name</h3>
                         <p className="mt-1 text-sm text-zinc-400">Display name shown in emails and page titles.</p>
                         <div className="mt-3 flex gap-2">

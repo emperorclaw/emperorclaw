@@ -136,7 +136,7 @@ export default function ArtifactOfficeEditor({ artifactId }: { artifactId: strin
                     <IconAlertTriangle className="mx-auto size-8 text-rose-300" />
                     <h1 className="mt-4 text-lg font-semibold text-zinc-100">Couldn’t open this file</h1>
                     <p className="mt-2 text-sm leading-6 text-zinc-400">{loadError}</p>
-                    <Button asChild variant="outline" className="mt-6 border-white/10 bg-black/20"><Link href="/artifacts">Back to Storage</Link></Button>
+                    <Button asChild variant="outline" className="mt-6 border-border bg-zinc-950/60"><Link href="/artifacts">Back to Storage</Link></Button>
                 </div>
             </div>
         );
@@ -148,10 +148,10 @@ export default function ArtifactOfficeEditor({ artifactId }: { artifactId: strin
     const FileIcon = kind === "xlsx" ? IconFileSpreadsheet : IconFileText;
 
     return (
-        <section className="flex min-h-[680px] h-[calc(100vh-2.5rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101114] shadow-2xl shadow-black/30">
-            <header className="flex min-h-16 items-center gap-3 border-b border-white/10 bg-[#111216] px-3 sm:px-4">
-                <Button asChild variant="ghost" size="icon-sm" className="shrink-0 text-zinc-400 hover:text-white"><Link href="/artifacts" aria-label="Back to Storage"><IconArrowLeft /></Link></Button>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+        <section className="flex min-h-[680px] h-[calc(100vh-2.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-[#101114] shadow-2xl shadow-black/30">
+            <header className="flex min-h-16 items-center gap-3 border-b border-border bg-[#111216] px-3 sm:px-4">
+                <Button asChild variant="ghost" size="icon-sm" className="shrink-0 text-zinc-400 hover:text-zinc-50"><Link href="/artifacts" aria-label="Back to Storage"><IconArrowLeft /></Link></Button>
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-white/5">
                     <FileIcon className={kind === "xlsx" ? "size-5 text-emerald-300" : "size-5 text-blue-300"} />
                 </div>
                 <div className="min-w-0 flex-1">
