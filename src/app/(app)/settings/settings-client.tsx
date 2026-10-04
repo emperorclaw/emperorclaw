@@ -21,6 +21,7 @@ type SettingsToken = {
     createdAt: string;
     lastUsedAt: string | null;
     expiresAt: string;
+    callbackUrlHint?: string | null;
 };
 
 type SettingsTab = "profile" | "notifications" | "routines" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
@@ -32,7 +33,7 @@ type Member = {
     instanceRole: string;
     joinedAt: string | null;
 };
-type TokenScope = "mcp_full" | "mcp_danger";
+type TokenScope = "mcp_full" | "mcp_danger" | "requests";
 
 const runtimeCards = [
     {
@@ -50,10 +51,11 @@ const runtimeCards = [
 ];
 
 function tokenScopeLabel(scope: string) {
-    return scope === "mcp_danger" ? "Secret leasing" : "Agent access";
+    return scope === "mcp_danger" ? "Secret leasing" : scope === "requests" ? "Requests only" : "Agent access";
 }
 
 function tokenScopeHelp(scope: TokenScope) {
+    if (scope === "requests") return "For another platform that sends work to your agents (a \"send task to agent\" button). It can only create requests and read their status; the token name is shown to agents as the source.";
     return scope === "mcp_danger"
         ? "For trusted local runtimes that need managed secret leasing. Use sparingly."
         : "Default token for connected agents, bridges, and normal runtime access.";
@@ -87,6 +89,9 @@ export default function SettingsClient({
     const [tokens, setTokens] = useState(initialTokens);
     const [newTokenName, setNewTokenName] = useState("");
     const [newTokenScope, setNewTokenScope] = useState<TokenScope>("mcp_full");
+    const [newTokenCallback, setNewTokenCallback] = useState("");
+    const [editingCallbackId, setEditingCallbackId] = useState<string | null>(null);
+    const [callbackDraft, setCallbackDraft] = useState("");
     const [activeTab, setActiveTab] = useState<SettingsTab>(
         (searchParams.get("tab") as SettingsTab) || "connections"
     );
@@ -140,7 +145,7 @@ export default function SettingsClient({
             const res = await fetch("/api/settings/tokens", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newTokenName.trim(), scope: newTokenScope }),
+                body: JSON.stringify({ name: newTokenName.trim(), scope: newTokenScope, ...(newTokenScope === "requests" && newTokenCallback.trim() ? { callbackUrl: newTokenCallback.trim() } : {}) }),
             });
 
             if (res.ok) {
@@ -149,10 +154,11 @@ export default function SettingsClient({
                 setActiveSecret({ id: data.token.id, name: data.token.name, secret: data.secret });
                 setNewTokenName("");
                 setNewTokenScope("mcp_full");
+                setNewTokenCallback("");
                 toast.success("API key created.");
             } else {
-                console.error("Failed to generate token");
-                toast.error("Failed to create API key.");
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || "Failed to create API key.");
             }
         } catch (e) {
             console.error(e);
@@ -160,6 +166,23 @@ export default function SettingsClient({
         } finally {
             setGenerating(false);
         }
+    };
+
+    const saveCallback = async (tokenId: string, callbackUrl: string | null) => {
+        const res = await fetch(`/api/settings/tokens/${tokenId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ callbackUrl }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            toast.error(data.error || "Couldn't save the callback URL");
+            return;
+        }
+        setTokens(tokens.map((t) => (t.id === tokenId ? { ...t, callbackUrlHint: data.token.callbackUrlHint } : t)));
+        setEditingCallbackId(null);
+        setCallbackDraft("");
+        toast.success(callbackUrl ? "Callback URL saved" : "Callback removed");
     };
 
     const copyToClipboard = () => {
@@ -430,9 +453,22 @@ Walk me through step by step.`}</pre>
                                 >
                                     <option value="mcp_full">Agent access</option>
                                     <option value="mcp_danger">Secret leasing</option>
+                                    <option value="requests">Requests only (another platform)</option>
                                 </select>
                                 <p className="text-xs leading-5 text-zinc-500">{tokenScopeHelp(newTokenScope)}</p>
                             </label>
+                            {newTokenScope === "requests" && (
+                                <label className="block space-y-2">
+                                    <span className="text-sm font-medium text-zinc-300">Callback URL <span className="font-normal text-zinc-500">(optional)</span></span>
+                                    <Input
+                                        type="url"
+                                        placeholder="https://your-platform.example/emperor/callback"
+                                        value={newTokenCallback}
+                                        onChange={(event) => setNewTokenCallback(event.target.value)}
+                                    />
+                                    <p className="text-xs leading-5 text-zinc-500">Emperor posts a signed update here whenever a request changes status. Stored encrypted.</p>
+                                </label>
+                            )}
                             <Button onClick={handleGenerate} disabled={!newTokenName.trim() || generating} className="w-full">
                                 <IconPlus className="h-4 w-4" /> {generating ? "Creating..." : "Create token"}
                             </Button>
@@ -479,6 +515,21 @@ Walk me through step by step.`}</pre>
                                                 ID: {token.id} · Created: {new Date(token.createdAt).toLocaleDateString()} · Expires: {new Date(token.expiresAt).toLocaleDateString()}
                                             </p>
                                             <p className="mt-1 text-xs text-zinc-500">Last used: {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</p>
+                                            {token.scope === "requests" && (
+                                                editingCallbackId === token.id ? (
+                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                        <Input type="url" className="h-8 max-w-xs text-xs" placeholder="https://…/callback" value={callbackDraft} onChange={(event) => setCallbackDraft(event.target.value)} aria-label="Callback URL" />
+                                                        <Button size="sm" onClick={() => saveCallback(token.id, callbackDraft.trim())} disabled={!callbackDraft.trim()}>Save</Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => setEditingCallbackId(null)}>Cancel</Button>
+                                                    </div>
+                                                ) : (
+                                                    <p className="mt-1 text-xs text-zinc-500">
+                                                        Callback: {token.callbackUrlHint ? <span className="font-mono">{token.callbackUrlHint}</span> : "none"}{" · "}
+                                                        <button className="cursor-pointer text-cyan-300 hover:underline" onClick={() => { setEditingCallbackId(token.id); setCallbackDraft(""); }}>{token.callbackUrlHint ? "Change" : "Add"}</button>
+                                                        {token.callbackUrlHint && <>{" · "}<button className="cursor-pointer text-zinc-400 hover:underline" onClick={() => saveCallback(token.id, null)}>Remove</button></>}
+                                                    </p>
+                                                )
+                                            )}
                                         </div>
                                         <Button variant="destructive" size="sm" onClick={() => handleRevokeToken(token.id)} disabled={revokingTokenId === token.id}>
                                             <IconTrash className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}

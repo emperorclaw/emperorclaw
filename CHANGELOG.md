@@ -9,6 +9,39 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Send work from your platform.** Another system (a "send to agent" button
+  in a CRM, help desk, or portal) can hand a request to one agent with
+  `POST /api/mcp/requests`. Emperor creates a task for the agent and posts the
+  prompt in its direct chat, shown as coming from the platform ("Acme Portal
+  (via API) · on behalf of ana@client.example"), never as a company member.
+  Read it back with `GET /api/mcp/requests/{id}` (status, the agent's replies,
+  the task's output), or get signed status callbacks. Idempotency keys make
+  double clicks safe. Operator MCP connections get `send_agent_request` and
+  `get_agent_request`.
+- **Requests-only tokens.** A new access level in Settings → Access Tokens
+  that can only create and read its own requests; every other endpoint, the
+  MCP server, and the realtime socket refuse it. It can carry an encrypted
+  callback URL.
+
+### Fixed
+
+- **The daily review and approval decisions reached Hermes agents as already
+  handled**, so older bridges skipped them. Work Emperor hands an agent is now
+  queued and tracked like a person's message (acting, resolved, failed), with
+  no bridge update needed. It also counts in agent health and in agent-down
+  alerts.
+- The chat showed Emperor's own messages (daily review, approval decisions)
+  under the agent's name; they now say Emperor, or the requesting platform.
+
+### Upgrade notes
+
+- Migration `0048` adds the requests table and two token columns; it runs on
+  start.
+
 ## [0.8.56] — 2026-10-04
 
 ### Added

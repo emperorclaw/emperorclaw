@@ -73,7 +73,11 @@ export const companyTokens = pgTable("company_tokens", {
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'cascade' }),
     tokenHash: text("token_hash").notNull(),
     name: text("name").notNull(),
-    scope: text("scope").notNull(), // 'mcp_full', 'mcp_danger'
+    scope: text("scope").notNull(), // 'mcp_full', 'mcp_danger', 'requests'
+    // 'requests' tokens (an external platform sending work to agents) may
+    // carry a callback for status updates. The URL is a credential: encrypted.
+    callbackUrlEncrypted: text("callback_url_encrypted"),
+    callbackUrlHint: text("callback_url_hint"),
     lastUsedAt: timestamp("last_used_at"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -829,6 +833,34 @@ export const threadMessages = pgTable("thread_messages", {
     // company + sender_type + created_at; without these it falls back to scans.
     companyCreatedIdx: index("thread_messages_company_created_idx").on(table.companyId, table.createdAt),
     companySenderCreatedIdx: index("thread_messages_company_sender_created_idx").on(table.companyId, table.senderType, table.createdAt),
+}));
+
+// Work an external platform sent to one agent ("send task to agent" buttons).
+// Each request lands in the agent's direct chat as a system message from the
+// named source and is tracked as a task; the platform polls it or receives
+// status callbacks. The idempotency key stops a double click creating twice.
+export const agentRequests = pgTable("agent_requests", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    tokenId: uuid("token_id").references(() => companyTokens.id, { onDelete: 'set null' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
+    threadId: uuid("thread_id").references(() => messageThreads.id, { onDelete: 'set null' }),
+    messageId: uuid("message_id").references(() => threadMessages.id, { onDelete: 'set null' }),
+    source: text("source").notNull(),
+    requestedBy: text("requested_by"),
+    externalRef: text("external_ref"),
+    idempotencyKey: text("idempotency_key"),
+    prompt: text("prompt").notNull(),
+    // Last status delivered to the callback, and delivery bookkeeping.
+    notifiedStatus: text("notified_status"),
+    callbackAttempts: integer("callback_attempts").default(0).notNull(),
+    callbackLastError: text("callback_last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+    companyCreatedIdx: index("agent_requests_company_created_idx").on(table.companyId, table.createdAt),
+    idempotencyUnique: uniqueIndex("agent_requests_idempotency_unique").on(table.companyId, table.source, table.idempotencyKey).where(sql`${table.idempotencyKey} IS NOT NULL`),
 }));
 
 // Durable transcript of the model's own reasoning for ONE agent message.

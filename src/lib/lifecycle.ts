@@ -1,9 +1,10 @@
-import { and, count, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
 import { agentSessions, agents, tasks, threadMessages } from "@/db/schema";
 import { notifyAgentDown } from "./notifications";
 import { runDailyRoutines } from "./agent-routines";
+import { deliverRequestCallbacks } from "./agent-requests";
 import { SLA_TRACKED_TASK_STATES } from "./task-state";
 import { broadcastMcpEvent } from "./pubsub";
 
@@ -16,6 +17,7 @@ export const AGENT_OFFLINE_AFTER_MS = 5 * 60 * 1000;
 
 let isLifecycleMonitorRunning = false;
 let lastRoutineCheck = 0;
+let lastCallbackCheck = 0;
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_CONNECTION_STRING,
@@ -50,6 +52,11 @@ async function runLifecycleMonitor() {
     if (now.getTime() - lastRoutineCheck >= 60_000) {
       lastRoutineCheck = now.getTime();
       await runDailyRoutines(now).catch((error) => console.error("Daily review failed:", error));
+    }
+    // Requests from other platforms: post status callbacks (cheap when none).
+    if (now.getTime() - lastCallbackCheck >= 15_000) {
+      lastCallbackCheck = now.getTime();
+      await deliverRequestCallbacks(now).catch((error) => console.error("Request callbacks failed:", error));
     }
     const staleSessions = await db.select().from(agentSessions).where(and(
       or(
@@ -143,8 +150,9 @@ export async function markSilentAgentsOffline(now = new Date()) {
             db.select({ value: count() }).from(threadMessages).where(and(
                 eq(threadMessages.companyId, agent.companyId),
                 eq(threadMessages.targetAgentId, agent.id),
-                eq(threadMessages.senderType, "human"),
+                inArray(threadMessages.senderType, ["human", "system"]),
                 inArray(threadMessages.deliveryState, ["queued", "seen", "acting"]),
+                sql`NOT (${threadMessages.metadataJson} ? 'runtimeControl')`,
             )),
         ]);
         const pending = { openTasks: Number(openTasks?.value) || 0, waitingMessages: Number(waiting?.value) || 0 };

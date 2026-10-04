@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
             agentId: effectiveAgentId,
             targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
+            replyToMessageId: replyToMessageId || null,
         });
 
         // Serialize a reply with /kill and /replace on the same agent row.

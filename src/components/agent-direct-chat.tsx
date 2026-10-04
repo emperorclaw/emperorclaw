@@ -10,6 +10,7 @@ import { RichMessageActionsContext } from "@/components/rich/rich-message-action
 import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
+import { requestSourceLabel } from "@/lib/request-label";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -691,6 +692,9 @@ export function AgentDirectChat({
                             const message = messages[i];
                             const isHuman = message.senderType === "human";
                             const isControl = message.senderType === "system" && Boolean((message.metadataJson as Record<string, unknown> | null)?.runtimeControl);
+                            // System messages say who they are from: a request names its
+                            // source platform; anything else comes from Emperor itself.
+                            const senderLabel = message.senderType === "system" ? (requestSourceLabel(message.metadataJson) ?? "Emperor") : agentName;
                             const isRead = isHuman && agentLastReadAt && new Date(agentLastReadAt).getTime() >= new Date(message.createdAt).getTime();
                             const prev = messages[i - 1] ?? null;
                             const next = messages[i + 1] ?? null;
@@ -724,7 +728,7 @@ export function AgentDirectChat({
                                         <div className={cn("flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]", isHuman ? "items-end" : "items-start", isRich && "w-full max-w-full sm:max-w-[min(92%,880px)]")}>
                                             {/* Agent name label — only on group-start agent messages */}
                                             {!isHuman && !isContinuation && (
-                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{isControl ? "Emperor" : agentName}</span>
+                                                <span className="text-[10px] font-medium text-zinc-400 mb-1 ml-1">{senderLabel}</span>
                                             )}
 
                                             <div className={cn(
@@ -743,7 +747,7 @@ export function AgentDirectChat({
                                                             {isHuman ? <IconUser className="w-3 h-3" /> : <IconRobot className="w-3 h-3 text-emerald-400" />}
                                                         </div>
                                                         <span className={cn("text-[10px] uppercase tracking-wider font-bold", isHuman ? "text-emerald-950/70" : "text-zinc-500")}>
-                                                            {isHuman ? (isOwn ? "You" : getMessageSenderName(message) || "Member") : isControl ? "Emperor" : agentName}
+                                                            {isHuman ? (isOwn ? "You" : getMessageSenderName(message) || "Member") : senderLabel}
                                                         </span>
                                                     </div>
                                                 )}

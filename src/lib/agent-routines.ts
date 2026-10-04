@@ -160,6 +160,8 @@ export async function reviewCompany(companyId: string, now = new Date()): Promis
             senderType: "system",
             targetAgentId: agentId,
             text: reviewMessage(list, now),
+            // Queued, so runtimes pick it up and report on it like a person's message.
+            deliveryState: "queued",
             metadataJson: { routine: "daily_review", taskCount: list.length },
         });
         sent += 1;

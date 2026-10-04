@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
                 // Safety buffer: subtract 10ms to handle sub-millisecond precision drift between servers/DBs
                 const bufferDate = new Date(sinceDate.getTime() - 10);
                 const sinceCondition = scopeAgentId
-                    ? sql`(${threadMessages.createdAt} > ${bufferDate} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} = 'human' AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
+                    ? sql`(${threadMessages.createdAt} > ${bufferDate} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} IN ('human', 'system') AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
                     : gt(threadMessages.createdAt, bufferDate);
                 // A runtime retains failed message IDs in a durable retry ledger.
                 // Include only those exact messages after the normal cursor has
@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
                             const lastReply = replyMap.get(m.threadId);
                             if (!lastReply) return true; // No reply from this agent yet
                             // A newer reply must not discard an explicitly queued direct follow-up.
-                            if (m.targetAgentId === resolvedAgentId && m.senderType === 'human' && ['queued', 'seen', 'acting'].includes(m.deliveryState)) return true;
+                            if (m.targetAgentId === resolvedAgentId && (m.senderType === 'human' || m.senderType === 'system') && ['queued', 'seen', 'acting'].includes(m.deliveryState)) return true;
                             return m.createdAt > lastReply; // Only show messages AFTER our last reply
                         });
                     }

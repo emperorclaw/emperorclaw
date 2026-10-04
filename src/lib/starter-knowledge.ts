@@ -81,6 +81,7 @@ const STARTER_NOTES: StarterNote[] = [
             `- A request that needs real work becomes a task before work starts; quick questions don't. Keep the task state true (in_progress, review while waiting on a person, done with evidence).\n` +
             `- Request an approval before spending money, sending anything outside the company, publishing, deleting, or closing work that needs sign-off — and wait for the decision.\n` +
             `- Each morning, agents get a daily review of their open tasks and reply with a summary of done, in progress, and blocked.\n` +
+            `- Requests from other platforms arrive in an agent's direct chat from a named source, already tracked as a task; the agent replies there with the result and closes the task.\n` +
             `- Keep progress and blockers in task notes; keep reusable rules here in Knowledge & Rules.\n` +
             `- Escalate a blocker to a human by name with one concrete question.\n`,
     },

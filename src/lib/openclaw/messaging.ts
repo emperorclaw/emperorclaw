@@ -20,6 +20,8 @@ export async function sendThreadMessageFromMcp(input: {
   agentId?: string | null;
   targetAgentId?: string | null;
   threadType?: string | null;
+  // The message this one answers (runtimes send it); lets a request find its reply.
+  replyToMessageId?: string | null;
 }) {
   const senderId = input.fromUserId || input.agentId || null;
   const resolvedSenderId = senderId
@@ -82,6 +84,7 @@ export async function sendThreadMessageFromMcp(input: {
     metadataJson: {
       chatId: input.chatId || null,
       threadType: isGroup ? GROUP_THREAD_TYPE : input.threadType || null,
+      ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
     },
     mirrorToLegacyChat: !resolvedTargetAgentId && !isGroup,
   });

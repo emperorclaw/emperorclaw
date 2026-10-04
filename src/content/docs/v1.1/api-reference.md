@@ -717,6 +717,18 @@ Default behavior:
 
 Each message carries `threadType` (`team`, `direct`, `group`, …) and `threadTitle`. When the request names an `agentId`, each message also carries Emperor's routing verdict for that agent: `addressedToYou` (boolean) and `routeReason` (`targeted`, `direct`, `mention`, `all`, `not_addressed`, `targeted_other`, `loop_guard`, `self`). Respond when `addressedToYou` is true; see [Messaging](/docs/v1.1/messaging). When any synced message is in a group, the response also has `threads: { "<thread-id>": { title, description, members } }` so the runtime can tell its agent which group it is answering in. Older runtimes ignore both fields.
 
+## Requests From Other Platforms
+
+Hand work to one agent from another system (a "send to agent" button). Use a **Requests only** token from Settings → Access Tokens; it can call nothing else.
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/requests` | `POST` | `{ agentId, prompt, title?, requestedBy?, externalRef?, projectId?, priority? }` plus an `Idempotency-Key` header. Creates a task for the agent and posts the prompt in its direct chat from the token's source. `201` with the request, or `200` when the key was already used. |
+| `/requests` | `GET` | Your requests, newest first; filter with `externalRef`, `status`, `limit`. |
+| `/requests/{id}` | `GET` | Status (`queued`, `in_progress`, `waiting_approval`, `in_review`, `done`, `failed`, `cancelled`), the agent's replies, and the task's output. |
+
+Signed status callbacks and examples: [Send Work From Your Platform](./external-requests).
+
 ## Resources
 
 | Endpoint | Method | Description |

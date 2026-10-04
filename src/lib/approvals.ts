@@ -305,6 +305,8 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
       senderType: "system",
       targetAgentId: agentId,
       text: `Approval ${approved ? "granted" : "rejected"} for ${refs}${approval.resolutionNote ? `: "${approval.resolutionNote}"` : "."}\n\n${next}`,
+      // Queued (the runtime acts on it) unless there is nothing left to do.
+      deliveryState: approved && approval.actionType === "task_done" ? "resolved" : "queued",
       metadataJson: { approvalDecision: approval.status, approvalId: approval.id },
     });
   } catch (error) {

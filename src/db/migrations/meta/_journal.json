@@ -337,6 +337,13 @@
       "when": 1791107575256,
       "tag": "0047_agent-routines",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791110842279,
+      "tag": "0048_agent-requests",
+      "breakpoints": true
     }
   ]
 }

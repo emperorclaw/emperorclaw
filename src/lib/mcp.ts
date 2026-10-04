@@ -6,7 +6,9 @@ import * as crypto from "crypto";
 import { consumeRateLimit, getClientIp } from "./rate-limit";
 
 type JsonObject = Record<string, unknown>;
-export type CompanyTokenScope = "mcp_full" | "mcp_danger";
+// "requests" is the narrow scope for an external platform: it can only send
+// work to agents and read back those requests (POST/GET /api/mcp/requests).
+export type CompanyTokenScope = "mcp_full" | "mcp_danger" | "requests";
 
 export type McpTaskScopeContext = {
     id: string;
@@ -39,6 +41,8 @@ export type VerifyMcpTokenResult = VerifyMcpTokenSuccess | VerifyMcpTokenFailure
 
 type VerifyMcpTokenOptions = {
     requiredScope?: CompanyTokenScope;
+    // Only the requests endpoints accept "requests"-scoped tokens.
+    allowRequestsScope?: boolean;
 };
 
 function getPositiveIntegerEnv(name: string, fallback: number): number {
@@ -52,15 +56,15 @@ function getPositiveIntegerEnv(name: string, fallback: number): number {
 }
 
 export function isCompanyTokenScope(value: unknown): value is CompanyTokenScope {
-    return value === "mcp_full" || value === "mcp_danger";
+    return value === "mcp_full" || value === "mcp_danger" || value === "requests";
 }
 
 export function normalizeCompanyTokenScope(value: unknown): CompanyTokenScope {
-    return value === "mcp_danger" ? "mcp_danger" : "mcp_full";
+    return value === "mcp_danger" || value === "requests" ? value : "mcp_full";
 }
 
 function getCompanyTokenScopeRank(scope: CompanyTokenScope): number {
-    return scope === "mcp_danger" ? 2 : 1;
+    return scope === "mcp_danger" ? 2 : scope === "requests" ? 0 : 1;
 }
 
 export function hasRequiredCompanyTokenScope(actual: unknown, required: CompanyTokenScope): boolean {
@@ -70,7 +74,9 @@ export function hasRequiredCompanyTokenScope(actual: unknown, required: CompanyT
 function getCompanyTokenTtlDays(scope: CompanyTokenScope): number {
     return scope === "mcp_danger"
         ? getPositiveIntegerEnv("EMPEROR_CLAW_DANGER_TOKEN_TTL_DAYS", 30)
-        : getPositiveIntegerEnv("EMPEROR_CLAW_TOKEN_TTL_DAYS", 90);
+        : scope === "requests"
+            ? getPositiveIntegerEnv("EMPEROR_CLAW_REQUESTS_TOKEN_TTL_DAYS", 365)
+            : getPositiveIntegerEnv("EMPEROR_CLAW_TOKEN_TTL_DAYS", 90);
 }
 
 export function getCompanyTokenExpiresAt(token: { createdAt: Date; scope: unknown }): Date {
@@ -87,12 +93,14 @@ export function serializeCompanyToken(token: {
     lastUsedAt?: Date | null;
     revokedAt?: Date | null;
     agentId?: string | null;
+    callbackUrlHint?: string | null;
 }) {
     return {
         id: token.id,
         name: token.name,
         scope: normalizeCompanyTokenScope(token.scope),
         agentId: token.agentId ?? null,
+        callbackUrlHint: token.callbackUrlHint ?? null,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
         revokedAt: token.revokedAt ? token.revokedAt.toISOString() : null,
@@ -111,6 +119,10 @@ async function verifyStoredCompanyToken(
     const expiresAt = getCompanyTokenExpiresAt(companyToken);
     if (expiresAt.getTime() <= Date.now()) {
         return { error: "Token expired", status: 401 as const };
+    }
+
+    if (normalizeCompanyTokenScope(companyToken.scope) === "requests" && !options.allowRequestsScope) {
+        return { error: "This token can only send requests to agents (POST /api/mcp/requests)", status: 403 as const };
     }
 
     if (options.requiredScope && !hasRequiredCompanyTokenScope(companyToken.scope, options.requiredScope)) {

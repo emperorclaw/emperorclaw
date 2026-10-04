@@ -169,7 +169,11 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
             waiting.delete(key);
             continue;
         }
-        if (m.senderType !== "human") continue;
+        // People's messages, and work the system handed one agent (daily
+        // review, approval decisions, requests from other platforms).
+        const metadataForKind = (m.metadataJson as Record<string, unknown>) || {};
+        const systemWork = m.senderType === "system" && Boolean(m.targetAgentId) && !("runtimeControl" in metadataForKind);
+        if (m.senderType !== "human" && !systemWork) continue;
 
         // Who was this message for?
         const addressed = new Set<string>();

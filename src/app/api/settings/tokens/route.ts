@@ -6,6 +6,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { requireRole, AuthError, roleGte } from "@/lib/roles";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { isCompanyTokenScope, serializeCompanyToken } from "@/lib/mcp";
+import { prepareCallbackUrl } from "@/lib/agent-requests";
 
 // Company tokens grant programmatic access to every agent and (at mcp_danger)
 // to decrypted integration/resource secrets, so minting and listing them is an
@@ -63,6 +64,14 @@ export async function POST(req: NextRequest) {
 
         const scope = requestedScope ?? "mcp_full";
 
+        // A requests token (an outside platform sending work) may get status callbacks.
+        let callback: { encrypted: string; hint: string } | null = null;
+        if (scope === "requests" && typeof body.callbackUrl === "string" && body.callbackUrl.trim()) {
+            const prepared = prepareCallbackUrl(body.callbackUrl);
+            if ("error" in prepared) return NextResponse.json({ error: prepared.error }, { status: 400 });
+            callback = prepared;
+        }
+
         const rawToken = `ec_${randomBytes(24).toString('hex')}`;
         const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
@@ -71,6 +80,8 @@ export async function POST(req: NextRequest) {
             name,
             scope,
             tokenHash,
+            callbackUrlEncrypted: callback?.encrypted ?? null,
+            callbackUrlHint: callback?.hint ?? null,
         }).returning();
 
         await broadcastMcpEvent(companyId, {

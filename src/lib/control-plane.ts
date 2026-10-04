@@ -16,7 +16,7 @@ import {
     threadParticipants,
     users,
 } from "@/db/schema";
-import { and, desc, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
@@ -495,7 +495,10 @@ export async function updateThreadExecutionState(input: {
     const outstanding = await db.select().from(threadMessages).where(and(
         eq(threadMessages.companyId, input.companyId),
         eq(threadMessages.threadId, input.threadId),
-        eq(threadMessages.senderType, "human"),
+        // People's messages, and work the system hands an agent (daily review,
+        // approval decisions, requests from other platforms) — those are
+        // created queued; other system notices are created resolved.
+        inArray(threadMessages.senderType, ["human", "system"]),
         ne(threadMessages.deliveryState, "resolved"),
         ne(threadMessages.deliveryState, "cancelled"),
         input.messageId ? eq(threadMessages.id, input.messageId) : undefined,
@@ -545,7 +548,7 @@ export async function markMessageFailedByRuntime(input: {
         eq(threadMessages.id, input.messageId),
         eq(threadMessages.companyId, input.companyId),
         eq(threadMessages.threadId, input.threadId),
-        eq(threadMessages.senderType, "human"),
+        inArray(threadMessages.senderType, ["human", "system"]),
     )).limit(1);
     if (!message || message.deliveryState === "resolved" || message.deliveryState === "cancelled") return null;
     const metadata = (message.metadataJson as Record<string, unknown>) || {};

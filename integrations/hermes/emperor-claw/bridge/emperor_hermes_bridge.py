@@ -1773,6 +1773,7 @@ Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rul
 - A request that needs real work becomes a task (assigned, with acceptance criteria) before you start; quick questions don't. Keep its state true: in_progress, review while waiting on a person, done with evidence.
 - Request an approval (emperor_request_approval) before spending money, sending anything outside the company, publishing, deleting, or closing work that needs sign-off. Don't act until approved.
 - Emperor sends you a daily review of your open tasks: work through it and reply with a short summary.
+- A request from another platform arrives as a system message from a named source, already tracked as a task assigned to you: reply in that chat with the result and set the task done when finished.
 
 ### Knowledge & Rules
 
