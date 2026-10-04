@@ -9,6 +9,40 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.59] — 2026-10-05
+
+### Added
+
+- **Agent memory that works.** Hermes agents now see their memories at the
+  start of every turn and save new ones with the `emperor_remember` tool when
+  someone tells them how they want things done. In **Agents → Memory** you can
+  teach an agent something or delete what it got wrong.
+- **Avatar styles.** Click an agent's picture to choose from twelve DiceBear
+  styles, shuffle it, or give every agent the same style.
+- **Group icons.** Give a group an emoji icon; it shows in the sidebar and
+  the chat header.
+
+### Changed
+
+- **Instructions apply live.** Edits to an agent's instructions reach a
+  running agent on its next message (bridge 0.8.59 or later); before, they
+  only applied after recreating the runtime.
+- **One agent profile.** The separate agent detail page duplicated the panel
+  on the Agents page; old `/agents/<id>` links now open that panel.
+- **Clearer menu:** Work (Dashboard, Messages, Projects, Approvals), Team
+  (Agents, People for admins), and Company (Customers, Knowledge base, Files,
+  Automations).
+- **Customers say what needs attention.** The unexplained "Needs review"
+  badge is replaced by a count and a list of the approvals, blocked tasks,
+  incidents, and reviews behind it, each linked; the customer also lists its
+  projects. Finished tasks no longer count as blocked.
+
+### Upgrade notes
+
+- Migration `0049` adds group icons; it runs on start.
+- Update the Hermes plugin on your runtimes for live instructions, memory in
+  every turn, and `emperor_remember`.
+
 ## [0.8.58] — 2026-10-04
 
 ### Added
