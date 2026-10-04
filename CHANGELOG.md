@@ -9,6 +9,27 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.61] — 2026-10-05
+
+### Changed
+
+- **A more compact sidebar.** The logo is smaller and no longer sits in a
+  card, menu items are tighter, and Documentation, theme, and Collapse are now
+  small icons on one line next to the version instead of full rows, so the
+  whole menu fits without scrolling on a laptop screen.
+
+### Fixed
+
+- On phones, the user card in the sidebar no longer squeezes your name past
+  the edge; it shows your initial.
+
+### Removed
+
+- The outdated copies of the documentation under `docs/` (the app's
+  documentation lives in `src/content/docs`), an unused docs landing page, an
+  old first-agent guide, and an internal draft. The README now links to the
+  current pages.
+
 ## [0.8.60] — 2026-10-05
 
 ### Fixed
