@@ -268,6 +268,15 @@ Emperor decides who answers: each synced message carries `addressedToYou` and a 
 
 Direct messages sent through the Emperor UI set `targetAgentId` to the agent shown in the sidebar. If the bridge's `EMPEROR_CLAW_AGENT_ID` does not match that value, the bridge skips every DM silently.
 
+### Instructions and memory
+
+Each agent has two things in **Agents → (agent)** that shape every turn:
+
+- **Instructions**: its role files (AGENTS.md, SOUL.md, IDENTITY.md, and any you add). Bridges 0.8.59 and later read them from Emperor before each turn (cached for a minute), so edits apply on the agent's next message. Older bridges use the copy taken when the container started; use **Recreate runtime** to refresh it.
+- **Memory**: short notes about how to work here: a person's preference, a correction, a lesson. The agent saves them with the `emperor_remember` tool when someone tells it how they want things done, and you can add or delete them in the **Memory** tab (**Teach … something**). The newest memories (about 3,000 characters) are included in every turn.
+
+Both come from `GET /api/mcp/agents/{id}/memory`, which returns `instructions` and the memory `entries`; agents write with `POST` to the same path (`kind`: preference, lesson, fact, or context). Company facts still belong in Knowledge & Rules, and task progress in task notes.
+
 ## Multi-Agent Team Chat
 
 Three chat surfaces exist in Emperor:

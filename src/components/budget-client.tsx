@@ -257,7 +257,7 @@ export function BudgetClient({ initialAgents, initialPricing, initialWeeklyCost 
                             const b = a.monthlyBudgetCents ?? 0, c = a.monthlyCostCents ?? 0, t = a.monthlyTokenUsage ?? 0;
                             const pct = b > 0 ? Math.min(100, (c / b) * 100) : 0;
                             return (<tr key={a.id} className="hover:bg-zinc-900/50 transition-colors">
-                                <td className="px-5 py-3"><Link href={`/agents/${a.id}`} className="text-zinc-200 hover:text-cyan-300 font-medium">{a.name}</Link><div className="text-xs text-zinc-500">{a.role}</div></td>
+                                <td className="px-5 py-3"><Link href={`/agents?agent=${a.id}`} className="text-zinc-200 hover:text-cyan-300 font-medium">{a.name}</Link><div className="text-xs text-zinc-500">{a.role}</div></td>
                                 <td className="px-5 py-3"><ModelCell agent={a} options={models} updateAgent={updateAgent} /></td>
                                 <td className="px-5 py-3 text-right font-mono text-xs text-zinc-400">{t > 0 ? `${(t / 1000).toFixed(1)}K` : "—"}</td>
                                 <td className="px-5 py-3 text-right"><span className="flex items-center justify-end gap-2">{b > 0 && <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden"><div className={cn("h-full rounded-full", a.budgetStatus === "paused" ? "bg-rose-500" : a.budgetStatus === "warning" ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${pct}%` }} /></div>}<span className="text-zinc-200 font-mono text-xs">${(c / 100).toFixed(4)}</span></span></td>

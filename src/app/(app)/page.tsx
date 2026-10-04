@@ -115,7 +115,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             const h = healthById.get(a.id);
             workers.push({
                 key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, subtitle: a.role, avatarUrl: a.avatarUrl,
-                status: h?.status ?? null, activity: activityByAgent.get(a.id) ?? null, href: `/agents/${a.id}`,
+                status: h?.status ?? null, activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
                 ...build((t) => t.assignedAgentId === a.id),
             });
         }

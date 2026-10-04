@@ -784,6 +784,8 @@ export const messageThreads = pgTable("message_threads", {
     title: text("title"),
     // A group's purpose ('group' threads); shown to members and to agents.
     description: text("description"),
+    // A group's icon (an emoji), shown in the sidebar and header.
+    icon: text("icon"),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: 'set null' }),
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: 'set null' }),
     incidentId: uuid("incident_id").references(() => incidents.id, { onDelete: 'set null' }),

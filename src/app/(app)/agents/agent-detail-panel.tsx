@@ -1,14 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import Link from "next/link";
 import {
-    IconExternalLink,
     IconRobot,
     IconPlugConnected,
-    IconClock,
-    IconDeviceSdCard,
-    IconFileText,
     IconCopy,
     IconCircleCheck,
     IconPlayerPlay,
@@ -20,6 +15,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
 import { AgentInstructionsTab } from "./agent-instructions-tab";
+import { AgentMemoryTab } from "./agent-memory-tab";
+import { AvatarPicker } from "@/components/avatar-picker";
 import { AgentScopeTab } from "./agent-scope-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
@@ -164,7 +161,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
         );
     }
 
-    const { agent, latestSnapshot, memoryEntries, sessions, runs, threads } = data;
+    const { agent, sessions, runs, threads } = data;
     const provider = getProvider(agent.provider || "mcp");
     // A freshly created agent is legitimately offline while its runtime installs
     // and connects (first boot can take a minute or two). Don't show the red
@@ -226,13 +223,13 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
             {/* Header */}
             <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5 border-b border-zinc-800/80">
                 <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="shrink-0 h-14 w-14 rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-                        <img
-                            src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
-                            className="h-full w-full object-cover"
-                            alt=""
-                        />
-                    </div>
+                    <AvatarPicker
+                        agentId={agent.id}
+                        agentName={agent.name}
+                        avatarUrl={agent.avatarUrl ?? null}
+                        className="h-14 w-14"
+                        onSaved={(avatarUrl) => setData((prev) => prev ? { ...prev, agent: { ...prev.agent, avatarUrl } } : prev)}
+                    />
                     <div>
                         <div className="flex flex-wrap items-center gap-2">
                             <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100">{agent.name}</h2>
@@ -272,13 +269,6 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                             {recreating ? <IconLoader className="h-4 w-4 animate-spin" /> : <IconRefresh className="h-4 w-4" />}
                         </button>
                     )}
-                    <Link
-                        href={`/agents/${agent.id}`}
-                        className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
-                        title="Open in full page"
-                    >
-                        <IconExternalLink className="h-4 w-4" />
-                    </Link>
                     <DeleteAgentDialog agentId={agent.id} agentName={agent.name} />
                 </div>
             </div>
@@ -498,38 +488,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                 </TabsList>
 
                 <TabsContent value="memory" className="mt-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4">
-                        <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <IconDeviceSdCard className="w-4 h-4 text-cyan-400" />
-                                <h3 className="text-sm font-medium text-zinc-200">Latest Snapshot</h3>
-                            </div>
-                            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 font-mono text-xs text-zinc-300 whitespace-pre-wrap min-h-[180px] max-h-[300px] overflow-y-auto">
-                                {latestSnapshot?.content || agent.memory || "No snapshot recorded yet."}
-                            </div>
-                        </section>
-
-                        <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <IconFileText className="w-4 h-4 text-cyan-400" />
-                                <h3 className="text-sm font-medium text-zinc-200">Memory Timeline</h3>
-                            </div>
-                            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
-                                {memoryEntries.length === 0 ? (
-                                    <EmptyState text="No append-only memory entries yet." />
-                                ) : memoryEntries.map(entry => (
-                                    <div key={entry.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                                        <div className="flex items-center justify-between gap-2 mb-1">
-                                            <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400">{entry.kind}</span>
-                                            <span className="text-[10px] text-zinc-600">{new Date(entry.createdAt).toLocaleString()}</span>
-                                        </div>
-                                        {entry.summary && <div className="text-xs text-zinc-200 mb-1">{entry.summary}</div>}
-                                        <div className="text-[11px] text-zinc-400 whitespace-pre-wrap line-clamp-4">{entry.content}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
-                    </div>
+                    <AgentMemoryTab agentId={agent.id} agentName={agent.name} />
                 </TabsContent>
 
                 <TabsContent value="instructions" className="mt-4">

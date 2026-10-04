@@ -1,0 +1,1 @@
+ALTER TABLE "message_threads" ADD COLUMN "icon" text;

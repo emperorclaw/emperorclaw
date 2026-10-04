@@ -16,6 +16,7 @@ export const GROUP_THREAD_TYPE = "group";
 export const MAX_GROUP_TITLE = 80;
 export const MAX_GROUP_DESCRIPTION = 600;
 export const MAX_GROUP_MEMBERS = 50;
+export const MAX_GROUP_ICON = 16;
 export const MAX_GROUPS_PER_COMPANY = 200;
 
 /** Human participant rows created just by opening a group (read cursor only). */
@@ -42,6 +43,7 @@ export interface GroupSummary {
     id: string;
     title: string;
     description: string | null;
+    icon: string | null;
     createdByType: string;
     createdById: string | null;
     createdAt: string;
@@ -53,6 +55,15 @@ function cleanTitle(value: unknown): string {
     if (!title) throw new GroupError("A group needs a name", 400);
     if (title.length > MAX_GROUP_TITLE) throw new GroupError(`Group names are limited to ${MAX_GROUP_TITLE} characters`, 400);
     return title;
+}
+
+/** A short emoji (or a few characters); empty clears it back to the default. */
+function cleanIcon(value: unknown): string | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string") throw new GroupError("icon must be a string", 400);
+    const icon = value.trim();
+    if ([...icon].length > 4 || icon.length > MAX_GROUP_ICON) throw new GroupError("icon must be one emoji", 400);
+    return icon || null;
 }
 
 function cleanDescription(value: unknown): string | null {
@@ -148,6 +159,7 @@ function summarize(thread: typeof messageThreads.$inferSelect, members: GroupMem
         id: thread.id,
         title: thread.title || "Untitled group",
         description: thread.description,
+        icon: thread.icon ?? null,
         createdByType: thread.createdByType,
         createdById: thread.createdById,
         createdAt: thread.createdAt.toISOString(),
@@ -212,11 +224,13 @@ async function insertMembers(companyId: string, groupId: string, agentIds: strin
 export async function createGroup(companyId: string, actor: GroupActor, input: {
     title: unknown;
     description?: unknown;
+    icon?: unknown;
     agentIds?: unknown;
     humanUserIds?: unknown;
 }): Promise<GroupSummary> {
     const title = cleanTitle(input.title);
     const description = cleanDescription(input.description);
+    const icon = cleanIcon(input.icon);
     const agentIds = await resolveAgents(companyId, stringList(input.agentIds, "agentIds"));
     const userIds = await resolveHumans(companyId, stringList(input.humanUserIds, "humanUserIds"));
 
@@ -237,6 +251,7 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
         type: GROUP_THREAD_TYPE,
         title,
         description,
+        icon,
         createdByType: actor.type,
         createdById: actor.id && /^[0-9a-f-]{36}$/i.test(actor.id) ? actor.id : null,
     }).returning();
@@ -254,11 +269,12 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
     return getGroup(companyId, thread.id);
 }
 
-export async function updateGroup(companyId: string, groupId: string, input: { title?: unknown; description?: unknown }): Promise<GroupSummary> {
+export async function updateGroup(companyId: string, groupId: string, input: { title?: unknown; description?: unknown; icon?: unknown }): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
     const patch: Partial<typeof messageThreads.$inferInsert> = {};
     if (input.title !== undefined) patch.title = cleanTitle(input.title);
     if (input.description !== undefined) patch.description = cleanDescription(input.description);
+    if (input.icon !== undefined) patch.icon = cleanIcon(input.icon);
     if (Object.keys(patch).length) await db.update(messageThreads).set(patch).where(eq(messageThreads.id, thread.id));
     return getGroup(companyId, thread.id);
 }

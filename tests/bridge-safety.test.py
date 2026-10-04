@@ -1443,5 +1443,38 @@ class TestServerRouting(unittest.TestCase):
         self.assertFalse(bridge.server_routed(msg))
         self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", {"direct_threads": {}}))
 
+class TestLiveProfile(unittest.TestCase):
+    def setUp(self):
+        bridge._live_profile.update({"at": 0.0, "instructions": None, "memories": []})
+
+    def test_instructions_come_from_the_server_when_it_sends_them(self):
+        from unittest.mock import patch
+        with patch.object(bridge, "api", return_value={"instructions": "Be brief.", "entries": [{"kind": "preference", "content": "CC Ana"}]}):
+            bridge.refresh_live_profile(force=True)
+        self.assertEqual(bridge.current_instructions(), "Be brief.")
+        self.assertIn("- (preference) CC Ana", bridge.format_memory_context())
+
+    def test_older_servers_keep_the_environment_instructions(self):
+        from unittest.mock import patch
+        with patch.object(bridge, "api", return_value={"entries": []}):
+            bridge.refresh_live_profile(force=True)
+        self.assertEqual(bridge.current_instructions(), bridge.AGENT_INSTRUCTIONS)
+        self.assertEqual(bridge.format_memory_context(), "")
+
+    def test_a_failed_refresh_keeps_the_last_profile(self):
+        from unittest.mock import patch
+        bridge._live_profile.update({"instructions": "Kept."})
+        with patch.object(bridge, "api", side_effect=RuntimeError("down")):
+            bridge.refresh_live_profile(force=True)
+        self.assertEqual(bridge.current_instructions(), "Kept.")
+
+    def test_memory_stays_within_budget_and_keeps_the_newest(self):
+        entries = [{"kind": "lesson", "content": f"note {i} " + "x" * 280} for i in range(40)]
+        text = bridge.format_memory_context(entries)
+        self.assertLessEqual(len(text), bridge.MAX_MEMORY_PROMPT_CHARS + 200)
+        self.assertIn("note 39", text)
+        self.assertNotIn("note 0 ", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

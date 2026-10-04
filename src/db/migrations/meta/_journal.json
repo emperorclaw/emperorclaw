@@ -344,6 +344,13 @@
       "when": 1791110842279,
       "tag": "0048_agent-requests",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791117781680,
+      "tag": "0049_group-icon",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
+import { validAvatarUrl } from "@/lib/avatar";
 
 function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
     const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
@@ -50,6 +51,11 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (body.doctrineJson && typeof body.doctrineJson === "object") {
         updates.doctrineJson = body.doctrineJson;
+    }
+    if (body.avatarUrl !== undefined) {
+        const avatarUrl = body.avatarUrl === null ? null : validAvatarUrl(body.avatarUrl);
+        if (body.avatarUrl !== null && !avatarUrl) return NextResponse.json({ error: "avatarUrl must be an https image URL" }, { status: 400 });
+        updates.avatarUrl = avatarUrl;
     }
     if (typeof body.provider === "string" && body.provider) {
         updates.provider = body.provider;

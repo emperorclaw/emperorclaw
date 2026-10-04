@@ -4,6 +4,7 @@ import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { getScopeFromSession, getScopedAgentIds } from "@/lib/member-scope";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { AgentsClient } from "./agents-client";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ export default async function AgentsPage() {
     }, {} as Record<string, { dead: number; failed: number }>);
 
     return (
+        <Suspense>
         <AgentsClient
             agents={allAgents.map((agent) => {
                 const failures = failureMap[agent.id];
@@ -63,5 +65,6 @@ export default async function AgentsPage() {
                 };
             })}
         />
+        </Suspense>
     );
 }

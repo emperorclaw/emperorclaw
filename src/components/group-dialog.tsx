@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { IconCheck, IconRobot, IconSearch, IconTrash, IconUser, IconUsersGroup } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { GROUP_ICONS, GroupIcon } from "@/components/group-icon";
 
 export type GroupDialogAgent = { id: string; name: string; role: string | null; avatarUrl: string | null; status: string };
 export type GroupDialogHuman = { id: string; name: string };
@@ -11,13 +12,14 @@ export type GroupDialogGroup = {
     id: string;
     title: string;
     description: string | null;
+    icon?: string | null;
     members: { kind: "agent" | "human"; id: string; name: string; role: string }[];
 };
 
 const TEMPLATES = [
-    { title: "Development team", description: "Build, review, and test features. Devs implement, the tester verifies, and blockers are raised here." },
-    { title: "Marketing", description: "Campaigns, content, and launch coordination." },
-    { title: "Support", description: "Customer issues, escalations, and follow-ups." },
+    { title: "Development team", icon: "💻", description: "Build, review, and test features. Devs implement, the tester verifies, and blockers are raised here." },
+    { title: "Marketing", icon: "📣", description: "Campaigns, content, and launch coordination." },
+    { title: "Support", icon: "🛟", description: "Customer issues, escalations, and follow-ups." },
 ];
 
 function avatarFor(agent: GroupDialogAgent) {
@@ -54,6 +56,7 @@ export function GroupDialog({
 
     const [title, setTitle] = useState(group?.title ?? "");
     const [description, setDescription] = useState(group?.description ?? "");
+    const [icon, setIcon] = useState<string | null>(group?.icon ?? null);
     const [agentIds, setAgentIds] = useState<Set<string>>(new Set(initialAgents));
     const [humanIds, setHumanIds] = useState<Set<string>>(new Set(initialHumans));
     const [query, setQuery] = useState("");
@@ -91,13 +94,14 @@ export function GroupDialog({
                 const data = await call("/api/groups", "POST", {
                     title,
                     description,
+                    icon,
                     agentIds: [...agentIds],
                     humanUserIds: [...humanIds],
                 });
                 onSaved(data.group.id);
             } else {
-                if (title.trim() !== group.title || (description.trim() || null) !== (group.description || null)) {
-                    await call(`/api/groups/${group.id}`, "PATCH", { title, description });
+                if (title.trim() !== group.title || (description.trim() || null) !== (group.description || null) || (icon ?? null) !== (group.icon ?? null)) {
+                    await call(`/api/groups/${group.id}`, "PATCH", { title, description, icon: icon ?? "" });
                 }
                 const addAgents = [...agentIds].filter((id) => !initialAgents.has(id));
                 const addHumans = [...humanIds].filter((id) => !initialHumans.has(id));
@@ -154,7 +158,7 @@ export function GroupDialog({
                                 <button
                                     key={t.title}
                                     type="button"
-                                    onClick={() => { setTitle(t.title); setDescription(t.description); }}
+                                    onClick={() => { setTitle(t.title); setDescription(t.description); setIcon(t.icon); }}
                                     className="rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10 hover:text-cyan-100"
                                 >
                                     {t.title}
@@ -162,6 +166,21 @@ export function GroupDialog({
                             ))}
                         </div>
                     )}
+                    <div>
+                        <span className="text-xs font-medium text-zinc-400">Icon</span>
+                        <div className="mt-1 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Group icon">
+                            <button type="button" role="radio" aria-checked={!icon} onClick={() => setIcon(null)} title="Default"
+                                className={cn("grid h-9 w-9 place-items-center rounded-lg border transition-colors", !icon ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-600")}>
+                                <GroupIcon className="h-4 w-4" />
+                            </button>
+                            {GROUP_ICONS.map((emoji) => (
+                                <button key={emoji} type="button" role="radio" aria-checked={icon === emoji} onClick={() => setIcon(emoji)}
+                                    className={cn("grid h-9 w-9 place-items-center rounded-lg border text-lg transition-colors", icon === emoji ? "border-cyan-400/60 bg-cyan-400/10" : "border-zinc-800 hover:border-zinc-600")}>
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <label className="block">
                         <span className="text-xs font-medium text-zinc-400">Name</span>
                         <input

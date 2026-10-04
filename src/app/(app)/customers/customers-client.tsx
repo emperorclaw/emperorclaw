@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IconBuilding, IconDeviceFloppy, IconSearch, IconSparkles } from "@tabler/icons-react";
 import { toast } from "sonner";
@@ -10,6 +11,14 @@ import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 type CustomerSummary = any;
+
+const ATTENTION_LABEL: Record<string, string> = { approval: "Approval", blocked: "Blocked", incident: "Incident", review: "In review" };
+const ATTENTION_STYLE: Record<string, string> = {
+    approval: "bg-amber-500/15 text-amber-200",
+    blocked: "bg-rose-500/15 text-rose-200",
+    incident: "bg-rose-500/15 text-rose-200",
+    review: "bg-cyan-500/15 text-cyan-200",
+};
 
 export default function CustomersClient({ initialData: customerData }: { initialData: CustomerSummary[] }) {
     const router = useRouter();
@@ -155,7 +164,11 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                             <div className="truncate font-medium text-zinc-100">{customer.name}</div>
                                             <div className="mt-1 text-xs text-zinc-500">{customer.projectCount || 0} projects · {customer.taskCount || 0} tasks</div>
                                         </div>
-                                        {(customer.blockedCount || customer.pendingApprovalCount || customer.incidentCount) ? <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">Needs review</span> : null}
+                                        {customer.attention?.length ? (
+                                            <span title="Approvals, blocked tasks, incidents, or tasks in review; open the customer to see them" className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">
+                                                {customer.attention.length} to check
+                                            </span>
+                                        ) : null}
                                     </div>
                                 </button>
                             ))}
@@ -177,12 +190,41 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                         <Tag label={`${selectedCustomer.reviewCount || 0} in review`} />
                                         <Tag label={`${selectedCustomer.blockedCount || 0} blocked`} tone="rose" />
                                         <Tag label={`${selectedCustomer.pendingApprovalCount || 0} approvals`} tone="amber" />
-                                        <Tag label={`${selectedCustomer.incidentCount || 0} attention items`} tone="slate" />
+                                        <Tag label={`${selectedCustomer.incidentCount || 0} incidents`} tone="slate" />
                                         <Tag label={`${selectedCustomer.pipelineCount || 0} pipelines`} tone="cyan" />
                                     </div>
                                 </div>
                                 <IconSparkles className="mt-1 h-5 w-5 text-cyan-300/70" />
                             </div>
+                            {selectedCustomer.attention?.length > 0 && (
+                                <section className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3 sm:p-4" aria-label="Needs attention">
+                                    <h3 className="text-sm font-medium text-amber-100">Needs attention</h3>
+                                    <p className="mt-0.5 text-xs text-zinc-500">Work for this customer that is waiting on someone. Open an item to resolve it.</p>
+                                    <ul className="mt-3 space-y-1.5">
+                                        {selectedCustomer.attention.map((item: { kind: string; label: string; href: string }, index: number) => (
+                                            <li key={`${item.kind}-${index}`}>
+                                                <Link href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.04]">
+                                                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", ATTENTION_STYLE[item.kind] ?? ATTENTION_STYLE.review)}>{ATTENTION_LABEL[item.kind] ?? item.kind}</span>
+                                                    <span className="truncate">{item.label}</span>
+                                                </Link>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
+                            )}
+                            {selectedCustomer.projects?.length > 0 && (
+                                <section className="mt-4" aria-label="Projects">
+                                    <h3 className="mb-2 text-sm font-medium text-zinc-300">Projects</h3>
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {selectedCustomer.projects.map((project: { id: string; goal: string; status: string; openTasks: number }) => (
+                                            <Link key={project.id} href={`/projects?project=${project.id}`} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 hover:border-cyan-400/30">
+                                                <span className="block truncate text-sm text-zinc-100">{project.goal}</span>
+                                                <span className="text-xs text-zinc-500">{project.status} · {project.openTasks} open task{project.openTasks === 1 ? "" : "s"}</span>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
                             <div className="pt-4 sm:pt-5">
                                 <div className="mb-2 flex items-center justify-between">
                                     <label className="text-sm font-medium text-zinc-300">Description</label>

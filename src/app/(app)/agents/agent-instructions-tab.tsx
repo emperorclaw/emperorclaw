@@ -112,6 +112,12 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
     };
 
     return (
+        <div className="space-y-3">
+        <p className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-xs leading-5 text-zinc-400">
+            These files are the agent&apos;s role, persona, and rules, included in every turn. Changes apply on its next message
+            (Hermes bridge 0.8.59 or later; older runtimes pick them up after <strong className="text-zinc-300">Recreate runtime</strong>).
+            For things it should learn along the way, use <strong className="text-zinc-300">Memory</strong>.
+        </p>
         <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4">
             {/* File list sidebar */}
             <div className="border border-zinc-800 rounded-xl bg-zinc-900/50 p-3 space-y-1">
@@ -228,6 +234,7 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                     </div>
                 )}
             </div>
+        </div>
         </div>
     );
 }

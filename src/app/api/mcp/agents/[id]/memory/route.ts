@@ -4,6 +4,7 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { readAgentMemory, writeAgentMemory } from "@/lib/control-plane";
+import { buildAgentInstructions } from "@/lib/agent-instructions";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -33,7 +34,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const safeAgent: Record<string, unknown> = { ...agent };
     delete safeAgent.llmApiKeyEncrypted;
     delete safeAgent.llmApiKeyVersion;
-    return NextResponse.json({ agent: safeAgent, ...memory });
+    // `instructions` is the agent's role doctrine as one prompt section, so a
+    // bridge can apply edits made in the app on its next turn.
+    return NextResponse.json({ agent: safeAgent, instructions: buildAgentInstructions(agent.doctrineJson as Record<string, string> | null), ...memory });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

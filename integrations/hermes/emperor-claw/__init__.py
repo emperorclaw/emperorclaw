@@ -211,6 +211,20 @@ def emperor_request_approval(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("POST", "/approvals", body=body))
 
 
+def emperor_remember(args: Dict[str, Any], **_: Any) -> str:
+    content = str(args.get("content") or "").strip()
+    if not content:
+        return _json({"error": "content is required"})
+    kind = str(args.get("kind") or "lesson").strip().lower()
+    if kind not in {"preference", "lesson", "fact", "context"}:
+        kind = "lesson"
+    agent = _agent_ref()
+    if not agent:
+        return _json({"error": "EMPEROR_CLAW_AGENT_ID is not set"})
+    body = {"kind": kind, "content": content[:1000], "summary": str(args.get("summary") or "").strip()[:200] or None}
+    return _json(_request("POST", f"/agents/{urllib.parse.quote(agent)}/memory", body=body))
+
+
 def emperor_list_groups(args: Dict[str, Any], **_: Any) -> str:
     query = {"mine": "1" if args.get("mine", True) else None, "agentId": _agent_ref()}
     return _json(_request("GET", "/groups", query={k: v for k, v in query.items() if v}))
@@ -771,6 +785,23 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Request Emperor approval",
+    )
+    ctx.register_tool(
+        "emperor_remember",
+        TOOLSET,
+        _schema(
+            "Save something to your own durable memory in Emperor: a person's preference or correction about how you should work, or a lesson you'll need again. Your memories are shown to you at the start of every turn, survive restarts, and people can see and edit them in the app. Keep each one short and specific. Company facts belong in Knowledge & Rules and task progress in task notes, not here.",
+            {
+                "content": {"type": "string", "description": "The thing to remember, one or two sentences"},
+                "kind": {"type": "string", "enum": ["preference", "lesson", "fact", "context"]},
+                "summary": {"type": "string", "description": "Optional short label"},
+            },
+            ["content"],
+        ),
+        emperor_remember,
+        check_fn=_available,
+        requires_env=requires,
+        description="Save to Emperor memory",
     )
     ctx.register_tool(
         "emperor_list_groups",

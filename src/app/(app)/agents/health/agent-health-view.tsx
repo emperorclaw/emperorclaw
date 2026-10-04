@@ -58,13 +58,13 @@ function AgentCard({ agent }: { agent: AgentHealth }) {
     return (
         <article className="emperor-panel flex min-w-0 flex-col gap-3 rounded-2xl p-4">
             <div className="flex items-start gap-3">
-                <Link href={`/agents/${agent.id}`} className="relative shrink-0">
+                <Link href={`/agents?agent=${agent.id}`} className="relative shrink-0">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`} alt="" className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 object-cover" />
                     <span className={cn("absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-zinc-950", agent.online ? "bg-emerald-400" : "bg-zinc-600")} />
                 </Link>
                 <div className="min-w-0 flex-1">
-                    <Link href={`/agents/${agent.id}`} className="block truncate text-sm font-semibold text-zinc-100 hover:text-white">{agent.name}</Link>
+                    <Link href={`/agents?agent=${agent.id}`} className="block truncate text-sm font-semibold text-zinc-100 hover:text-white">{agent.name}</Link>
                     <div className="truncate text-xs text-zinc-500">{agent.online ? `Online · load ${agent.load}` : `Offline · seen ${ago(agent.lastSeenAt)}`}</div>
                 </div>
                 <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", status.className)}>

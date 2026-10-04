@@ -1774,6 +1774,7 @@ Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rul
 - Request an approval (emperor_request_approval) before spending money, sending anything outside the company, publishing, deleting, or closing work that needs sign-off. Don't act until approved.
 - Emperor sends you a daily review of your open tasks: work through it and reply with a short summary.
 - A request from another platform arrives as a system message from a named source, already tracked as a task assigned to you: reply in that chat with the result and set the task done when finished.
+- When a person tells you how they want you to work or corrects you, save it with emperor_remember so you follow it next time.
 
 ### Knowledge & Rules
 
@@ -1833,6 +1834,65 @@ def load_operating_guide() -> str:
     return BUILTIN_OPERATING_GUIDE
 
 
+# ── Live profile: instructions and memory read from Emperor ──────────────────
+# The role instructions in the environment are fixed when the container starts,
+# so edits made in the app never reached a running agent. Servers since 0.8.59
+# return the current instructions with the agent's memory; read both before a
+# turn (cached briefly) and fall back to the environment on older servers.
+LIVE_PROFILE_TTL_SECONDS = 60
+MAX_MEMORY_PROMPT_CHARS = 3000
+MAX_MEMORY_ITEM_CHARS = 300
+_live_profile: Dict[str, Any] = {"at": 0.0, "instructions": None, "memories": []}
+
+
+def refresh_live_profile(force: bool = False) -> None:
+    now = time.time()
+    if not AGENT_ID or (not force and now - float(_live_profile["at"]) < LIVE_PROFILE_TTL_SECONDS):
+        return
+    _live_profile["at"] = now
+    try:
+        payload = api("GET", f"/agents/{urllib.parse.quote(AGENT_ID)}/memory", query={"limit": 20})
+    except Exception as exc:
+        log(f"live profile refresh failed: {exc}")
+        return
+    if not isinstance(payload, dict):
+        return
+    instructions = payload.get("instructions")
+    if isinstance(instructions, str):
+        _live_profile["instructions"] = instructions.strip()
+    entries = payload.get("entries")
+    if isinstance(entries, list):
+        _live_profile["memories"] = [e for e in entries if isinstance(e, dict)]
+
+
+def current_instructions() -> str:
+    """Instructions from the app when the server sends them, else the environment's."""
+    live = _live_profile.get("instructions")
+    return live if isinstance(live, str) else AGENT_INSTRUCTIONS
+
+
+def format_memory_context(entries: List[Dict[str, Any]] | None = None) -> str:
+    """The agent's memories, newest last, within a fixed budget (newest win)."""
+    items = entries if entries is not None else list(_live_profile.get("memories") or [])
+    lines: List[str] = []
+    used = 0
+    for entry in reversed(items):
+        text = str(entry.get("summary") or entry.get("content") or "").strip().replace("\n", " ")
+        if not text:
+            continue
+        if len(text) > MAX_MEMORY_ITEM_CHARS:
+            text = text[: MAX_MEMORY_ITEM_CHARS - 1] + "…"
+        kind = str(entry.get("kind") or "note")
+        line = f"- ({kind}) {text}"
+        if used + len(line) > MAX_MEMORY_PROMPT_CHARS:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    if not lines:
+        return ""
+    return "What you remember (your Emperor memory; people can edit it in the app):\n" + "\n".join(reversed(lines)) + "\n\n"
+
+
 def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
@@ -1842,11 +1902,14 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     # turn explicitly; team turns already carry it in their own session.
     main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
     group_context = format_group_context(message)
+    refresh_live_profile()
+    instructions = current_instructions()
     prompt = (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
         f"Agent role: {AGENT_ROLE}\n"
-        + (f"Role instructions:\n{AGENT_INSTRUCTIONS}\n\n" if AGENT_INSTRUCTIONS else "")
+        + (f"Role instructions:\n{instructions}\n\n" if instructions else "")
+        + format_memory_context()
         + load_operating_guide() + "\n\n"
         + "Reply to the latest message. Do not recap old context unless asked.\n"
         "Use Emperor tools only when the request needs durable state, exact chat history, or a real state change.\n"

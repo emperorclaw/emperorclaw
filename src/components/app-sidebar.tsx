@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
-import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
+import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconUsers } from "@tabler/icons-react";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationBell } from "./notification-bell";
 import { clsx, type ClassValue } from "clsx";
@@ -25,7 +25,7 @@ function cn(...inputs: ClassValue[]) {
 
 const SIDEBAR_COLLAPSE_KEY = "emperor-sidebar-collapsed";
 
-export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatformAdmin?: boolean; appVersion?: string }) {
+export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, appVersion }: { isPlatformAdmin?: boolean; isCompanyAdmin?: boolean; appVersion?: string }) {
     const pathname = usePathname();
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
@@ -80,8 +80,9 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
     const userName = session?.user?.name || lastUserRef.current.name || userEmail.split("@")[0] || "User";
     const userInitial = (userName[0] || "U").toUpperCase();
 
-    // Grouped by what you come to do. Budgets lives with Agents (it is their
-    // spending) and Ops with Settings; both routes are unchanged.
+    // Grouped by what you come to do: the work itself, who does it (agents and
+    // people), and what the company knows and owns (customers, knowledge,
+    // files, automations). Budgets lives with Agents and Ops with Settings.
     const sections: { title: string; links: { name: string; href: string; icon: typeof IconFolder; badge?: number; activeFor?: string[] }[] }[] = [
         { title: "Work", links: [
             { name: "Dashboard", href: "/", icon: IconLayoutDashboard },
@@ -91,9 +92,11 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
         ] },
         { title: "Team", links: [
             { name: "Agents", href: "/agents", icon: IconRobot, activeFor: ["/budgets"] },
-            { name: "Customers", href: "/customers", icon: IconShieldCheck },
+            // Managing members is an admin page; others would be sent away.
+            ...(isCompanyAdmin ? [{ name: "People", href: "/settings/members", icon: IconUsers }] : []),
         ] },
-        { title: "Library", links: [
+        { title: "Company", links: [
+            { name: "Customers", href: "/customers", icon: IconShieldCheck },
             { name: "Knowledge base", href: "/resources", icon: IconFileText },
             { name: "Files", href: "/artifacts", icon: IconDeviceSdCard },
             { name: "Automations", href: "/pipelines", icon: IconGitBranch },
@@ -102,6 +105,12 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
             { name: "Settings", href: "/settings", icon: IconKey, activeFor: isPlatformAdmin ? ["/ops"] : [] },
         ] },
     ];
+
+    // One active item: the most specific link that matches (People over Settings).
+    const matches = (href: string) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+    const activeHref = sections.flatMap((section) => section.links)
+        .filter((link) => matches(link.href) || (link.activeFor ?? []).some(matches))
+        .sort((a, b) => (matches(b.href) ? b.href.length : 0) - (matches(a.href) ? a.href.length : 0))[0]?.href ?? null;
 
     return (
         <>
@@ -134,7 +143,7 @@ export function AppSidebar({ isPlatformAdmin = false, appVersion }: { isPlatform
                     {collapsed && section.title && <div className="mx-auto my-1.5 h-px w-6 bg-border" aria-hidden />}
                 {section.links.map((link) => {
                     const Icon = link.icon;
-                    const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`)) || (link.activeFor ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
+                    const isActive = activeHref === link.href;
                     const badge = link.badge ?? 0;
                     const showUnread = badge > 0;
                     return (

@@ -13,7 +13,6 @@ import {
     IconSearch,
     IconSettings,
     IconUsers,
-    IconUsersGroup,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import {
@@ -28,6 +27,7 @@ import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
 import { GroupDialog, type GroupDialogHuman } from "./group-dialog";
 import { EVERYONE_MENTION } from "./mention-textarea";
+import { GroupIcon } from "@/components/group-icon";
 
 type Agent = {
     id: string;
@@ -62,6 +62,7 @@ export type GroupThreadSummary = {
     id: string;
     title: string;
     description: string | null;
+    icon?: string | null;
     members: { kind: "agent" | "human"; id: string; name: string; role: string; avatarUrl?: string | null }[];
     unreadCount: number;
     lastMessageText: string | null;
@@ -317,7 +318,7 @@ export function MessagingHub({
                                         "grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition-colors",
                                         selected ? "border-cyan-400/35 bg-cyan-400/15 text-cyan-300" : "border-zinc-700 bg-zinc-800 text-zinc-500 group-hover:text-zinc-300"
                                     )}>
-                                        <IconUsersGroup className="h-5 w-5" />
+                                        <GroupIcon icon={group.icon} className="h-5 w-5 text-lg" />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
@@ -435,7 +436,7 @@ export function MessagingHub({
                                 >
                                     {activeGroup ? (
                                         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-cyan-300">
-                                            <IconUsersGroup className="h-4 w-4" />
+                                            <GroupIcon icon={activeGroup.icon} className="h-4 w-4 text-base" />
                                         </div>
                                     ) : activeAgent ? (
                                         <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-zinc-800">
@@ -495,7 +496,7 @@ export function MessagingHub({
                                                 className="min-h-12 cursor-pointer rounded-lg px-2.5 py-2 focus:bg-cyan-400/10 focus:text-zinc-100"
                                             >
                                                 <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-400">
-                                                    <IconUsersGroup className="h-4 w-4" />
+                                                    <GroupIcon icon={group.icon} className="h-4 w-4 text-base" />
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="truncate text-sm font-medium">{group.title}</div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { IconHeartbeat, IconLoader2, IconRobot, IconSearch, IconWallet } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
@@ -26,7 +26,10 @@ type AgentDirectoryItem = {
 export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState("all");
-    const [selectedId, setSelectedId] = useState(agents[0]?.id || "");
+    // `?agent=<id>` opens that agent (old /agents/<id> links redirect here).
+    const searchParams = useSearchParams();
+    const linkedId = searchParams.get("agent");
+    const [selectedId, setSelectedId] = useState((linkedId && agents.some((a) => a.id === linkedId) ? linkedId : agents[0]?.id) || "");
     const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
     const router = useRouter();
     // A freshly hired agent is not instantly reachable: the runtime has to boot
@@ -178,18 +181,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                     </aside>
 
                     {selectedAgent ? (
-                        <div className="space-y-3">
-                            <div className="flex justify-end">
-                                <Link
-                                    href={`/agents/${selectedAgent.id}`}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
-                                >
-                                    Open detail
-                                    <span aria-hidden>→</span>
-                                </Link>
-                            </div>
-                            <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} />
-                        </div>
+                        <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} />
                     ) : (
                         <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                             <div className="text-center text-zinc-500">
