@@ -38,6 +38,7 @@ export const versions: DocVersion[] = [
       { slug: 'skill-development', title: 'Plugin & Runtime Development', file: 'skill-development.md', section: 'Agent Runtimes' },
 
       { slug: 'external-requests', title: 'Send Work From Your Platform', file: 'external-requests.md', section: 'Integrations & Reference' },
+      { slug: 'desk-display', title: 'Desk Display', file: 'desk-display.md', section: 'Integrations & Reference' },
       { slug: 'mcp', title: 'MCP Server & Payloads', file: 'mcp.md', section: 'Integrations & Reference' },
       { slug: 'api-reference', title: 'API Reference', file: 'api-reference.md', section: 'Integrations & Reference' },
       { slug: 'configuration', title: 'Configuration Reference', file: 'configuration.md', section: 'Integrations & Reference' },

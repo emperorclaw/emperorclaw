@@ -1,0 +1,41 @@
+{
+  "name": "throne-display",
+  "chip": "ESP32-C3",
+  "version": "1.1.0",
+  "builtAt": "2026-10-05T18:10:52.673Z",
+  "flash": {
+    "mode": "dio",
+    "freq": "80m",
+    "size": "4MB"
+  },
+  "parts": [
+    {
+      "name": "bootloader",
+      "file": "bootloader.bin",
+      "offset": 0,
+      "size": 12464,
+      "sha256": "41c3e57e9942de98fddff1a8a0a2e72bc72b25c36e354e7b8130d116662d6451"
+    },
+    {
+      "name": "partitions",
+      "file": "partitions.bin",
+      "offset": 32768,
+      "size": 3072,
+      "sha256": "aaae2888c5a6a348004b5b436f47abb25ae32e72d9003902955a998eda723edd"
+    },
+    {
+      "name": "boot_app0",
+      "file": "boot_app0.bin",
+      "offset": 57344,
+      "size": 8192,
+      "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
+    },
+    {
+      "name": "firmware",
+      "file": "firmware.bin",
+      "offset": 65536,
+      "size": 1331072,
+      "sha256": "c4204b98192bee96b7bde15d46ae0463ebfc932859b455cabdc8b40963bd50f5"
+    }
+  ]
+}

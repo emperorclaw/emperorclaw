@@ -13,6 +13,7 @@ import { UpdateSettingsTab } from "@/components/update-settings-tab";
 import MembersClient from "./members/members-client";
 import { NotificationSettingsTab } from "./notification-settings-tab";
 import { RoutineSettingsTab } from "./routine-settings-tab";
+import { DisplaysTab } from "./displays-tab";
 
 type SettingsToken = {
     id: string;
@@ -25,7 +26,7 @@ type SettingsToken = {
     includePrivateChats?: boolean;
 };
 
-type SettingsTab = "profile" | "notifications" | "routines" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
+type SettingsTab = "profile" | "notifications" | "routines" | "connections" | "tokens" | "displays" | "updates" | "advanced" | "instance" | "members";
 
 type Member = {
     id: string;
@@ -108,6 +109,8 @@ export default function SettingsClient({
     const [profileRoleTitle, setProfileRoleTitle] = useState("");
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileLoaded, setProfileLoaded] = useState(false);
+    // Same guard as token creation (POST /api/settings/tokens requires admin).
+    const isAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
 
     const loadProfile = async () => {
         if (profileLoaded) return;
@@ -263,6 +266,7 @@ export default function SettingsClient({
                     ["routines", "Routines"],
                     ["connections", "Agent Connections"],
                     ["tokens", "Access Tokens"],
+                    ...(isAdmin ? [["displays", "Displays"] as const] : []),
                     ["updates", "Updates"],
                     ["advanced", "Advanced"],
                     ...(instanceRole === "instance_admin" ? [["instance", "Instance"] as const] : []),
@@ -608,6 +612,17 @@ Walk me through step by step.`}</pre>
                         </details>
                     </div>
                 </section>
+            )}
+
+            {activeTab === "displays" && isAdmin && (
+                <DisplaysTab
+                    tokens={tokens}
+                    onTokenCreated={(token) => setTokens((prev) => [{ expiresAt: "", ...token }, ...prev])}
+                    onTokenRemoved={(id) => setTokens((prev) => prev.filter((t) => t.id !== id))}
+                    onRevoke={handleRevokeToken}
+                    revokingTokenId={revokingTokenId}
+                    confirmingRevokeId={confirmingRevokeId}
+                />
             )}
 
             {activeTab === "updates" && <UpdateSettingsTab />}
