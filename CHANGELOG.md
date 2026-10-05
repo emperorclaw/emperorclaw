@@ -9,6 +9,22 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.64] — 2026-10-05
+
+### Added
+
+- **Your private chats on a desk screen (opt-in).** When creating a
+  **Read only** API token you can tick **Include my private chats**. The live
+  feed (`GET /api/mcp/live`) then carries a `dm` array with your own recent
+  exchanges with each agent: your messages and the agent's replies to you,
+  never other members' messages. Typing activity text is shown only when the
+  agent is working on your message. Off by default.
+
+### Changed
+
+- API tokens now record who created them. A screen loses the private chats
+  when its creator leaves the company or is no longer an owner or admin.
+
 ## [0.8.63] — 2026-10-05
 
 ### Added
