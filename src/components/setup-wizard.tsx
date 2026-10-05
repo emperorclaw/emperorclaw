@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     IconArrowLeft, IconArrowRight, IconBook2, IconBuilding, IconCheck, IconCircleCheck, IconCpu,
-    IconExternalLink, IconKey, IconLoader2, IconMessage, IconRocket, IconSparkles, IconUsersGroup, IconAlertTriangle,
+    IconExternalLink, IconKey, IconLoader2, IconMessage, IconRocket, IconSparkles, IconUsersGroup, IconAlertTriangle, IconX,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
-import { BUSINESS_TYPES, DEFAULT_AGENT_NAMES, MAX_WIZARD_AGENTS, suggestedTeam } from "@/lib/onboarding-shared";
+import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblem, type PlannedGroup } from "@/lib/onboarding-shared";
 import { cn } from "@/lib/utils";
 
 /**
@@ -37,7 +37,7 @@ const STEPS: { id: Step; label: string; icon: typeof IconBuilding }[] = [
     { id: "welcome", label: "Welcome", icon: IconSparkles },
     { id: "company", label: "Your company", icon: IconBuilding },
     { id: "model", label: "AI model", icon: IconCpu },
-    { id: "team", label: "Your team", icon: IconUsersGroup },
+    { id: "team", label: "Your teams", icon: IconUsersGroup },
     { id: "launch", label: "Launch", icon: IconRocket },
 ];
 
@@ -67,9 +67,16 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const [showModel, setShowModel] = useState(false);
     const [keyState, setKeyState] = useState<KeyState>({ status: "idle", message: "" });
 
-    // Team
-    const [team, setTeam] = useState<Member[]>(() => suggestedTeam(initialBusinessType).map((id) => ({ templateId: id, name: DEFAULT_AGENT_NAMES[id] ?? id })));
+    // Team: choose team templates (any mix), then confirm names.
+    const [teams, setTeams] = useState<string[]>(() => suggestedTeams(initialBusinessType));
+    const [includeBoss, setIncludeBoss] = useState(true);
+    const [extraRoles, setExtraRoles] = useState<string[]>([]);
+    const [removedRoles, setRemovedRoles] = useState<string[]>([]);
+    const [names, setNames] = useState<Record<string, string>>({});
     const teamTouched = useRef(false);
+    const plan = useMemo(() => planTeam({ teams, includeBoss, extraRoles, removedRoles, names }), [teams, includeBoss, extraRoles, removedRoles, names]);
+    const team: Member[] = plan.agents;
+    const [groupsMade, setGroupsMade] = useState<{ title: string; icon: string; ok: boolean; members: string[] }[]>([]);
 
     // Launch
     const [launching, setLaunching] = useState(false);
@@ -100,10 +107,10 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         return () => { cancelled = true; };
     }, []);
 
-    // Suggest a team for the kind of company, until the operator edits it.
+    // Suggest teams for the kind of company, until the operator edits them.
     useEffect(() => {
         if (teamTouched.current || !businessType) return;
-        setTeam(suggestedTeam(businessType).map((id) => ({ templateId: id, name: DEFAULT_AGENT_NAMES[id] ?? id })));
+        setTeams(suggestedTeams(businessType));
     }, [businessType]);
 
     const finish = useCallback(async (status: "completed" | "dismissed") => {
@@ -159,16 +166,31 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     };
 
     // ── Team ─────────────────────────────────────────────────────────────────
-    const toggleMember = (templateId: string) => {
-        teamTouched.current = true;
-        setTeam((current) => current.some((m) => m.templateId === templateId)
-            ? current.filter((m) => m.templateId !== templateId)
-            : current.length >= MAX_WIZARD_AGENTS ? current : [...current, { templateId, name: DEFAULT_AGENT_NAMES[templateId] ?? templateId }]);
+    const touch = () => { teamTouched.current = true; };
+    const toggleTeam = (id: string) => {
+        touch();
+        setTeams((current) => (current.includes(id) ? current.filter((t) => t !== id) : [...current, id]));
+        // Choosing a team brings back any of its roles you had removed.
+        const roles = TEAM_TEMPLATES.find((t) => t.id === id)?.roles ?? [];
+        setRemovedRoles((current) => current.filter((r) => !(roles as readonly string[]).includes(r)));
     };
-    const renameMember = (templateId: string, name: string) => setTeam((current) => current.map((m) => (m.templateId === templateId ? { ...m, name } : m)));
-    const suggested = BUSINESS_TYPES.find((t) => t.id === businessType)?.team as readonly string[] | undefined;
-    const rank = (id: string) => (id === "boss" ? 0 : suggested?.includes(id) ? 1 : 2);
-    const teamValid = team.length > 0 && team.every((m) => m.name.trim()) && new Set(team.map((m) => m.name.trim().toLowerCase())).size === team.length;
+    const removeRole = (role: string) => {
+        touch();
+        if (role === "boss") setIncludeBoss(false);
+        setExtraRoles((current) => current.filter((r) => r !== role));
+        setRemovedRoles((current) => (current.includes(role) ? current : [...current, role]));
+    };
+    const addRole = (role: string) => {
+        if (!role) return;
+        touch();
+        if (role === "boss") setIncludeBoss(true);
+        setRemovedRoles((current) => current.filter((r) => r !== role));
+        setExtraRoles((current) => (current.includes(role) ? current : [...current, role]));
+    };
+    const renameMember = (templateId: string, name: string) => setNames((current) => ({ ...current, [templateId]: name }));
+    const planProblem = teamPlanProblem(plan);
+    const teamValid = !planProblem;
+    const addable = agentRoleTemplates.filter((t) => !team.some((m) => m.templateId === t.id));
 
     // ── Launch ───────────────────────────────────────────────────────────────
     const launch = async () => {
@@ -201,12 +223,31 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
             setCreated(results);
             setLaunchedAt(Date.now());
             if (results.some((r) => r.success && r.agentId)) setApiKey("");
+            await createGroups(plan.groups, results);
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not create your agents.");
         } finally {
             setLaunching(false);
         }
+    };
+
+    // One group chat per chosen team, with its agents and the Boss; you are
+    // added as its creator. A failed group never blocks the agents.
+    const createGroups = async (groups: PlannedGroup[], results: Created[]) => {
+        const byRole = new Map(results.filter((r) => r.success && r.agentId).map((r) => [r.templateId, r]));
+        const made: { title: string; icon: string; ok: boolean; members: string[] }[] = [];
+        for (const g of groups) {
+            const members = g.roles.map((role) => byRole.get(role)).filter((r): r is Created => Boolean(r));
+            if (!members.some((m) => m.templateId !== "boss")) continue;
+            const res = await fetch("/api/groups", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: g.title, description: g.description, icon: g.icon, agentIds: members.map((m) => m.agentId) }),
+            }).catch(() => null);
+            made.push({ title: g.title, icon: g.icon, ok: Boolean(res?.ok), members: members.map((m) => m.name) });
+        }
+        setGroupsMade(made);
     };
 
     // Watch the new agents come online, and the documentation job.
@@ -328,7 +369,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                 <ul className="mt-8 grid w-full gap-3 text-left text-sm sm:grid-cols-3">
                                     {[
                                         { icon: IconBuilding, title: "Your company", body: "So agents know what you do" },
-                                        { icon: IconUsersGroup, title: "Your team", body: "A lead plus the specialists you need" },
+                                        { icon: IconUsersGroup, title: "Your teams", body: "Ready-made teams with their own group chats" },
                                         { icon: IconBook2, title: "Documented", body: "Your lead writes the company handbook" },
                                     ].map(({ icon: Icon, title, body }) => (
                                         <li key={title} className="rounded-2xl border border-border bg-white/[0.03] p-4">
@@ -448,31 +489,78 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "team" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-zinc-50">Choose your team</h1>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-zinc-50">Choose your teams</h1>
                                     <p className="mt-2 text-sm leading-6 text-zinc-400">
-                                        {businessType && businessType !== "other" ? "Suggested for your kind of company. " : ""}Start small: the Boss coordinates, specialists do the work. You can hire more any time (up to {MAX_WIZARD_AGENTS} here).
+                                        {businessType && businessType !== "other" ? "Suggested for your kind of company. " : ""}Pick any mix. Each team gets its specialists and its own group chat; the Boss leads them all.
                                     </p>
                                 </header>
-                                <ul className="space-y-2">
-                                    {/* The lead, then what suits this kind of company, then the rest. */}
-                                    {[...agentRoleTemplates].sort((a, b) => rank(a.id) - rank(b.id)).map((t) => {
-                                        const member = team.find((m) => m.templateId === t.id);
-                                        const full = !member && team.length >= MAX_WIZARD_AGENTS;
+                                <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Team templates">
+                                    {TEAM_TEMPLATES.map((t) => {
+                                        const on = teams.includes(t.id);
                                         return (
-                                            <li key={t.id} className={cn("flex items-center gap-3 rounded-2xl border p-3 transition-colors", member ? "border-cyan-400/40 bg-cyan-400/[0.06]" : "border-border bg-white/[0.02]", full && "opacity-50")}>
-                                                <input type="checkbox" checked={Boolean(member)} disabled={full} onChange={() => toggleMember(t.id)} aria-label={`Hire ${t.title}`} className="h-4 w-4 shrink-0 accent-cyan-400" />
-                                                <span className="text-xl" aria-hidden>{t.emoji}</span>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-zinc-100">{t.title}{t.pinned && <span className="ml-2 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-200">Lead</span>}</p>
-                                                    <p className="line-clamp-1 text-xs text-zinc-500">{t.description}</p>
-                                                </div>
-                                                {member && (
-                                                    <Input value={member.name} onChange={(e) => renameMember(t.id, e.target.value)} aria-label={`${t.title} name`} className="h-8 w-28 shrink-0 text-xs" />
-                                                )}
-                                            </li>
+                                            <button key={t.id} type="button" aria-pressed={on} onClick={() => toggleTeam(t.id)}
+                                                className={cn("flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors", on ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-white/[0.02] hover:border-zinc-600")}>
+                                                <span className="text-xl leading-none" aria-hidden>{t.icon}</span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="flex items-center justify-between gap-2 text-sm font-medium text-zinc-100">
+                                                        {t.label}
+                                                        <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-cyan-400 bg-cyan-400 text-zinc-950" : "border-zinc-600")}>{on && <IconCheck className="h-3 w-3" />}</span>
+                                                    </span>
+                                                    <span className="mt-0.5 block text-xs text-zinc-500">{t.hint}</span>
+                                                    <span className="mt-1 block text-[11px] text-zinc-500">{t.roles.map((r) => getAgentTemplate(r)?.title ?? r).join(" · ")}</span>
+                                                </span>
+                                            </button>
                                         );
                                     })}
-                                </ul>
+                                </div>
+
+                                <div>
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <h2 className="text-sm font-medium text-zinc-200">Your agents <span className="font-normal text-zinc-500">({team.length})</span></h2>
+                                        <select aria-label="Add a specialist" value="" onChange={(e) => addRole(e.target.value)}
+                                            className="h-8 rounded-lg border border-border bg-zinc-950 px-2 text-xs text-zinc-300 outline-none focus:border-cyan-300/60">
+                                            <option value="">+ Add an agent</option>
+                                            {addable.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                        </select>
+                                    </div>
+                                    <ul className="space-y-2">
+                                        {team.map((m) => {
+                                            const t = getAgentTemplate(m.templateId);
+                                            const inGroups = plan.groups.filter((g) => g.roles.includes(m.templateId)).map((g) => g.title);
+                                            return (
+                                                <li key={m.templateId} className="flex items-center gap-3 rounded-xl border border-border bg-white/[0.02] p-2.5">
+                                                    <span className="text-lg" aria-hidden>{t?.emoji ?? "🤖"}</span>
+                                                    <Input value={names[m.templateId] ?? m.name} onChange={(e) => renameMember(m.templateId, e.target.value)} aria-label={`${t?.title ?? m.templateId} name`} maxLength={40} className="h-8 w-32 shrink-0 text-sm" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-xs text-zinc-300">{t?.title ?? m.templateId}{m.templateId === "boss" && <span className="ml-1.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-200">Lead</span>}</p>
+                                                        <p className="truncate text-[11px] text-zinc-500">{inGroups.length ? inGroups.join(" · ") : m.templateId === "boss" ? "Leads every team" : "No group"}</p>
+                                                    </div>
+                                                    <button type="button" onClick={() => removeRole(m.templateId)} aria-label={`Remove ${m.name || t?.title}`} className="rounded-lg p-1.5 text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200">
+                                                        <IconX className="h-4 w-4" />
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
+
+                                {plan.groups.length > 0 && (
+                                    <div>
+                                        <h2 className="mb-2 text-sm font-medium text-zinc-200">Group chats</h2>
+                                        <ul className="flex flex-wrap gap-2">
+                                            {plan.groups.map((g) => (
+                                                <li key={g.teamId} className="rounded-full border border-border px-3 py-1 text-xs text-zinc-300">
+                                                    <span aria-hidden>{g.icon}</span> {g.title} <span className="text-zinc-500">· {g.roles.map((r) => (names[r] ?? DEFAULT_AGENT_NAMES[r] ?? r).trim()).join(", ")}, you</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {planProblem && team.length > 0 && <p role="alert" className="text-xs text-rose-300">{planProblem}</p>}
+                                {!planProblem && team.length > COMFORTABLE_AGENT_COUNT && (
+                                    <p className="text-xs text-amber-200">Each agent runs its own runtime. On a small machine (a Raspberry Pi, a laptop), start with {COMFORTABLE_AGENT_COUNT} or fewer and add more later.</p>
+                                )}
                                 {!team.some((m) => m.templateId === "boss") && team.length > 1 && (
                                     <p className="text-xs text-amber-200">Without a Boss, assign work to each specialist yourself.</p>
                                 )}
@@ -507,6 +595,18 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                 </li>
                                             );
                                         })}
+                                    </ul>
+                                )}
+                                {groupsMade.length > 0 && (
+                                    <ul className="space-y-1.5" aria-label="Group chats created">
+                                        {groupsMade.map((g) => (
+                                            <li key={g.title} className="flex items-center gap-2 text-xs text-zinc-400">
+                                                {g.ok ? <IconCircleCheck className="h-3.5 w-3.5 text-emerald-300" /> : <IconAlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
+                                                <span aria-hidden>{g.icon}</span>
+                                                <span className="text-zinc-200">{g.title}</span>
+                                                <span className="truncate">{g.ok ? `group chat with ${g.members.join(", ")} and you` : "couldn't create this group; make it in Messages"}</span>
+                                            </li>
+                                        ))}
                                     </ul>
                                 )}
                                 {created && !created.some((r) => r.success) && (

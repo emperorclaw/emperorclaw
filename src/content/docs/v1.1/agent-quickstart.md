@@ -6,7 +6,17 @@ The first time an owner or admin opens the dashboard, **Emperor setup** opens: a
 
 1. **Your company.** Name, what it does and for whom, the kind of company, your website, and any house rules (one per line). Every agent reads this.
 2. **AI model.** Pick OpenRouter (recommended; starts on a free model) or DeepSeek and paste your API key. Emperor checks the key with the provider before going on, because agents can't answer without one. The key is stored encrypted.
-3. **Your team.** A team is suggested for your kind of company: the Boss (team lead) plus specialists. Keep it small (up to four here); rename anyone. You can hire more later in Agents.
+3. **Your teams.** Pick ready-made teams, in any mix, and confirm their names. Each team brings its specialists and its own group chat; the Boss leads them all and joins every group, and you are in every group too:
+
+   | Team | Agents | Group chat |
+   |---|---|---|
+   | Development | Developer, QA tester | *Development team* |
+   | Marketing & content | Writer, SEO specialist | *Marketing* |
+   | Sales & outreach | Outreach (lead generation), Writer | *Sales & outreach* |
+   | Customer support | Support agent | *Support* |
+   | Finance & reporting | Accountant, Analyst | *Finance* |
+
+   Teams are suggested for your kind of company (for example Marketing and Sales & outreach for an agency). A role two teams share is one agent in both groups. Rename anyone, remove anyone, or add a single specialist; up to eight agents here. Each agent runs its own runtime, so on a small machine start with four or fewer.
 4. **Launch.** Emperor starts each agent and shows them coming online. If you kept **Have my lead agent document the company** on, your lead gets its first job as soon as it's online: turn the profile and website into Knowledge & Rules notes (overview, products and services, customers, brand voice) and ask you what it couldn't find. You watch it happen, with links to its chat and the task.
 5. Click **Open direct chat** to talk to your lead. **Set up later** closes the assistant; hire agents any time from **Agents**.
 

@@ -9,7 +9,7 @@ import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
  * the lead agent's first job — documenting the company in Knowledge & Rules.
  */
 
-export { BUSINESS_TYPES, suggestedTeam } from "@/lib/onboarding-shared";
+export { BUSINESS_TYPES, TEAM_TEMPLATES, planTeam } from "@/lib/onboarding-shared";
 
 export type KeyCheck = { ok: true; detail: string | null } | { ok: false; error: string } | { ok: null; error: string };
 
