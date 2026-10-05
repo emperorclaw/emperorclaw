@@ -1,0 +1,3 @@
+ALTER TABLE "company_tokens" ADD COLUMN "created_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "company_tokens" ADD COLUMN "include_private_chats" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "company_tokens" ADD CONSTRAINT "company_tokens_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;

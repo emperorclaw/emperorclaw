@@ -91,6 +91,7 @@ maybe("a read_only token reads the live feed: agents, activity, tasks, and publi
     assert.equal(feed.messages[2].from, "Agent");
     assert.equal(feed.messages[2].agentId, null);
     assert.ok(!raw.includes("secret") && !raw.includes("salary"), "nothing from a direct thread leaks");
+    assert.deepEqual(feed.dm, [], "no private chats without the opt-in");
 
     // ?messages= clamps.
     const one = await (await getLive(readOnly, "?messages=1")).json();
@@ -175,4 +176,163 @@ maybe("a read_only token is refused everywhere else, and a requests token is ref
 
     // A requests token can't read the live feed.
     assert.equal((await getLive(requests)).status, 403);
+});
+
+async function seedMember(companyId: string, role = "member") {
+    const db = await getDb();
+    const { users, companyMembers } = await getSchema();
+    const [user] = await db.insert(users).values({ email: `member-${randomUUID()}@example.com`, passwordHash: "x" }).returning();
+    await db.insert(companyMembers).values({ companyId, userId: user.id, role });
+    return user.id;
+}
+
+async function seedScreenToken(companyId: string, createdByUserId: string | null, includePrivateChats: boolean) {
+    const db = await getDb();
+    const { companyTokens } = await getSchema();
+    const raw = `ec_screen_${randomUUID().replace(/-/g, "")}`;
+    await db.insert(companyTokens).values({
+        companyId, tokenHash: createHash("sha256").update(raw).digest("hex"), name: "Screen", scope: "read_only",
+        createdByUserId, includePrivateChats,
+    });
+    return raw;
+}
+
+type DmThread = { agentId: string; messages: { id: string; me: boolean; text: string; ageSec: number }[] };
+
+maybe("dm carries only the token creator's own exchanges with each agent", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const creator = await seedMember(companyId, "owner");
+    const other = await seedMember(companyId);
+    const db = await getDb();
+    const { messageThreads, threadParticipants, threadMessages, companyMembers } = await getSchema();
+    const now = Date.now();
+    const ago = (sec: number) => new Date(now - sec * 1000);
+
+    const ada = await seedAgent(companyId, { name: "Ada", lastSeenAt: new Date() });
+    const bob = await seedAgent(companyId, { name: "Bob", lastSeenAt: new Date() });
+
+    // Ada's direct chat, created the way the app does it (shared by every member).
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+    const adaDirect = await ensureDirectThread(companyId, ada.id);
+    const bobDirect = await ensureDirectThread(companyId, bob.id);
+    // A newer duplicate direct thread for Ada is not her chat (the app uses the oldest).
+    const [dupe] = await db.insert(messageThreads).values({ companyId, type: "direct", title: "Dupe", createdAt: new Date(now + 1000) }).returning();
+    await db.insert(threadParticipants).values({ companyId, threadId: dupe.id, participantType: "agent", participantId: ada.id });
+    // A "direct" thread between two humans (no agent) never matches.
+    const [humans] = await db.insert(messageThreads).values({ companyId, type: "direct", title: "Humans" }).returning();
+    await db.insert(threadParticipants).values([
+        { companyId, threadId: humans.id, participantType: "human", participantId: creator },
+        { companyId, threadId: humans.id, participantType: "human", participantId: other },
+    ]);
+    const [team] = await db.insert(messageThreads).values({ companyId, type: "team", title: "Team" }).returning();
+
+    const [creatorAsk] = await db.insert(threadMessages).values(
+        { companyId, threadId: adaDirect.id, senderType: "human", senderId: creator, text: "**Creator** question", createdAt: ago(80) },
+    ).returning();
+    await db.insert(threadMessages).values([
+        { companyId, threadId: adaDirect.id, senderType: "human", senderId: other, text: "Other member secret", createdAt: ago(100) },
+        { companyId, threadId: adaDirect.id, senderType: "agent", senderId: ada.id, text: "Answer for the other member", createdAt: ago(90) },
+        { companyId, threadId: adaDirect.id, senderType: "agent", senderId: ada.id, text: "Answer for creator", createdAt: ago(70) },
+        { companyId, threadId: adaDirect.id, senderType: "human", senderId: other, text: "Other member second secret", createdAt: ago(60) },
+        { companyId, threadId: adaDirect.id, senderType: "agent", senderId: ada.id, text: "Late reply to creator", metadataJson: { replyToMessageId: creatorAsk.id }, createdAt: ago(50) },
+        { companyId, threadId: adaDirect.id, senderType: "agent", senderId: ada.id, text: "Reply to other second", createdAt: ago(40) },
+        { companyId, threadId: adaDirect.id, senderType: "system", senderId: null, text: "Platform request secret", createdAt: ago(35) },
+        { companyId, threadId: adaDirect.id, senderType: "agent", senderId: ada.id, text: "Answer for platform", createdAt: ago(30) },
+        { companyId, threadId: adaDirect.id, senderType: "agent", senderId: ada.id, text: "control", metadataJson: { runtimeControl: { a: 1 } }, createdAt: ago(29) },
+        { companyId, threadId: bobDirect.id, senderType: "human", senderId: other, text: "Bob, other member only", createdAt: ago(20) },
+        { companyId, threadId: bobDirect.id, senderType: "agent", senderId: bob.id, text: "Bob answers other", createdAt: ago(19) },
+        { companyId, threadId: dupe.id, senderType: "human", senderId: creator, text: "Creator in duplicate thread", createdAt: ago(15) },
+        { companyId, threadId: humans.id, senderType: "human", senderId: creator, text: "Creator to a human", createdAt: ago(14) },
+        { companyId, threadId: team.id, senderType: "human", senderId: creator, text: "Creator in team chat", createdAt: ago(13) },
+    ]);
+    // Ada is typing in her direct chat, answering the platform (not the creator).
+    const { and, eq } = await import("drizzle-orm");
+    await db.update(threadParticipants).set({ typingUntil: new Date(now + 60_000), currentActivity: "thinking: the creator's launch plan" })
+        .where(and(eq(threadParticipants.threadId, adaDirect.id), eq(threadParticipants.participantType, "agent")));
+    await db.update(threadParticipants).set({ typingUntil: new Date(now + 60_000), currentActivity: "thinking: other member's salary" })
+        .where(and(eq(threadParticipants.threadId, bobDirect.id), eq(threadParticipants.participantType, "agent")));
+
+    const off = await seedScreenToken(companyId, creator, false);
+    const on = await seedScreenToken(companyId, creator, true);
+    const legacy = await seedScreenToken(companyId, null, true);
+
+    // Flag off (and a legacy token with no recorded creator): dm is [], activity masked.
+    for (const token of [off, legacy]) {
+        const raw = await (await getLive(token)).text();
+        const feed = JSON.parse(raw);
+        assert.deepEqual(feed.dm, []);
+        assert.ok(!raw.includes("Creator question") && !raw.includes("secret") && !raw.includes("salary"));
+        assert.equal(feed.agents.find((a: { id: string }) => a.id === ada.id).activity, "Working in a private chat");
+    }
+
+    const res = await getLive(on);
+    assert.equal(res.status, 200);
+    const raw = await res.text();
+    const feed = JSON.parse(raw);
+    assert.deepEqual(feed.dm.map((t: DmThread) => t.agentId), [ada.id], "only agents with a creator exchange");
+    const adaDm = (feed.dm as DmThread[])[0].messages;
+    assert.deepEqual(adaDm.map((m) => [m.me, m.text]), [
+        [false, "Late reply to creator"],
+        [false, "Answer for creator"],
+        [true, "Creator question"],
+    ]);
+    assert.ok(adaDm[0].ageSec >= 50 && adaDm[0].ageSec < 120);
+    for (const leaked of ["secret", "Answer for the other member", "Reply to other second", "Answer for platform", "Bob", "duplicate", "to a human", "salary", "control"]) {
+        assert.ok(!JSON.stringify(feed.dm).includes(leaked), `dm must not include "${leaked}"`);
+    }
+    assert.ok(!raw.includes("secret") && !raw.includes("salary"));
+    // Ada is answering the platform, Bob the other member: both stay masked.
+    assert.equal(feed.agents.find((a: { id: string }) => a.id === ada.id).activity, "Working in a private chat");
+    assert.equal(feed.agents.find((a: { id: string }) => a.id === bob.id).activity, "Working in a private chat");
+
+    // The creator writes again: Ada is now answering them, so the screen shows the real activity.
+    const etag = res.headers.get("etag")!;
+    await db.insert(threadMessages).values({ companyId, threadId: adaDirect.id, senderType: "human", senderId: creator, text: "One more thing", createdAt: ago(1) });
+    const next = await getLive(on, "", { "If-None-Match": etag });
+    assert.equal(next.status, 200, "a new private message changes the ETag");
+    const nextFeed = JSON.parse(await next.text());
+    assert.equal(nextFeed.dm[0].messages[0].text, "One more thing");
+    assert.equal(nextFeed.dm[0].messages.length, 4);
+    assert.equal(nextFeed.agents.find((a: { id: string }) => a.id === ada.id).activity, "thinking: the creator's launch plan");
+    assert.equal(nextFeed.agents.find((a: { id: string }) => a.id === bob.id).activity, "Working in a private chat");
+    // Other tokens never unmask it.
+    assert.equal(JSON.parse(await (await getLive(off)).text()).agents.find((a: { id: string }) => a.id === ada.id).activity, "Working in a private chat");
+
+    // The creator is demoted below admin: the screen loses dm until restored.
+    await db.update(companyMembers).set({ role: "member" }).where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, creator)));
+    assert.deepEqual(JSON.parse(await (await getLive(on)).text()).dm, [], "a demoted creator's chats leave the screen");
+    await db.update(companyMembers).set({ role: "owner" }).where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, creator)));
+
+    // The creator leaves the company: the screen behaves as if the flag were off.
+    await db.delete(companyMembers).where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, creator)));
+    const removedRaw = await (await getLive(on)).text();
+    const removed = JSON.parse(removedRaw);
+    assert.deepEqual(removed.dm, []);
+    assert.equal(removed.agents.find((a: { id: string }) => a.id === ada.id).activity, "Working in a private chat");
+    assert.ok(!removedRaw.includes("Creator question") && !removedRaw.includes("launch plan"));
+});
+
+maybe("a member's screen never shows another member's chats, even with the flag on", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const creator = await seedMember(companyId, "admin");
+    const other = await seedMember(companyId, "admin");
+    const plain = await seedMember(companyId);
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const ada = await seedAgent(companyId, { name: "Ada", lastSeenAt: new Date() });
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+    const direct = await ensureDirectThread(companyId, ada.id);
+    await db.insert(threadMessages).values([
+        { companyId, threadId: direct.id, senderType: "human", senderId: other, text: "Only mine", createdAt: new Date(Date.now() - 20_000) },
+        { companyId, threadId: direct.id, senderType: "agent", senderId: ada.id, text: "Reply to other", createdAt: new Date(Date.now() - 10_000) },
+    ]);
+    const feed = await (await getLive(await seedScreenToken(companyId, creator, true))).json();
+    assert.deepEqual(feed.dm, []);
+    const otherFeed = await (await getLive(await seedScreenToken(companyId, other, true))).json();
+    assert.deepEqual(otherFeed.dm.map((t: DmThread) => t.messages.map((m) => [m.me, m.text])), [[[false, "Reply to other"], [true, "Only mine"]]]);
+    // Only owners and admins can mint tokens; a token attributed to a plain member carries no chats.
+    const plainFeed = await (await getLive(await seedScreenToken(companyId, plain, true))).json();
+    assert.deepEqual(plainFeed.dm, []);
 });

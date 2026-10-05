@@ -733,6 +733,8 @@ Signed status callbacks and examples: [Send Work From Your Platform](./external-
 
 A small, read-only snapshot of what every agent is doing, for screens and dashboards (for example a desk display). Use a **Read only** token from Settings → Access Tokens: it can call this endpoint and nothing else — every other endpoint, the MCP server, and the realtime socket refuse it with `403`, and it never writes anything. Agent access and secret leasing tokens may call it too; a **Requests only** token may not. Read only tokens expire after 365 days (`EMPEROR_CLAW_READ_ONLY_TOKEN_TTL_DAYS`).
 
+**Include my private chats.** When you create a Read only token you can tick **Include my private chats** (API: `POST /api/settings/tokens` with `{ "name", "scope": "read_only", "includePrivateChats": true }`; sending `true` with any other scope is a `400`). The feed then also carries *your own* direct conversations with each agent in `dm`. It never includes anyone else's: agent chats are shared by the whole company, so only messages you wrote and the agent's replies to you are sent. Every new token records who created it; `dm` is filled only while that person is still a member of the company (remove them and the screen falls back to `"dm": []`). Anyone who can see the screen can read these messages, so use it only on a screen you control. The token list shows such tokens with **+ my private chats**; the flag can't be changed later — revoke and recreate the token instead.
+
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/live` | `GET` | Agents, their health, live activity and current task, plus the latest team chat and group messages. `?messages=` sets how many messages (default `8`, `0`–`20`). |
@@ -757,6 +759,12 @@ Example response:
   ],
   "messages": [
     { "id": "c41d…", "from": "Ada", "agentId": "6f1c…", "text": "Shipped the Q3 summary", "ageSec": 40 }
+  ],
+  "dm": [
+    { "agentId": "6f1c…", "messages": [
+      { "id": "e7a0…", "me": false, "text": "Draft is in your inbox.", "ageSec": 40 },
+      { "id": "d3b9…", "me": true, "text": "Can you send me the Q3 draft?", "ageSec": 300 }
+    ] }
   ]
 }
 ```
@@ -772,8 +780,10 @@ Fields:
 - `lastSeenSec` is `null` when the agent has never connected.
 - `summary.working` counts agents that are `typing` or `working`; `summary.agents` counts all agents, while `agents` lists at most 24 (online first, then offline, each by name).
 - `messages` come from team chat and group chats only — never private direct chats — newest first, as plain text (Markdown and rich blocks stripped, max 100 characters).
+- `dm` is always present and is `[]` unless the token was created with **Include my private chats** by someone who is still a company member. Each entry is one agent from `agents` with your exchanges in its direct chat: up to 4 messages, newest first, plain text (max 100 characters); `me` is `true` for messages you wrote and `false` for the agent's replies to you. A reply counts as yours when it names one of your messages, or, when it names none, when your message opened that exchange (the latest non-agent message before it is yours). Other people's messages, system messages, and replies to anyone else are left out. At most 40 messages in total; the most recently active agents come first.
+- Activity in a private direct chat shows as `Working in a private chat`, except on a token with **Include my private chats** while the agent is answering *you* (your message is the latest non-agent message in its direct chat): then the real activity line is shown.
 
-Polling: the response carries an `ETag` and `Cache-Control: no-store`. Send the last `ETag` in `If-None-Match`; when nothing changed you get `304` with an empty body. The `ETag` ignores the clocks (`ts`, `ageSec`, `lastSeenSec`), so after a `304` add the time since your last `200` to the cached values yourself.
+Polling: the response carries an `ETag` and `Cache-Control: no-store`. Send the last `ETag` in `If-None-Match`; when nothing changed you get `304` with an empty body. The `ETag` ignores the clocks (`ts`, `ageSec` in `messages` and `dm`, `lastSeenSec`), so after a `304` add the time since your last `200` to the cached values yourself. A new private message in `dm` changes the `ETag`.
 
 ## Resources
 

@@ -22,6 +22,7 @@ type SettingsToken = {
     lastUsedAt: string | null;
     expiresAt: string;
     callbackUrlHint?: string | null;
+    includePrivateChats?: boolean;
 };
 
 type SettingsTab = "profile" | "notifications" | "routines" | "connections" | "tokens" | "updates" | "advanced" | "instance" | "members";
@@ -92,6 +93,7 @@ export default function SettingsClient({
     const [newTokenName, setNewTokenName] = useState("");
     const [newTokenScope, setNewTokenScope] = useState<TokenScope>("mcp_full");
     const [newTokenCallback, setNewTokenCallback] = useState("");
+    const [newTokenPrivateChats, setNewTokenPrivateChats] = useState(false);
     const [editingCallbackId, setEditingCallbackId] = useState<string | null>(null);
     const [callbackDraft, setCallbackDraft] = useState("");
     const [activeTab, setActiveTab] = useState<SettingsTab>(
@@ -147,7 +149,12 @@ export default function SettingsClient({
             const res = await fetch("/api/settings/tokens", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newTokenName.trim(), scope: newTokenScope, ...(newTokenScope === "requests" && newTokenCallback.trim() ? { callbackUrl: newTokenCallback.trim() } : {}) }),
+                body: JSON.stringify({
+                    name: newTokenName.trim(),
+                    scope: newTokenScope,
+                    ...(newTokenScope === "requests" && newTokenCallback.trim() ? { callbackUrl: newTokenCallback.trim() } : {}),
+                    ...(newTokenScope === "read_only" && newTokenPrivateChats ? { includePrivateChats: true } : {}),
+                }),
             });
 
             if (res.ok) {
@@ -157,6 +164,7 @@ export default function SettingsClient({
                 setNewTokenName("");
                 setNewTokenScope("mcp_full");
                 setNewTokenCallback("");
+                setNewTokenPrivateChats(false);
                 toast.success("API key created.");
             } else {
                 const data = await res.json().catch(() => ({}));
@@ -472,6 +480,20 @@ Walk me through step by step.`}</pre>
                                     <p className="text-xs leading-5 text-zinc-500">Emperor posts a signed update here whenever a request changes status. Stored encrypted.</p>
                                 </label>
                             )}
+                            {newTokenScope === "read_only" && (
+                                <label className="flex items-start gap-3 rounded-xl border border-border bg-white/[0.02] p-3">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-0.5 h-4 w-4 accent-cyan-400"
+                                        checked={newTokenPrivateChats}
+                                        onChange={(event) => setNewTokenPrivateChats(event.target.checked)}
+                                    />
+                                    <span className="space-y-1">
+                                        <span className="block text-sm font-medium text-zinc-300">Include my private chats</span>
+                                        <span className="block text-xs leading-5 text-zinc-500">Shows your own direct conversations with each agent on the screen. Never includes other people&apos;s chats. Anyone who can see the screen can read them.</span>
+                                    </span>
+                                </label>
+                            )}
                             <Button onClick={handleGenerate} disabled={!newTokenName.trim() || generating} className="w-full">
                                 <IconPlus className="h-4 w-4" /> {generating ? "Creating..." : "Create token"}
                             </Button>
@@ -513,6 +535,9 @@ Walk me through step by step.`}</pre>
                                                 <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
                                                     {tokenScopeLabel(token.scope)}
                                                 </span>
+                                                {token.scope === "read_only" && token.includePrivateChats && (
+                                                    <span className="text-xs text-zinc-400">+ my private chats</span>
+                                                )}
                                             </div>
                                             <p className="mt-1 font-mono text-xs text-zinc-500">
                                                 ID: {token.id} · Created: {new Date(token.createdAt).toLocaleDateString()} · Expires: {new Date(token.expiresAt).toLocaleDateString()}

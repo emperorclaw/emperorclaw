@@ -8,6 +8,9 @@ import { buildLiveFeed, clampMessageCount, etagMatches, liveFeedEtag } from "@/l
  * The one endpoint a read_only token may call (mcp_full and mcp_danger may
  * too; a requests token may not). It only reads. Poll it every few seconds
  * with If-None-Match: unchanged feeds answer 304 with an empty body.
+ *
+ * `dm` is always present and empty unless the token was minted with
+ * includePrivateChats by a user who is still a member of the company.
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });
@@ -16,7 +19,10 @@ export async function GET(req: NextRequest) {
     const messages = clampMessageCount(new URL(req.url).searchParams.get("messages"));
 
     try {
-        const feed = await buildLiveFeed(auth.companyToken.companyId, { messages });
+        // Only an opted-in read_only token carries its creator's own direct chats.
+        const token = auth.companyToken;
+        const privateChatsUserId = token.scope === "read_only" && token.includePrivateChats ? token.createdByUserId : null;
+        const feed = await buildLiveFeed(token.companyId, { messages, privateChatsUserId });
         const etag = liveFeedEtag(feed);
         const headers = { ETag: etag, "Cache-Control": "no-store" };
         if (etagMatches(req.headers.get("if-none-match"), etag)) {

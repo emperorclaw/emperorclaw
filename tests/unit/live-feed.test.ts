@@ -6,12 +6,15 @@ import {
     deriveLiveState,
     etagMatches,
     liveFeedEtag,
+    LIVE_DM_MAX_MESSAGES,
+    LIVE_DM_PER_AGENT,
+    shapeDm,
     shortName,
     toPlainText,
     truncateText,
     type LiveFeed,
 } from "../../src/lib/live-feed";
-import { hasRequiredCompanyTokenScope, isCompanyTokenScope, isIsolatedCompanyTokenScope, normalizeCompanyTokenScope } from "../../src/lib/mcp";
+import { hasRequiredCompanyTokenScope, isCompanyTokenScope, isIsolatedCompanyTokenScope, normalizeCompanyTokenScope, resolveIncludePrivateChats, serializeCompanyToken } from "../../src/lib/mcp";
 
 test("short name is the first word, at most 10 characters", () => {
     assert.equal(shortName("Ada Researcher"), "Ada");
@@ -77,9 +80,19 @@ test("the ETag ignores the clocks but not the content", () => {
         summary: { agents: 1, healthy: 1, attention: 0, down: 0, idle: 0, working: 1, pendingApprovals: 0, tasksInProgress: 1, tasksOverdue: 0 },
         agents: [{ id: "a", name: "Ada", short: "Ada", hue: 1, health: "healthy", state: "working", activity: null, task: null, lastSeenSec: 3, unanswered: 0 }],
         messages: [{ id: "m", from: "Ada", agentId: "a", text: "hi", ageSec: 4 }],
+        dm: [{ agentId: "a", messages: [{ id: "d1", me: true, text: "secret plan", ageSec: 5 }] }],
     };
-    const later = { ...feed, ts: "2026-10-05T12:00:09.000Z", agents: [{ ...feed.agents[0], lastSeenSec: 12 }], messages: [{ ...feed.messages[0], ageSec: 13 }] };
+    const later = {
+        ...feed,
+        ts: "2026-10-05T12:00:09.000Z",
+        agents: [{ ...feed.agents[0], lastSeenSec: 12 }],
+        messages: [{ ...feed.messages[0], ageSec: 13 }],
+        dm: [{ agentId: "a", messages: [{ ...feed.dm[0].messages[0], ageSec: 14 }] }],
+    };
     assert.equal(liveFeedEtag(feed), liveFeedEtag(later));
+    const newDm = { ...feed, dm: [{ agentId: "a", messages: [{ id: "d2", me: false, text: "on it", ageSec: 1 }, ...feed.dm[0].messages] }] };
+    assert.notEqual(liveFeedEtag(feed), liveFeedEtag(newDm), "a new private message changes the tag");
+    assert.notEqual(liveFeedEtag(feed), liveFeedEtag({ ...feed, dm: [] }));
     const changed = { ...feed, agents: [{ ...feed.agents[0], state: "typing" as const, activity: "Reading" }] };
     assert.notEqual(liveFeedEtag(feed), liveFeedEtag(changed));
 
@@ -108,4 +121,59 @@ test("read_only is a real, isolated scope that satisfies nothing else", () => {
     assert.equal(hasRequiredCompanyTokenScope("mcp_danger", "read_only"), false);
     assert.equal(hasRequiredCompanyTokenScope("mcp_danger", "mcp_full"), true);
     assert.equal(hasRequiredCompanyTokenScope("mcp_full", "mcp_danger"), false);
+});
+
+test("includePrivateChats is accepted only on read_only tokens", () => {
+    assert.deepEqual(resolveIncludePrivateChats("read_only", true), { value: true });
+    assert.deepEqual(resolveIncludePrivateChats("read_only", false), { value: false });
+    assert.deepEqual(resolveIncludePrivateChats("read_only", undefined), { value: false });
+    for (const scope of ["mcp_full", "mcp_danger", "requests"] as const) {
+        assert.deepEqual(resolveIncludePrivateChats(scope, undefined), { value: false });
+        assert.deepEqual(resolveIncludePrivateChats(scope, false), { value: false });
+        assert.match((resolveIncludePrivateChats(scope, true) as { error: string }).error, /only allowed for read_only/);
+    }
+    assert.ok("error" in resolveIncludePrivateChats("read_only", "yes"), "not a boolean");
+    const base = { id: "t", name: "Screen", scope: "read_only", createdAt: new Date("2026-10-01T00:00:00Z") };
+    assert.equal(serializeCompanyToken({ ...base, includePrivateChats: true }).includePrivateChats, true);
+    assert.equal(serializeCompanyToken(base).includePrivateChats, false);
+});
+
+test("dm shaping: plain text, newest first, per-agent and total caps, visible agents only", () => {
+    const now = Date.parse("2026-10-05T12:00:00Z");
+    const at = (secAgo: number) => now - secAgo * 1000;
+    const shaped = shapeDm([
+        {
+            agentId: "ada",
+            messages: [
+                { id: "a1", me: true, text: "**Can** you check [the report](emperor://task/1)?", createdAtMs: at(50) },
+                { id: "a2", me: false, text: "Sure, looking now", createdAtMs: at(40) },
+                { id: "a3", me: false, text: "```choices\n{}\n```", createdAtMs: at(30) },
+                { id: "a4", me: false, text: "   ", createdAtMs: at(20) },
+                { id: "a5", me: true, text: "thanks", createdAtMs: at(10) },
+                { id: "a6", me: false, text: "old", createdAtMs: at(500) },
+            ],
+        },
+        { agentId: "hidden", messages: [{ id: "h1", me: true, text: "not on screen", createdAtMs: at(1) }] },
+        { agentId: "bob", messages: [{ id: "b1", me: true, text: "x".repeat(300), createdAtMs: at(5) }] },
+        { agentId: "cy", messages: [] },
+    ], new Set(["ada", "bob", "cy"]), now);
+
+    assert.deepEqual(shaped.map((t) => t.agentId), ["bob", "ada"], "most recently active first; hidden and empty agents dropped");
+    const ada = shaped[1].messages;
+    assert.equal(ada.length, LIVE_DM_PER_AGENT);
+    assert.deepEqual(ada.map((m) => m.id), ["a5", "a3", "a2", "a1"], "blank bodies skipped");
+    assert.deepEqual(ada.map((m) => m.text), ["thanks", "[choices]", "Sure, looking now", "Can you check the report?"]);
+    assert.deepEqual(ada.map((m) => m.me), [true, false, false, true]);
+    assert.deepEqual(ada.map((m) => m.ageSec), [10, 30, 40, 50]);
+    assert.ok(shaped[0].messages[0].text.length <= 100 && shaped[0].messages[0].text.endsWith("..."));
+
+    // The total cap keeps the most recent agents.
+    const many = Array.from({ length: 24 }, (_, i) => ({
+        agentId: `agent-${String(i).padStart(2, "0")}`,
+        messages: Array.from({ length: 4 }, (_, j) => ({ id: `${i}-${j}`, me: j % 2 === 0, text: `m${j}`, createdAtMs: at(i * 100 + j) })),
+    }));
+    const capped = shapeDm(many, new Set(many.map((m) => m.agentId)), now);
+    assert.equal(capped.reduce((n, t) => n + t.messages.length, 0), LIVE_DM_MAX_MESSAGES);
+    assert.equal(capped[0].agentId, "agent-00");
+    assert.equal(capped.length, 10);
 });

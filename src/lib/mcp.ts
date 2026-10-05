@@ -111,6 +111,18 @@ export function getCompanyTokenExpiresAt(token: { createdAt: Date; scope: unknow
     return expiresAt;
 }
 
+/**
+ * The `includePrivateChats` option on token creation. Only a read_only token
+ * (a screen) may carry its creator's private chats; asking for it on any other
+ * scope is a client error rather than something to silently drop.
+ */
+export function resolveIncludePrivateChats(scope: CompanyTokenScope, raw: unknown): { value: boolean } | { error: string } {
+    if (raw === undefined || raw === null || raw === false) return { value: false };
+    if (raw !== true) return { error: "includePrivateChats must be a boolean" };
+    if (scope !== "read_only") return { error: "includePrivateChats is only allowed for read_only tokens" };
+    return { value: true };
+}
+
 export function serializeCompanyToken(token: {
     id: string;
     name: string;
@@ -120,6 +132,7 @@ export function serializeCompanyToken(token: {
     revokedAt?: Date | null;
     agentId?: string | null;
     callbackUrlHint?: string | null;
+    includePrivateChats?: boolean | null;
 }) {
     return {
         id: token.id,
@@ -127,6 +140,7 @@ export function serializeCompanyToken(token: {
         scope: normalizeCompanyTokenScope(token.scope),
         agentId: token.agentId ?? null,
         callbackUrlHint: token.callbackUrlHint ?? null,
+        includePrivateChats: token.includePrivateChats === true,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
         revokedAt: token.revokedAt ? token.revokedAt.toISOString() : null,

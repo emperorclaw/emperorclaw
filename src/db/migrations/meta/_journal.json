@@ -351,6 +351,13 @@
       "when": 1791117781680,
       "tag": "0049_group-icon",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791212788642,
+      "tag": "0050_token-private-chats",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { and, count, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { approvals, companies, messageThreads, tasks, threadMessages, threadParticipants } from "@/db/schema";
+import { approvals, companies, companyMembers, messageThreads, tasks, threadMessages, threadParticipants } from "@/db/schema";
 import { computeCompanyHealth, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
@@ -14,6 +14,10 @@ import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
  * every key is always present (null, never omitted) and strings are short,
  * plain text. The keys are a firmware contract — bump `v` on any change that
  * is not purely additive.
+ *
+ * Private direct chats never reach a screen, with one opt-in exception: a
+ * read_only token minted with "include my private chats" carries its
+ * creator's own exchanges with each agent in `dm` (see buildDmFeed).
  */
 
 export const LIVE_FEED_VERSION = 1;
@@ -31,6 +35,11 @@ const HEALTH_CACHE_MS = 10_000;
 /** Only team chat and group threads reach a screen — never private direct threads. */
 const PUBLIC_THREAD_TYPES = ["team", "group"] as const;
 const PRIVATE_ACTIVITY = "Working in a private chat";
+/** `dm`: at most this many messages per agent, and this many in total. */
+export const LIVE_DM_PER_AGENT = 4;
+export const LIVE_DM_MAX_MESSAGES = 40;
+/** How far back in a direct thread the creator's exchanges are looked for. */
+const DM_SCAN_MESSAGES = 40;
 
 export type LiveState = "typing" | "working" | "idle" | "offline";
 
@@ -55,6 +64,20 @@ export interface LiveMessage {
     ageSec: number;
 }
 
+export interface LiveDmMessage {
+    id: string;
+    /** Written by the token's creator (otherwise: the agent's reply to them). */
+    me: boolean;
+    text: string;
+    ageSec: number;
+}
+
+export interface LiveDmThread {
+    agentId: string;
+    /** Newest first. */
+    messages: LiveDmMessage[];
+}
+
 export interface LiveFeed {
     v: number;
     ts: string;
@@ -72,6 +95,8 @@ export interface LiveFeed {
     };
     agents: LiveAgent[];
     messages: LiveMessage[];
+    /** The token creator's own direct chats with each agent; [] unless opted in. */
+    dm: LiveDmThread[];
 }
 
 // ─── Pure helpers (unit-tested) ────────────────────────────────────────────
@@ -170,9 +195,50 @@ export function liveFeedEtag(feed: LiveFeed): string {
         ts: undefined,
         agents: feed.agents.map((a) => ({ ...a, lastSeenSec: undefined })),
         messages: feed.messages.map((m) => ({ ...m, ageSec: undefined })),
+        dm: (feed.dm ?? []).map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, ageSec: undefined })) })),
     };
     const digest = createHash("sha256").update(JSON.stringify(stable)).digest("base64url").slice(0, 22);
     return `"${digest}"`;
+}
+
+export interface DmRow {
+    agentId: string;
+    /** Newest first; already restricted to the creator's exchanges. */
+    messages: { id: string; me: boolean; text: string; createdAtMs: number }[];
+}
+
+/**
+ * Shape the creator's direct-chat rows into `dm`: plain text, at most
+ * LIVE_DM_PER_AGENT per agent (newest first), only agents the screen shows,
+ * and at most LIVE_DM_MAX_MESSAGES overall — the most recently active agents
+ * win when the cap bites.
+ */
+export function shapeDm(rows: DmRow[], visibleAgentIds: ReadonlySet<string>, nowMs: number): LiveDmThread[] {
+    const threads: { thread: LiveDmThread; newest: number }[] = [];
+    for (const row of rows) {
+        if (!visibleAgentIds.has(row.agentId)) continue;
+        const messages: LiveDmMessage[] = [];
+        let newest = -Infinity;
+        for (const m of [...row.messages].sort((a, b) => b.createdAtMs - a.createdAtMs || (a.id < b.id ? 1 : -1))) {
+            if (messages.length >= LIVE_DM_PER_AGENT) break;
+            const text = toPlainText(m.text, MESSAGE_TEXT_MAX);
+            if (!text) continue;
+            newest = Math.max(newest, m.createdAtMs);
+            messages.push({ id: m.id, me: m.me, text, ageSec: Math.max(0, Math.floor((nowMs - m.createdAtMs) / 1000)) });
+        }
+        if (messages.length) threads.push({ thread: { agentId: row.agentId, messages }, newest });
+    }
+    threads.sort((a, b) => b.newest - a.newest || a.thread.agentId.localeCompare(b.thread.agentId));
+    const out: LiveDmThread[] = [];
+    let total = 0;
+    for (const { thread } of threads) {
+        const room = LIVE_DM_MAX_MESSAGES - total;
+        if (room <= 0) break;
+        const messages = thread.messages.slice(0, room);
+        out.push({ agentId: thread.agentId, messages });
+        total += messages.length;
+    }
+    return out;
 }
 
 /** Does an If-None-Match header match this ETag? Handles lists, W/ and "*". */
@@ -221,13 +287,122 @@ export function clearLiveFeedCache() {
     healthInFlight.clear();
 }
 
+/**
+ * The token creator's exchanges in each agent's direct chat, in ONE query.
+ *
+ * "An agent's direct chat" is resolved exactly as the app's chat does
+ * (ensureDirectThread in control-plane.ts): the oldest non-archived thread of
+ * type "direct" in this company that has the agent as a participant. That
+ * channel is SHARED by every company member (one thread per agent, not per
+ * user), so the thread as a whole is never sent. Only these messages are:
+ *  - human messages whose sender is the creator (me: true);
+ *  - that agent's replies to the creator: a reply naming one of the creator's
+ *    messages (metadata.replyToMessageId), or, when it names none, an agent
+ *    message whose exchange the creator opened (the latest non-agent message
+ *    before it is the creator's). This is the exchange rule agent requests
+ *    already use (repliesTo in agent-requests.ts).
+ * Other members' messages, system messages, other agents, and replies to
+ * anyone else are excluded. Only the last DM_SCAN_MESSAGES messages of each
+ * thread are considered; a reply whose exchange starts before that window is
+ * dropped rather than guessed. `creatorTurn` says whether the thread's latest
+ * non-agent message is the creator's (the agent is answering them right now).
+ */
+async function loadCreatorDirectChats(companyId: string, userId: string) {
+    type Row = { agent_id: string; thread_id: string; creator_turn: boolean | null; messages: { id: string; me: boolean; text: string | null; ms: number | string }[] | null };
+    const result = await db.execute<Row>(sql`
+        with direct as (
+            select distinct on (tp.participant_id) tp.participant_id as agent_id, t.id as thread_id
+              from thread_participants tp
+              join message_threads t on t.id = tp.thread_id
+             where tp.company_id = ${companyId}
+               and tp.participant_type = 'agent'
+               and t.company_id = ${companyId}
+               and t.type = 'direct'
+               and t.archived_at is null
+             order by tp.participant_id, t.created_at
+        )
+        select d.agent_id, d.thread_id,
+            (select h.sender_type = 'human' and h.sender_id = ${userId}
+               from thread_messages h
+              where h.thread_id = d.thread_id and h.company_id = ${companyId} and h.sender_type <> 'agent'
+              order by h.created_at desc, h.id desc
+              limit 1) as creator_turn,
+            (select json_agg(json_build_object('id', s.id, 'me', s.me, 'text', s.text, 'ms', s.ms) order by s.created_at desc, s.id desc)
+               from (
+                   with q as (
+                       select tm.id, tm.sender_type, tm.sender_id, tm.created_at,
+                              left(tm.text, ${MESSAGE_SCAN_CHARS}) as text,
+                              (tm.metadata_json -> 'runtimeControl') is not null as runtime_control,
+                              tm.metadata_json ->> 'replyToMessageId' as reply_to
+                         from thread_messages tm
+                        where tm.thread_id = d.thread_id and tm.company_id = ${companyId}
+                        order by tm.created_at desc, tm.id desc
+                        limit ${DM_SCAN_MESSAGES}
+                   ),
+                   grouped as (
+                       select q.*, count(*) filter (where q.sender_type <> 'agent')
+                                   over (order by q.created_at, q.id rows between unbounded preceding and current row) as grp
+                         from q
+                   ),
+                   anchored as (
+                       select g.*, first_value(case when g.sender_type <> 'agent' then g.sender_type || ':' || coalesce(g.sender_id, '') end)
+                                   over (partition by g.grp order by g.created_at, g.id) as anchor
+                         from grouped g
+                   )
+                   select a.id, a.sender_type = 'human' as me, a.text, a.created_at,
+                          extract(epoch from a.created_at) * 1000 as ms
+                     from anchored a
+                    where (a.sender_type = 'human' and a.sender_id = ${userId})
+                       or (a.sender_type = 'agent'
+                           and a.sender_id = d.agent_id::text
+                           and not a.runtime_control
+                           and case when a.reply_to is not null
+                                    then exists (select 1 from q p where p.id::text = a.reply_to and p.sender_type = 'human' and p.sender_id = ${userId})
+                                    else a.grp > 0 and a.anchor = ${`human:${userId}`}
+                               end)
+                    order by a.created_at desc, a.id desc
+                    limit ${LIVE_DM_PER_AGENT + 4}
+               ) s) as messages
+          from direct d
+    `);
+    return result.rows.map((r) => ({
+        agentId: r.agent_id,
+        threadId: r.thread_id,
+        creatorTurn: r.creator_turn === true,
+        messages: (r.messages ?? []).map((m) => ({ id: m.id, me: m.me, text: m.text ?? "", createdAtMs: Number(m.ms) })),
+    }));
+}
+
+/**
+ * Can this user still mint such a token? Only owners and admins create tokens,
+ * so a creator who left the company or was demoted takes `dm` off the screen.
+ */
+async function isCompanyAdmin(companyId: string, userId: string): Promise<boolean> {
+    const rows = await db.select({ role: companyMembers.role }).from(companyMembers)
+        .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId))).limit(1);
+    return rows[0]?.role === "owner" || rows[0]?.role === "admin";
+}
+
+/** null when the feed carries no private chats (not opted in, or the creator left or lost admin). */
+async function loadPrivateChats(companyId: string, userId: string | null | undefined) {
+    if (!userId) return null;
+    // Check first: the chat query is the expensive part and runs on every poll.
+    if (!(await isCompanyAdmin(companyId, userId))) return null;
+    return loadCreatorDirectChats(companyId, userId);
+}
+
 const STATE_ORDER: Record<LiveState, number> = { typing: 0, working: 0, idle: 0, offline: 1 };
 
-export async function buildLiveFeed(companyId: string, options: { messages?: number; now?: Date } = {}): Promise<LiveFeed> {
+export async function buildLiveFeed(companyId: string, options: {
+    messages?: number;
+    now?: Date;
+    /** The token creator whose own direct chats the feed may carry (opted-in read_only tokens only). */
+    privateChatsUserId?: string | null;
+} = {}): Promise<LiveFeed> {
     const now = options.now ?? new Date();
     const messageLimit = Math.min(LIVE_MAX_MESSAGES, Math.max(0, options.messages ?? LIVE_DEFAULT_MESSAGES));
 
-    const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows] = await Promise.all([
+    const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows, privateChats] = await Promise.all([
         getCachedHealth(companyId, now),
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         db.select({
@@ -251,6 +426,7 @@ export async function buildLiveFeed(companyId: string, options: { messages?: num
         db.select({ value: count() }).from(approvals).where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending"))),
         db.select({
             agentId: threadParticipants.participantId,
+            threadId: threadParticipants.threadId,
             typingUntil: threadParticipants.typingUntil,
             activity: threadParticipants.currentActivity,
             threadType: messageThreads.type,
@@ -282,16 +458,21 @@ export async function buildLiveFeed(companyId: string, options: { messages?: num
                 .orderBy(desc(threadMessages.createdAt))
                 // Headroom for messages that strip to nothing (control notices, empty bodies).
                 .limit(messageLimit + 10),
+        loadPrivateChats(companyId, options.privateChatsUserId),
     ]);
 
     // Freshest live activity per agent. Activity from a private direct thread
     // can quote that conversation (reasoning lines), so a screen only learns
-    // that the agent is busy in one, never what it is saying.
+    // that the agent is busy in one, never what it is saying. The exception: a
+    // screen carrying its creator's private chats sees the real activity when
+    // the agent is answering the creator (their message opened the exchange).
+    const creatorTurnThreads = new Set((privateChats ?? []).filter((c) => c.creatorTurn).map((c) => c.threadId));
     const typing = new Map<string, { until: number; activity: string | null }>();
     for (const row of typingRows) {
         if (!row.agentId || !row.typingUntil) continue;
         const raw = row.activity?.trim() ? row.activity : null;
-        const activity = raw && !(PUBLIC_THREAD_TYPES as readonly string[]).includes(row.threadType) ? PRIVATE_ACTIVITY : raw;
+        const visible = (PUBLIC_THREAD_TYPES as readonly string[]).includes(row.threadType) || creatorTurnThreads.has(row.threadId);
+        const activity = raw && !visible ? PRIVATE_ACTIVITY : raw;
         const current = typing.get(row.agentId);
         const until = row.typingUntil.getTime();
         if (!current || (activity && !current.activity) || (Boolean(activity) === Boolean(current.activity) && until > current.until)) {
@@ -345,6 +526,9 @@ export async function buildLiveFeed(companyId: string, options: { messages?: num
         });
     }
 
+    const shown = all.slice(0, LIVE_MAX_AGENTS);
+    const dm = privateChats ? shapeDm(privateChats, new Set(shown.map((a) => a.id)), now.getTime()) : [];
+
     const tally = (status: HealthStatus) => all.filter((a) => a.health === status).length;
     return {
         v: LIVE_FEED_VERSION,
@@ -362,7 +546,8 @@ export async function buildLiveFeed(companyId: string, options: { messages?: num
             tasksInProgress: Number(taskCounts[0]?.inProgress) || 0,
             tasksOverdue: Number(taskCounts[0]?.overdue) || 0,
         },
-        agents: all.slice(0, LIVE_MAX_AGENTS),
+        agents: shown,
         messages,
+        dm,
     };
 }

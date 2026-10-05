@@ -78,6 +78,12 @@ export const companyTokens = pgTable("company_tokens", {
     // carry a callback for status updates. The URL is a credential: encrypted.
     callbackUrlEncrypted: text("callback_url_encrypted"),
     callbackUrlHint: text("callback_url_hint"),
+    // The signed-in user who minted the token (null for tokens minted before
+    // this was recorded, OAuth-issued tokens, and after that user is deleted).
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    // read_only only: the live feed also carries the creator's own direct
+    // conversations with each agent (the `dm` key), while they remain a member.
+    includePrivateChats: boolean("include_private_chats").default(false).notNull(),
     lastUsedAt: timestamp("last_used_at"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
