@@ -9,6 +9,26 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.65] — 2026-10-05
+
+### Added
+
+- **Desk display.** Firmware for the ESP32-2424S012C round 240×240 screen
+  (`devices/throne-display/`) that shows your agents live: a pixel-art throne
+  room, a focus page per agent with your private chats, a health radar and a
+  message feed.
+- **Set up a display from the browser.** Settings → **Displays** (admins, in
+  Chrome or Edge): plug the display in over USB, install the firmware, pick
+  your Wi-Fi from the networks the display can see, and finish. A read-only
+  token is created and handed to the display without being shown. The tab also
+  lists display tokens and revokes them.
+
+### Security
+
+- The display verifies TLS certificates, protects its setup Wi-Fi with a
+  random password shown only on its screen, and erases its token if the server
+  address is changed without a new one.
+
 ## [0.8.64] — 2026-10-05
 
 ### Added
