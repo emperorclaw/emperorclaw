@@ -9,6 +9,25 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.63] — 2026-10-05
+
+### Added
+
+- **Read-only API tokens for screens and dashboards.** Settings → API tokens
+  has a new **Read only (screens & dashboards)** scope. A read-only token can
+  only call `GET /api/mcp/live`; it cannot send messages, create tasks or change
+  anything, and every other endpoint refuses it.
+- **Live agent feed, `GET /api/mcp/live`.** One compact JSON response with each
+  agent's health, state (typing, working, idle, offline), live activity text and
+  current task, the latest team and group messages, and pending approvals.
+  Private direct threads are never included. It supports `If-None-Match`, so an
+  unchanged poll returns `304`. First consumer: the ESP32 round desk display.
+
+### Security
+
+- Tokens whose stored scope is not recognised are now refused instead of being
+  treated as full access.
+
 ## [0.8.62] — 2026-10-06
 
 ### Added
