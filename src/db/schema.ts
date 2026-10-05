@@ -73,7 +73,7 @@ export const companyTokens = pgTable("company_tokens", {
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'cascade' }),
     tokenHash: text("token_hash").notNull(),
     name: text("name").notNull(),
-    scope: text("scope").notNull(), // 'mcp_full', 'mcp_danger', 'requests'
+    scope: text("scope").notNull(), // 'mcp_full', 'mcp_danger', 'requests', 'read_only'
     // 'requests' tokens (an external platform sending work to agents) may
     // carry a callback for status updates. The URL is a credential: encrypted.
     callbackUrlEncrypted: text("callback_url_encrypted"),

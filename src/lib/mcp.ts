@@ -8,7 +8,15 @@ import { consumeRateLimit, getClientIp } from "./rate-limit";
 type JsonObject = Record<string, unknown>;
 // "requests" is the narrow scope for an external platform: it can only send
 // work to agents and read back those requests (POST/GET /api/mcp/requests).
-export type CompanyTokenScope = "mcp_full" | "mcp_danger" | "requests";
+// "read_only" is the narrow scope for physical screens and dashboards: it can
+// only read the live agent feed (GET /api/mcp/live) and never writes anything.
+// Both are "isolated" scopes: every endpoint refuses them unless it opts in.
+export type CompanyTokenScope = "mcp_full" | "mcp_danger" | "requests" | "read_only";
+
+const COMPANY_TOKEN_SCOPES: readonly CompanyTokenScope[] = ["mcp_full", "mcp_danger", "requests", "read_only"];
+const ISOLATED_COMPANY_TOKEN_SCOPES: ReadonlySet<CompanyTokenScope> = new Set(["requests", "read_only"]);
+
+export const READ_ONLY_SCOPE_ERROR = "This token is read-only and can only call GET /api/mcp/live";
 
 export type McpTaskScopeContext = {
     id: string;
@@ -43,6 +51,8 @@ type VerifyMcpTokenOptions = {
     requiredScope?: CompanyTokenScope;
     // Only the requests endpoints accept "requests"-scoped tokens.
     allowRequestsScope?: boolean;
+    // Only read-only feeds (GET /api/mcp/live) accept "read_only"-scoped tokens.
+    allowReadOnlyScope?: boolean;
 };
 
 function getPositiveIntegerEnv(name: string, fallback: number): number {
@@ -56,27 +66,43 @@ function getPositiveIntegerEnv(name: string, fallback: number): number {
 }
 
 export function isCompanyTokenScope(value: unknown): value is CompanyTokenScope {
-    return value === "mcp_full" || value === "mcp_danger" || value === "requests";
+    return typeof value === "string" && (COMPANY_TOKEN_SCOPES as readonly string[]).includes(value);
 }
 
 export function normalizeCompanyTokenScope(value: unknown): CompanyTokenScope {
-    return value === "mcp_danger" || value === "requests" ? value : "mcp_full";
+    return isCompanyTokenScope(value) ? value : "mcp_full";
+}
+
+/** Isolated scopes (requests, read_only) are refused everywhere unless an endpoint opts in. */
+export function isIsolatedCompanyTokenScope(scope: unknown): boolean {
+    return ISOLATED_COMPANY_TOKEN_SCOPES.has(normalizeCompanyTokenScope(scope));
 }
 
 function getCompanyTokenScopeRank(scope: CompanyTokenScope): number {
-    return scope === "mcp_danger" ? 2 : scope === "requests" ? 0 : 1;
+    return scope === "mcp_danger" ? 2 : scope === "mcp_full" ? 1 : 0;
 }
 
 export function hasRequiredCompanyTokenScope(actual: unknown, required: CompanyTokenScope): boolean {
-    return getCompanyTokenScopeRank(normalizeCompanyTokenScope(actual)) >= getCompanyTokenScopeRank(required);
+    const scope = normalizeCompanyTokenScope(actual);
+    // Isolated scopes are not a rung on the full/danger ladder: a requests token
+    // is not a read_only token (or vice versa), and neither satisfies full/danger.
+    if (ISOLATED_COMPANY_TOKEN_SCOPES.has(scope) || ISOLATED_COMPANY_TOKEN_SCOPES.has(required)) {
+        return scope === required;
+    }
+    return getCompanyTokenScopeRank(scope) >= getCompanyTokenScopeRank(required);
 }
 
 function getCompanyTokenTtlDays(scope: CompanyTokenScope): number {
-    return scope === "mcp_danger"
-        ? getPositiveIntegerEnv("EMPEROR_CLAW_DANGER_TOKEN_TTL_DAYS", 30)
-        : scope === "requests"
-            ? getPositiveIntegerEnv("EMPEROR_CLAW_REQUESTS_TOKEN_TTL_DAYS", 365)
-            : getPositiveIntegerEnv("EMPEROR_CLAW_TOKEN_TTL_DAYS", 90);
+    switch (scope) {
+        case "mcp_danger":
+            return getPositiveIntegerEnv("EMPEROR_CLAW_DANGER_TOKEN_TTL_DAYS", 30);
+        case "requests":
+            return getPositiveIntegerEnv("EMPEROR_CLAW_REQUESTS_TOKEN_TTL_DAYS", 365);
+        case "read_only":
+            return getPositiveIntegerEnv("EMPEROR_CLAW_READ_ONLY_TOKEN_TTL_DAYS", 365);
+        default:
+            return getPositiveIntegerEnv("EMPEROR_CLAW_TOKEN_TTL_DAYS", 90);
+    }
 }
 
 export function getCompanyTokenExpiresAt(token: { createdAt: Date; scope: unknown }): Date {
@@ -121,8 +147,18 @@ async function verifyStoredCompanyToken(
         return { error: "Token expired", status: 401 as const };
     }
 
-    if (normalizeCompanyTokenScope(companyToken.scope) === "requests" && !options.allowRequestsScope) {
+    // Fail closed: an unrecognised stored scope (typo, casing, a scope from a
+    // newer build) must never fall through to normalizeCompanyTokenScope's
+    // mcp_full default and gain full access.
+    if (!isCompanyTokenScope(companyToken.scope)) {
+        return { error: "Token scope is not recognised", status: 403 as const };
+    }
+    const scope = companyToken.scope;
+    if (scope === "requests" && !options.allowRequestsScope) {
         return { error: "This token can only send requests to agents (POST /api/mcp/requests)", status: 403 as const };
+    }
+    if (scope === "read_only" && !options.allowReadOnlyScope) {
+        return { error: READ_ONLY_SCOPE_ERROR, status: 403 as const };
     }
 
     if (options.requiredScope && !hasRequiredCompanyTokenScope(companyToken.scope, options.requiredScope)) {

@@ -33,7 +33,7 @@ type Member = {
     instanceRole: string;
     joinedAt: string | null;
 };
-type TokenScope = "mcp_full" | "mcp_danger" | "requests";
+type TokenScope = "mcp_full" | "mcp_danger" | "requests" | "read_only";
 
 const runtimeCards = [
     {
@@ -51,10 +51,12 @@ const runtimeCards = [
 ];
 
 function tokenScopeLabel(scope: string) {
+    if (scope === "read_only") return "Read only";
     return scope === "mcp_danger" ? "Secret leasing" : scope === "requests" ? "Requests only" : "Agent access";
 }
 
 function tokenScopeHelp(scope: TokenScope) {
+    if (scope === "read_only") return "For a screen or dashboard that shows what your agents are doing. It can only read the live agent feed (GET /api/mcp/live); it cannot send messages or change anything.";
     if (scope === "requests") return "For another platform that sends work to your agents (a \"send task to agent\" button). It can only create requests and read their status; the token name is shown to agents as the source.";
     return scope === "mcp_danger"
         ? "For trusted local runtimes that need managed secret leasing. Use sparingly."
@@ -454,6 +456,7 @@ Walk me through step by step.`}</pre>
                                     <option value="mcp_full">Agent access</option>
                                     <option value="mcp_danger">Secret leasing</option>
                                     <option value="requests">Requests only (another platform)</option>
+                                    <option value="read_only">Read only (screens &amp; dashboards)</option>
                                 </select>
                                 <p className="text-xs leading-5 text-zinc-500">{tokenScopeHelp(newTokenScope)}</p>
                             </label>
