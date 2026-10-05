@@ -9,6 +9,21 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.62] — 2026-10-06
+
+### Added
+
+- **Team templates in Emperor setup.** The team step now offers ready-made
+  teams you can combine: Development (developer, QA tester), Marketing &
+  content (writer, SEO), Sales & outreach (outreach, writer), Customer support,
+  and Finance & reporting (accountant, analyst). Each brings its specialists and
+  its own group chat with an icon and purpose; the Boss leads and joins every
+  group, and you are in each one. Teams are suggested for your kind of company,
+  a role shared by two teams is one agent in both groups, and you confirm or
+  change every name, remove anyone, or add single specialists before anything
+  is created. Agents and group chats are then created in one go (up to eight
+  agents, with a warning above four for small machines).
+
 ## [0.8.61] — 2026-10-05
 
 ### Changed
