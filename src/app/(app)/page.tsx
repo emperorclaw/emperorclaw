@@ -11,6 +11,7 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { AgentSceneWrapper } from "@/components/agent-scene-wrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +137,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const active = workers.filter((w) => w.working.length + w.waiting.length + w.next.length + w.doneToday > 0 || w.status === "down" || w.status === "attention" || w.activity).sort((a, b) => rank(a) - rank(b));
     const quiet = workers.filter((w) => !active.includes(w));
 
+    const serializedWorkers = JSON.parse(JSON.stringify(workers));
     const myTasks = currentMemberId ? openTasks.filter((t) => t.assignedMemberId === currentMemberId).length : 0;
     const agentsNeedingAttention = health.agents.filter((a) => a.status === "down" || a.status === "attention").length;
     const oldestApproval = pendingApprovals[0]?.requestedAt ?? null;
@@ -195,7 +197,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 </Link>
             </nav>
             {view === "scene" ? (
-                <AgentSceneSVG workers={workers} />
+                <AgentSceneWrapper workers={serializedWorkers} />
             ) : (
             <section aria-label="Team board" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {active.map((w) => <WorkerCard key={w.key} worker={w} now={now} />)}

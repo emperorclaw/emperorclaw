@@ -318,7 +318,7 @@ export function AgentOfficeScene({
   onAgentSelect,
 }: {
   workers: Worker[];
-  onAgentSelect?: (worker: Worker) => void;
+  onAgentSelect?: (worker: Worker | undefined) => void;
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const { agents, connections, sceneW, sceneH } = layoutAgents(workers);
@@ -438,7 +438,7 @@ export function AgentOfficeScene({
           onClick={() => {
             const newKey = selectedKey === a.worker.key ? null : a.worker.key;
             setSelectedKey(newKey);
-            onAgentSelect?.(newKey ? a.worker : null as unknown as Worker);
+            onAgentSelect?.(newKey ? a.worker : undefined);
           }}
         />
       ))}
