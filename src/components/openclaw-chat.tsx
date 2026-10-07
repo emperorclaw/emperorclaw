@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { IconMessage, IconSend, IconAt } from "@tabler/icons-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -353,7 +354,7 @@ export function OpenClawChat() {
 
                             const senderId = msg.fromUserId || msg.senderId || null;
                             const agentObj = !isHuman ? agents.find(a => a.id === senderId) : null;
-                            const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || 'agent')}`;
+                            const avatarSrc = agentObj ? agentAvatarSrc(agentObj) : `/api/avatars/${encodeURIComponent(senderId || 'agent')}`;
 
                             return (
                                 <div key={msg.id}>

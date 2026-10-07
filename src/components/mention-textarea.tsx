@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
 export type MentionAgent = {
@@ -154,7 +155,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                                         <div className="grid h-6 w-6 place-items-center rounded-full bg-cyan-400/15 text-[10px] font-bold text-cyan-300">@</div>
                                     ) : (
                                     <img
-                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
+                                        src={agentAvatarSrc(agent)}
                                         className="h-6 w-6 rounded-full object-cover"
                                         alt=""
                                     />

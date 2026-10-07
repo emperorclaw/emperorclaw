@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -13,11 +12,8 @@ import {
     skillNames,
     type ActivityEvent, type AttentionEntry, type CollaborationEvent, type DashboardData, type DashboardMember, type DashboardTask,
 } from "@/lib/team-scene";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-
-type WorkFilter = "all" | "mine" | "human" | "agent";
 
 const BOARD_LIMIT = 100;
 
@@ -33,10 +29,9 @@ function excerpt(text: string, max = 60): string {
 
 const humanize = (value: string) => value.replace(/_/g, " ");
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ work?: string; view?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
     const session = await getValidatedServerSession();
     const params = await searchParams;
-    const workFilter: WorkFilter = ["mine", "human", "agent"].includes(params.work || "") ? params.work as WorkFilter : "all";
     const view: "list" | "scene" = params.view === "list" ? "list" : "scene";
     const companyId = await getCompanyId();
     if (!companyId) {
@@ -56,7 +51,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email, roleTitle: users.roleTitle })
             .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
             .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
-        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, skillsJson: agents.skillsJson }).from(agents)
+        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, skillsJson: agents.skillsJson, createdAt: agents.createdAt }).from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
         db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt)))
@@ -84,7 +79,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
     const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, t.activity || "working…"]));
-    const currentMemberId = members.find((m) => m.userId === userId)?.id ?? null;
     const memberKeyByUser = new Map(members.map((m) => [m.userId, `human:${m.id}`]));
     const nameByKey = new Map<string, string>([
         ...agentRows.map((a) => [`agent:${a.id}`, a.name] as const),
@@ -94,11 +88,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         t.assignedAgentId ? `agent:${t.assignedAgentId}` : t.assignedMemberId ? `human:${t.assignedMemberId}` : null;
     const toTask = (t: (typeof openTasks)[number]): DashboardTask => ({
         id: t.id, projectId: t.projectId, projectName: projectName.get(t.projectId) ?? null, title: taskTitle(t.inputJson, t.taskType),
-        state: t.state, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: t.slaDueAt?.toISOString() ?? null,
+        state: t.state, taskType: t.taskType, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: t.slaDueAt?.toISOString() ?? null,
     });
     const doneTasks: DashboardTask[] = doneRecently.map((t) => ({
         id: t.id, projectId: t.projectId, projectName: projectName.get(t.projectId) ?? null, title: taskTitle(t.inputJson, t.taskType),
-        state: TASK_STATES.done, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: null,
+        state: TASK_STATES.done, taskType: t.taskType, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: null,
     }));
 
     const workFor = (key: string): Pick<DashboardMember, "working" | "waiting" | "next" | "doneToday"> => {
@@ -112,25 +106,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     };
 
     const dashboardMembers: DashboardMember[] = [];
-    if (workFilter === "all" || workFilter === "agent") {
-        for (const a of agentRows) {
-            const h = healthById.get(a.id);
-            dashboardMembers.push({
-                key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, role: a.role, avatarUrl: a.avatarUrl, skills: skillNames(a.skillsJson),
-                health: h?.status ?? null, healthReasons: h?.reasons ?? [], activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
-                ...workFor(`agent:${a.id}`),
-            });
-        }
+    for (const a of agentRows) {
+        const h = healthById.get(a.id);
+        dashboardMembers.push({
+            key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, role: a.role, avatarUrl: a.avatarUrl, avatarAppearance: a.avatarAppearance, skills: skillNames(a.skillsJson),
+            health: h?.status ?? null, healthReasons: h?.reasons ?? [], activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
+            createdAt: a.createdAt.toISOString(),
+            ...workFor(`agent:${a.id}`),
+        });
     }
-    if (workFilter !== "agent") {
-        for (const m of members) {
-            if (workFilter === "mine" && m.id !== currentMemberId) continue;
-            dashboardMembers.push({
-                key: `human:${m.id}`, kind: "human", id: m.id, name: m.displayName || m.email, role: m.roleTitle, avatarUrl: null, skills: [],
-                health: null, healthReasons: [], activity: null, href: `/projects?assignee=human:${m.id}`,
-                ...workFor(`human:${m.id}`),
-            });
-        }
+    for (const m of members) {
+        dashboardMembers.push({
+            key: `human:${m.id}`, kind: "human", id: m.id, name: m.displayName || m.email, role: m.roleTitle, avatarUrl: null, skills: [],
+            health: null, healthReasons: [], activity: null, href: `/projects?assignee=human:${m.id}`,
+            createdAt: null,
+            ...workFor(`human:${m.id}`),
+        });
     }
 
     // Things only a person can unblock, most urgent kinds first.
@@ -214,18 +205,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         return { companyName: company?.name ?? "", profileComplete, businessType };
     })();
 
-    const filterNav = (
-        <nav aria-label="Dashboard work filter" className="emperor-panel flex items-center gap-0.5 rounded-xl p-0.5">
-            {([["all", "Everyone"], ["agent", "Agents"], ["human", "People"], ["mine", "My work"]] as const).map(([value, label]) => (
-                <Link key={value} href={value === "all" ? "/" : `/?work=${value}`} aria-current={workFilter === value ? "page" : undefined}
-                    className={cn("inline-flex min-h-8 items-center rounded-[10px] px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
-                        workFilter === value ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                    {label}
-                </Link>
-            ))}
-        </nav>
-    );
-
     return (
         <div className="mx-auto max-w-[1600px] space-y-5 animate-in fade-in duration-500">
             {/* First-run setup: owners and admins, until they finish or skip it,
@@ -233,7 +212,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && setup && (
                 <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} />
             )}
-            <TeamDashboard data={data} initialView={view} workFilter={filterNav} hasAgents={agentRows.length > 0} />
+            <TeamDashboard data={data} initialView={view} hasAgents={agentRows.length > 0} />
         </div>
     );
 }

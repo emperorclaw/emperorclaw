@@ -18,6 +18,7 @@ import { isMissingSchemaError } from "@/lib/schema-compat";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { validAvatarUrl } from "@/lib/avatar";
+import { legacyAvatarToAppearance, normalizeAppearance } from "@/lib/character/model";
 
 function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
     const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
@@ -52,10 +53,25 @@ export async function PATCH(
     if (body.doctrineJson && typeof body.doctrineJson === "object") {
         updates.doctrineJson = body.doctrineJson;
     }
+    if (body.avatarAppearance !== undefined) {
+        const appearance = body.avatarAppearance === null ? null : normalizeAppearance(body.avatarAppearance);
+        if (body.avatarAppearance !== null && !appearance) {
+            return NextResponse.json({ error: "avatarAppearance is not a valid character appearance" }, { status: 400 });
+        }
+        updates.avatarAppearance = appearance;
+        if (appearance) updates.avatarUrl = null;
+    }
     if (body.avatarUrl !== undefined) {
         const avatarUrl = body.avatarUrl === null ? null : validAvatarUrl(body.avatarUrl);
         if (body.avatarUrl !== null && !avatarUrl) return NextResponse.json({ error: "avatarUrl must be an https image URL" }, { status: 400 });
-        updates.avatarUrl = avatarUrl;
+        const legacy = legacyAvatarToAppearance(avatarUrl);
+        if (legacy) {
+            updates.avatarAppearance = legacy;
+            updates.avatarUrl = null;
+        } else {
+            updates.avatarUrl = avatarUrl;
+            if (avatarUrl && body.avatarAppearance === undefined) updates.avatarAppearance = null;
+        }
     }
     if (typeof body.provider === "string" && body.provider) {
         updates.provider = body.provider;

@@ -40,6 +40,7 @@ type AgentDetailData = {
         id: string;
         name: string;
         avatarUrl: string | null;
+        avatarAppearance?: import("@/lib/character/model").CharacterAppearance | null;
         role: string;
         status: string;
         memory: string | null;
@@ -227,8 +228,9 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                         agentId={agent.id}
                         agentName={agent.name}
                         avatarUrl={agent.avatarUrl ?? null}
+                        avatarAppearance={agent.avatarAppearance ?? null}
                         className="h-14 w-14"
-                        onSaved={(avatarUrl) => setData((prev) => prev ? { ...prev, agent: { ...prev.agent, avatarUrl } } : prev)}
+                        onSaved={(avatarAppearance, avatarUrl) => setData((prev) => prev ? { ...prev, agent: { ...prev.agent, avatarAppearance, avatarUrl } } : prev)}
                     />
                     <div>
                         <div className="flex flex-wrap items-center gap-2">

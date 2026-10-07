@@ -5,6 +5,7 @@ import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { logAudit } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 
 // Strips the encrypted LLM API key (ciphertext + rotation version) before
 // returning an agent row to any caller — REST or MCP. Encrypted at rest, but
@@ -43,6 +44,7 @@ export type CreateAgentInput = {
     name: string;
     role?: string | null;
     avatarUrl?: string | null;
+    avatarAppearance?: unknown;
     skillsJson?: unknown[] | null;
     memory?: string | null;
     modelPolicyJson?: Record<string, unknown> | null;
@@ -61,11 +63,20 @@ export async function createAgentForCompany(input: CreateAgentInput) {
         pricing,
     });
 
+    // A drawn character override wins; a legacy DiceBear URL in avatarUrl is
+    // turned into an appearance so its seed survives. Otherwise both stay null
+    // and the look is derived from the agent id.
+    const requestedAppearance = normalizeAppearance(input.avatarAppearance);
+    const legacyAppearance = legacyAvatarToAppearance(input.avatarUrl);
+    const avatarAppearance = requestedAppearance ?? legacyAppearance;
+    const avatarUrl = avatarAppearance ? null : resolveAvatarPhoto({ avatarUrl: input.avatarUrl });
+
     const [agent] = await db.insert(agents).values({
         companyId: input.companyId,
         name: input.name,
         role: input.role || "operator",
-        avatarUrl: input.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(input.name)}`,
+        avatarUrl,
+        avatarAppearance,
         skillsJson: Array.isArray(input.skillsJson) ? input.skillsJson : [],
         memory: input.memory || null,
         modelPolicyJson: input.modelPolicyJson || {},
@@ -100,6 +111,7 @@ export type UpdateAgentInput = {
     name?: string;
     role?: string;
     avatarUrl?: string;
+    avatarAppearance?: unknown;
     skillsJson?: unknown[];
     memory?: string;
     modelPolicyJson?: Record<string, unknown>;
@@ -127,7 +139,19 @@ export async function updateAgentForCompany(input: UpdateAgentInput) {
     if (input.memory !== undefined) updateData.memory = input.memory;
     if (input.modelPolicyJson !== undefined) updateData.modelPolicyJson = input.modelPolicyJson;
     if (input.concurrencyLimit !== undefined) updateData.concurrencyLimit = input.concurrencyLimit;
-    if (input.avatarUrl !== undefined) updateData.avatarUrl = input.avatarUrl;
+    if (input.avatarAppearance !== undefined) updateData.avatarAppearance = normalizeAppearance(input.avatarAppearance);
+    if (input.avatarUrl !== undefined) {
+        // A legacy DiceBear URL becomes an explicit appearance; any other URL is
+        // kept as the uploaded photo and clears the drawn override.
+        const legacy = legacyAvatarToAppearance(input.avatarUrl);
+        if (legacy) {
+            updateData.avatarAppearance = legacy;
+            updateData.avatarUrl = null;
+        } else {
+            updateData.avatarUrl = input.avatarUrl || null;
+            if (input.avatarAppearance === undefined && input.avatarUrl) updateData.avatarAppearance = null;
+        }
+    }
     if (typeof input.monthlyBudgetCents === "number" && input.monthlyBudgetCents >= 0) updateData.monthlyBudgetCents = Math.round(input.monthlyBudgetCents);
     if (typeof input.monthlyCostCents === "number" && input.monthlyCostCents >= 0) updateData.monthlyCostCents = Math.round(input.monthlyCostCents);
     if (typeof input.monthlyTokenUsage === "number" && input.monthlyTokenUsage >= 0) updateData.monthlyTokenUsage = Math.round(input.monthlyTokenUsage);

@@ -1,53 +1,41 @@
 /**
- * Agent avatars come from DiceBear (https://www.dicebear.com): a style plus a
- * seed gives a stable picture. Pixel art is the default; an agent can pick any
- * style below, and a new seed reshuffles the picture within a style.
+ * Agent avatars are drawn by Emperor Claw itself (see src/lib/character).
+ * `avatarUrl` is reserved for uploaded/custom https photos; everything else
+ * resolves to the stable public endpoint.
  */
-export const AVATAR_STYLES = [
-    { id: "pixel-art", label: "Pixel art" },
-    { id: "bottts", label: "Robots" },
-    { id: "bottts-neutral", label: "Robot faces" },
-    { id: "adventurer", label: "Adventurer" },
-    { id: "avataaars", label: "Cartoon" },
-    { id: "lorelei", label: "Line art" },
-    { id: "notionists", label: "Sketch" },
-    { id: "open-peeps", label: "Hand-drawn" },
-    { id: "personas", label: "Personas" },
-    { id: "fun-emoji", label: "Emoji" },
-    { id: "thumbs", label: "Thumbs" },
-    { id: "shapes", label: "Shapes" },
-] as const;
 
-export type AvatarStyle = typeof AVATAR_STYLES[number]["id"];
-export const DEFAULT_AVATAR_STYLE: AvatarStyle = "pixel-art";
+export {
+    agentAvatarEndpoint,
+    agentAvatarUrl,
+    appearanceHash,
+    deriveAppearance,
+    legacyAvatarToAppearance,
+    normalizeAppearance,
+    publicAppBaseUrl,
+    resolveAppearance,
+    resolveAvatarPhoto,
+    seedFromLegacyUrl,
+    CHARACTER_ACCESSORIES,
+    CHARACTER_HUES,
+    CHARACTER_APPEARANCE_VERSION,
+    HAIR_COLORS,
+    SKIN_TONES,
+    type CharacterAccessory,
+    type CharacterAppearance,
+    type CharacterKind,
+} from "@/lib/character/model";
 
-const DICEBEAR = /^https:\/\/api\.dicebear\.com\/9\.x\/([a-z-]+)\/svg\?seed=([^&]*)/;
+import { resolveAvatarPhoto, agentAvatarEndpoint } from "@/lib/character/model";
 
-export function isAvatarStyle(value: unknown): value is AvatarStyle {
-    return AVATAR_STYLES.some((s) => s.id === value);
+/**
+ * The src to show for an agent tile in the app: its uploaded photo, else the
+ * drawn character served by our own endpoint.
+ */
+export function agentAvatarSrc(agent: { id: string; avatarUrl?: string | null }): string {
+    return resolveAvatarPhoto(agent) ?? agentAvatarEndpoint(agent.id);
 }
 
-export function dicebearUrl(style: AvatarStyle, seed: string): string {
-    return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(seed)}`;
-}
-
-/** The style and seed of a DiceBear avatar URL, or null for any other picture. */
-export function parseDicebearUrl(url: string | null | undefined): { style: string; seed: string } | null {
-    const match = url ? DICEBEAR.exec(url) : null;
-    if (!match) return null;
-    try {
-        return { style: match[1], seed: decodeURIComponent(match[2]) };
-    } catch {
-        return { style: match[1], seed: match[2] };
-    }
-}
-
-/** What an agent shows: its own picture, or the default style seeded by its id. */
-export function agentAvatarUrl(agent: { id: string; avatarUrl?: string | null }): string {
-    return agent.avatarUrl || dicebearUrl(DEFAULT_AVATAR_STYLE, agent.id);
-}
-
-/** Avatar URLs agents may store: any https image (DiceBear or your own). */
+/** Avatar URLs agents may store: any https image (your own photo). */
 export function validAvatarUrl(value: unknown): string | null {
     if (typeof value !== "string" || value.length > 500) return null;
     try {

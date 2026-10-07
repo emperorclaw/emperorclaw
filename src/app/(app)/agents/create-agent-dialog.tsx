@@ -8,6 +8,7 @@ import { RoleTemplatePicker } from "./role-template-picker";
 import { getAgentTemplate, type AgentRoleTemplate } from "@/lib/agent-templates";
 import { getAvailableProviders, getProvider, type AgentProvider } from "@/lib/agent-providers";
 import { ModelSearchSelect } from "@/components/model-search-select";
+import { CharacterAvatar } from "@/components/character/character-avatar";
 import { cn } from "@/lib/utils";
 
 type Step = "role" | "provider" | "name";
@@ -121,7 +122,6 @@ export function CreateAgentDialog({
                     llmProvider: llmProvider || undefined,
                     llmModel: llmModel || undefined,
                     doctrineJson: doctrine,
-                    avatarUrl: `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name.trim() || selectedRole?.title || "agent")}`,
                 }),
             });
 
@@ -259,11 +259,7 @@ export function CreateAgentDialog({
                     <div className="space-y-4 py-2">
                         <div className="flex items-center gap-4">
                             <div className="w-14 h-14 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
-                                <img
-                                    src={`https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`}
-                                    className="w-full h-full object-cover"
-                                    alt=""
-                                />
+                                <CharacterAvatar agentId={avatarSeed} name="Preview" size={56} decorative />
                             </div>
                             <div className="flex-1 space-y-1">
                                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Agent Name</label>

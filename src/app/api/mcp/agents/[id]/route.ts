@@ -7,11 +7,14 @@ import { eq, and, isNull } from "drizzle-orm";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { readAgentBudget } from "@/lib/agent-budget";
 import { updateAgentForCompany } from "@/lib/agents-crud";
+import { normalizeAppearance } from "@/lib/character/model";
 
 const updateAgentSchema = z.object({
     name: z.string().min(1).optional(),
     role: optionalString.optional(),
     avatarUrl: optionalString.optional(),
+    // null clears the drawn override; anything else must be a valid appearance.
+    avatarAppearance: z.unknown().refine((v) => v === undefined || v === null || normalizeAppearance(v) !== null, { message: "Invalid avatarAppearance" }).optional(),
     skillsJson: z.array(z.unknown()).optional(),
     memory: optionalString.optional(),
     modelPolicyJson: z.record(z.string(), z.unknown()).optional(),
@@ -56,15 +59,15 @@ export async function PATCH(
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
         const body = parsed.data as Record<string, unknown>;
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl } = body as {
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, avatarAppearance } = body as {
             name?: string; role?: string; skillsJson?: unknown[]; memory?: string;
-            modelPolicyJson?: Record<string, unknown>; concurrencyLimit?: number; avatarUrl?: string;
+            modelPolicyJson?: Record<string, unknown>; concurrencyLimit?: number; avatarUrl?: string; avatarAppearance?: unknown;
         };
 
         // Ensure we actually have something to update
         const hasBudget = typeof body.monthlyBudgetCents === "number" || typeof body.monthlyCostCents === "number" || typeof body.monthlyTokenUsage === "number" || (typeof body.budgetStatus === "string" && ["active","warning","paused"].includes(body.budgetStatus));
         const hasLLM = typeof body.llmProvider === "string" || typeof body.llmModel === "string";
-        if (name === undefined && role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined && !hasBudget && !hasLLM) {
+        if (name === undefined && role === undefined && skillsJson === undefined && memory === undefined && modelPolicyJson === undefined && concurrencyLimit === undefined && avatarUrl === undefined && avatarAppearance === undefined && !hasBudget && !hasLLM) {
             return NextResponse.json({ error: "At least one field to update must be provided" }, { status: 400 });
         }
 
@@ -86,6 +89,7 @@ export async function PATCH(
             modelPolicyJson,
             concurrencyLimit,
             avatarUrl,
+            avatarAppearance,
             monthlyBudgetCents: typeof body.monthlyBudgetCents === "number" ? body.monthlyBudgetCents : undefined,
             monthlyCostCents: typeof body.monthlyCostCents === "number" ? body.monthlyCostCents : undefined,
             monthlyTokenUsage: typeof body.monthlyTokenUsage === "number" ? body.monthlyTokenUsage : undefined,

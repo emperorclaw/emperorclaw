@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { IconCheck, IconRobot, IconSearch, IconTrash, IconUser, IconUsersGroup } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { GROUP_ICONS, GroupIcon } from "@/components/group-icon";
 
 export type GroupDialogAgent = { id: string; name: string; role: string | null; avatarUrl: string | null; status: string };
@@ -23,7 +24,7 @@ const TEMPLATES = [
 ];
 
 function avatarFor(agent: GroupDialogAgent) {
-    return agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`;
+    return agentAvatarSrc(agent);
 }
 
 /**

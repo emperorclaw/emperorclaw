@@ -10,6 +10,7 @@ import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { EVERYONE_MENTION, MentionTextarea } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
 const CHAT_PAGE_SIZE = 25;
@@ -473,7 +474,7 @@ export function AgentTeamChat({
 
                             const senderId = msg.fromUserId || msg.senderId || null;
                             const agentObj = !isHuman ? agents.find((a) => a.id === senderId) : null;
-                            const avatarSrc = agentObj?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(senderId || "agent")}`;
+                            const avatarSrc = agentObj ? agentAvatarSrc(agentObj) : `/api/avatars/${encodeURIComponent(senderId || "agent")}`;
                             const isOwn = isHuman && senderId === currentUserId;
                             const messageAttachments = getMessageAttachments(msg);
                             const isRich = !isHuman && hasRichBlocks(msg.text);
@@ -575,7 +576,7 @@ export function AgentTeamChat({
                                                         {readByAgents.slice(0, 3).map(a => (
                                                             <img
                                                                 key={a.id}
-                                                                src={agents.find((ag) => ag.id === a.id)?.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(a.id)}`}
+                                                                src={agentAvatarSrc({ id: a.id, avatarUrl: agents.find((ag) => ag.id === a.id)?.avatarUrl })}
                                                                 title={a.name}
                                                                 className="h-3.5 w-3.5 rounded-full border border-zinc-900 object-cover"
                                                                 alt={a.name}

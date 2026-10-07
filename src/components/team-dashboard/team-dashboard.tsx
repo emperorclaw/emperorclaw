@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX } from "@tabler/icons-react";
 import {
     buildOfficeLayout, collaborationLinks, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, taskMatchesQuery, ZONES,
@@ -28,7 +28,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 /** Container: owns filters and selection, derives everything else from server data. */
-export function TeamDashboard({ data, initialView = "scene", workFilter, hasAgents }: { data: DashboardData; initialView?: "scene" | "list"; workFilter?: ReactNode; hasAgents: boolean }) {
+export function TeamDashboard({ data, initialView = "scene", hasAgents }: { data: DashboardData; initialView?: "scene" | "list"; hasAgents: boolean }) {
     const [view, setView] = useState<"scene" | "list">(initialView);
     const [kpi, setKpi] = useState<KpiFilter | null>(null);
     const [query, setQuery] = useState("");
@@ -135,7 +135,6 @@ export function TeamDashboard({ data, initialView = "scene", workFilter, hasAgen
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                                {workFilter}
                                 <div role="tablist" aria-label="Workspace view" className="flex rounded-xl border border-border bg-muted/40 p-0.5 dark:bg-white/[0.03]">
                                     {([["scene", "Scene", IconBox], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}

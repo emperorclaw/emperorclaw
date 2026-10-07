@@ -8,12 +8,12 @@ import {
 } from "../../src/lib/team-scene";
 
 const task = (state: string, title = "Write launch post"): DashboardTask => ({
-    id: `${state}-${title}`, projectId: "p1", projectName: "Launch", title, state, assigneeKey: null, updatedAt: "2026-10-07T10:00:00.000Z", dueAt: null,
+    id: `${state}-${title}`, projectId: "p1", projectName: "Launch", title, state, taskType: null, assigneeKey: null, updatedAt: "2026-10-07T10:00:00.000Z", dueAt: null,
 });
 
 const member = (overrides: Partial<DashboardMember> = {}): DashboardMember => ({
     key: "agent:a1", kind: "agent", id: "a1", name: "Growth", role: "Content Specialist", avatarUrl: null, skills: [],
-    health: "healthy", healthReasons: [], activity: null, href: "/agents?agent=a1", doneToday: 0, working: [], waiting: [], next: [],
+    health: "healthy", healthReasons: [], activity: null, href: "/agents?agent=a1", createdAt: null, doneToday: 0, working: [], waiting: [], next: [],
     ...overrides,
 });
 
@@ -26,7 +26,7 @@ const agentsInZone = (count: number, zoneRole: string, status: "working" | "idle
     Array.from({ length: count }, (_, i) => {
         const m = member({ key: `agent:${zoneRole}-${i}`, id: `${zoneRole}-${i}`, name: `${zoneRole} ${i}`, role: zoneRole, working: status === "working" ? [task("in_progress")] : [] });
         const s = sceneStatus(m);
-        return { member: m, status: s, activity: activityText(m, s), zone: s === "idle" ? "lounge" : workZoneFor(m) };
+        return { member: m, status: s, activity: activityText(m, s), zone: s === "idle" ? "lounge" : workZoneFor(m), behavior: { kind: s === "idle" ? "nap" : "typing", caption: s === "idle" ? "Napping" : "Coding", variant: 0 }, isNew: false };
     });
 
 test("status mapping prefers offline, then needs-you, then work", () => {
@@ -159,9 +159,11 @@ test("kpis, filters and default selection follow real status", () => {
         members: [working, waiting, idle, blocked, person],
         attention: [approval("agent:b")],
         board: { inProgress: [], review: [], done: [task("done")] },
+        activity: [],
+        generatedAt: "2026-10-07T12:00:00.000Z",
     };
     const agents = deriveSceneAgents(data);
-    assert.equal(agents.length, 4, "people without open work stay off the floor");
+    assert.equal(agents.length, 4, "people never sit in the office, even with open work");
     assert.deepEqual(kpiCounts(agents, data), { working: 1, waiting: 1, done: 1, attention: 1 });
     assert.equal(agents.find((a) => a.member.key === "agent:b")?.status, "blocked");
     assert.equal(agents.find((a) => a.member.key === "agent:i")?.zone, "lounge");

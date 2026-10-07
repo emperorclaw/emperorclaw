@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconBook, IconFile, IconCalendarDue, IconChecklist, IconFolder, IconRobot, IconUser } from "@tabler/icons-react";
 import { entityTone, humanizeState, type EntityRef, type EntitySummary } from "@/lib/emperor-entities";
 import { formatBytes } from "@/components/chat-attachments";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { useEmperorEntity } from "./use-emperor-entities";
 
@@ -120,9 +121,9 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
     return (
         <CardShell href={value.href}>
             <div className="flex min-w-0 items-start gap-2.5">
-                {value.kind === "agent" && value.avatarUrl ? (
+                {value.kind === "agent" ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={value.avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full border border-zinc-700 bg-zinc-800 object-cover" />
+                    <img src={agentAvatarSrc({ id: value.id, avatarUrl: value.avatarUrl })} alt="" className="h-8 w-8 shrink-0 rounded-full border border-zinc-700 bg-zinc-800 object-cover" />
                 ) : (
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-zinc-400">
                         <Icon className="h-4 w-4" />

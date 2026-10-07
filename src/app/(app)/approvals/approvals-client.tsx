@@ -7,6 +7,7 @@ import { IconArrowRight, IconCheck, IconClockHour4, IconRosetteDiscountCheck, Ic
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
 export type ApprovalItem = {
@@ -48,7 +49,7 @@ function taskHref(item: ApprovalItem) {
 function Avatar({ requester }: { requester: ApprovalItem["requester"] }) {
     if (!requester) return <span className="h-8 w-8 shrink-0 rounded-full bg-zinc-800" />;
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={requester.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(requester.id)}`} alt="" className="h-8 w-8 shrink-0 rounded-full border border-zinc-800 bg-zinc-900 object-cover" />;
+    return <img src={agentAvatarSrc(requester)} alt="" className="h-8 w-8 shrink-0 rounded-full border border-zinc-800 bg-zinc-900 object-cover" />;
 }
 
 function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (item: ApprovalItem, decision: "approved" | "rejected", note: string) => void; busy: boolean }) {

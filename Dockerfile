@@ -37,6 +37,11 @@ COPY --from=builder /app/src/db/migrations ./src/db/migrations
 COPY --from=builder /app/src/db/migrate.ts ./src/db/migrate.ts
 COPY --from=builder /app/src/db/index.ts ./src/db/index.ts
 COPY --from=builder /app/src/db/schema.ts ./src/db/schema.ts
+# src/db/migrate.ts imports ../lib/character/migrate-avatars, which imports the
+# `@/db` alias — so the character module and tsconfig.json (tsx path resolution)
+# must be present in the runner image for migrations to run at startup.
+COPY --from=builder /app/src/lib/character ./src/lib/character
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/scripts/reconcile-artifact-storage.ts ./scripts/reconcile-artifact-storage.ts
 COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv

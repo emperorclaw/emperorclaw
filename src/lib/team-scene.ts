@@ -4,6 +4,10 @@
  * agent/task data. No React, no database — everything here is unit-tested.
  */
 
+import { deriveAppearance, hashString, type CharacterAppearance } from "@/lib/character/model";
+
+export { hashString };
+
 export type HealthStatus = "healthy" | "attention" | "down" | "idle";
 export type SceneStatus = "working" | "waiting" | "blocked" | "idle" | "offline";
 export type WorkZoneId = "research" | "content" | "engineering" | "qa" | "operations";
@@ -17,6 +21,8 @@ export interface DashboardTask {
     projectName: string | null;
     title: string;
     state: string;
+    /** Raw task type, used to pick the right working animation (e.g. "content"). */
+    taskType: string | null;
     assigneeKey: string | null;
     updatedAt: string;
     dueAt: string | null;
@@ -29,12 +35,16 @@ export interface DashboardMember {
     name: string;
     role: string | null;
     avatarUrl: string | null;
+    /** Optional override of the agent's drawn appearance. */
+    avatarAppearance?: CharacterAppearance | null;
     skills: string[];
     health: HealthStatus | null;
     healthReasons: string[];
     /** Live "typing" activity reported by the runtime, if any. */
     activity: string | null;
     href: string;
+    /** When the agent was created, used for the brand-new "wave on first render". */
+    createdAt: string | null;
     doneToday: number;
     working: DashboardTask[];
     waiting: DashboardTask[];
@@ -202,17 +212,6 @@ export function zoneFor(member: DashboardMember, status: SceneStatus): ZoneId {
 
 /* ── Avatar variant ─────────────────────────────────────────────────── */
 
-export function hashString(input: string): number {
-    let h = 2166136261;
-    for (let i = 0; i < input.length; i++) {
-        h ^= input.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
-}
-
-const AVATAR_HUES = [190, 265, 150, 38, 340, 210, 95, 20, 300, 170];
-
 export interface AvatarVariant {
     body: "robot" | "human";
     hue: number;
@@ -221,18 +220,265 @@ export interface AvatarVariant {
     accessory: "none" | "glasses" | "headset" | "cap";
 }
 
+/**
+ * Legacy slim view of a character, kept for callers that only need body/hue.
+ * Derived from the shared appearance model so the office scene and the app
+ * avatars never drift apart.
+ */
 export function avatarVariant(id: string, kind: "agent" | "human"): AvatarVariant {
-    const h = hashString(id);
-    // Most agents are robots; a third read as people, like the humans on the team.
-    const body = kind === "human" || h % 3 === 0 ? "human" : "robot";
-    const accessories: AvatarVariant["accessory"][] = ["none", "glasses", "headset", "cap", "none"];
+    const appearance = deriveAppearance(id, kind === "human" ? "human" : undefined);
+    const accessory = appearance.accessory === "bow" ? "none" : appearance.accessory;
+    return { body: appearance.kind, hue: appearance.hue, skin: appearance.skin, hair: appearance.hair, accessory };
+}
+
+/* ── Scene activity (the animation a character plays) ───────────────── */
+
+export type SceneActivity =
+    | "typing" | "writing" | "reviewing" | "presenting" | "talking" | "thinking"
+    | "waiting"      // approval / reply pending — the agent needs the human
+    | "blocked"      // error / incident — the agent is stuck
+    | "celebrate"    // just finished a task
+    | "coffee" | "nap" | "stretch" // idle routines
+    | "offline";
+
+export type IdleRoutine = "coffee" | "nap" | "stretch";
+
+export interface Behavior {
+    kind: SceneActivity;
+    /** Short human-readable label for the scene label and the detail card. */
+    caption: string;
+    /** 0-based personality pick, so the same activity looks different per agent. */
+    variant: number;
+}
+
+export interface BehaviorInput {
+    status: SceneStatus;
+    activity: string;
+    memberKey: string;
+    attention?: AttentionEntry | null;
+    talking?: boolean;
+    justDone?: boolean;
+    taskType?: string | null;
+    idleRoutine?: IdleRoutine | null;
+}
+
+const MAX_IDLE_WALKERS = 3;
+
+/** Which idle agents walk to the coffee machine; the rest nap or stretch. */
+export function assignIdleRoutines(idleKeys: string[], walkerCap = MAX_IDLE_WALKERS): Map<string, IdleRoutine> {
+    const result = new Map<string, IdleRoutine>();
+    // Deterministic order so the same set of idle agents always picks the same
+    // walkers (stable across re-renders), while different teams desync.
+    const ordered = [...idleKeys].sort((a, b) => hashString(`routine:${a}`) - hashString(`routine:${b}`));
+    ordered.forEach((key, i) => {
+        if (i < walkerCap) result.set(key, "coffee");
+        else result.set(key, hashString(`nap:${key}`) % 2 === 0 ? "nap" : "stretch");
+    });
+    return result;
+}
+
+/** 0..variants-1, stable per agent + activity. */
+function activityVariant(memberKey: string, kind: string, variants = 2): number {
+    return hashString(`${memberKey}:${kind}`) % variants;
+}
+
+/** Which animation kind an agent should play, plus the caption for it. */
+export function deriveBehavior(input: BehaviorInput): Behavior {
+    const { status, activity, memberKey, attention = null, talking = false, justDone = false, taskType = null, idleRoutine = null } = input;
+
+    if (status === "offline") return { kind: "offline", caption: "Offline", variant: 0 };
+
+    if (justDone) return { kind: "celebrate", caption: "Just finished", variant: activityVariant(memberKey, "celebrate", 3) };
+
+    if (status === "blocked") {
+        // A pending approval (or an unanswered message) is "waiting for the
+        // human" — friendly and forward. A real problem is "blocked" — stuck.
+        if (attention?.kind === "approval") return { kind: "waiting", caption: "Needs your approval", variant: activityVariant(memberKey, "waiting") };
+        if (attention?.kind === "message") return { kind: "waiting", caption: "Waiting for your reply", variant: activityVariant(memberKey, "waiting") };
+        if (attention?.kind === "incident") return { kind: "blocked", caption: "Stuck on an issue", variant: activityVariant(memberKey, "blocked") };
+        return { kind: "blocked", caption: "Needs a check-in", variant: activityVariant(memberKey, "blocked") };
+    }
+
+    if (status === "waiting") return { kind: "reviewing", caption: "In review", variant: activityVariant(memberKey, "reviewing") };
+
+    if (status === "idle") {
+        if (idleRoutine === "coffee") return { kind: "coffee", caption: "Coffee break", variant: activityVariant(memberKey, "coffee") };
+        if (idleRoutine === "nap") return { kind: "nap", caption: "Napping", variant: activityVariant(memberKey, "nap") };
+        if (idleRoutine === "stretch") return { kind: "stretch", caption: "Stretching", variant: activityVariant(memberKey, "stretch") };
+        return { kind: "nap", caption: "Napping", variant: 0 };
+    }
+
+    if (talking) return { kind: "talking", caption: "In a huddle", variant: activityVariant(memberKey, "talking") };
+
+    const text = activity.toLowerCase();
+    const type = (taskType ?? "").toLowerCase();
+    if (/present|teach|demo|whiteboard|onboard|train|explain|workshop/.test(text) || /present|teach|demo|workshop/.test(type)) {
+        return { kind: "presenting", caption: "Presenting", variant: activityVariant(memberKey, "presenting") };
+    }
+    if (/review|qa|test|verif|audit|approv|inspect/.test(text) || /qa|test|review|verif|audit/.test(type)) {
+        return { kind: "reviewing", caption: "Reviewing", variant: activityVariant(memberKey, "reviewing") };
+    }
+    if (/writ|draft|article|copy|blog|content|post|document|report|newsletter/.test(text) || /content|writ|copy|blog|article|report/.test(type)) {
+        return { kind: "writing", caption: "Writing", variant: activityVariant(memberKey, "writing") };
+    }
+    if (/research|analy|think|plan|investig|explor|scout|strateg/.test(text) || /research|analy|insight|strategy/.test(type)) {
+        return { kind: "thinking", caption: "Researching", variant: activityVariant(memberKey, "thinking") };
+    }
+    return { kind: "typing", caption: "Coding", variant: activityVariant(memberKey, "typing") };
+}
+
+/* ── Deterministic per-agent animation jitter ───────────────────────── */
+
+export interface AnimTiming { delay: number; duration: number }
+
+/**
+ * Deterministic, per-agent, per-animation timing: a negative delay (so two
+ * agents start mid-cycle instead of in lockstep) and a duration jitter of
+ * ±spread. Same id + salt always returns the same values.
+ */
+export function animJitter(seed: string, salt: string, baseMs: number, spread = 0.25): AnimTiming {
+    const h = hashString(`${seed}:${salt}`);
+    const factor = 1 + (((h % 2001) / 2000) - 0.5) * 2 * spread; // 1±spread
+    const duration = Math.max(1, Math.round(baseMs * factor));
+    const phase = ((h >>> 5) % 1000) / 1000;
+    return { delay: Math.round(-phase * duration), duration };
+}
+
+/** Blink intervals differ per agent: 3.5s–7s, never in lockstep. */
+export function blinkTiming(seed: string): AnimTiming {
+    const h = hashString(`${seed}:blink`);
+    const duration = 3500 + (h % 3500);
+    const phase = ((h >>> 6) % 1000) / 1000;
+    return { delay: Math.round(-phase * duration), duration };
+}
+
+export interface AgentMotion {
+    bob: AnimTiming;
+    blink: AnimTiming;
+    antenna: AnimTiming;
+    chest: AnimTiming;
+    cue: AnimTiming;
+    typing: AnimTiming;
+    screen: AnimTiming;
+    routine: AnimTiming;
+    celebrate: AnimTiming;
+    wave: AnimTiming;
+}
+
+/** The full per-agent motion schedule, used to set CSS custom properties once per render. */
+export function agentMotion(seed: string): AgentMotion {
     return {
-        body,
-        hue: AVATAR_HUES[h % AVATAR_HUES.length],
-        skin: (h >>> 4) % 5,
-        hair: (h >>> 8) % 6,
-        accessory: accessories[(h >>> 12) % accessories.length],
+        bob: animJitter(seed, "bob", 2600),
+        blink: blinkTiming(seed),
+        antenna: animJitter(seed, "antenna", 2200),
+        chest: animJitter(seed, "chest", 3000),
+        cue: animJitter(seed, "cue", 2600),
+        typing: animJitter(seed, "typing", 3200),
+        screen: animJitter(seed, "screen", 1600),
+        routine: animJitter(seed, "routine", 28000, 0.35), // 20–45s desynced idle cycles
+        celebrate: animJitter(seed, "celebrate", 30000),
+        wave: animJitter(seed, "wave", 10000), // a gentle wave every ~8–12s
     };
+}
+
+/* ── Freshness (new-agent wave, recent-done celebration) ────────────── */
+
+export const NEW_AGENT_MS = 24 * 60 * 60 * 1000;
+export const DONE_WINDOW_MS = 10 * 60 * 1000;
+
+export function isNewAgent(createdAt: string | null, now: Date): boolean {
+    if (!createdAt) return false;
+    const t = new Date(createdAt).getTime();
+    const age = now.getTime() - t;
+    return !Number.isNaN(t) && age >= 0 && age <= NEW_AGENT_MS;
+}
+
+/** Members with a "done" event in the last ~10 minutes. */
+export function recentlyDoneKeys(events: ActivityEvent[], now: Date, windowMs = DONE_WINDOW_MS): Set<string> {
+    const set = new Set<string>();
+    for (const e of events) {
+        if (e.eventType !== "task_done" || !e.actorKey) continue;
+        const t = new Date(e.at).getTime();
+        const age = now.getTime() - t;
+        if (!Number.isNaN(t) && age >= 0 && age <= windowMs) set.add(e.actorKey);
+    }
+    return set;
+}
+
+/* ── Camera math ────────────────────────────────────────────────────── */
+
+export interface CameraState { cx: number; cy: number; scale: number }
+
+export const CAMERA_MIN_SCALE = 0.6;
+export const CAMERA_MAX_SCALE = 4;
+
+export function clampZoom(scale: number, min = CAMERA_MIN_SCALE, max = CAMERA_MAX_SCALE): number {
+    return Math.min(max, Math.max(min, scale));
+}
+
+/** The viewBox actually visible for a camera state (fit = the whole floor). */
+export function cameraViewBox(cam: CameraState, viewBox: { x: number; y: number; w: number; h: number }): { x: number; y: number; w: number; h: number } {
+    const w = viewBox.w / cam.scale;
+    const h = viewBox.h / cam.scale;
+    return { x: cam.cx - w / 2, y: cam.cy - h / 2, w, h };
+}
+
+/** Default view: the whole busy part of the floor. */
+export function fitCamera(viewBox: { x: number; y: number; w: number; h: number }): CameraState {
+    return { cx: viewBox.x + viewBox.w / 2, cy: viewBox.y + viewBox.h / 2, scale: 1 };
+}
+
+/** Keep the camera centre inside the floor so panning can't get lost. */
+export function clampCamera(cam: CameraState, viewBox: { x: number; y: number; w: number; h: number }): CameraState {
+    const w = viewBox.w / cam.scale;
+    const h = viewBox.h / cam.scale;
+    const minCx = viewBox.x + w / 2;
+    const maxCx = viewBox.x + viewBox.w - w / 2;
+    const minCy = viewBox.y + h / 2;
+    const maxCy = viewBox.y + viewBox.h - h / 2;
+    const cx = maxCx < minCx ? viewBox.x + viewBox.w / 2 : Math.min(maxCx, Math.max(minCx, cam.cx));
+    const cy = maxCy < minCy ? viewBox.y + viewBox.h / 2 : Math.min(maxCy, Math.max(minCy, cam.cy));
+    return { cx, cy, scale: cam.scale };
+}
+
+/**
+ * Zoom by `factor` while keeping the cursor's scene point fixed. fx/fy are the
+ * cursor's fractional position inside the current view (0..1).
+ */
+export function zoomAtPoint(cam: CameraState, fx: number, fy: number, factor: number, viewBox: { x: number; y: number; w: number; h: number }, min = CAMERA_MIN_SCALE, max = CAMERA_MAX_SCALE): CameraState {
+    const before = cameraViewBox(cam, viewBox);
+    const sx = before.x + fx * before.w;
+    const sy = before.y + fy * before.h;
+    const scale = clampZoom(cam.scale * factor, min, max);
+    const after = { x: 0, y: 0, w: viewBox.w / scale, h: viewBox.h / scale };
+    after.x = sx - fx * after.w;
+    after.y = sy - fy * after.h;
+    return clampCamera({ cx: after.x + after.w / 2, cy: after.y + after.h / 2, scale }, viewBox);
+}
+
+/** Pan by a scene-space delta (screen px converted to scene units). */
+export function panCamera(cam: CameraState, dx: number, dy: number, viewBox: { x: number; y: number; w: number; h: number }): CameraState {
+    return clampCamera({ cx: cam.cx + dx, cy: cam.cy + dy, scale: cam.scale }, viewBox);
+}
+
+/** Centre on a point (an agent), keeping the current zoom level. */
+export function centerOn(cam: CameraState, point: Point, viewBox: { x: number; y: number; w: number; h: number }): CameraState {
+    return clampCamera({ cx: point.x, cy: point.y, scale: cam.scale }, viewBox);
+}
+
+/**
+ * The CSS transform for the camera wrapper: translate + scale that maps the
+ * viewBox onto a frame `frameW` px wide (the frame keeps the same aspect
+ * ratio, so height is implied). Origin is top-left of the wrapper.
+ */
+export function worldTransform(cam: CameraState, viewBox: { x: number; y: number; w: number; h: number }, frameW: number): string {
+    const frameH = (frameW * viewBox.h) / viewBox.w;
+    const scale = cam.scale;
+    const pcx = ((cam.cx - viewBox.x) / viewBox.w) * frameW;
+    const pcy = ((cam.cy - viewBox.y) / viewBox.h) * frameH;
+    const tx = frameW / 2 - scale * pcx;
+    const ty = frameH / 2 - scale * pcy;
+    return `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale.toFixed(4)})`;
 }
 
 /* ── Isometric projection ───────────────────────────────────────────── */
@@ -267,6 +513,10 @@ export interface SceneAgent {
     status: SceneStatus;
     activity: string;
     zone: ZoneId;
+    /** The animation + caption derived from this agent's real state. */
+    behavior: Behavior;
+    /** True when the agent was created in the last 24h (plays a one-shot wave). */
+    isNew: boolean;
 }
 
 export interface DeskSlot {
@@ -356,7 +606,7 @@ export function workZonesToRender(occupied: Set<WorkZoneId>): WorkZoneId[] {
 }
 
 /** Characters are drawn larger than the furniture grid, like a game sprite. */
-export const CHARACTER_SCALE = 1.3;
+export const CHARACTER_SCALE = 1.6;
 const HEAD_HEIGHT = Math.round(72 * CHARACTER_SCALE) + 4; // seated height plus a little air, screen units
 
 export function buildOfficeLayout(agents: SceneAgent[]): OfficeLayout {
@@ -616,16 +866,28 @@ export function skillNames(skillsJson: unknown): string[] {
 
 /* ── View derivation ────────────────────────────────────────────────── */
 
-/** Everyone who belongs on the floor: all agents, plus people with open work. */
-export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attention">): SceneAgent[] {
+/** Agents only — the live office doesn't seat people. */
+export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attention" | "activity" | "generatedAt">): SceneAgent[] {
     const attention = attentionByMember(data.attention);
-    return data.members
-        .filter((m) => m.kind === "agent" || m.working.length + m.waiting.length + m.next.length > 0 || attention.has(m.key))
-        .map((member) => {
-            const entry = attention.get(member.key) ?? null;
-            const status = sceneStatus(member, entry);
-            return { member, status, activity: activityText(member, status, entry), zone: zoneFor(member, status) };
+    const now = new Date(data.generatedAt);
+    const justDone = recentlyDoneKeys(data.activity, now);
+    const agents = data.members.filter((m) => m.kind === "agent");
+    const idleRoutines = assignIdleRoutines(agents.filter((m) => sceneStatus(m, attention.get(m.key) ?? null) === "idle").map((m) => m.key));
+    return agents.map((member) => {
+        const entry = attention.get(member.key) ?? null;
+        const status = sceneStatus(member, entry);
+        const taskType = member.working[0]?.taskType ?? member.waiting[0]?.taskType ?? member.next[0]?.taskType ?? null;
+        const behavior = deriveBehavior({
+            status,
+            activity: activityText(member, status, entry),
+            memberKey: member.key,
+            attention: entry,
+            justDone: justDone.has(member.key),
+            taskType,
+            idleRoutine: status === "idle" ? idleRoutines.get(member.key) ?? null : null,
         });
+        return { member, status, activity: activityText(member, status, entry), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now) };
+    });
 }
 
 export function kpiCounts(agents: SceneAgent[], data: Pick<DashboardData, "board" | "attention">): Record<KpiFilter, number> {

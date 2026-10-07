@@ -26,6 +26,7 @@ import {
 import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
 import { GroupDialog, type GroupDialogHuman } from "./group-dialog";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { EVERYONE_MENTION } from "./mention-textarea";
 import { GroupIcon } from "@/components/group-icon";
 
@@ -362,7 +363,7 @@ export function MessagingHub({
                             >
                                 <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800 relative shadow-inner shrink-0">
                                     <img
-                                        src={thread.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(thread.agentId)}`}
+                                        src={agentAvatarSrc({ id: thread.agentId, avatarUrl: thread.avatarUrl })}
                                         className="w-full h-full object-cover"
                                         alt=""
                                     />
@@ -441,7 +442,7 @@ export function MessagingHub({
                                     ) : activeAgent ? (
                                         <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-zinc-800">
                                             <img
-                                                src={activeAgent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(activeAgent.id)}`}
+                                                src={agentAvatarSrc(activeAgent)}
                                                 className="h-full w-full object-cover"
                                                 alt=""
                                             />
@@ -522,7 +523,7 @@ export function MessagingHub({
                                     >
                                         <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg border border-zinc-800">
                                             <img
-                                                src={thread.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(thread.agentId)}`}
+                                                src={agentAvatarSrc({ id: thread.agentId, avatarUrl: thread.avatarUrl })}
                                                 className="h-full w-full object-cover"
                                                 alt=""
                                             />
@@ -555,7 +556,7 @@ export function MessagingHub({
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
                                         key={agent.id}
-                                        src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`}
+                                        src={agentAvatarSrc(agent)}
                                         alt=""
                                         title={agent.name}
                                         className="h-6 w-6 rounded-full border-2 border-zinc-950 bg-zinc-800 object-cover"

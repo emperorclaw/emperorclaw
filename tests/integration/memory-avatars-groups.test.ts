@@ -36,12 +36,12 @@ maybe("groups keep an icon; bad icons are refused", async () => {
     await assert.rejects(updateGroup(companyId, group.id, { icon: "this is not an emoji" }), /one emoji/);
 });
 
-maybe("avatar helpers keep each agent's seed across styles", async () => {
-    const { dicebearUrl, parseDicebearUrl, validAvatarUrl, agentAvatarUrl } = await import("@/lib/avatar");
-    const url = dicebearUrl("bottts", "agent 1");
-    assert.deepEqual(parseDicebearUrl(url), { style: "bottts", seed: "agent 1" });
-    assert.equal(parseDicebearUrl("https://example.com/me.png"), null);
+maybe("avatar helpers keep legacy seeds and point drawn avatars at our endpoint", async () => {
+    const { seedFromLegacyUrl, validAvatarUrl, agentAvatarSrc } = await import("@/lib/avatar");
+    assert.equal(seedFromLegacyUrl("https://api.dicebear.com/9.x/bottts/svg?seed=agent%201"), "agent 1", "legacy seed survives");
+    assert.equal(seedFromLegacyUrl("https://example.com/me.png"), null);
     assert.equal(validAvatarUrl("http://example.com/x.png"), null, "https only");
     assert.equal(validAvatarUrl("javascript:alert(1)"), null);
-    assert.match(agentAvatarUrl({ id: "abc", avatarUrl: null }), /pixel-art\/svg\?seed=abc/);
+    assert.equal(agentAvatarSrc({ id: "abc", avatarUrl: null }), "/api/avatars/abc");
+    assert.equal(agentAvatarSrc({ id: "abc", avatarUrl: "https://example.com/me.png" }), "https://example.com/me.png", "uploaded photos win");
 });

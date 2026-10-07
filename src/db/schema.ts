@@ -228,6 +228,10 @@ export const agents = pgTable("agents", {
     name: text("name").notNull(),
     role: text("role"),
     avatarUrl: text("avatar_url"),
+    // Drawn character override for the agent (see src/lib/character/model.ts).
+    // Null means "derive a stable look from the agent id". Only kept in the DB
+    // so an operator's explicit look survives a reseed of their id.
+    avatarAppearance: jsonb("avatar_appearance").$type<import("@/lib/character/model").CharacterAppearance | null>(),
     skillsJson: jsonb("skills_json"),
     memory: text("memory"),
     modelPolicyJson: jsonb("model_policy_json"),

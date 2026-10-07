@@ -93,7 +93,7 @@ function TaskRow({ task, assignee }: { task: DashboardTask; assignee: BoardAssig
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                         {assignee ? (
                             <>
-                                <AgentAvatar id={assignee.member.id} kind={assignee.member.kind} name={assignee.member.name} avatarUrl={assignee.member.avatarUrl} size={16} />
+                                <AgentAvatar id={assignee.member.id} kind={assignee.member.kind} name={assignee.member.name} avatarUrl={assignee.member.avatarUrl} avatarAppearance={assignee.member.avatarAppearance} size={16} />
                                 <span className="truncate">{assignee.member.name}</span>
                             </>
                         ) : <span>Unassigned</span>}

@@ -6,6 +6,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
+import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function GET() {
             id: agents.id,
             name: agents.name,
             avatarUrl: agents.avatarUrl,
+            avatarAppearance: agents.avatarAppearance,
             status: agents.status,
             lastSeenAt: agents.lastSeenAt,
         }).from(agents)
@@ -40,6 +42,10 @@ export async function POST(req: NextRequest) {
         const role = typeof body.role === "string" ? body.role.trim() : "";
         const memory = typeof body.memory === "string" ? body.memory.trim() : "";
         const avatarUrl = typeof body.avatarUrl === "string" ? body.avatarUrl.trim() : "";
+        const requestedAppearance = body.avatarAppearance === undefined ? undefined : normalizeAppearance(body.avatarAppearance);
+        if (body.avatarAppearance !== undefined && !requestedAppearance) {
+            return NextResponse.json({ error: "avatarAppearance is not a valid character appearance" }, { status: 400 });
+        }
         const concurrencyLimit = Math.max(1, Number(body.concurrencyLimit) || 1);
         const provider = typeof body.provider === "string" ? body.provider : "mcp";
         const deploymentMode = typeof body.deploymentMode === "string" && body.deploymentMode === "local"
@@ -88,11 +94,16 @@ export async function POST(req: NextRequest) {
             pricing,
         });
 
+        const legacyAppearance = legacyAvatarToAppearance(avatarUrl);
+        const avatarAppearance = requestedAppearance ?? legacyAppearance ?? null;
+        const resolvedAvatarUrl = avatarAppearance ? null : resolveAvatarPhoto({ avatarUrl: avatarUrl || null });
+
         const [agent] = await db.insert(agents).values({
             companyId,
             name,
             role: role || "operator",
-            avatarUrl: avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(name)}`,
+            avatarUrl: resolvedAvatarUrl,
+            avatarAppearance,
             skillsJson: Array.isArray(body.skillsJson) ? body.skillsJson : [],
             memory: memory || null,
             modelPolicyJson: body.modelPolicyJson && typeof body.modelPolicyJson === "object" ? body.modelPolicyJson : {},

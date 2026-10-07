@@ -31,7 +31,7 @@ export function AgentList({ agents, selectedKey, isActive, onSelect }: { agents:
                                 className={cn("cursor-pointer transition-colors hover:bg-muted/50 dark:hover:bg-white/[0.03]", selected && "bg-cyan-500/[0.07]")}>
                                 <td className="px-3 py-2.5">
                                     <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(m.key); }} className="flex min-w-0 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                                        <AgentAvatar id={m.id} kind={m.kind} name={m.name} avatarUrl={m.avatarUrl} status={agent.status} size={30} />
+                                        <AgentAvatar id={m.id} kind={m.kind} name={m.name} avatarUrl={m.avatarUrl} avatarAppearance={m.avatarAppearance} status={agent.status} size={30} />
                                         <span className="min-w-0">
                                             <span className="block truncate font-semibold text-foreground">{m.name}</span>
                                             <span className="block truncate text-xs text-muted-foreground">{m.role || (m.kind === "human" ? "Teammate" : "Agent")}</span>

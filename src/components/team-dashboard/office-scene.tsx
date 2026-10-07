@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconPlus } from "@tabler/icons-react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { IconPlus, IconZoomIn, IconZoomOut, IconArrowsMaximize } from "@tabler/icons-react";
 import {
-    arcPath, avatarVariant, CHARACTER_SCALE, hashString, iso, labelLifts, WALL_H,
-    type CollaborationLink, type OfficeLayout, type PlacedAgent, type ZoneId, type ZoneLayout,
+    arcPath, CHARACTER_SCALE, hashString, iso, labelLifts, WALL_H,
+    agentMotion, centerOn, fitCamera, panCamera, worldTransform, zoomAtPoint,
+    type CameraState, type CollaborationLink, type OfficeLayout, type PlacedAgent, type SceneActivity, type ZoneId, type ZoneLayout,
 } from "@/lib/team-scene";
+import { resolveAppearance } from "@/lib/character/model";
 import { cn } from "@/lib/utils";
-import { CharacterFigure, STATUS_COLOR } from "./agent-character";
+import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
+import type { CharacterExpression } from "@/lib/character/draw";
+import { ActivityCue } from "./character-activity";
+import { STATUS_COLOR } from "./agent-character";
 import {
     Box, Chair, CoffeeCounter, DeskFront, FloorEllipse, FloorLamp, Plant, PlaneGroup, RoundTable, Shelf, SofaArm, SofaBack, pts,
 } from "./office-props";
@@ -31,16 +36,14 @@ interface OfficeSceneProps {
 
 type Node = { row: number; depth: number; key: string; el: ReactNode };
 
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
 export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, reducedMotion, onSelect, onHover, onOverflow, emptyState }: OfficeSceneProps) {
     const uid = useId().replace(/:/g, "");
     const { viewBox: vb, width: W, depth: D } = layout;
     const frameRef = useRef<HTMLDivElement>(null);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    // On narrow screens the floor scrolls sideways; start in the middle of it.
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
-    }, []);
+    const worldRef = useRef<HTMLDivElement>(null);
+
     const [frameWidth, setFrameWidth] = useState(1000);
     useEffect(() => {
         const el = frameRef.current;
@@ -49,20 +52,186 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
         observer.observe(el);
         return () => observer.disconnect();
     }, []);
+
+    // Camera: fit-all by default, then pan/zoom via gestures + controls.
+    const [camera, setCamera] = useState<CameraState>(() => fitCamera(vb));
+    const cameraRef = useRef(camera);
+    const applyTransform = useCallback((cam: CameraState, animate: boolean) => {
+        const el = worldRef.current;
+        if (!el) return;
+        el.style.transition = animate ? "transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1)" : "none";
+        el.style.transform = worldTransform(cam, vb, el.clientWidth || 1);
+    }, [vb]);
+    const setCameraSmooth = useCallback((next: CameraState) => setCamera(next), []);
+    const mountedRef = useRef(false);
+    useLayoutEffect(() => {
+        cameraRef.current = camera;
+        applyTransform(camera, mountedRef.current);
+        mountedRef.current = true;
+    }, [camera, applyTransform]);
+    useEffect(() => {
+        // Re-apply on resize without animating.
+        applyTransform(cameraRef.current, false);
+    }, [frameWidth, applyTransform]);
+
+    // Pan-to-selection (list / attention panel) keeps the chosen agent in view.
+    // Only a *change* of selection moves the camera; panning or zooming afterwards
+    // must not snap back, so the current camera is read from the ref, not deps.
+    const lastSelectionRef = useRef(selectedKey);
+    useEffect(() => {
+        if (selectedKey === lastSelectionRef.current) return;
+        lastSelectionRef.current = selectedKey;
+        const agent = layout.agents.find((a) => a.member.key === selectedKey);
+        // Selection originates in the list/attention panel; keep the chosen agent in frame.
+        if (agent) setCameraSmooth(centerOn(cameraRef.current, { x: agent.anchor.x, y: agent.anchor.y }, vb));
+    }, [selectedKey, layout.agents, vb, setCameraSmooth]);
+
     const lifts = useMemo(() => labelLifts(layout.agents, vb.w / frameWidth, LABEL_BOX[layout.labelMode]), [layout.agents, layout.labelMode, vb.w, frameWidth]);
     const agentsByKey = new Map(layout.agents.map((a) => [a.member.key, a]));
+    const lite = layout.agents.length > 16;
+    const talkingKeys = useMemo(() => new Set(links.flatMap((l) => [l.from.member.key, l.to.member.key])), [links]);
+
+    // Pause every activity animation when the floor is off-screen or the tab is
+    // hidden, so a background dashboard costs nothing.
+    const [visible, setVisible] = useState(true);
+    const [hidden, setHidden] = useState(false);
+    useEffect(() => {
+        const el = frameRef.current;
+        if (!el) return;
+        const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.05 });
+        observer.observe(el);
+        const onVisibility = () => setHidden(document.hidden);
+        document.addEventListener("visibilitychange", onVisibility);
+        onVisibility();
+        return () => {
+            observer.disconnect();
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
+    }, []);
+    const paused = !visible || hidden;
+
+    /* ── Camera gestures (pointer pan + pinch, wheel zoom, keyboard) ── */
+    const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+    const dragRef = useRef<{ x: number; y: number; cam: CameraState } | null>(null);
+    const pinchRef = useRef<{ dist: number; cam: CameraState; fx: number; fy: number } | null>(null);
+    const movedRef = useRef(false);
+    const [dragging, setDragging] = useState(false);
+
+    const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        // Capture only once a gesture starts (see onPointerMove): capturing on
+        // down would retarget a plain click away from the agent under it.
+        pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointersRef.current.size === 1) {
+            movedRef.current = false;
+            dragRef.current = { x: e.clientX, y: e.clientY, cam: cameraRef.current };
+        } else if (pointersRef.current.size === 2) {
+            dragRef.current = null;
+            const [a, b] = [...pointersRef.current.values()];
+            const rect = frameRef.current!.getBoundingClientRect();
+            pinchRef.current = {
+                dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+                cam: cameraRef.current,
+                fx: clamp01(((a.x + b.x) / 2 - rect.left) / rect.width),
+                fy: clamp01(((a.y + b.y) / 2 - rect.top) / rect.height),
+            };
+        }
+    };
+
+    const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (!pointersRef.current.has(e.pointerId)) return;
+        pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinchRef.current && pointersRef.current.size === 2) {
+            const [a, b] = [...pointersRef.current.values()];
+            const rect = frameRef.current!.getBoundingClientRect();
+            const factor = Math.hypot(a.x - b.x, a.y - b.y) / pinchRef.current.dist;
+            const fx = clamp01(((a.x + b.x) / 2 - rect.left) / rect.width);
+            const fy = clamp01(((a.y + b.y) / 2 - rect.top) / rect.height);
+            if (!movedRef.current) e.currentTarget.setPointerCapture(e.pointerId);
+            const next = zoomAtPoint(pinchRef.current.cam, fx, fy, factor, vb);
+            cameraRef.current = next;
+            applyTransform(next, false);
+            movedRef.current = true;
+        } else if (dragRef.current && pointersRef.current.size === 1) {
+            const dx = e.clientX - dragRef.current.x;
+            const dy = e.clientY - dragRef.current.y;
+            if (!movedRef.current && Math.hypot(dx, dy) > 4) {
+                movedRef.current = true;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setDragging(true);
+            }
+            if (movedRef.current) {
+                const frameW = frameRef.current?.clientWidth ?? 1;
+                const unit = vb.w / frameW; // scene units per rendered px (both axes)
+                const next = panCamera(dragRef.current.cam, -dx * unit, -dy * unit, vb);
+                cameraRef.current = next;
+                applyTransform(next, false);
+            }
+        }
+    };
+
+    const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+        pointersRef.current.delete(e.pointerId);
+        if (pointersRef.current.size < 2) pinchRef.current = null;
+        if (pointersRef.current.size === 0) {
+            dragRef.current = null;
+            setDragging(false);
+            setCamera(cameraRef.current);
+        } else if (pointersRef.current.size === 1) {
+            const [p] = [...pointersRef.current.values()];
+            movedRef.current = false;
+            setDragging(false);
+            dragRef.current = { x: p.x, y: p.y, cam: cameraRef.current };
+        }
+    };
+
+    useEffect(() => {
+        const el = frameRef.current;
+        if (!el) return;
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const rect = el.getBoundingClientRect();
+            const fx = clamp01((e.clientX - rect.left) / rect.width);
+            const fy = clamp01((e.clientY - rect.top) / rect.height);
+            const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+            setCameraSmooth(zoomAtPoint(cameraRef.current, fx, fy, factor, vb));
+        };
+        el.addEventListener("wheel", onWheel, { passive: false });
+        return () => el.removeEventListener("wheel", onWheel);
+    }, [vb, setCameraSmooth]);
+
+    const nudge = (dx: number, dy: number) => {
+        const step = (vb.w / cameraRef.current.scale) * 0.08;
+        setCameraSmooth(panCamera(cameraRef.current, dx * step, dy * step, vb));
+    };
+    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        switch (e.key) {
+            case "ArrowUp": e.preventDefault(); nudge(0, -1); break;
+            case "ArrowDown": e.preventDefault(); nudge(0, 1); break;
+            case "ArrowLeft": e.preventDefault(); nudge(-1, 0); break;
+            case "ArrowRight": e.preventDefault(); nudge(1, 0); break;
+            case "+": case "=": e.preventDefault(); setCameraSmooth(zoomAtPoint(cameraRef.current, 0.5, 0.5, 1.15, vb)); break;
+            case "-": e.preventDefault(); setCameraSmooth(zoomAtPoint(cameraRef.current, 0.5, 0.5, 1 / 1.15, vb)); break;
+            case "0": e.preventDefault(); setCameraSmooth(fitCamera(vb)); break;
+        }
+    };
+    const zoomBy = (factor: number) => setCameraSmooth(zoomAtPoint(cameraRef.current, 0.5, 0.5, factor, vb));
+    const fitAll = () => setCameraSmooth(fitCamera(vb));
+
+    // Click-vs-drag: a pan that moved is never also an agent click.
+    const centerOnAgent = (agent: PlacedAgent) => setCameraSmooth(centerOn(camera, { x: agent.anchor.x, y: agent.anchor.y }, vb));
 
     const nodes: Node[] = [];
     for (const zone of layout.zones) {
         if (zone.signWall === "partition") nodes.push({ row: zone.row, depth: zone.gx + zone.gy, key: `part-${zone.meta.id}`, el: <Partition zone={zone} /> });
         if (zone.meta.id === "lounge") {
-            nodes.push(...loungeNodes(zone, agentsByKey, { selectedKey, hoveredKey, isActive, onSelect, onHover }));
+            nodes.push(...loungeNodes(zone, agentsByKey, { selectedKey, hoveredKey, isActive, onSelect, onHover, onCenter: centerOnAgent, talkingKeys, lite, reducedMotion }));
         } else {
             nodes.push(...zoneDecorNodes(zone));
             zone.desks.forEach((desk, i) => {
                 const agent = desk.occupant ? agentsByKey.get(desk.occupant.member.key) ?? null : null;
                 const seed = hashString(`${zone.meta.id}-${i}`);
-                const seatHue = agent ? avatarVariant(agent.member.id, agent.member.kind).hue : 215;
+                const seatHue = agent ? resolveAppearance({ id: agent.member.id, avatarUrl: agent.member.avatarUrl, avatarAppearance: agent.member.avatarAppearance }).hue : 215;
                 nodes.push({
                     row: zone.row,
                     depth: desk.gx + desk.gy + 2,
@@ -70,7 +239,7 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
                     el: (
                         <g opacity={agent && !isActive(agent) ? 0.32 : 1} className="transition-opacity duration-300">
                             <Chair gx={desk.gx + 2.55} gy={desk.gy + 1.05} hue={seatHue} />
-                            {agent && <SceneCharacter agent={agent} selected={agent.member.key === selectedKey} hovered={agent.member.key === hoveredKey} onSelect={onSelect} onHover={onHover} />}
+                            {agent && <SceneCharacter agent={agent} selected={agent.member.key === selectedKey} hovered={agent.member.key === hoveredKey} onSelect={onSelect} onHover={onHover} onCenter={centerOnAgent} talking={talkingKeys.has(agent.member.key)} lite={lite} reducedMotion={reducedMotion} />}
                             <DeskFront gx={desk.gx} gy={desk.gy} status={agent?.status ?? null} occupied={Boolean(agent)} seed={seed} />
                         </g>
                     ),
@@ -91,8 +260,18 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
     const pct = (p: { x: number; y: number }) => ({ left: `${((p.x - vb.x) / vb.w) * 100}%`, top: `${((p.y - vb.y) / vb.h) * 100}%` });
 
     return (
-        <div ref={scrollRef} className="office-scene relative overflow-x-auto overflow-y-hidden rounded-xl bg-[radial-gradient(ellipse_at_50%_35%,#10213a_0%,#070d18_60%,#04070e_100%)] [scrollbar-color:#1e293b_transparent]">
-            <div ref={frameRef} className="@container relative mx-auto" style={{ aspectRatio: `${vb.w} / ${vb.h}`, width: `min(100%, ${Math.round(MAX_SCENE_HEIGHT * aspect)}px)`, minWidth: layout.labelMode === "full" ? 620 : 860 }}>
+        <div ref={frameRef} tabIndex={0} aria-label="Live office. Drag to pan, scroll to zoom."
+            onKeyDown={onKeyDown}
+            onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+            onClickCapture={(e) => { if (movedRef.current) { e.preventDefault(); e.stopPropagation(); } }}
+            className={cn(
+                "office-scene @container relative overflow-hidden rounded-xl bg-[radial-gradient(ellipse_at_50%_35%,#10213a_0%,#070d18_60%,#04070e_100%)] outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 [touch-action:none]",
+                dragging ? "cursor-grabbing" : "cursor-grab",
+                paused && "office-paused", lite && "office-lite",
+            )}
+            style={{ aspectRatio: `${vb.w} / ${vb.h}`, width: `min(100%, ${Math.round(MAX_SCENE_HEIGHT * aspect)}px)` }}
+        >
+            <div ref={worldRef} className="absolute inset-0" style={{ transformOrigin: "0 0" }}>
                 <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="absolute inset-0 h-full w-full select-none" role="img" aria-label={`Office floor with ${layout.agents.length} team member${layout.agents.length === 1 ? "" : "s"}`}>
                     <SceneDefs />
 
@@ -155,9 +334,26 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
                         <IconPlus className="h-3 w-3" />{z.overflow.length} more in {z.meta.label}
                     </button>
                 ))}
-                {emptyState && <div className="absolute inset-0 z-30 grid place-items-center p-6">{emptyState}</div>}
             </div>
+
+            {/* Camera controls sit outside the transformed world so they stay fixed. */}
+            <div className="absolute right-3 top-3 z-30 flex flex-col gap-1">
+                <CameraButton label="Zoom in" onClick={() => zoomBy(1.2)}><IconZoomIn className="h-4 w-4" /></CameraButton>
+                <CameraButton label="Zoom out" onClick={() => zoomBy(1 / 1.2)}><IconZoomOut className="h-4 w-4" /></CameraButton>
+                <CameraButton label="Fit all" onClick={fitAll}><IconArrowsMaximize className="h-4 w-4" /></CameraButton>
+            </div>
+
+            {emptyState && <div className="absolute inset-0 z-30 grid place-items-center p-6">{emptyState}</div>}
         </div>
+    );
+}
+
+function CameraButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+    return (
+        <button type="button" aria-label={label} title={label} onClick={onClick}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-[#0b1426]/85 text-slate-200 shadow-lg shadow-black/40 backdrop-blur-md transition hover:border-cyan-300/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+            {children}
+        </button>
     );
 }
 
@@ -288,6 +484,10 @@ interface CharacterHandlers {
     isActive: (agent: PlacedAgent) => boolean;
     onSelect: (key: string) => void;
     onHover: (key: string | null) => void;
+    onCenter: (agent: PlacedAgent) => void;
+    talkingKeys: Set<string>;
+    lite: boolean;
+    reducedMotion: boolean;
 }
 
 function loungeNodes(zone: ZoneLayout, agentsByKey: Map<string, PlacedAgent>, h: CharacterHandlers): Node[] {
@@ -308,7 +508,7 @@ function loungeNodes(zone: ZoneLayout, agentsByKey: Map<string, PlacedAgent>, h:
         if (!agent) continue;
         add(seat.gx + seat.gy + 0.01, `seat-${agent.member.key}`, (
             <g opacity={h.isActive(agent) ? 1 : 0.32} className="transition-opacity duration-300">
-                <SceneCharacter agent={agent} selected={agent.member.key === h.selectedKey} hovered={agent.member.key === h.hoveredKey} onSelect={h.onSelect} onHover={h.onHover} />
+                <SceneCharacter agent={agent} selected={agent.member.key === h.selectedKey} hovered={agent.member.key === h.hoveredKey} onSelect={h.onSelect} onHover={h.onHover} onCenter={h.onCenter} talking={h.talkingKeys.has(agent.member.key)} lite={h.lite} reducedMotion={h.reducedMotion} />
             </g>
         ));
     }
@@ -334,23 +534,64 @@ function MeetingCorner({ cell }: { cell: { gx: number; gy: number; w: number; d:
     );
 }
 
-function SceneCharacter({ agent, selected, hovered, onSelect, onHover }: { agent: PlacedAgent; selected: boolean; hovered: boolean; onSelect: (key: string) => void; onHover: (key: string | null) => void }) {
+/** Bodies stay still; the eyes carry the state. */
+function expressionFor(kind: SceneActivity): CharacterExpression {
+    switch (kind) {
+        case "typing": case "writing": case "presenting": case "thinking": return "focused";
+        case "reviewing": return "scanning";
+        case "talking": case "celebrate": case "coffee": case "stretch": return "happy";
+        case "waiting": case "blocked": return "worried";
+        case "nap": case "offline": return "sleepy";
+        default: return "neutral";
+    }
+}
+
+function SceneCharacter({ agent, selected, hovered, onSelect, onHover, onCenter, talking, lite, reducedMotion }: {
+    agent: PlacedAgent;
+    selected: boolean;
+    hovered: boolean;
+    onSelect: (key: string) => void;
+    onHover: (key: string | null) => void;
+    onCenter: (agent: PlacedAgent) => void;
+    talking: boolean;
+    lite: boolean;
+    reducedMotion: boolean;
+}) {
     const z = agent.pose === "sofa" ? 12 : 0;
     const at = iso(agent.gx, agent.gy, z);
-    const variant = avatarVariant(agent.member.id, agent.member.kind);
+    const appearance = resolveAppearance({ id: agent.member.id, avatarUrl: agent.member.avatarUrl, avatarAppearance: agent.member.avatarAppearance });
+    const mood = moodForStatus(agent.status);
+    const behavior = agent.behavior;
+    const kind: SceneActivity = talking && (agent.status === "working" || agent.status === "waiting") ? "talking" : behavior.kind;
+    const motion = agentMotion(agent.member.id);
     const glow = selected ? "drop-shadow(0 0 7px #22d3ee) drop-shadow(0 0 2px #a5f3fc)" : hovered ? "drop-shadow(0 0 5px rgba(165,243,252,0.7))" : undefined;
+
+    const vars = {
+        "--bob-d": `${motion.bob.delay}ms`, "--bob-t": `${motion.bob.duration}ms`,
+        "--blink-d": `${motion.blink.delay}ms`, "--blink-t": `${motion.blink.duration}ms`,
+        "--antenna-d": `${motion.antenna.delay}ms`, "--antenna-t": `${motion.antenna.duration}ms`,
+        "--chest-d": `${motion.chest.delay}ms`, "--chest-t": `${motion.chest.duration}ms`,
+        "--cue-d": `${motion.cue.delay}ms`, "--cue-t": `${motion.cue.duration}ms`,
+        "--typing-d": `${motion.typing.delay}ms`, "--typing-t": `${motion.typing.duration}ms`,
+        "--screen-d": `${motion.screen.delay}ms`, "--screen-t": `${motion.screen.duration}ms`,
+        "--routine-d": `${motion.routine.delay}ms`, "--routine-t": `${motion.routine.duration}ms`,
+        "--celebrate-d": `${motion.celebrate.delay}ms`, "--celebrate-t": `${motion.celebrate.duration}ms`,
+        "--wave-d": `${motion.wave.delay}ms`, "--wave-t": `${motion.wave.duration}ms`,
+    } as CSSProperties;
+
     return (
-        <g className="cursor-pointer" onClick={() => onSelect(agent.member.key)} onMouseEnter={() => onHover(agent.member.key)} onMouseLeave={() => onHover(null)}>
+        <g className="cursor-pointer" onClick={() => onSelect(agent.member.key)} onDoubleClick={() => onCenter(agent)}
+            onMouseEnter={() => onHover(agent.member.key)} onMouseLeave={() => onHover(null)}>
             {selected && <FloorEllipse gx={agent.gx} gy={agent.gy} z={z} r={0.85} fill="#22d3ee" opacity={0.18} stroke="#67e8f9" strokeWidth={1.5} className="office-ring" />}
             <g transform={`translate(${at.x.toFixed(1)} ${at.y.toFixed(1)})`}>
-                <g style={{ filter: glow }} className={cn("transition-[filter] duration-200", agent.status === "working" && "office-bob")}>
-                    <g transform={`scale(${CHARACTER_SCALE})`}>
-                        <CharacterFigure variant={variant} status={agent.status} idPrefix={`sc-${agent.member.id}`} seated={agent.pose !== "standing"} />
+                <g style={vars}>
+                    <g style={{ filter: glow }} className="transition-[filter] duration-200">
+                        <g transform={`scale(${CHARACTER_SCALE})`}>
+                            <CharacterFigureView appearance={appearance} mood={mood} expression={reducedMotion && kind === "reviewing" ? "neutral" : expressionFor(kind)} seated={agent.pose !== "standing"} salt={agent.member.id.slice(0, 6)} />
+                            <ActivityCue activity={kind} hue={appearance.hue} lite={lite} reducedMotion={reducedMotion} variant={behavior.variant} />
+                        </g>
                     </g>
                 </g>
-                {agent.status === "offline" && (
-                    <text x={18} y={-90} fill="#94a3b8" fontSize={11} className="office-zzz" style={{ fontFamily: "var(--font-silkscreen), monospace" }}>z z</text>
-                )}
             </g>
         </g>
     );
@@ -412,7 +653,7 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
             onFocus={() => onHover(agent.member.key)}
             onBlur={() => onHover(null)}
             aria-pressed={selected}
-            aria-label={`${agent.member.name}: ${agent.activity}`}
+            aria-label={`${agent.member.name}: ${agent.behavior.caption}`}
             style={position}
             className={cn(
                 "absolute -translate-x-1/2 -translate-y-full text-left transition-[opacity,transform,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300",
@@ -429,7 +670,7 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
                         <span className={cn("h-2 w-2 shrink-0 rounded-full", agent.status === "working" && "office-dot-pulse")} style={{ background: STATUS_COLOR[agent.status] }} />
                         <span className="truncate text-[12px] font-semibold leading-4 text-slate-50">{agent.member.name}</span>
                     </span>
-                    {showActivity && <span className="mt-0.5 block truncate pl-3.5 text-[11px] leading-4 text-slate-300 @max-[540px]:hidden">{agent.activity}</span>}
+                    {showActivity && <span className="mt-0.5 block truncate pl-3.5 text-[11px] leading-4 text-slate-300 @max-[540px]:hidden">{agent.behavior.caption}</span>}
                     {blocked && (
                         <span aria-hidden className="office-alert absolute -right-2 -top-2 grid h-[18px] w-[18px] place-items-center rounded-full bg-amber-400 text-[11px] font-black text-amber-950 shadow-[0_0_10px_rgba(251,191,36,0.8)]">!</span>
                     )}

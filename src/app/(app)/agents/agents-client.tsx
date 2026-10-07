@@ -8,6 +8,7 @@ import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
 import { PageHeader } from "@/components/page-header";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
 type AgentDirectoryItem = {
@@ -209,7 +210,7 @@ function AgentAvatar({ agent, size = "lg" }: { agent: AgentDirectoryItem; size?:
     return (
         <div className={cn("shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900", size === "sm" ? "h-10 w-10" : "h-14 w-14")}>
             <img
-                src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id || agent.name)}`}
+                src={agentAvatarSrc({ id: agent.id || agent.name, avatarUrl: agent.avatarUrl })}
                 className="h-full w-full object-cover"
                 alt=""
             />

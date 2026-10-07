@@ -4,6 +4,7 @@ import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
+import { normalizeAppearance } from "@/lib/character/model";
 
 const registerAgentSchema = z.object({
     deploymentMode: z.enum(["remote", "local"]).optional(),
@@ -12,6 +13,8 @@ const registerAgentSchema = z.object({
     name: z.string().min(1, "name is required"),
     role: optionalString,
     avatarUrl: optionalString,
+    // null clears the drawn override; anything else must be a valid appearance.
+    avatarAppearance: z.unknown().refine((v) => v === undefined || v === null || normalizeAppearance(v) !== null, { message: "Invalid avatarAppearance" }).optional(),
     skillsJson: z.array(z.unknown()).nullish(),
     memory: optionalString,
     modelPolicyJson: z.record(z.string(), z.unknown()).nullish(),
@@ -68,12 +71,13 @@ export async function POST(req: NextRequest) {
             await saveIdempotencyResponse(companyId, "/api/mcp/agents", requestHash, result);
             return NextResponse.json(result, { status: 201 });
         }
-        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, llmProvider, llmModel } = parsed.data;
+        const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, avatarAppearance, llmProvider, llmModel } = parsed.data;
         const agent = await createAgentForCompany({
             companyId,
             name,
             role,
             avatarUrl,
+            avatarAppearance,
             skillsJson: skillsJson ?? undefined,
             memory,
             modelPolicyJson: modelPolicyJson ?? undefined,

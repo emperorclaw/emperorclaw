@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconAlertTriangle, IconArrowLeft, IconClockHour4, IconHeartbeat, IconMessageCircleOff, IconRefresh } from "@tabler/icons-react";
 import { StatsBlock } from "@/components/rich/stats-block";
 import type { AgentHealth, CompanyHealth, HealthStatus } from "@/lib/agent-health";
+import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<HealthStatus, { label: string; className: string; dot: string }> = {
@@ -60,7 +61,7 @@ function AgentCard({ agent }: { agent: AgentHealth }) {
             <div className="flex items-start gap-3">
                 <Link href={`/agents?agent=${agent.id}`} className="relative shrink-0">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={agent.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(agent.id)}`} alt="" className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 object-cover" />
+                    <img src={agentAvatarSrc(agent)} alt="" className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 object-cover" />
                     <span className={cn("absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-zinc-950", agent.online ? "bg-emerald-400" : "bg-zinc-600")} />
                 </Link>
                 <div className="min-w-0 flex-1">
