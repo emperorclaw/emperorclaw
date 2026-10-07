@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.67] — 2026-10-07
+
+### Added
+
+- Live Knowledge and Storage cards in chat: open the exact note/file, download stored files, and preview PNG/JPEG/GIF/WebP images.
+- Native MCP list_storage_files discovery with real share URLs; Knowledge discovery, runtime reply guidance, and MCP documentation explain how to present sources and deliverables.
+- Company-scoped lookups preserve private human-upload visibility and show unavailable records without exposing metadata.
+
 ## [0.8.66] — 2026-10-07
 
 ### Fixed

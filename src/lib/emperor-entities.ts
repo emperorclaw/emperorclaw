@@ -9,7 +9,7 @@
  * UI, exports, another agent reading history) it degrades to its label.
  */
 
-export const ENTITY_KINDS = ["task", "project", "agent"] as const;
+export const ENTITY_KINDS = ["task", "project", "agent", "knowledge", "artifact"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 
 export interface EntityRef {
@@ -18,7 +18,7 @@ export interface EntityRef {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ENTITY_URL_RE = /^emperor:\/\/(task|project|agent)s?\/([0-9a-f-]{36})\/?$/i;
+const ENTITY_URL_RE = /^emperor:\/\/(task|project|agent|knowledge|artifact)s?\/([0-9a-f-]{36})\/?$/i;
 
 /** Max refs one lookup may ask for; a message with more renders the rest as plain chips. */
 export const MAX_ENTITY_REFS = 50;
@@ -78,7 +78,20 @@ export interface AgentSummary {
     href: string;
 }
 
-export type EntitySummary = TaskSummary | ProjectSummary | AgentSummary;
+export interface KnowledgeSummary {
+    kind: "knowledge"; id: string; title: string; status: string;
+    scope: string; updatedAt: string; href: string;
+}
+export interface ArtifactSummary {
+    kind: "artifact"; id: string; title: string; status: string;
+    contentType: string; sizeBytes: number; previewUrl: string | null;
+    downloadUrl: string | null; href: string;
+}
+export const CHAT_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+export function canViewSharedArtifact(file: { visibility: string; createdByType: string; createdById: string | null }, userId?: string | null): boolean {
+    return !(file.visibility === "private" && file.createdByType === "human" && file.createdById && file.createdById !== userId);
+}
+export type EntitySummary = TaskSummary | ProjectSummary | AgentSummary | KnowledgeSummary | ArtifactSummary;
 
 /** Task title as the board shows it: `inputJson.title`, else the task type. */
 export function taskTitle(task: { inputJson?: unknown; taskType?: string | null }): string {

@@ -35,7 +35,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string) {
     }, async ({ scopeType, scopeId, search }) => {
         try {
             const resources = await listScopedResources({ companyId, scopeType, scopeId, search });
-            return jsonResult({ resources });
+            return jsonResult({ resources: resources.map(resource => ({ ...resource, shareUrl: resource.resourceType === "knowledge_base" ? `emperor://knowledge/${resource.id}` : undefined })) });
         } catch (e) {
             return errorResult(e);
         }

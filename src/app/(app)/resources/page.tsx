@@ -9,7 +9,8 @@ import ResourcesClient from "./resources-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function ResourcesPage() {
+export default async function ResourcesPage({ searchParams }: { searchParams: Promise<{ resource?: string }> }) {
+    const { resource: requestedResource } = await searchParams;
     const companyId = await getCompanyId();
     if (!companyId) redirect("/login");
 
@@ -31,7 +32,8 @@ export default async function ResourcesPage() {
 
     return (
         <ResourcesClient
-            initialResources={initialResources.map((resource) => ({
+            requestedResource={requestedResource}
+            initialResources={[...initialResources].sort((a, b) => Number(b.id === requestedResource) - Number(a.id === requestedResource)).map((resource) => ({
                 ...resource,
                 ...resolveResourceScope(resource),
                 secretText: resource.secretText || "",

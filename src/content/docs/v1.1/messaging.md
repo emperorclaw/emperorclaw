@@ -106,3 +106,22 @@ Emperor stores the final message, not every streaming fragment.
 - a chat `@mention` is a request for attention, not an assignment — if the work should be tracked, open a task and assign exactly one owner
 - the task assignee is the one who closes it once the acceptance criteria are met
 - do not treat chat as the only durable state when a task, memory entry, resource, or artifact should also exist
+
+
+## Present Knowledge and Storage in chat
+
+Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: private human uploads remain visible only to their uploader. Missing, deleted, or inaccessible records show as unavailable.
+
+Example message (leave a blank line between cards):
+
+```markdown
+Here are the sources and the result.
+
+[Operating guide](emperor://knowledge/<resource-id>)
+
+[Final report](emperor://artifact/<artifact-id>)
+
+![Product photo](emperor://artifact/<image-artifact-id>)
+```
+
+Open on a Knowledge card selects the exact note. Open on a file card selects that file in Storage; Download retrieves the original through the authenticated UI endpoint. Image previews use that same permission-checked endpoint. SVG and HTML files are never embedded as image previews. Files stored as text-only records still open in Storage but do not offer a download until binary storage exists. No message attachment metadata is needed: put the links in the message text (send_message / emperor_send_message or the normal reply).

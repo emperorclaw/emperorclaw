@@ -2,12 +2,13 @@
 
 import React from "react";
 import Link from "next/link";
-import { IconCalendarDue, IconChecklist, IconFolder, IconRobot, IconUser } from "@tabler/icons-react";
+import { IconBook, IconFile, IconCalendarDue, IconChecklist, IconFolder, IconRobot, IconUser } from "@tabler/icons-react";
 import { entityTone, humanizeState, type EntityRef, type EntitySummary } from "@/lib/emperor-entities";
+import { formatBytes } from "@/components/chat-attachments";
 import { cn } from "@/lib/utils";
 import { useEmperorEntity } from "./use-emperor-entities";
 
-const KIND_ICON = { task: IconChecklist, project: IconFolder, agent: IconRobot } as const;
+const KIND_ICON = { task: IconChecklist, project: IconFolder, agent: IconRobot, knowledge: IconBook, artifact: IconFile } as const;
 
 const TONE_DOT = {
     positive: "bg-emerald-400",
@@ -90,6 +91,31 @@ export function EntityCard({ entityRef, label }: { entityRef: EntityRef; label: 
         );
     }
 
+    if (value.kind === "knowledge" || value.kind === "artifact") {
+        return <div className="not-prose min-w-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+            {value.kind === "artifact" && value.previewUrl && (
+                <Link href={value.href} aria-label={`Open ${value.title}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={value.previewUrl} alt={value.title} loading="lazy"
+                        className="max-h-80 w-full object-contain bg-zinc-950"
+                        onError={(event) => { event.currentTarget.hidden = true; }} />
+                </Link>
+            )}
+            <div className="flex items-center gap-3 p-3">
+                <Icon className="h-5 w-5 shrink-0 text-emerald-400" />
+                <div className="min-w-0 flex-1">
+                    <Link href={value.href} className="line-clamp-2 text-sm font-semibold text-zinc-100 hover:underline">{value.title}</Link>
+                    <div className="mt-1 text-xs text-zinc-400">
+                        {value.kind === "knowledge" ? `Knowledge · ${value.scope} · ${humanizeState(value.status)}`
+                            : `${value.contentType} · ${formatBytes(value.sizeBytes)}`}
+                    </div>
+                </div>
+                <Link href={value.href} className="text-xs text-emerald-400">Open</Link>
+                {value.kind === "artifact" && value.downloadUrl && <a href={value.downloadUrl}
+                    className="text-xs text-zinc-400" download>Download</a>}
+            </div>
+        </div>;
+    }
     const tone = entityTone(value);
     return (
         <CardShell href={value.href}>

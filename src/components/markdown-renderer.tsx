@@ -23,7 +23,7 @@ import { StatsBlock } from '@/components/rich/stats-block';
 import { TabsBlock } from '@/components/rich/tabs-block';
 import { HtmlWidget } from '@/components/rich/html-widget';
 import { ChoicesBlock } from '@/components/rich/choices-block';
-import { EntityCardGrid, EntityChip } from '@/components/rich/entity-link';
+import { EntityCard, EntityCardGrid, EntityChip } from '@/components/rich/entity-link';
 import { parseEntityUrl, type EntityRef } from '@/lib/emperor-entities';
 
 interface MarkdownRendererProps {
@@ -280,6 +280,8 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     img: ({ node, src, alt, ...props }) => {
       const url = typeof src === 'string' ? src : '';
+      const entityRef = parseEntityUrl(url);
+      if (entityRef?.kind === 'artifact') return <EntityCard entityRef={entityRef} label={alt || 'File'} />;
       const loadable = /^(https?:|data:image\/|blob:)/i.test(url) || (url.startsWith('/') && !url.startsWith('//') && /^\/(api|_next|icon)/.test(url));
       if (!loadable) {
         return (

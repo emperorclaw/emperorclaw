@@ -5,6 +5,7 @@ import { registerTaskTools } from "./tools/tasks";
 import { registerProjectTools } from "./tools/projects";
 import { registerKnowledgeTools } from "./tools/knowledge";
 import { registerMessagingTools } from "./tools/messaging";
+import { registerStorageTools } from "./tools/storage";
 import { registerRequestTools } from "./tools/requests";
 
 export async function buildMcpServer(companyId: string, callerAgentId?: string | null, tokenId?: string | null): Promise<McpServer> {
@@ -19,6 +20,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     registerTaskTools(server, companyId, callerAgentId);
     registerProjectTools(server, companyId);
     registerKnowledgeTools(server, companyId);
+    registerStorageTools(server, companyId);
     registerMessagingTools(server, companyId, callerAgentId);
     // Handing work to an agent from outside is an operator action, not an agent one.
     if (!callerAgentId) registerRequestTools(server, companyId, tokenId ?? null);

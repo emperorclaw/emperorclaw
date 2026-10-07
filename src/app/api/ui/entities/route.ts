@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, companyMembers, projects, tasks, users } from "@/db/schema";
+import { agents, artifacts, scopedResources, companyMembers, projects, tasks, users } from "@/db/schema";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { getScopeFromSession, getScopedAgentIds } from "@/lib/member-scope";
 import {
     entityKey,
+    CHAT_IMAGE_TYPES,
+    canViewSharedArtifact,
     MAX_ENTITY_REFS,
     parseEntityKey,
     taskTitle,
@@ -64,6 +66,35 @@ export async function GET(req: NextRequest) {
                 ? db.select().from(agents).where(and(eq(agents.companyId, companyId), inArray(agents.id, agentIds), isNull(agents.deletedAt)))
                 : Promise.resolve([]),
         ]);
+
+        const knowledgeIds = idsOf("knowledge");
+        const artifactIds = idsOf("artifact");
+        const [notes, files] = await Promise.all([
+            knowledgeIds.length ? db.select({ id: scopedResources.id, name: scopedResources.name,
+                status: scopedResources.status, scope: scopedResources.scopeType, updatedAt: scopedResources.updatedAt })
+                .from(scopedResources).where(and(eq(scopedResources.companyId, companyId),
+                    inArray(scopedResources.id, knowledgeIds), eq(scopedResources.resourceType, "knowledge_base"),
+                    isNull(scopedResources.deletedAt))) : Promise.resolve([]),
+            artifactIds.length ? db.select({ id: artifacts.id, title: artifacts.title, originalFilename: artifacts.originalFilename,
+                contentType: artifacts.contentType, sizeBytes: artifacts.sizeBytes, storageKey: artifacts.storageKey,
+                visibility: artifacts.visibility, createdByType: artifacts.createdByType, createdById: artifacts.createdById })
+                .from(artifacts).where(and(eq(artifacts.companyId, companyId), inArray(artifacts.id, artifactIds),
+                    isNull(artifacts.deletedAt))) : Promise.resolve([]),
+        ]);
+        for (const note of notes) entities[`knowledge:${note.id}`] = {
+            kind: "knowledge", id: note.id, title: note.name, status: note.status,
+            scope: note.scope, updatedAt: note.updatedAt.toISOString(), href: `/resources?resource=${note.id}`,
+        };
+        for (const file of files) {
+            if (!canViewSharedArtifact(file, session?.user?.id)) continue;
+            const downloadUrl = file.storageKey ? `/api/ui/artifacts/${file.id}/download` : null;
+            entities[`artifact:${file.id}`] = {
+                kind: "artifact", id: file.id, title: file.title || file.originalFilename || "File",
+                status: "available", contentType: file.contentType, sizeBytes: file.sizeBytes,
+                downloadUrl, previewUrl: downloadUrl && CHAT_IMAGE_TYPES.has(file.contentType)
+                    ? `${downloadUrl}?disposition=inline` : null, href: `/artifacts?artifact=${file.id}`,
+            };
+        }
 
         // Names for the people and agents those records point at, plus the
         // task counts shown on project and agent cards.

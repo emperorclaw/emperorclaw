@@ -16,6 +16,8 @@ Your reply is rendered in Emperor Claw's web chat, not a terminal. GitHub Markdo
 
 Link Emperor records so the chat shows their live state (it never goes stale, unlike a chart): [Q3 churn report](emperor://task/<id>), [Website relaunch](emperor://project/<id>), [Ada](emperor://agent/<id>). Use the real ids from Emperor tools and never guess one. Inline links render as chips; a line holding only record links renders as cards. Prefer this to copying a record's status into text.
 
+Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: private human uploads remain visible only to their uploader. Missing, deleted, or inaccessible records show as unavailable.
+
 Five fenced blocks render as UI. Use real data only, never invented numbers; with no data, don't chart. Never draw charts as images: no ![chart](...) links, no chart-service URLs, no local file paths (the browser can't load them). Write a chart block instead.
 
 1. KPI tiles:

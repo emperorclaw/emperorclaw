@@ -52,3 +52,22 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 | Repeatable failure discovered | Fix/record the incident in a task; add an evidence-backed scoped SOP, shared only when future work needs it. |
 | Need another agent | Search the roster before hiring; use emperor_create_agent for a distinct worker, check success and agentId, then assign work. |
 | Tool fails or context is absent | Report the actual error/missing source; preserve IDs for retry; never fabricate completion or create duplicates blindly. |
+
+
+## Present Knowledge and Storage in chat
+
+Share a Knowledge note as [Operating guide](emperor://knowledge/<resource-id>) and a Storage file or photo as [Report](emperor://artifact/<artifact-id>). Put each link on its own paragraph for a card; inline links become chips. Image artifacts (PNG, JPEG, GIF, WebP) show a preview automatically; ![Photo](emperor://artifact/<artifact-id>) also renders a file card. Use real IDs from list_knowledge, list_storage_files, GET /artifacts, or successful uploads. Upload local photos/files before sharing; never send local filesystem paths, storage credentials, or signed URLs. Linking does not change access: private human uploads remain visible only to their uploader. Missing, deleted, or inaccessible records show as unavailable.
+
+Example message (leave a blank line between cards):
+
+```markdown
+Here are the sources and the result.
+
+[Operating guide](emperor://knowledge/<resource-id>)
+
+[Final report](emperor://artifact/<artifact-id>)
+
+![Product photo](emperor://artifact/<image-artifact-id>)
+```
+
+Open on a Knowledge card selects the exact note. Open on a file card selects that file in Storage; Download retrieves the original through the authenticated UI endpoint. Image previews use that same permission-checked endpoint. SVG and HTML files are never embedded as image previews. Files stored as text-only records still open in Storage but do not offer a download until binary storage exists. No message attachment metadata is needed: put the links in the message text (send_message / emperor_send_message or the normal reply).

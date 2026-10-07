@@ -12,7 +12,7 @@ import {
     type SetStateAction,
     type ChangeEvent,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { IconArrowDown, IconChevronDown, IconChevronRight, IconFile, IconFilePlus, IconFileZip, IconFileCode, IconPhoto, IconFileTypeJs, IconFileSpreadsheet, IconFileText, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconArrowsMaximize, IconDots, IconPencil, IconPlus, IconQuestionMark, IconRefresh, IconDeviceFloppy, IconSearch, IconSettings, IconTrash, IconUpload } from "@tabler/icons-react";
 import { toast } from "sonner";
@@ -268,6 +268,7 @@ type Props = {
 };
 
 export default function ArtifactsManager({ projects, tasks, customers }: Props) {
+    const linkedArtifactId = useSearchParams().get("artifact");
     const router = useRouter();
     const [currentFolderId, setCurrentFolderId] = useState(ROOT_ID);
     const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
@@ -448,6 +449,11 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
             return next;
         });
     }
+
+    useEffect(() => {
+        const id = linkedArtifactId;
+        if (id && /^[0-9a-f-]{36}$/i.test(id)) setSelectedEntry({ type: "artifact", id });
+    }, [linkedArtifactId]);
 
     async function fetchArtifactDetail(artifactId: string) {
         const response = await fetch(`/api/ui/artifacts/${artifactId}`, {

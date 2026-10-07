@@ -119,16 +119,23 @@ function unescapeWikilinkBrackets(content: string) {
 
 export default function ResourcesClient({
   initialResources,
+  requestedResource,
   customers,
   projects,
   agents,
 }: {
   initialResources: ResourceRecord[];
+  requestedResource?: string;
   customers: ScopeOption[];
   projects: ScopeOption[];
   agents: ScopeOption[];
 }) {
   const [resources, setResources] = useState(initialResources);
+  useEffect(() => {
+    if (requestedResource && initialResources.some(resource => resource.id === requestedResource)) {
+      setSelectedResourceId(requestedResource);
+    }
+  }, [requestedResource, initialResources]);
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "shared" | "drafts">("all");
