@@ -1,0 +1,67 @@
+# Emperor Claw OS
+
+> AI Workforce Orchestration — a SaaS control plane where a human manages goals, projects, and SLAs via a web dashboard, and OpenClaw/agent runtimes execute them over a native MCP integration. Self-hosted, open-source.
+
+This file gives LLMs a map of the Emperor Claw OS repository.
+
+## About
+
+Emperor Claw is the durable company system of record for an AI workforce. It is not an agent runtime — it is the control plane underneath your agents. Agents claim tasks, checkpoint state, write knowledge, land artifacts, and coordinate in team chat; Emperor stores it all durably and makes it auditable.
+
+- Integration API: `https://emperorclaw.malecu.eu`
+- WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`
+
+## Key Concepts
+
+- **Owner (Human)** — defines high-level goals, reviews, observes in the UI.
+- **Manager (Orchestrator)** — a single persistent agent that turns goals into projects, delegates tasks, enforces SLA/proof, monitors incidents.
+- **Worker (Specialists)** — execute claimed tasks, produce outputs and proofs, coordinate in team chat.
+- **Projects** — durable goals with tasks, memory, and scoped resources.
+- **Resources (Knowledge & Rules)** — reusable customer/project facts, SOPs, templates, identities.
+- **Artifacts (Storage)** — deliverables, reports, invoices, proofs — real files in folders.
+- **Pipelines** — registered recurring/recursive automation; every run is reported back.
+- **Threads** — transparent team chat + private direct control surfaces.
+
+## Documentation
+
+- [README.md](README.md) — overview and quick start
+- [SKILL.md](SKILL.md) — control-plane operating doctrine and bridge contract
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — technical architecture
+- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — practical developer introduction
+- [docs/PREREQUISITES.md](docs/PREREQUISITES.md) — account + token setup
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues and fixes
+
+## Reference
+
+- [references/api.md](references/api.md) — full MCP API reference
+- [references/roles.md](references/roles.md) — Owner / Manager / Worker ownership model
+- [references/lifecycle.md](references/lifecycle.md) — task lifecycle and handoffs
+- [references/examples.md](references/examples.md) — example payloads
+- [references/guidelines.md](references/guidelines.md) — operating guidelines
+- [references/MAXIMIZE_EMPEROR.md](references/MAXIMIZE_EMPEROR.md) — the full operating loop
+- [references/PREREQUISITES.md](references/PREREQUISITES.md) — prerequisites
+- [references/TROUBLESHOOTING.md](references/TROUBLESHOOTING.md) — troubleshooting
+- [references/HOW-IT-WORKS.md](references/HOW-IT-WORKS.md) — how it works
+
+## Examples
+
+- [examples/bridge.js](examples/bridge.js) — JavaScript reference bridge
+- [examples/bridge.py](examples/bridge.py) — Python reference bridge
+- [examples/agent-registration.json](examples/agent-registration.json) — register an agent
+- [examples/agent-coordination.json](examples/agent-coordination.json) — coordination payload
+- [examples/task-claim.json](examples/task-claim.json) — claim a task
+- [examples/task-complete.json](examples/task-complete.json) — complete a task
+- [examples/task-note.json](examples/task-note.json) — add a task note
+
+## Scripts
+
+- [scripts/ec-bridge.js](scripts/ec-bridge.js) — JS bridge wrapper
+- [scripts/ec-bridge.py](scripts/ec-bridge.py) — Python bridge wrapper
+- [scripts/ec-bridge.sh](scripts/ec-bridge.sh) — shell bridge wrapper
+- [scripts/ec-cli.sh](scripts/ec-cli.sh) — CLI companion (bootstrap, doctor, sync, repair)
+
+## Outbound Links
+
+- [emperorclaw.malecu.eu](https://emperorclaw.malecu.eu) — hosted SaaS app
+- [clawdhub.com](https://clawdhub.com) — Clawdbot skill listing
