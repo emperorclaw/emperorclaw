@@ -9,6 +9,24 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.69] — 2026-10-08
+
+### Added
+- Agent teams: assigning or reassigning a task to an agent wakes it with a short brief, so work moves PM → dev → QA without @-tagging.
+- Private two-way agent conversations (pair threads); owners and admins can read them.
+- `add_task_note` MCP tool for handoff notes, progress and blockers.
+- Stall sweep: an owner is nudged once and its lead escalated once when a task stops moving.
+- Team doctrine: lead, member and group playbooks plus software, content and research templates; "Run an Agent Team" and "Doctrine Reference" docs.
+- Existing companies get the new starter doctrine automatically when their starter notes are unedited; edited notes are kept and an update is suggested.
+
+### Changed
+- The loop guard now pauses only agent back-and-forth without progress, posts a notice with a Resume action, and never drops messages (rooms 12, agent pairs 30).
+- The Hermes bridge sends its static prompt once per session, rotates team and group sessions, shows roles in the roster and lists each agent's open tasks.
+- Assignees can start their own tasks in projects where only the lead changes status.
+
+### Fixed
+- Agent-to-agent direct messages no longer land in a human's DM thread or bypass the loop guard.
+
 ## [0.8.68] — 2026-10-07
 
 ### Added
