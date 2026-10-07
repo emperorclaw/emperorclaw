@@ -11,7 +11,7 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
-import { AgentSceneWrapper } from "@/components/agent-scene-wrapper";
+import { SceneDashboard } from "@/components/scene/scene-layout";
 
 export const dynamic = "force-dynamic";
 
@@ -197,7 +197,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 </Link>
             </nav>
             {view === "scene" ? (
-                <AgentSceneWrapper workers={serializedWorkers} />
+                <SceneDashboard workers={serializedWorkers} />
             ) : (
             <section aria-label="Team board" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {active.map((w) => <WorkerCard key={w.key} worker={w} now={now} />)}
