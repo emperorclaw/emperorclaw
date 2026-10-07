@@ -78,9 +78,19 @@ test("agentStreaks counts agent runs, resets on people, ignores system notices",
 });
 
 test("loop limits read the environment safely", () => {
-    assert.equal(agentLoopMaxTurns({}), 6);
+    assert.equal(agentLoopMaxTurns({}), 12);
     assert.equal(agentLoopMaxTurns({ EMPEROR_AGENT_LOOP_MAX_TURNS: "10" }), 10);
-    assert.equal(agentLoopMaxTurns({ EMPEROR_AGENT_LOOP_MAX_TURNS: "1" }), 6);
-    assert.equal(agentLoopMaxTurns({ EMPEROR_AGENT_LOOP_MAX_TURNS: "lots" }), 6);
-    assert.equal(agentLoopHardCap({}), 18);
+    assert.equal(agentLoopMaxTurns({ EMPEROR_AGENT_LOOP_MAX_TURNS: "1" }), 12);
+    assert.equal(agentLoopMaxTurns({ EMPEROR_AGENT_LOOP_MAX_TURNS: "lots" }), 12);
+    assert.equal(agentLoopHardCap({}), 36);
+});
+
+test("agent chains resume after inactivity; system notices do not extend the pause", () => {
+    const streaks = agentStreaks([
+        { id: "a", senderType: "agent", createdAt: new Date(0) },
+        { id: "b", senderType: "agent", createdAt: new Date(1000) },
+        { id: "s", senderType: "system", createdAt: new Date(300000) },
+        { id: "c", senderType: "agent", createdAt: new Date(301000) },
+    ]);
+    assert.equal(streaks.get("c"), 1);
 });

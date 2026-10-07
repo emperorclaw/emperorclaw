@@ -70,7 +70,7 @@ export async function sendThreadMessageFromMcp(input: {
   // agent messages in a row in a shared thread, agent posts are refused until
   // a person writes. Compliant runtimes stop well before (routeReason "loop_guard").
   if (responseThread.type !== "direct" && (await currentAgentStreak(input.companyId, responseThread.id)) >= agentLoopHardCap()) {
-    throw new Error("Loop guard: too many agent messages in a row in this thread; a person must write before agents can post again");
+    throw new Error("Loop guard: too many agent messages in a row in this thread; retry after five minutes of inactivity or ask a person to write");
   }
 
   const message = await appendThreadMessage({

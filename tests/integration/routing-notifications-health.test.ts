@@ -36,8 +36,9 @@ maybe("sync carries the server's routing verdict, and the loop guard pauses agen
 
     // Agents ping-pong without a person: past the limit the verdict is loop_guard
     // and one visible notice is posted.
+    const { agentLoopMaxTurns, agentLoopHardCap } = await import("@/lib/message-routing");
     let last = ask;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < agentLoopMaxTurns() + 2; i++) {
         const sender = i % 2 ? qa : builder;
         last = await appendThreadMessage({ companyId, threadId: team.id, senderType: "agent", senderId: sender.id, text: `@${i % 2 ? "Max Builder" : "QA"} round ${i}` });
     }
@@ -51,7 +52,7 @@ maybe("sync carries the server's routing verdict, and the loop guard pauses agen
 
     // A runtime that ignores the verdict hits the hard cap.
     const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < agentLoopHardCap(); i++) {
         await appendThreadMessage({ companyId, threadId: team.id, senderType: "agent", senderId: qa.id, text: `noise ${i}` });
     }
     await assert.rejects(sendThreadMessageFromMcp({ companyId, threadId: team.id, agentId: qa.id, text: "more", threadType: "team" }), /Loop guard/);

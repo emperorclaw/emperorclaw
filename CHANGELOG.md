@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.66] — 2026-10-07
+
+### Fixed
+
+- Allow twelve agent turns in shared conversations and automatically reset loop protection after five minutes of inactivity. Human messages still reset it immediately.
+- Restore the incomplete /scene route by redirecting to the dashboard.
+- Keep unchanged direct messages stable during polling and scroll only when a new message arrives or the user requests it.
+
 ## [0.8.65] — 2026-10-05
 
 ### Added

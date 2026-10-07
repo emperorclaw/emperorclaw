@@ -40,7 +40,7 @@ export interface RoutableMessage {
 }
 
 /** Consecutive agent messages in a shared thread before agents are paused. */
-export const DEFAULT_AGENT_LOOP_MAX_TURNS = 6;
+export const DEFAULT_AGENT_LOOP_MAX_TURNS = 12;
 
 export function agentLoopMaxTurns(env: Record<string, string | undefined> = process.env): number {
     const value = Number(env.EMPEROR_AGENT_LOOP_MAX_TURNS);
@@ -156,13 +156,19 @@ export function decideDelivery(input: {
  * thread's messages oldest-first. A human message resets it; system notices
  * (e.g. a runtime control or a loop-guard notice) neither count nor reset.
  */
-export function agentStreaks(messages: { id: string; senderType: string }[]): Map<string, number> {
+export const AGENT_LOOP_COOLDOWN_MS = 5 * 60 * 1000;
+
+export function agentStreaks(messages: { id: string; senderType: string; createdAt?: Date | string }[]): Map<string, number> {
     const streaks = new Map<string, number>();
     let streak = 0;
+    let lastActivity: number | undefined;
     for (const m of messages) {
+        const timestamp = m.createdAt !== undefined ? new Date(m.createdAt).getTime() : undefined;
+        if (timestamp !== undefined && lastActivity !== undefined && timestamp - lastActivity >= AGENT_LOOP_COOLDOWN_MS) streak = 0;
         const type = (m.senderType || "").toLowerCase();
         if (type === "human") streak = 0;
         else if (type === "agent") streak += 1;
+        if (type !== "system" && timestamp !== undefined) lastActivity = timestamp;
         streaks.set(m.id, type === "agent" ? streak : 0);
     }
     return streaks;

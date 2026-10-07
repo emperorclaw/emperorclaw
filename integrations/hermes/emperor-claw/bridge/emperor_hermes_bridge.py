@@ -781,6 +781,11 @@ def check_loop_guard(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
         entry["count"] = 0
         entry["notified"] = False
         return True
+    now = time.time()
+    if now - entry.get("last_activity", now) >= 300:
+        entry["count"] = 0
+        entry["notified"] = False
+    entry["last_activity"] = now
     entry["count"] = entry.get("count", 0) + 1
     return entry["count"] <= LOOP_GUARD_MAX_AGENT_TURNS
 

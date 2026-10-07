@@ -243,7 +243,7 @@ async function routeForAgent(
     }
     await Promise.all([...byThread.entries()].map(async ([threadId, latest]) => {
         if (threadInfo.get(threadId)?.type === "direct") return;
-        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType })
+        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt })
             .from(threadMessages)
             .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId), lte(threadMessages.createdAt, latest)))
             .orderBy(desc(threadMessages.createdAt))

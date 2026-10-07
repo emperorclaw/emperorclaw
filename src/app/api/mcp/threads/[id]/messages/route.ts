@@ -91,7 +91,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }
         }
         if (senderType === "agent" && thread.type !== "direct" && (await currentAgentStreak(companyId, thread.id)) >= agentLoopHardCap()) {
-            return NextResponse.json({ error: "Loop guard: too many agent messages in a row in this thread; a person must write before agents can post again" }, { status: 429 });
+            return NextResponse.json({ error: "Loop guard: too many agent messages in a row in this thread; retry after five minutes of inactivity or ask a person to write" }, { status: 429 });
         }
         const resolvedTargetAgentId = targetAgentId && !isGroup
             ? await resolveAgentId(companyId, targetAgentId)

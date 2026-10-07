@@ -186,12 +186,16 @@ export function AgentDirectChat({
                 if (!since && prev.length === 0) return nextMessages;
                 const existingIds = new Set(prev.map((message) => message.id));
                 const updates = new Map(nextMessages.map(message => [message.id, message]));
-                const refreshed = prev.map(message => updates.get(message.id) || message);
+                const refreshed = prev.map(message => {
+                    const update = updates.get(message.id);
+                    return update && JSON.stringify(update) !== JSON.stringify(message) ? update : message;
+                });
                 const appended = nextMessages.filter((message) => !existingIds.has(message.id));
                 if (appended.length > 0 && !isAtBottomRef.current && since) {
                     setUnreadCount((count) => count + appended.length);
                 }
-                return [...refreshed, ...appended];
+                return appended.length === 0 && refreshed.every((message, index) => message === prev[index])
+                    ? prev : [...refreshed, ...appended];
             });
 
             if (!before) {
@@ -302,6 +306,7 @@ export function AgentDirectChat({
         };
     }, [loadMessages]);
 
+    const lastScrolledMessageRef = useRef<string | undefined>(undefined);
     useEffect(() => {
         if (scrollRef.current) {
             if (preserveScrollHeightRef.current !== null) {
@@ -310,7 +315,10 @@ export function AgentDirectChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            if ((isAtBottom || forceScrollToBottomRef.current) && messages.length > 0) {
+            const latestId = messages[messages.length - 1]?.id;
+            const hasNewMessage = latestId !== lastScrolledMessageRef.current;
+            lastScrolledMessageRef.current = latestId;
+            if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && messages.length > 0) {
                 rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: forceScrollToBottomRef.current ? "auto" : "smooth" });
                 forceScrollToBottomRef.current = false;
                 setUnreadCount(0);

@@ -20,7 +20,7 @@ import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
-import { agentLoopMaxTurns } from "./message-routing";
+import { agentLoopMaxTurns, AGENT_LOOP_COOLDOWN_MS } from "./message-routing";
 import { notifyAgentMessage } from "./notifications";
 
 type SenderType = "human" | "agent" | "system";
@@ -379,13 +379,17 @@ export async function getThreadMessageReasoning(companyId: string, messageId: st
  * last counted message is a human's). System notices neither count nor reset.
  */
 export async function currentAgentStreak(companyId: string, threadId: string, window = 100): Promise<number> {
-    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType })
+    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt })
         .from(threadMessages)
         .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId)))
         .orderBy(desc(threadMessages.createdAt))
         .limit(window);
     let streak = 0;
+    let lastActivity = Date.now();
     for (const m of tail) {
+        if (m.senderType === "system") continue;
+        if (lastActivity - m.createdAt.getTime() >= AGENT_LOOP_COOLDOWN_MS) break;
+        lastActivity = m.createdAt.getTime();
         if (m.senderType === "human") break;
         if (m.senderType === "agent") streak += 1;
     }
@@ -408,7 +412,7 @@ async function postLoopGuardNoticeIfNeeded(companyId: string, threadId: string) 
             threadId,
             companyId,
             senderType: "system",
-            text: `Agent replies are paused in this thread: agents posted ${max + 1} messages in a row without a person. Send a message here to resume.`,
+            text: `Agent replies are paused in this thread: agents posted ${max + 1} messages in a row without a person. Replies can resume after five minutes of inactivity, or immediately when a person writes.`,
             metadataJson: { loopGuard: true, maxAgentTurns: max },
             deliveryState: "resolved",
         });
