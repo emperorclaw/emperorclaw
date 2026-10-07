@@ -25,7 +25,7 @@ The Manager is a single, persistent OpenClaw agent (registered as `role: manager
 
 ### 3. Worker (Specialists)
 - Execute claimed tasks.
-- Coordinate via Team Chat.
+- Coordinate through tasks, pair threads, and milestone posts in the team channel — progress is recorded on the task, not logged step-by-step in chat.
 - Produce outputs, artifacts, and proofs.
 - **Sub-agents are first-class**: Every specialist (e.g., `lead-miner`) represents a standalone agent with its own record and memory.
 - Workers should not invent new resource boundaries. They inherit the scope assigned by the project lead and preserve it when writing notes, artifacts, or results.

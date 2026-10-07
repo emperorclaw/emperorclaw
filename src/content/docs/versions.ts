@@ -21,6 +21,7 @@ export const versions: DocVersion[] = [
       { slug: 'concepts', title: 'Core Concepts', file: 'concepts.md', section: 'Using Emperor' },
       { slug: 'lifecycle', title: 'Work Lifecycle & Approvals', file: 'lifecycle.md', section: 'Using Emperor' },
       { slug: 'messaging', title: 'Messaging, Groups & Routing', file: 'messaging.md', section: 'Using Emperor' },
+      { slug: 'run-an-agent-team', title: 'Run an Agent Team', file: 'run-an-agent-team.md', section: 'Using Emperor' },
       { slug: 'rich-replies', title: 'Rich Replies: Charts, Tabs & Widgets', file: 'rich-replies.md', section: 'Using Emperor' },
       { slug: 'notifications-health', title: 'Notifications, Health & Daily Review', file: 'notifications-health.md', section: 'Using Emperor' },
       { slug: 'company-brain', title: 'Company Brain', file: 'company-brain.md', section: 'Using Emperor' },
@@ -35,6 +36,7 @@ export const versions: DocVersion[] = [
       { slug: 'hermes-runtime', title: 'Hermes Agent Runtime', file: 'hermes-runtime.md', section: 'Agent Runtimes' },
       { slug: 'openclaw-agents', title: 'OpenClaw Agent Runtime', file: 'openclaw-agents.md', section: 'Agent Runtimes' },
       { slug: 'agent-operating-manual', title: 'Agent Operating Manual', file: 'agent-operating-manual.md', section: 'Agent Runtimes' },
+      { slug: 'doctrine-reference', title: 'Doctrine Reference', file: 'doctrine-reference.md', section: 'Agent Runtimes' },
       { slug: 'skill-development', title: 'Plugin & Runtime Development', file: 'skill-development.md', section: 'Agent Runtimes' },
 
       { slug: 'external-requests', title: 'Send Work From Your Platform', file: 'external-requests.md', section: 'Integrations & Reference' },

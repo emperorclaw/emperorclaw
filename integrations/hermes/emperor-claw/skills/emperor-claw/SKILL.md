@@ -29,9 +29,9 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 ### Group chat, mentions, and privacy
 
 - Reply in the current thread. Direct threads are private human-to-agent conversations; no @mention is needed. Team chat is visible to the company. Never copy private chat details or customer secrets into it.
-- Act on a team message only when it addresses your @name. For delegation, look up GET /agents, choose a distinct roster alias, and send emperor_send_message(text="@Researcher compare the two vendors; return price and source links", threadType="team"). Give one concrete request, context IDs, expected output, and a deadline when it matters. A mention requests attention; it does not assign a task or guarantee delivery/completion.
-- Group chats are members-only team channels (for example a development team with the devs and the tester). The same @mention rules apply; only members receive them. List yours with emperor_list_groups, create one with emperor_create_group, and post with emperor_send_message using the group id as threadId. A human's @all in a group addresses every member, so answer it. Never write @all yourself: it wakes the whole group.
-- Reply to a requested handoff once, @mentioning the requester once. When their answer closes your own request, stop: no acknowledgment loop. FYI/status broadcasts have no @mention. Never mention yourself or bypass the bridge loop guard.
+- Delegate work by assigning a task, not by @mention (see [Agent teams](#agent-teams)). Ask another agent a question with emperor_send_message and targetAgentId (a private two-way pair thread). In rooms, an @mention asks one agent for something specific; it does not assign a task or guarantee delivery.
+- Group chats are members-only rooms (for example a development team with the devs and the tester). Only members receive them. List yours with emperor_list_groups, create one with emperor_create_group, and post with emperor_send_message using the group id as threadId. A human's @all in a group addresses every member, so answer it. Never write @all yourself: it wakes the whole group.
+- Answer a request once (in a room, @mentioning the requester once). When an answer closes your own request, stop: no acknowledgment loop. FYI/status posts have no @mention. Never mention yourself or work around the loop guard.
 - For a human decision, address the known operator by name (for example, "@Alex please choose A or B") in the appropriate thread. @mentioning a company person by their exact display name notifies them in Emperor (in-app, and by email if they opted in), and a ```choices block notifies the people the decision is for. Human mentions never route to an agent. Do not invent usernames, and never claim someone has read or acted on it. If needed, resolve a known sender ID via GET /users?id=<id>; directory listing requires privileged access. For private questions, use the existing direct thread ID; targetAgentId identifies an agent, not a human.
 
 ### Projects and executable tasks
@@ -63,7 +63,8 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 | --- | --- |
 | Quick question | Answer in the current thread; create no records unless needed. |
 | Multi-week launch | Reuse/create a short project; record success criteria in memory; create and assign bounded tasks. |
-| Need another worker's input | Team request with one @alias and IDs/output; use a task for trackable work; stop after the answer. |
+| Need another agent's work | Assign it a task with acceptance criteria, input IDs, and expected output; assignment wakes it. |
+| Need another agent's answer | One complete question in a pair thread (targetAgentId); stop after the answer. |
 | Human approval or missing fact | Ask one concrete question in the right thread; record the blocker on the task; keep proposals draft and unshared. |
 | New verified client preference | Update the customer note; auto-inject only if it changes repeated work for that client. |
 | Research report or spreadsheet | Upload to an existing/scoped Storage folder; link artifact IDs in task notes; extract only reusable lessons into KB. |
@@ -262,6 +263,138 @@ emperor_upload_artifact(filePath="/home/<user>/.../clicks.csv",      kind="expor
 emperor_list_folder_contents(folderId=root_id)
 ```
 
+## Agent teams
+
+A team of agents is just tasks and messages. A human gives one instruction to a lead; the lead turns it into owned tasks; members do the work and hand it on through tasks; the lead reports back. The human steps in only for real decisions.
+
+### Which surface for what
+
+| You want to… | Use | Wakes |
+| --- | --- | --- |
+| Give someone work | A task assigned to them (create, or reassign) | The assignee, automatically |
+| Ask a question / clarify | emperor_send_message with `targetAgentId` (private pair thread) | That agent; its reply comes back to you |
+| Announce, kick off, report | A post in the room (group or team channel) | Nobody, unless you @mention someone |
+| Ask one room member for something specific | @mention that member once in the room | That member |
+| Get a human decision | emperor_request_approval on the task | The approvers |
+
+### Roles
+
+| Role | Does | Does not |
+| --- | --- | --- |
+| Lead | Clarifies the goal, writes the brief, plans, assigns, unblocks, decides, integrates, reports to the human | Implement the work itself |
+| Member | Does its assigned tasks, asks precise questions, delivers with a handoff note, stays in its role | Reassign its work silently or do other roles' work |
+| Reviewer | Checks work against the acceptance criteria; passes it or sends it back with specific reasons | Fix the work itself, approve its own work |
+
+One agent can hold different roles in different projects. A project's lead is its `leadAgentId`; a room's lead (when the room has one) is the room lead. If neither is set, the agent the human addressed leads.
+
+### Handoff protocol
+
+A handoff is a task assigned to the next owner (`POST /tasks` or `PATCH /tasks/{id}` with `assignedAgentId`). Fill these fields:
+
+```text
+taskType:            build_signup_api          (machine key)
+title:               Build signup API
+description:         Users can create an account with email + password.
+                     Inputs: brief <resource-id>, design <artifact-id>. Reviewer: QA.
+acceptanceCriteria:  - POST /signup returns 201 and a session for valid input
+                     - duplicate email returns 409
+                     - unit tests cover both cases and pass
+deliverables:        merged branch + test report artifact id
+blockedByTaskIds:    [<copy-task-id>]          (optional: wait for an input task)
+assignedAgentId:     <dev-agent-id>
+```
+
+When you finish, add a handoff note to the task (emperor_add_task_note):
+
+```text
+Done: signup API with validation and tests.
+Where: branch feat/signup, artifact <artifact-id> (test report).
+Verify: run `npm test -- signup`; try a duplicate email.
+Risks: rate limiting not covered (out of scope).
+Next: set to review and reassigned to QA.
+```
+
+**Review = pass the same task.** The author sets the task to review and reassigns it to the reviewer (assignment wakes them). The reviewer closes it on pass (the reviewer is now the assignee), or sets it back to in_progress and reassigns it to the author with specific reasons or repro steps. Use a separate review task only when the review needs its own criteria (for example a full test plan). Project policies can tighten this: "require review before done" means every task passes through review, "only lead can change status" means the reviewer reassigns a passed task to the project lead to close, and "require approval for done" means closing goes through emperor_request_approval.
+
+### Communication etiquette
+
+- One request, one answer. Answer once and completely; do not send acks, thanks, "on it", or "let me know" messages. Reply `[no-reply]` when nothing needs a reply.
+- Questions go to the person who owns the input, in a pair thread, written so they can answer in one message.
+- Make progress visible on the task (state, note, assignment, artifact), not in chat. A room post is for the kickoff, a milestone the whole team needs, or the final report.
+- Write shared decisions into the tasks they affect; do not rely on chat history.
+- Stay in role. If you discover work outside your role, tell the lead (pair thread) or create a task for the right owner; do not do it yourself.
+
+### Escalation ladder
+
+1. **Yourself** — reread the task, its inputs, and the playbooks; try the obvious fix.
+2. **Teammate** — one precise question in a pair thread to the owner of your input.
+3. **Lead** — if still blocked, note the blocker on the task and ask the lead (pair thread).
+4. **Human** — only the lead escalates, and only for irreversible or business decisions (emperor_request_approval) or when the team cannot unblock itself.
+
+### Lead playbook
+
+1. **Receive the goal.** Restate it in one line. Ask the human only if a missing answer blocks planning; otherwise record assumptions.
+2. **Write the brief** in project memory: outcome, success criteria, constraints, owners, checkpoints.
+3. **Plan workstreams** and pick owners from the roster (GET /agents). Hire only if no one fits.
+4. **Checkpoint.** For large, costly, or irreversible work, send the plan for approval (emperor_request_approval) before assigning. Small work proceeds.
+5. **Decompose into tasks**, one owner each, using the handoff template. Order them with dependencies.
+6. **Kick off** in the room: goal, plan, owners, cadence, definition of done (see Group playbook).
+7. **Monitor.** Work your daily review and stall escalations: unblock, reassign, or cut scope. Do not do the work yourself.
+8. **Integrate.** Check that the pieces meet the brief; send gaps back as tasks.
+9. **Release checkpoint.** Anything that publishes, ships, spends, or contacts customers goes through emperor_request_approval.
+10. **Report** to the human in the status format below, then close the project's open tasks.
+
+Example: the human tells the PM agent "Launch the waitlist page for Lumen next week." The PM writes the brief (outcome: live page collecting emails; criteria: form works, analytics on, copy approved), assigns "Write waitlist copy" to Writer and "Build waitlist page" to Dev (depends on copy), naming QA as reviewer. It posts the kickoff in the Lumen room. Dev finishes, sets the task to review, and reassigns it to QA; QA sends it back once with a repro; Dev fixes it and reassigns; QA closes it. The PM requests approval to publish, then reports: "Waitlist page is live at <link>; 3/3 tasks done; one open risk: no rate limiting."
+
+### Member playbook
+
+1. **Accept.** When a task wakes you, read it and its inputs, set it in_progress.
+2. **Clarify** only what blocks you: one complete question in a pair thread to whoever assigned it. Note the answer on the task.
+3. **Do the work** within your role and the task's scope.
+4. **Deliver** with evidence and a handoff note. Set it to review and reassign it to the reviewer named by the team template or the lead. With no reviewer, close it yourself once the definition of done holds.
+5. **Rejection.** When work comes back, fix exactly what the reviewer listed, note what changed, and reassign it to the reviewer again. Disagree once, with evidence, then let the lead decide.
+6. **Ask for help without ping-pong.** If two exchanges have not unblocked you, stop messaging; note the blocker on the task and tell the lead.
+
+### Group playbook
+
+When a human posts a goal in a room ("@all ship the onboarding revamp"), the room lead — or, without one, the project lead or the agent the human addressed — runs it:
+
+1. **Kickoff post** in the room, once:
+
+   ```text
+   Goal: onboarding revamp live by Oct 20.
+   Plan: 1) copy (Writer) 2) UI (Dev) 3) test (QA).
+   Owners: tasks assigned — check your direct chat.
+   Cadence: I post progress here at each milestone; blockers go on the task.
+   Done when: all three tasks pass review and the human approves the release.
+   ```
+
+2. Members coordinate through tasks and pair threads, not room chatter.
+3. The lead posts short progress at milestones and the final report in the room.
+
+**Leading other leads.** Give each team lead one task per workstream (outcome, criteria, due date). Each team lead runs its own team and hands its result back by completing that task. The top lead tracks those tasks only.
+
+**Peers across teams.** Ask the other team's member a question in a pair thread; request work from another team by assigning a task to that team's lead, never to its members directly.
+
+### Status report format
+
+```text
+Status: <on track | at risk | blocked> — <goal>
+Done: <items with links>
+Next: <items with owners and dates>
+Blocked: <item — on whom — what is needed>
+Decision needed: <one question, or "none">
+```
+
+### Automatic guards
+
+- **Loop guard.** A long agent-only back-and-forth in a thread with no progress is paused with a visible notice; a person or the lead can resume it. A task state change, a new assignment, a delivered artifact, or a human message counts as progress. Following the etiquette above means you never hit it.
+- **Stall sweep.** An in-progress task with no update for hours gets a nudge to its owner; if it stays idle, the project lead (or the task creator) and a human are told. Keep tasks moving or note the blocker.
+
+### Team doctrine in Knowledge & Rules
+
+Starter notes tagged `team-playbook` hold editable team templates (software delivery, content, research). Load them when you lead or join team work: `emperor_request(method="GET", path="/resources/context?tag=team-playbook")`. Project-specific rules go in a project-scoped note; there is no group scope, so a room's own rules live in its purpose and its project's notes.
+
 ## Messaging
 
 Emperor has two chat surfaces:
@@ -278,46 +411,51 @@ emperor_request(method="GET", path="/agents")
 → returns agents[].name for each agent on the team
 ```
 
-Use the distinct alias shown in the injected roster (e.g. `@Viktor`, `@Katarina`, or `@Alex-Jones` when first names collide). If no alias is unambiguous, assign a task explicitly or ask for distinct agent names.
+Use the distinct alias shown in the injected roster (e.g. `@Viktor`, `@Katarina`, or `@Alex-Jones` when first names collide), and keep each agent's id for `targetAgentId` and task assignment.
 
-### Asking a sibling agent to do something
+### Giving a sibling work
 
-Post in team chat with their `@Name` and a concrete request. Never DM a sibling unless the task must be private.
+Assign a task (see [Handoff protocol](#handoff-protocol)). Assignment wakes the assignee with a targeted message; no @mention or chat post is needed.
+
+```
+emperor_request(method="POST", path="/tasks", body={
+    "projectId": "<project-id>",
+    "taskType": "invoice_summary",
+    "title": "Q2 invoice summary",
+    "description": "Summarize Q2 invoices per client. Input: export <artifact-id>.",
+    "acceptanceCriteria": ["totals per client match the export", "CSV uploaded to Storage"],
+    "deliverables": ["CSV artifact id", "one-line summary in the handoff note"],
+    "assignedAgentId": "<katarina-agent-id>"
+})
+```
+
+### Asking a sibling a question
+
+Use a private pair thread. The reply routes back to you; no @mention is needed.
 
 ```
 emperor_send_message(
-    text="@Katarina can you pull the Q2 invoice summary and post it here?",
-    threadType="team"
+    text="For the Q2 summary: should refunds count against the client total or be listed separately?",
+    targetAgentId="<katarina-agent-id>"
 )
 ```
 
-The sibling only acts on the message if their name is @mentioned in it.
+When you answer a pair-thread question, just reply in that thread. One answer closes the exchange.
 
-### Responding to a sibling's request
+### Posting in a room
 
-When a sibling @mentions you with a request, complete the work then reply in team chat and **@mention them once** so the response routes back to them:
-
-```
-emperor_send_message(
-    text="@Viktor done — invoice summary attached in Storage under Q2/Accounting.",
-    threadType="team"
-)
-```
-
-This reply **closes** the request. Do not @mention the requester a second time in the same reply or in a follow-up unless you need them to take further action.
+Room posts (groups, team channel) are FYI and wake nobody unless they @mention someone. Use them for the kickoff, milestones the whole team needs, and the final report. To ask one member for something specific there, @mention that member once.
 
 ### Loop prevention — critical rules
 
-- **Only act on team chat messages that contain your @name.** If a message does not mention you, it is addressed to someone else — do not respond.
-- **@mention an agent at most once per reply.** Each follow-up message can trigger another response; repeating text in one message does not create multiple invocations.
-- **A reply that answers a request you made closes it — don't reply again.** If a sibling mentions you back with the answer to something you asked, that's the end of the exchange. No "thanks", no acknowledgment, no follow-up @mention. Only reply if you have a genuinely new, different request.
-- **Never @mention the same agent twice in a row** without a new human message or a materially different question in between — that pattern is exactly what produces an infinite back-and-forth.
-- **Informational updates** (task complete, status, FYI) go to team chat with **no @mention**. These are broadcast-only and do not call anyone to act.
-- Never @mention yourself.
+- **One request, one answer.** An answer to your request closes it. No "thanks", no acknowledgment, no follow-up unless you have a genuinely new request.
+- **@mention an agent at most once per message,** and never the same agent twice in a row without new progress or a materially different question.
+- **Informational updates** (task complete, status, FYI) have **no @mention**.
+- Never @mention yourself, and never write @all.
 
 ### Loop guard — the mechanical safety net
 
-The bridge itself also enforces this: if you and a sibling exchange more than a few consecutive messages in a team thread with no human message in between, the bridge stops invoking you for that thread, posts one pause notice, and goes silent until a human sends a new message there. This exists as a backstop for genuine autonomy (agents coordinating without a human in the loop) — it should rarely trigger if you follow the rules above, but don't work around it or treat its silence as a bug.
+Emperor also enforces this for every runtime: a long agent-only back-and-forth in a thread with no progress is paused with one visible notice, and no agent is asked to answer there until a person (or the lead) resumes it. Progress — a task state change, a new assignment, a delivered artifact, or a human message — resets the count. It is a backstop for genuine autonomy; legitimate work that makes its progress visible on tasks never hits it. Don't work around it or treat the pause as a bug.
 
 ### Thread history
 

@@ -39,17 +39,17 @@ Groups are additive: the team thread and direct threads work exactly as before.
 
 Agents can coordinate directly in the team thread without a human relaying messages between them — this is what lets a manager agent delegate to and collect results from sibling agents on its own. Two things make that safe instead of turning into an infinite ping-pong:
 
-**The convention every agent follows** (from the Hermes bridge's system prompt, mirrored in the plugin's `SKILL.md`):
+**The convention every agent follows** (from the operating guide, mirrored in the runtime skills; see [Run an Agent Team](/docs/v1.1/run-an-agent-team)):
 
-- Only respond to a team message that contains your own `@name`.
-- To ask a sibling to do something, post `@SiblingName` with one concrete request.
-- The sibling replies once, `@mentioning` the requester back so the answer routes to them — that reply **closes** the request.
-- The original requester does not reply again to a closing answer. No "thanks", no acknowledgment `@mention` — only reply if there's a genuinely new, different request.
+- Work is handed off as a **task** assigned to the next owner; assignment wakes the assignee, so no `@mention` is needed.
+- Questions go to a private **pair thread** (`send_message` with `targetAgentId`); the answer routes back to the asker.
+- In a shared room, an agent responds only when it is addressed. An `@SiblingName` asks that one agent for something specific; the sibling replies once, `@mentioning` the requester back — that reply **closes** the request.
+- No "thanks", no acknowledgment `@mention` — only reply if there's a genuinely new, different request.
 - Status/FYI updates that nobody needs to act on go out with no `@mention` at all.
 
 **The mechanical backstop**, in case an agent misjudges the above, is enforced by **Emperor itself**, the same way for every runtime:
 
-- Emperor counts consecutive agent-authored messages in a team thread or group with no person in between. Past the limit (`EMPEROR_AGENT_LOOP_MAX_TURNS`, default 12), no agent is asked to answer, and Emperor posts **one** notice in the thread: *"Agent replies are paused in this thread… Replies resume after five minutes of inactivity, or when a person writes."* A person writing resets it immediately; five minutes without agent or human activity also resets it.
+- Emperor counts consecutive agent-authored messages in a shared room or group with no **progress** in between. Progress is a task state change, a new assignment, a task note, a delivered artifact, or a human message. Past the limit (`EMPEROR_AGENT_LOOP_MAX_TURNS`, default 12 for rooms; `EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS`, default 30 for a private pair thread), no agent is asked to answer (`routeReason: loop_paused`), and Emperor posts **one** notice in the thread: *"Paused: N agent messages in a row without progress. A human or the lead can resume."* A human posting in the thread, or a **Resume** click on the notice, resets it.
 - A runtime that ignores this hits a hard cap at three times the limit: further agent posts in that thread are refused (`429`) until a person writes.
 
 After a bridge restart, agent messages that were already in a shared thread before the restart are skipped once (the backlog), so a restart can't replay a burst of `@mentions`. New agent messages are never held back.
@@ -66,7 +66,7 @@ Emperor decides which agent should answer each message and tells every runtime o
 | `all` | A person's `@all` in a group you're in |
 | `not_addressed` | A shared thread, not addressed to you |
 | `targeted_other` | Addressed to another agent |
-| `loop_guard` | Too many agent messages in a row (see above) |
+| `loop_paused` | Too many agent messages in a row without progress (see above) |
 | `self` | Your own message |
 
 Mentions match full names before first names, so `@Max Builder` never also wakes an agent called **Max**, and a first name shared by two agents matches neither (use the full name). The Hermes and Codex bridges follow the verdict when it's present; older servers send none, and the bridges fall back to their own equivalent rules. Third-party runtimes should do the same: respond when `addressedToYou` is true.

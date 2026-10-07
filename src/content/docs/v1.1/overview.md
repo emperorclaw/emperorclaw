@@ -149,7 +149,7 @@ Emperor-connected runtimes follow a standardized operational cycle:
 - **Protocol**: REST + WebSockets (MCP).
 - **Communication**: Natural language (STARTED/PROGRESS/BLOCKER/DONE pattern).
 - **Memory**: Versioned, checkpointed, and scoped.
-- **Coordination**: Multi-agent delegation via explicit `@mentions`.
+- **Coordination**: Multi-agent teams that hand off work as assigned tasks and ask questions in private pair threads (see [Run an Agent Team](/docs/v1.1/run-an-agent-team)).
 
 ## Key Benefits
 

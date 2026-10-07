@@ -9,7 +9,7 @@ description: "Operate Emperor Claw as the OpenClaw control plane and durable che
 ## 0) Purpose
 Emperor Claw SaaS is the source of truth for company state.
 OpenClaw is the runtime that executes work.
-Emperor stores durable checkpoints, tasks, incidents, scoped resources, artifacts, runtime integrations, and chat history.
+Emperor stores durable checkpoints, tasks, incidents, pipelines, Knowledge & Rules entries (API: resources), Storage files (API: artifacts), runtime integrations, and chat history.
 
 Integration API URL: `https://emperorclaw.malecu.eu`
 
@@ -27,7 +27,7 @@ Bridge implementations are reference adapters that wire a local OpenClaw runtime
 The bridge contract is intentionally narrow:
 - persist local cursors, reconnect backoff, and pending operation state in the companion directory
 - resume from saved state after reconnect instead of replaying blindly
-- treat artifacts as business files, not logs
+- treat Storage/artifacts as business files, not logs
 - preserve resource scope identifiers when work is tied to a customer, project, or agent identity
 - treat agent runtime integrations as optional machine-local payloads, not the primary home for customer mailboxes or project identities
 
@@ -45,7 +45,7 @@ Activation protocol:
 4. Start a session with `POST /api/mcp/agents/{id}/sessions/start`.
 5. Connect to `wss://emperorclaw.malecu.eu/api/mcp/ws`.
 6. Use `POST /api/mcp/chat/status/` when you are actively reading or thinking in a visible thread.
-7. Load project memory, scoped resources, and queued tasks.
+7. Load project memory, scoped Knowledge & Rules entries/resources, and queued tasks.
 8. Claim tasks when the queue is ready, keep leases alive with heartbeat, and checkpoint memory back to Emperor.
 9. Execute work in the local OpenClaw runtime and persist results back to Emperor when a real executor produces a result.
 10. Use bounded reconnect/backoff and dedupe state so reconnects do not duplicate messages, notes, or results.
@@ -58,24 +58,51 @@ Activation protocol:
 2. All mutations must include a unique `Idempotency-Key` UUID.
 3. Tasks are claimed through `POST /api/mcp/tasks/claim` and are lease-based. Heartbeats renew active leases.
 4. Reconnects must use bounded exponential backoff, persisted cursors, and dedupe state. Never spin a tight reconnect loop or replay the same write blindly.
-5. Coordinated decisions, handoffs, blockers, and incidents belong in Agent Team Chat when they affect shared state.
+5. Handoffs and blockers belong on the task (assignment and notes). Post to a room only for kickoffs, milestones the whole team needs, incidents, and final reports.
 6. Project memory must be read before work begins on any task.
 7. Human thread messages are authoritative interrupts.
-8. Completion should include evidence via `/api/mcp/artifacts` when applicable, but only important files belong there.
-9. Artifacts should be classified as source documents, working files, proofs, deliverables, templates, or export bundles. Logs and chat transcripts do not belong there.
+8. Completion should include evidence via Storage (`/api/mcp/artifacts`) when applicable, but only important files belong there.
+9. Storage/artifacts should be classified as source documents, working files, proofs, deliverables, templates, or export bundles. Logs and chat transcripts do not belong there.
 10. When storing remote artifact references, provide a real `sha256` and `sizeBytes`. Never hash a URL string and call it file integrity.
 11. Resource scope is explicit. Preserve company/customer/project/agent identifiers when writing notes, memory, artifacts, or task results.
 12. Project agent profiles can override display name, signature, and memory seed for a given project without changing the worker's durable runtime identity.
-13. Customer mailboxes, project identities, templates, and billing data belong in scoped resources. Agent runtime integrations are only for machine-local or truly agent-bound payloads.
+13. Customer mailboxes, project identities, templates, and billing data belong in scoped Knowledge & Rules entries/resources. Agent runtime integrations are only for machine-local or truly agent-bound payloads.
+    - Use "Force Sharing" (`isShared`) to explicitly pass a resource to every agent in the scope per instruction, overriding standard access policies.
+    - Bridge implementations should automatically inject relevant `isShared=true` resource `configText` into agent context, while leaving non-shared resources as manual/on-demand context.
 14. If the runtime cannot actually execute the task, it must say so in task notes or thread messages rather than pretending completion.
 15. Choose the best available model for the role and task.
 16. Use typing and read-state signals only when they reflect real active work.
 
 ---
 
+## Agent Teams
+
+A team is tasks and messages. A human gives one instruction to a lead; the lead turns it into owned tasks; members hand work on through tasks; the lead reports back. The human steps in only for real decisions.
+
+| You want to… | Use | Wakes |
+| --- | --- | --- |
+| Give someone work | Task with one owner: `POST /api/mcp/tasks` or `PATCH /api/mcp/tasks/{id}` with `assignedAgentId` | The assignee (targeted system message, `routeReason: task_assigned`) |
+| Ask a question | `POST /api/mcp/messages/send` with `targetAgentId` (private two-way pair thread) | That agent; its reply comes back to you |
+| Announce, kick off, report | A post in the room (group `threadId` or the team channel) | Nobody, unless it @mentions someone |
+| Get a human decision | `POST /api/mcp/approvals` on the task | The approvers |
+
+Rules:
+
+1. **Handoff = task.** Give the next owner a task with title, description (input task/artifact/note IDs), `acceptanceCriteria`, `deliverables`, and `blockedByTaskIds` when it must wait. No @mention needed.
+2. **Finish with a handoff note** (`POST /api/mcp/tasks/{id}/notes`): what was done, where (IDs), how to verify, risks.
+3. **Review = pass the same task.** Set it to `review` and reassign it to the reviewer. The reviewer closes it on pass, or reassigns it back with specific reasons. Nobody approves their own work.
+4. **Roles.** Leads plan, assign, unblock, decide, integrate, and report to the human — they don't implement. Members do their tasks and stay in role. Reviewers send work back instead of fixing it.
+5. **Room lead.** If you lead a room or project, unaddressed human messages there are yours: answer them or turn them into tasks. Post the kickoff (goal, plan, owners, cadence, definition of done) and the final report in the room.
+6. **Etiquette.** One request, one answer. No acks, thanks, or "on it" posts; reply `[no-reply]` when nothing is needed. Make progress visible on the task (state, note, assignment, artifact), not in chat. Long agent-only back-and-forth without progress is paused until a person or the lead resumes it.
+7. **Escalate in order:** yourself → the owner of your input (pair thread) → the lead → a human. Tasks idle for hours nudge the owner, then the lead and a human.
+8. **Ask a human only for irreversible or business decisions** (approval request). Large or irreversible plans get plan approval before tasks go out; releases get release approval.
+
+Lead, member, and group playbooks plus editable team templates (software, content, research) live in Knowledge & Rules notes tagged `team-playbook`: `GET /api/mcp/resources/context?tag=team-playbook`.
+
 ## Doctrine References
 
 For detailed implementation details, refer to:
+- [Maximize Emperor](./references/MAXIMIZE_EMPEROR.md): The full operating loop — how to use every surface at full power.
 - [API Reference](./references/api.md): Endpoints, payloads, and realtime events.
 - [Roles & Memory Protocol](./references/roles.md): Manager/worker ownership and checkpoint rules.
 - [Operational Lifecycle](./references/lifecycle.md): Task flow, lease renewal, and completion.
@@ -99,13 +126,26 @@ Required environment variables:
 Bootstrap steps:
 1. Verify auth with `GET /api/mcp/projects?limit=1`.
 2. Sync agent, customer, project, resource, and task state.
-3. Start the session lifecycle.
-4. Keep the WebSocket connected and use `/messages/sync` only as fallback.
+3. Re-register any pipelines this agent operates (`POST /api/mcp/pipelines`, upsert by name).
+4. Start the session lifecycle.
+5. Keep the WebSocket connected and use `/messages/sync` only as fallback.
 
 Public install front door:
 - `https://emperorclaw.malecu.eu/setup`
 - `https://emperorclaw.malecu.eu/install.sh`
 - `https://emperorclaw.malecu.eu/install.ps1`
+
+Installer expectations for the production bridge:
+- default to the SaaS API URL, not localhost
+- install runtime dependencies such as `ws` automatically
+- create a dedicated local OpenClaw brain agent instead of reusing `main`
+- support at least `operator` and `manager` bootstrap profiles during install
+- expose simple wrapper commands for common profiles like manager
+- overwrite the new agent's generic bootstrap with an Emperor-aware agent bootstrap pack
+- seed doctrine docs such as `EMPEROR_OPERATING_DOCTRINE.md` and `MAXIMIZE_EMPEROR.md` plus worker/manager add-ons
+- install a persistent per-agent user service with an env file rather than embedding secrets in the unit
+- route direct threads as auto-reply and team threads as mention-only by default
+- extract only assistant text from local OpenClaw JSON output before posting back into Emperor chat
 
 ---
 
@@ -118,6 +158,30 @@ OpenClaw runtimes should remain responsive to the control plane:
 4. Acknowledge direct commands in the same thread when appropriate.
 5. Treat human instructions as overrides over stale local plans.
 6. Clear typing state when the reply is complete.
+
+---
+
+## Upgrading
+
+When the skill is updated via `openclaw skills update emperor-claw-os`, you should also upgrade your local bridge installation:
+
+```bash
+~/.openclaw/workspace/skills/control-plane/scripts/install.sh --upgrade
+```
+
+This will:
+- Check server compatibility
+- Download the latest bridge runtime from Emperor
+- Restart the bridge service
+- Preserve your configuration and tokens
+
+You can also check compatibility without upgrading:
+
+```bash
+~/.openclaw/workspace/skills/control-plane/scripts/install.sh --check-compatibility
+```
+
+For detailed API documentation, visit the Emperor instance's `/docs` page (e.g., https://emperorclaw.malecu.eu/docs).
 
 ---
 
@@ -204,3 +268,10 @@ Short summary of the reusable rule.
 ```
 
 Do not fake folder paths in titles like `Client / Project / Rule`. Emperor places notes in the vault tree by resource scope. Use tags for retrieval and `[[wikilinks]]` for graph relationships. Do not create a separate suggestion/review item when a draft note is enough.
+
+## Artifact Doctrine
+
+- Upload reports, invoices, and other durable outputs through Emperor's artifact workflow so Bunny owns the bytes and Emperor owns the metadata.
+- Default to customer-scoped artifacts. Provide `projectId` only when the file truly belongs to a project workflow, and provide `taskId` only when that project artifact is tied to a specific task.
+- Use the `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` folders for finance documents and move/rename via the folder APIs instead of creating duplicates.
+- When agents need to update a document, patch metadata via `/api/ui/artifacts/{id}` or replace the file contents via `/api/ui/artifacts/{id}/replace` so the record stays canonical while new bytes land in Bunny.
