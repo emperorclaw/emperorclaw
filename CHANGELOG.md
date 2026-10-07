@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.68] — 2026-10-07
+
+### Added
+- The dashboard is now a live isometric office: KPI row, agents placed in role zones, collaboration paths, a needs-your-attention panel, a work-in-motion board and an activity ticker.
+- A pan/zoom camera on the office (drag, wheel or pinch, +/−/fit controls, keyboard; double-click centres an agent).
+- The selected-agent card embeds a direct chat with the agent, with links to Messages and the agent page.
+- Emperor Claw's own agent characters replace DiceBear everywhere. Looks are stored per agent (`avatar_appearance`); legacy DiceBear seeds are migrated and uploaded photos are kept.
+- `GET /api/avatars/{agentId}` serves an agent's drawing as SVG for external clients (no metadata, cached).
+
+### Changed
+- Agents show what they are doing through small activity cues and eye expressions instead of body motion; animations are desynchronised per agent and pause when off-screen.
+- The dashboard shows agents only; the Everyone/People/My work filter is gone.
+
 ## [0.8.67] — 2026-10-07
 
 ### Added
