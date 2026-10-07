@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
 import { resolveAgentId } from "@/lib/mcp";
@@ -13,6 +13,13 @@ import { resolveAgentId } from "@/lib/mcp";
  */
 
 export const GROUP_THREAD_TYPE = "group";
+/**
+ * Reserved marker for a dedicated two-way thread between two agents. It is a
+ * machine-managed description value, never a user-settable one: `cleanDescription`
+ * rejects it, and a thread only counts as a pair thread when BOTH the marker and
+ * `createdByType === "system"` hold (a user cannot forge the system creator).
+ */
+export const AGENT_PAIR_DESCRIPTION = "agent-pair";
 export const MAX_GROUP_TITLE = 80;
 export const MAX_GROUP_DESCRIPTION = 600;
 export const MAX_GROUP_MEMBERS = 50;
@@ -48,6 +55,8 @@ export interface GroupSummary {
     createdById: string | null;
     createdAt: string;
     members: GroupMember[];
+    /** True when this is a machine-managed two-agent pair thread. */
+    isAgentPair: boolean;
 }
 
 function cleanTitle(value: unknown): string {
@@ -70,6 +79,10 @@ function cleanDescription(value: unknown): string | null {
     if (value === undefined || value === null) return null;
     if (typeof value !== "string") throw new GroupError("description must be a string", 400);
     const description = value.trim();
+    // The pair-thread marker is machine-managed: a user must not be able to turn
+    // an ordinary group into a pair thread (which would let them read/route its
+    // messages without a mention). Reject it outright.
+    if (description === AGENT_PAIR_DESCRIPTION) throw new GroupError("That description is reserved", 400);
     if (description.length > MAX_GROUP_DESCRIPTION) throw new GroupError(`Descriptions are limited to ${MAX_GROUP_DESCRIPTION} characters`, 400);
     return description || null;
 }
@@ -155,31 +168,46 @@ export async function loadGroupMembers(companyId: string, groupIds: string[]): P
 }
 
 function summarize(thread: typeof messageThreads.$inferSelect, members: GroupMember[]): GroupSummary {
+    const isPair = isAgentPairThread(thread);
     return {
         id: thread.id,
         title: thread.title || "Untitled group",
-        description: thread.description,
+        description: isPair ? pairThreadPurpose(members) : thread.description,
         icon: thread.icon ?? null,
         createdByType: thread.createdByType,
         createdById: thread.createdById,
         createdAt: thread.createdAt.toISOString(),
         members,
+        isAgentPair: isPair,
     };
 }
 
-export async function getGroup(companyId: string, groupId: string): Promise<GroupSummary> {
+/** Human-readable purpose for a pair thread — never the raw "agent-pair" marker. */
+export function pairThreadPurpose(members: GroupMember[]): string {
+    const agents = members.filter((m) => m.kind === "agent").map((m) => m.name);
+    if (agents.length >= 2) return `Private agent conversation between ${agents[0]} and ${agents[1]}`;
+    return "Private agent conversation";
+}
+
+export async function getGroup(companyId: string, groupId: string, actor?: GroupActor): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
+    if (actor) await assertCanReadGroup(companyId, thread, actor);
     const members = await loadGroupMembers(companyId, [thread.id]);
     return summarize(thread, members.get(thread.id) ?? []);
 }
 
 /** Every active group, optionally only those an agent belongs to. */
-export async function listGroups(companyId: string, options: { agentId?: string | null } = {}): Promise<GroupSummary[]> {
+export async function listGroups(companyId: string, options: { agentId?: string | null; includePairThreads?: boolean } = {}): Promise<GroupSummary[]> {
     let threads = await db.select().from(messageThreads).where(and(
         eq(messageThreads.companyId, companyId),
         eq(messageThreads.type, GROUP_THREAD_TYPE),
         isNull(messageThreads.archivedAt),
     )).orderBy(asc(messageThreads.title));
+    if (options.includePairThreads === false) {
+        // Pair threads are private agent handoffs; they must not show up in an
+        // unscoped ("everything") listing for any MCP caller.
+        threads = threads.filter((t) => !isAgentPairThread(t));
+    }
     if (options.agentId) {
         const memberOf = await db.select({ threadId: threadParticipants.threadId }).from(threadParticipants).where(and(
             eq(threadParticipants.companyId, companyId),
@@ -271,6 +299,7 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
 
 export async function updateGroup(companyId: string, groupId: string, input: { title?: unknown; description?: unknown; icon?: unknown }): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
+    if (isAgentPairThread(thread)) throw new GroupError("A pair thread cannot be edited", 403);
     const patch: Partial<typeof messageThreads.$inferInsert> = {};
     if (input.title !== undefined) patch.title = cleanTitle(input.title);
     if (input.description !== undefined) patch.description = cleanDescription(input.description);
@@ -281,6 +310,7 @@ export async function updateGroup(companyId: string, groupId: string, input: { t
 
 export async function addGroupMembers(companyId: string, groupId: string, input: { agentIds?: unknown; humanUserIds?: unknown }): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
+    if (isAgentPairThread(thread)) throw new GroupError("A pair thread cannot gain members", 403);
     const agentIds = await resolveAgents(companyId, stringList(input.agentIds, "agentIds"));
     const userIds = await resolveHumans(companyId, stringList(input.humanUserIds, "humanUserIds"));
     if (agentIds.length + userIds.length === 0) throw new GroupError("Nobody to add", 400);
@@ -293,6 +323,7 @@ export async function addGroupMembers(companyId: string, groupId: string, input:
 
 export async function removeGroupMember(companyId: string, groupId: string, member: { kind: unknown; id: unknown }): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
+    if (isAgentPairThread(thread)) throw new GroupError("A pair thread cannot lose members", 403);
     if (typeof member.id !== "string" || !member.id) throw new GroupError("Member id is required", 400);
     if (member.kind === "agent") {
         const agentId = await resolveAgents(companyId, [member.id]).then((ids) => ids[0]);
@@ -316,6 +347,7 @@ export async function removeGroupMember(companyId: string, groupId: string, memb
 
 export async function archiveGroup(companyId: string, groupId: string): Promise<void> {
     const thread = await getGroupThread(companyId, groupId);
+    if (isAgentPairThread(thread)) throw new GroupError("A pair thread cannot be archived", 403);
     await db.update(messageThreads).set({ archivedAt: new Date() }).where(eq(messageThreads.id, thread.id));
 }
 
@@ -329,9 +361,146 @@ export async function isAgentGroupMember(companyId: string, groupId: string, age
     return Boolean(row);
 }
 
+/**
+ * A dedicated two-way thread between two agents. It reuses `message_threads`
+ * with type 'group' (which old runtimes already sync and scope by participant)
+ * and is marked by the reserved `description` AND `createdByType === "system"`.
+ * Both agents are participants, so a message posted by either reaches the
+ * other, and the routing verdict marks it `agent_pair` (addressed without
+ * @mention). Company owners/admins can read it in the Messages UI under groups.
+ */
+export function isAgentPairThread(thread: { description?: string | null; createdByType?: string | null }): boolean {
+    // Both the reserved marker AND a system creator: description alone is
+    // user-settable, so a human/agent-created group with the marker is not a
+    // pair thread (and `cleanDescription` rejects the marker anyway).
+    return thread.description === AGENT_PAIR_DESCRIPTION && thread.createdByType === "system";
+}
+
+function agentPairTitle(nameA: string, nameB: string): string {
+    return `${nameA} ↔ ${nameB}`;
+}
+
+export async function ensureAgentPairThread(companyId: string, agentA: string, agentB: string) {
+    if (agentA === agentB) {
+        throw new Error("Agent pair requires two distinct agents");
+    }
+    const [first, second] = [agentA, agentB].sort();
+
+    return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`agent-pair:${companyId}:${first}:${second}`}))`);
+
+        // A pair thread already exists only if a SYSTEM-created group thread
+        // with the reserved marker has exactly these two agents as participants.
+        const candidates = await tx.select({ threadId: threadParticipants.threadId })
+            .from(threadParticipants)
+            .innerJoin(messageThreads, and(
+                eq(messageThreads.id, threadParticipants.threadId),
+                eq(messageThreads.companyId, companyId),
+                eq(messageThreads.type, GROUP_THREAD_TYPE),
+                eq(messageThreads.description, AGENT_PAIR_DESCRIPTION),
+                eq(messageThreads.createdByType, "system"),
+                isNull(messageThreads.archivedAt),
+            ))
+            .where(and(
+                eq(threadParticipants.companyId, companyId),
+                eq(threadParticipants.participantType, "agent"),
+                eq(threadParticipants.participantId, first),
+            ));
+
+        for (const candidate of candidates) {
+            const [other] = await tx.select({ id: threadParticipants.id })
+                .from(threadParticipants)
+                .where(and(
+                    eq(threadParticipants.companyId, companyId),
+                    eq(threadParticipants.threadId, candidate.threadId),
+                    eq(threadParticipants.participantType, "agent"),
+                    eq(threadParticipants.participantId, second),
+                ))
+                .limit(1);
+            if (!other) continue;
+            // Exactly two AGENT participants: a pair thread counts only its
+            // agents, so a human's read-cursor ("reader") row from opening the
+            // thread must not make it look like it gained a member.
+            const [{ value: total }] = await tx.select({ value: count() }).from(threadParticipants)
+                .where(and(
+                    eq(threadParticipants.companyId, companyId),
+                    eq(threadParticipants.threadId, candidate.threadId),
+                    eq(threadParticipants.participantType, "agent"),
+                ));
+            if (Number(total) !== 2) continue;
+            const [existing] = await tx.select().from(messageThreads)
+                .where(eq(messageThreads.id, candidate.threadId)).limit(1);
+            if (existing) return existing;
+        }
+
+        const [nameA, nameB] = await Promise.all([
+            tx.select({ name: agents.name }).from(agents)
+                .where(and(eq(agents.id, first), eq(agents.companyId, companyId))).limit(1)
+                .then((rows) => rows[0]?.name ?? "Agent"),
+            tx.select({ name: agents.name }).from(agents)
+                .where(and(eq(agents.id, second), eq(agents.companyId, companyId))).limit(1)
+                .then((rows) => rows[0]?.name ?? "Agent"),
+        ]);
+
+        const [created] = await tx.insert(messageThreads).values({
+            companyId,
+            type: GROUP_THREAD_TYPE,
+            title: agentPairTitle(nameA, nameB),
+            description: AGENT_PAIR_DESCRIPTION,
+            createdByType: "system",
+        }).returning();
+
+        await tx.insert(threadParticipants).values([
+            { threadId: created.id, companyId, participantType: "agent", participantId: first, role: "member" },
+            { threadId: created.id, companyId, participantType: "agent", participantId: second, role: "member" },
+        ]);
+
+        return created;
+    });
+}
+
 /** Posting in a group makes a human a member (a reader row is promoted). */
 export async function joinGroupAsHuman(companyId: string, groupId: string, userId: string): Promise<void> {
     await insertMembers(companyId, groupId, [], [userId]);
+}
+
+/** Owners and admins: the only humans allowed to read an agent pair thread. */
+export async function isCompanyOwnerOrAdmin(companyId: string, userId: string): Promise<boolean> {
+    const [row] = await db.select({ role: companyMembers.role }).from(companyMembers)
+        .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId)))
+        .limit(1);
+    return row?.role === "owner" || row?.role === "admin";
+}
+
+/**
+ * A pair thread is a private agent handoff: only its member agents and the
+ * company's owners/admins may read it. Ordinary groups are readable by anyone
+ * in the company, so this is a no-op for them. Operator (system) tokens are
+ * allowed through — they are the company-wide credential that creates and
+ * manages agents.
+ */
+export async function assertCanReadGroup(companyId: string, thread: typeof messageThreads.$inferSelect, actor: GroupActor): Promise<void> {
+    if (!isAgentPairThread(thread)) return;
+    if (actor.type === "agent" && actor.id) {
+        if (!(await isAgentGroupMember(companyId, thread.id, actor.id))) {
+            throw new GroupError("Access denied: that pair thread is private", 403);
+        }
+    } else if (actor.type === "human" && actor.id) {
+        if (!(await isCompanyOwnerOrAdmin(companyId, actor.id))) {
+            throw new GroupError("Access denied: that pair thread is private", 403);
+        }
+    }
+}
+
+/** The other agent participant in a pair thread, or null when there isn't one. */
+export async function pairThreadCounterpart(companyId: string, threadId: string, agentId: string): Promise<string | null> {
+    const [row] = await db.select({ participantId: threadParticipants.participantId }).from(threadParticipants).where(and(
+        eq(threadParticipants.companyId, companyId),
+        eq(threadParticipants.threadId, threadId),
+        eq(threadParticipants.participantType, "agent"),
+        ne(threadParticipants.participantId, agentId),
+    )).limit(1);
+    return row?.participantId ?? null;
 }
 
 export interface GroupListEntry extends GroupSummary {
@@ -342,7 +511,11 @@ export interface GroupListEntry extends GroupSummary {
 
 /** Groups for the Messages sidebar: last message and this user's unread count. */
 export async function listGroupsForUser(companyId: string, userId: string): Promise<GroupListEntry[]> {
-    const groups = await listGroups(companyId);
+    // Pair threads are a private agent handoff. Only owners/admins see them
+    // (read-only); everyone else gets the ordinary groups they belong to.
+    const isAdmin = await isCompanyOwnerOrAdmin(companyId, userId);
+    let groups = await listGroups(companyId);
+    if (!isAdmin) groups = groups.filter((g) => !g.isAgentPair);
     if (groups.length === 0) return [];
     const ids = groups.map((g) => g.id);
     const latest = await db.selectDistinctOn([threadMessages.threadId], { threadId: threadMessages.threadId, text: threadMessages.text, createdAt: threadMessages.createdAt })

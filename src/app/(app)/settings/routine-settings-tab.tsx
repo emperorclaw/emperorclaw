@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconCheck, IconSend, IconSunrise } from "@tabler/icons-react";
+import { IconBook, IconCheck, IconSend, IconSunrise } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
 type Routine = { enabled: boolean; time: string; timezone: string; weekdaysOnly: boolean };
@@ -70,6 +70,19 @@ export function RoutineSettingsTab({ isAdmin }: { isAdmin: boolean }) {
         setBusy(false);
     };
 
+    const [doctrineBusy, setDoctrineBusy] = useState(false);
+    const [doctrineMessage, setDoctrineMessage] = useState<{ ok: boolean; text: string } | null>(null);
+    const runDoctrineUpgrade = async () => {
+        setDoctrineBusy(true);
+        setDoctrineMessage(null);
+        const res = await fetch("/api/settings/starter-doctrine", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        setDoctrineMessage(res.ok
+            ? { ok: true, text: `Updated ${data.updated} note${data.updated === 1 ? "" : "s"}, added ${data.created}, left ${data.suggestions} edited note${data.suggestions === 1 ? "" : "s"} untouched.` }
+            : { ok: false, text: data.error || "Couldn't update the doctrine" });
+        setDoctrineBusy(false);
+    };
+
     if (!routine) return <div className="emperor-panel h-40 animate-pulse rounded-3xl" />;
     const disabled = !isAdmin;
 
@@ -136,6 +149,26 @@ export function RoutineSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                 )}
                 {message && <p role="status" className={cn("mt-3 text-xs", message.ok ? "text-emerald-400" : "text-rose-300")}>{message.text}</p>}
             </article>
+
+            {isAdmin && (
+                <article className="emperor-panel rounded-2xl p-4 sm:rounded-3xl sm:p-6">
+                    <div className="flex items-center gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-cyan-300"><IconBook className="h-4 w-4" /></span>
+                        <div className="min-w-0 flex-1">
+                            <h2 className="text-base font-semibold text-zinc-100">Team doctrine</h2>
+                            <p className="text-xs text-zinc-500">Bring your starter Knowledge &amp; Rules up to the latest operating doctrine.</p>
+                        </div>
+                    </div>
+                    <p className="mt-3 text-sm text-zinc-300">
+                        Adds any new playbooks and templates, updates notes you haven&apos;t edited, and leaves your edited notes untouched with a suggestion instead.
+                    </p>
+                    <button type="button" onClick={() => void runDoctrineUpgrade()} disabled={doctrineBusy}
+                        className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-200 hover:border-cyan-400/40 hover:text-cyan-100 disabled:opacity-50">
+                        <IconSend className="h-3.5 w-3.5" />Update starter doctrine
+                    </button>
+                    {doctrineMessage && <p role="status" className={cn("mt-3 text-xs", doctrineMessage.ok ? "text-emerald-400" : "text-rose-300")}>{doctrineMessage.text}</p>}
+                </article>
+            )}
         </section>
     );
 }

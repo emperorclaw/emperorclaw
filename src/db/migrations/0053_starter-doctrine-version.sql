@@ -1,0 +1,1 @@
+ALTER TABLE "companies" ADD COLUMN "starter_doctrine_json" jsonb;

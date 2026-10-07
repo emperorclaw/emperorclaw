@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "@/db";
-import { messageThreads } from "@/db/schema";
+import { messageThreads, threadParticipants } from "@/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
 import { jsonResult, errorResult } from "../result";
@@ -12,12 +12,37 @@ import {
     getGroup,
     GroupError,
     isAgentGroupMember,
+    isAgentPairThread,
     listGroups,
     removeGroupMember,
     updateGroup,
     type GroupActor,
 } from "@/lib/groups";
 import { resolveAgentId } from "@/lib/mcp";
+
+/**
+ * Private agent pair threads are a two-agent handoff. They must not leak into
+ * an unscoped thread listing: keep one only when the caller agent is one of its
+ * two participants. Operator tokens (no bound agent) see none.
+ */
+async function excludePrivatePairThreads(
+    companyId: string,
+    threads: (typeof messageThreads.$inferSelect)[],
+    callerAgentId: string | null,
+): Promise<(typeof messageThreads.$inferSelect)[]> {
+    const pairs = threads.filter((t) => isAgentPairThread(t));
+    if (pairs.length === 0) return threads;
+    const allowed = new Set<string>();
+    if (callerAgentId) {
+        const membership = await db.select({ threadId: threadParticipants.threadId }).from(threadParticipants).where(and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.participantType, "agent"),
+            eq(threadParticipants.participantId, callerAgentId),
+        ));
+        for (const row of membership) allowed.add(row.threadId);
+    }
+    return threads.filter((t) => !isAgentPairThread(t) || allowed.has(t.id));
+}
 
 export function registerMessagingTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("send_message", {
@@ -50,10 +75,13 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
         try {
             const conditions = [eq(messageThreads.companyId, companyId), isNull(messageThreads.archivedAt)];
             if (type) conditions.push(eq(messageThreads.type, type));
-            const threads = await db.select().from(messageThreads)
+            let threads = await db.select().from(messageThreads)
                 .where(and(...conditions))
                 .orderBy(desc(messageThreads.createdAt))
                 .limit(limit || 50);
+            // Private agent pair threads are never listed except to the caller
+            // agent that is one of their two participants.
+            threads = await excludePrivatePairThreads(companyId, threads, callerAgentId ?? null);
             return jsonResult({ threads });
         } catch (e) {
             return errorResult(e);
@@ -81,11 +109,11 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
 
     server.registerTool("list_groups", {
         title: "List Groups",
-        description: "List group chats with their purpose and members. mine=true returns only groups the calling agent belongs to.",
+        description: "List group chats with their purpose and members. mine=true returns only groups the calling agent belongs to. Private agent pair threads are never listed.",
         inputSchema: { mine: z.boolean().optional() },
     }, async ({ mine }) => {
         try {
-            return jsonResult({ groups: await listGroups(companyId, { agentId: mine ? callerAgentId ?? null : null }) });
+            return jsonResult({ groups: await listGroups(companyId, { agentId: mine ? callerAgentId ?? null : null, includePairThreads: false }) });
         } catch (e) {
             return errorResult(e);
         }
@@ -93,11 +121,11 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
 
     server.registerTool("get_group", {
         title: "Get Group",
-        description: "Get one group chat: name, purpose, and members (agents and humans).",
-        inputSchema: { groupId: z.string() },
-    }, async ({ groupId }) => {
+        description: "Get one group chat: name, purpose, and members (agents and humans). A private pair thread is readable only by its two agents (or an operator).",
+        inputSchema: { groupId: z.string(), agentId: z.string().optional().describe("Calling agent's id or name (operator connections only)") },
+    }, async ({ groupId, agentId }) => {
         try {
-            return jsonResult({ group: await getGroup(companyId, groupId) });
+            return jsonResult({ group: await getGroup(companyId, groupId, await actorFor(agentId)) });
         } catch (e) {
             return errorResult(e);
         }

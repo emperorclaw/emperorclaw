@@ -5,8 +5,8 @@ import { db } from "@/db";
 import { messageThreads } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, getThreadMessages } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { GROUP_THREAD_TYPE, isAgentGroupMember } from "@/lib/groups";
-import { agentLoopHardCap } from "@/lib/message-routing";
+import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
+import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata } from "@/lib/message-routing";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -29,6 +29,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!thread) {
         return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+
+    // Groups (and agent pair threads) are members-only: a bound agent token may
+    // read messages only of the groups it participates in, never snoop another's.
+    if (thread.type === GROUP_THREAD_TYPE) {
+        const boundAgentId = auth.companyToken!.agentId || null;
+        if (boundAgentId && !(await isAgentGroupMember(companyId, thread.id, boundAgentId))) {
+            return NextResponse.json({ error: "Access denied: this agent is not a member of that group" }, { status: 403 });
+        }
     }
 
     const messages = await getThreadMessages(
@@ -68,16 +77,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
 
         // MCP callers authenticate with a company token, not a user session, so
-        // they must never post as a human sender — otherwise an agent could forge
-        // a human message (and the human audit trail that follows it).
-        if (senderType === "human") {
-            return NextResponse.json({ error: "MCP callers cannot post as a human sender" }, { status: 403 });
+        // they must never post as a human or system sender — otherwise an agent
+        // could forge a human message (and the human audit trail that follows it)
+        // or stamp server-only flags like a task wake onto its own message.
+        if (senderType === "human" || senderType === "system") {
+            return NextResponse.json({ error: "MCP callers cannot post as a human or system sender" }, { status: 403 });
         }
 
         const resolvedSenderId = senderType === "agent" && senderId
             ? await resolveAgentId(companyId, senderId)
             : senderId || null;
         const isGroup = thread.type === GROUP_THREAD_TYPE;
+        const isAgentPair = isGroup && isAgentPairThread(thread);
         // Groups are members-only: whoever posts (the token's bound agent, or
         // the named sender) must belong to it, and nothing is single-targeted.
         if (isGroup) {
@@ -90,12 +101,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
             }
         }
-        if (senderType === "agent" && thread.type !== "direct" && (await currentAgentStreak(companyId, thread.id)) >= agentLoopHardCap()) {
+        if (senderType === "agent" && thread.type !== "direct" && (await currentAgentStreak(companyId, thread.id)) >= (isAgentPair ? agentPairLoopHardCap() : agentLoopHardCap())) {
             return NextResponse.json({ error: "Loop guard: too many agent messages in a row in this thread; retry after five minutes of inactivity or ask a person to write" }, { status: 429 });
         }
         const resolvedTargetAgentId = targetAgentId && !isGroup
             ? await resolveAgentId(companyId, targetAgentId)
             : null;
+        // A pair-thread reply carries no targetAgentId, but old runtimes only
+        // understand `targeted`: infer the counterpart so they still route it.
+        const effectiveTargetAgentId = isAgentPair && !resolvedTargetAgentId && resolvedSenderId
+            ? await pairThreadCounterpart(companyId, thread.id, resolvedSenderId)
+            : resolvedTargetAgentId;
         const shouldMirrorToLegacyChat = !isGroup && (mirrorToLegacyChat || thread.type === "team");
 
         const message = await appendThreadMessage({
@@ -103,9 +119,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             threadId,
             senderType,
             senderId: resolvedSenderId,
-            targetAgentId: resolvedTargetAgentId,
+            targetAgentId: effectiveTargetAgentId,
             text,
-            metadataJson: metadataJson || {},
+            metadataJson: stripReservedMetadata(metadataJson),
             mirrorToLegacyChat: shouldMirrorToLegacyChat,
         });
 

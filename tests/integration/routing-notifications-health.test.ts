@@ -34,7 +34,7 @@ maybe("sync carries the server's routing verdict, and the loop guard pauses agen
     assert.equal(forBuilder.routeReason, "mention");
     assert.equal(forMax.addressedToYou, false, "@Max Builder must not wake Max");
 
-    // Agents ping-pong without a person: past the limit the verdict is loop_guard
+    // Agents ping-pong without a person: past the limit the verdict is loop_paused
     // and one visible notice is posted.
     const { agentLoopMaxTurns, agentLoopHardCap } = await import("@/lib/message-routing");
     let last = ask;
@@ -43,7 +43,7 @@ maybe("sync carries the server's routing verdict, and the loop guard pauses agen
         last = await appendThreadMessage({ companyId, threadId: team.id, senderType: "agent", senderId: sender.id, text: `@${i % 2 ? "Max Builder" : "QA"} round ${i}` });
     }
     const forQa = (await syncFor(rawToken, qa.id)).find((m) => m.id === last.id);
-    assert.equal(forQa?.routeReason ?? (await syncFor(rawToken, builder.id)).find((m) => m.id === last.id)?.routeReason, "loop_guard");
+    assert.equal(forQa?.routeReason ?? (await syncFor(rawToken, builder.id)).find((m) => m.id === last.id)?.routeReason, "loop_paused");
     const db = await getDb();
     const { threadMessages } = await getSchema();
     const { eq } = await import("drizzle-orm");

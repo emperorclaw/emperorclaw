@@ -388,10 +388,11 @@ def emperor_add_task_note(args: Dict[str, Any], **_: Any) -> str:
     if not task_id or not note:
         return _json({"error": "taskId and note are required"})
     body: Dict[str, Any] = {"note": note}
+    if args.get("kind") in ("progress", "handoff", "blocker"):
+        body["kind"] = args["kind"]
     if isinstance(args.get("handoff"), dict):
         body["handoff"] = args["handoff"]
-    if args.get("agentId"):
-        body["agentId"] = args.get("agentId")
+    body["agentId"] = args.get("agentId") or _agent_ref()
     return _json(_request("POST", f"/tasks/{urllib.parse.quote(task_id)}/notes", body=body))
 
 
@@ -735,10 +736,11 @@ def register(ctx: Any) -> None:
         "emperor_add_task_note",
         TOOLSET,
         _schema(
-            "Add a progress, blocker, observation, or handoff note to an Emperor task.",
+            "Add a progress, blocker, observation, or handoff note to an Emperor task. Counts as visible progress (resets the loop guard and the stall sweep).",
             {
                 "taskId": {"type": "string"},
                 "note": {"type": "string"},
+                "kind": {"type": "string", "enum": ["progress", "handoff", "blocker"]},
                 "agentId": {"type": "string"},
                 "handoff": {"type": "object"},
             },

@@ -1,0 +1,2 @@
+CREATE INDEX "task_events_company_created_idx" ON "task_events" USING btree ("company_id","created_at");--> statement-breakpoint
+CREATE INDEX "task_events_company_actor_created_idx" ON "task_events" USING btree ("company_id","actor_id","created_at");

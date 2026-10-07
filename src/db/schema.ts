@@ -50,6 +50,10 @@ export const companies = pgTable("companies", {
     agentRoutineJson: jsonb("agent_routine_json").$type<{ enabled?: boolean; time?: string; timezone?: string; weekdaysOnly?: boolean }>(),
     // Local date (YYYY-MM-DD, in the routine's timezone) of the last daily review run.
     agentRoutineLastRunOn: text("agent_routine_last_run_on"),
+    // Starter-doctrine rollout state: the seeded version plus a hash of each
+    // starter note's text (lib/starter-knowledge.ts), so an upgrade can tell an
+    // untouched note from one the company edited.
+    starterDoctrineJson: jsonb("starter_doctrine_json").$type<{ version?: number; hashes?: Record<string, string>; name?: string }>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
@@ -245,6 +249,9 @@ export const agents = pgTable("agents", {
     llmApiKeyEncrypted: text("llm_api_key_encrypted"), // AES-256-GCM ciphertext, encryptSecretPayload() (src/lib/secrets.ts)
     llmApiKeyVersion: text("llm_api_key_version"), // key-rotation version tag paired with llmApiKeyEncrypted
     doctrineJson: jsonb("doctrine_json").default("{}").$type<Record<string, string>>().notNull(),
+    // Machine-managed bookkeeping (e.g. the wake-on-assignment coalescing queue
+    // in src/lib/task-wake.ts), separate from doctrine and scope.
+    metadataJson: jsonb("metadata_json").default("{}").notNull(),
     // Data-visibility scope: restricts which customers/projects (and everything under
     // them — tasks, artifacts, Knowledge & Rules) this agent can read/write via MCP.
     // mode !== 'restricted' (including the default {}) means fully unrestricted —
@@ -528,7 +535,12 @@ export const taskEvents = pgTable("task_events", {
     actorType: text("actor_type").notNull(), // agent | human | system
     actorId: uuid("actor_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    // The progress-aware loop guard filters task events by company + created_at
+    // and company + actor_id + created_at; without these it falls back to scans.
+    companyCreatedIdx: index("task_events_company_created_idx").on(table.companyId, table.createdAt),
+    companyActorCreatedIdx: index("task_events_company_actor_created_idx").on(table.companyId, table.actorId, table.createdAt),
+}));
 
 export const artifacts = pgTable("artifacts", {
       id: uuid("id").primaryKey().defaultRandom(),

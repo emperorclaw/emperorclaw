@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { listTasksForCompany, createTaskForProject, updateTaskForCompany, claimNextTaskForAgent, getTaskOverviewForCompany } from "@/lib/openclaw/tasks";
+import { listTasksForCompany, createTaskForProject, updateTaskForCompany, claimNextTaskForAgent, getTaskOverviewForCompany, addTaskNote } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { jsonResult, errorResult } from "../result";
 import { requestApprovalForTasks } from "@/lib/approvals";
@@ -92,7 +92,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         try {
             const { task } = await createTaskForProject({
                 companyId, projectId, taskType, inputJson, priority, assignee, assignedAgentId,
-                source: "mcp_server", actorType: "agent",
+                source: "mcp_server", actorType: "agent", actorId: callerAgentId ?? null,
             });
             return jsonResult({ message: "Task created", task });
         } catch (e) {
@@ -118,8 +118,27 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson }) => {
         try {
-            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson });
+            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson, actorType: "agent", actorId: callerAgentId ?? null });
             return jsonResult({ message: "Task updated", task });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    server.registerTool("add_task_note", {
+        title: "Add Task Note",
+        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal: it resets the loop guard and the stall sweep, so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes.",
+        inputSchema: {
+            taskId: z.string().describe("The task's UUID"),
+            note: z.string().min(1).describe("What you did, handed off, or what is blocking you"),
+            kind: z.enum(["progress", "handoff", "blocker"]).optional().describe("The kind of note (default progress)"),
+            agentId: z.string().optional().describe("Requesting agent id or name (operator connections only)"),
+        },
+    }, async ({ taskId, note, kind, agentId }) => {
+        try {
+            const actorAgentId = callerAgentId ?? (agentId ? await resolveAgentId(companyId, agentId) : null);
+            const event = await addTaskNote({ companyId, taskId, note, kind: kind ?? "progress", actorAgentId });
+            return jsonResult({ message: "Note added", event });
         } catch (e) {
             return errorResult(e);
         }

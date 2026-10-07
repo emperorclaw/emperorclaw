@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "metadata_json" jsonb DEFAULT '{}' NOT NULL;

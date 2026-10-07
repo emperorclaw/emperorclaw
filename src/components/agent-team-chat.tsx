@@ -52,6 +52,13 @@ function hasStoredReasoning(message: TeamMessage): boolean {
     return (message.metadataJson as Record<string, unknown>).hasReasoning === true;
 }
 
+// A loop-pause notice carries a "Resume" action for a human.
+function isLoopPauseNotice(message: TeamMessage): boolean {
+    if (!message.metadataJson || typeof message.metadataJson !== "object") return false;
+    const meta = message.metadataJson as Record<string, unknown>;
+    return meta.loopGuard === true && meta.resumable === true;
+}
+
 type TeamParticipant = {
     participantType: "human" | "agent" | "system" | string;
     participantId?: string | null;
@@ -381,6 +388,19 @@ export function AgentTeamChat({
         return agent ? agent.name : "Unknown Agent";
     };
 
+    const handleResume = async () => {
+        if (!readThreadId) return;
+        try {
+            await fetch("/api/chat/loop-resume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ threadId: readThreadId }),
+            });
+        } catch (err) {
+            console.error("Failed to resume the conversation", err);
+        }
+    };
+
     const now = Date.now();
     const typingAgents = participants
         .filter(p => p.participantType === "agent" && p.typingUntil && new Date(p.typingUntil).getTime() > now)
@@ -478,6 +498,7 @@ export function AgentTeamChat({
                             const isOwn = isHuman && senderId === currentUserId;
                             const messageAttachments = getMessageAttachments(msg);
                             const isRich = !isHuman && hasRichBlocks(msg.text);
+                            const isPauseNotice = isLoopPauseNotice(msg);
 
                             return (
                                 <div
@@ -545,6 +566,15 @@ export function AgentTeamChat({
                                                     >
                                                         <ParsedMessage text={msg.text} />
                                                     </AgentMessageActions>
+                                                )}
+                                                {isPauseNotice && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleResume}
+                                                        className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 transition-colors hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                                                    >
+                                                        Resume
+                                                    </button>
                                                 )}
                                                 {messageAttachments.length > 0 && (
                                                     <div className="mt-2 flex flex-col gap-1.5">

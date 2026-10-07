@@ -4,6 +4,7 @@ import {
     agentMemorySnapshots,
     agentSessions,
     agents,
+    artifacts,
     chatMessages,
     companies,
     companyMembers,
@@ -11,17 +12,20 @@ import {
     integrationSecretVersions,
     messageThreads,
     runtimeNodes,
+    taskEvents,
+    tasks,
     threadMessageReasoning,
     threadMessages,
     threadParticipants,
     users,
 } from "@/db/schema";
-import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
-import { agentLoopMaxTurns, AGENT_LOOP_COOLDOWN_MS } from "./message-routing";
-import { notifyAgentMessage } from "./notifications";
+import { agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, noteProgressResets, type AgentStreakState } from "./message-routing";
+import { notifyAgentMessage, notify, companyAdminIds } from "./notifications";
+import { isAgentPairThread } from "./groups";
 
 type SenderType = "human" | "agent" | "system";
 
@@ -238,10 +242,13 @@ export async function markThreadRead(companyId: string, threadId: string, userId
     } else {
         // Only threads of this company. Opening a group records a read cursor
         // but doesn't make you a member: that happens when you post or are added.
-        const [thread] = await db.select({ type: messageThreads.type }).from(messageThreads)
+        const [thread] = await db.select({ type: messageThreads.type, description: messageThreads.description, createdByType: messageThreads.createdByType }).from(messageThreads)
             .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
             .limit(1);
         if (!thread) return;
+        // A pair thread is a private two-agent handoff: a human opening it must
+        // not gain a reader row (which would look like a third participant).
+        if (thread.type === "group" && isAgentPairThread(thread)) return;
         await db.insert(threadParticipants).values({
             threadId,
             companyId,
@@ -374,51 +381,250 @@ export async function getThreadMessageReasoning(companyId: string, messageId: st
     return row ?? null;
 }
 
+/** Task events that are never progress (they neither state nor assign work). */
+const NOTE_EVENT_TYPES = ["task_note", "task_handoff"] as const;
+const NON_PROGRESS_EVENT_TYPES = ["stall_nudge", "stall_escalation", "task_note", "task_handoff"] as const;
+
+export type ThreadProgressTimestamps = {
+    /** Task state/assignee changes, task creation, and delivered artifacts. */
+    core: Date[];
+    /** Task notes eligible to reset the streak (task linked to the thread, or its assignee is a thread agent). */
+    notes: Date[];
+};
+
 /**
- * Consecutive agent-authored messages at the end of a thread (0 when the
- * last counted message is a human's). System notices neither count nor reset.
+ * The agent actors whose progress counts for a thread. Team threads have no
+ * agent participant rows (agents only get a row for their direct thread), so
+ * their actor set is derived from the thread's recent agent senders, falling
+ * back to all company agents. Other thread types use participant rows.
+ */
+async function threadAgentActorIds(companyId: string, threadId: string, threadType: string): Promise<string[]> {
+    if (threadType === "team") {
+        const recent = await db.select({ senderId: threadMessages.senderId })
+            .from(threadMessages)
+            .where(and(
+                eq(threadMessages.companyId, companyId),
+                eq(threadMessages.threadId, threadId),
+                eq(threadMessages.senderType, "agent"),
+            ))
+            .orderBy(desc(threadMessages.createdAt))
+            .limit(50);
+        const ids = [...new Set(recent.map((r) => r.senderId).filter((id): id is string => Boolean(id)))];
+        if (ids.length > 0) return ids;
+        const all = await db.select({ id: agents.id }).from(agents)
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+        return all.map((a) => a.id);
+    }
+    const participants = await db.select({ participantId: threadParticipants.participantId })
+        .from(threadParticipants)
+        .where(and(
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.threadId, threadId),
+            eq(threadParticipants.participantType, "agent"),
+        ));
+    return participants.map((p) => p.participantId).filter((id): id is string => Boolean(id));
+}
+
+async function fetchThreadProgress(companyId: string, threadId: string, threadType: string, since: Date): Promise<ThreadProgressTimestamps> {
+    const actorIds = await threadAgentActorIds(companyId, threadId, threadType);
+    if (actorIds.length === 0) return { core: [], notes: [] };
+
+    const [thread] = await db.select({ taskId: messageThreads.taskId }).from(messageThreads)
+        .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))).limit(1);
+    const threadTaskId = thread?.taskId ?? null;
+
+    const [coreEvents, noteEvents, artifactRows] = await Promise.all([
+        db.select({ at: taskEvents.createdAt })
+            .from(taskEvents)
+            .where(and(
+                eq(taskEvents.companyId, companyId),
+                gte(taskEvents.createdAt, since),
+                notInArray(taskEvents.eventType, [...NON_PROGRESS_EVENT_TYPES]),
+                inArray(taskEvents.actorId, actorIds),
+            )),
+        db.select({ at: taskEvents.createdAt })
+            .from(taskEvents)
+            .innerJoin(tasks, eq(tasks.id, taskEvents.taskId))
+            .where(and(
+                eq(taskEvents.companyId, companyId),
+                gte(taskEvents.createdAt, since),
+                inArray(taskEvents.eventType, [...NOTE_EVENT_TYPES]),
+                inArray(taskEvents.actorId, actorIds),
+                or(
+                    threadTaskId ? eq(tasks.id, threadTaskId) : undefined,
+                    inArray(tasks.assignedAgentId, actorIds),
+                ),
+            )),
+        db.select({ at: artifacts.createdAt })
+            .from(artifacts)
+            .where(and(
+                eq(artifacts.companyId, companyId),
+                gte(artifacts.createdAt, since),
+                eq(artifacts.createdByType, "agent"),
+                inArray(artifacts.createdById, actorIds),
+            )),
+    ]);
+
+    return {
+        core: [
+            ...coreEvents.map((r) => r.at),
+            ...artifactRows.map((r) => r.at),
+        ],
+        notes: noteEvents.map((r) => r.at),
+    };
+}
+
+// A short per-thread cache: the progress lookup runs on every agent message
+// post and every sync cycle, so a few seconds of reuse avoids a UNION/join on
+// every single message. Bounded so it never grows without limit.
+const PROGRESS_CACHE_TTL_MS = 3_000;
+const PROGRESS_CACHE_MAX_ENTRIES = 1_000;
+const progressCache = new Map<string, { at: number; windowStart: number; core: Date[]; notes: Date[] }>();
+
+/**
+ * Progress since `since` for a thread, split into core (state/assignee changes,
+ * task creation, artifacts) and notes (task notes). Notes are returned raw here
+ * — the caller enforces the "at most one note reset per N messages" cap because
+ * that needs the message timeline.
+ */
+export async function progressTimestampsForThread(companyId: string, threadId: string, since: Date): Promise<ThreadProgressTimestamps> {
+    try {
+        const [threadType] = await db.select({ type: messageThreads.type }).from(messageThreads)
+            .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))).limit(1)
+            .then((rows) => rows.map((r) => r.type));
+        if (!threadType) return { core: [], notes: [] };
+
+        const key = `${companyId}:${threadId}`;
+        const now = Date.now();
+        const cached = progressCache.get(key);
+        if (cached && now - cached.at < PROGRESS_CACHE_TTL_MS && cached.windowStart <= since.getTime()) {
+            return {
+                core: cached.core.filter((d) => d.getTime() >= since.getTime()),
+                notes: cached.notes.filter((d) => d.getTime() >= since.getTime()),
+            };
+        }
+
+        const result = await fetchThreadProgress(companyId, threadId, threadType, since);
+        if (progressCache.size >= PROGRESS_CACHE_MAX_ENTRIES) progressCache.clear();
+        progressCache.set(key, { at: now, windowStart: since.getTime(), ...result });
+        return result;
+    } catch (error) {
+        console.warn("[loop-guard] progress lookup failed:", error instanceof Error ? error.message : error);
+        return { core: [], notes: [] };
+    }
+}
+
+/**
+ * Consecutive agent-authored messages at the end of a thread with no progress
+ * (0 when the last counted message is a human's, a resume marker, or after a
+ * task state change / note / artifact). System notices neither count nor reset.
  */
 export async function currentAgentStreak(companyId: string, threadId: string, window = 100): Promise<number> {
-    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt })
+    return (await currentAgentStreakState(companyId, threadId, window)).streak;
+}
+
+/**
+ * The current streak and the moment it last reset, for a thread. The reset
+ * time is the point the current streak started counting from: a human message,
+ * a resume marker, a progress event, or a cooldown gap. It is what lets the
+ * loop-guard notice be posted exactly once per pause rather than once per
+ * resume marker.
+ */
+export async function currentAgentStreakState(companyId: string, threadId: string, window = 100): Promise<AgentStreakState> {
+    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt, metadataJson: threadMessages.metadataJson })
         .from(threadMessages)
         .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId)))
         .orderBy(desc(threadMessages.createdAt))
         .limit(window);
-    let streak = 0;
-    let lastActivity = Date.now();
-    for (const m of tail) {
-        if (m.senderType === "system") continue;
-        if (lastActivity - m.createdAt.getTime() >= AGENT_LOOP_COOLDOWN_MS) break;
-        lastActivity = m.createdAt.getTime();
-        if (m.senderType === "human") break;
-        if (m.senderType === "agent") streak += 1;
-    }
-    return streak;
+    if (tail.length === 0) return { streak: 0, resetAt: 0 };
+    const ordered = tail.reverse();
+    const since = new Date(ordered[0].createdAt.getTime() - AGENT_LOOP_COOLDOWN_MS);
+    const { core, notes } = await progressTimestampsForThread(companyId, threadId, since);
+    const msgs = ordered.map((m) => ({ id: m.id, senderType: m.senderType, createdAt: m.createdAt, resumes: isLoopGuardResume(m.metadataJson) }));
+    return agentStreakState(msgs, [...core, ...noteProgressResets(msgs, notes)]);
 }
 
 /**
  * The moment a shared thread's agent streak passes the routing limit, post one
- * visible notice. Runtimes stop answering at that point (the server's routing
- * verdict says "loop_guard"), so without it the silence would be unexplained.
+ * visible pause notice. Runtimes stop answering at that point (the server's
+ * routing verdict says "loop_paused"), so without it the silence would be
+ * unexplained. Posted exactly once per pause: the streak only crosses the
+ * threshold on the message that first exceeds it.
  */
 async function postLoopGuardNoticeIfNeeded(companyId: string, threadId: string) {
     try {
-        const max = agentLoopMaxTurns();
-        const [thread] = await db.select({ type: messageThreads.type }).from(messageThreads)
+        const [thread] = await db.select({ id: messageThreads.id, type: messageThreads.type, description: messageThreads.description, createdByType: messageThreads.createdByType, projectId: messageThreads.projectId })
+            .from(messageThreads)
             .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))).limit(1);
         if (!thread || thread.type === "direct") return;
-        if ((await currentAgentStreak(companyId, threadId, max + 5)) !== max + 1) return;
-        await db.insert(threadMessages).values({
-            threadId,
-            companyId,
-            senderType: "system",
-            text: `Agent replies are paused in this thread: agents posted ${max + 1} messages in a row without a person. Replies can resume after five minutes of inactivity, or immediately when a person writes.`,
-            metadataJson: { loopGuard: true, maxAgentTurns: max },
-            deliveryState: "resolved",
+        const isPair = isAgentPairThread(thread);
+        const max = agentLoopMaxTurnsFor(isPair);
+
+        // Compute the streak (and when it last reset) BEFORE opening the
+        // transaction, so the check-and-insert never holds two pool connections.
+        const state = await currentAgentStreakState(companyId, threadId, max + 5);
+        if (state.streak !== max + 1) return null;
+        const resetAt = new Date(state.resetAt);
+
+        // Post exactly once per pause, even when two agent posts cross the
+        // threshold concurrently. The advisory lock serialises check-and-insert;
+        // a second caller re-checks and sees the notice (a system message, which
+        // neither counts nor resets the streak) already there for THIS pause.
+        // "Already noticed" compares against the latest streak reset — a human
+        // message, a resume marker, progress, or a cooldown gap — so a streak
+        // that resets and re-crosses the threshold gets a fresh notice.
+        const notice = await db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`loop-guard-notice:${companyId}:${threadId}`}))`);
+            const [existing] = await tx.select({ id: threadMessages.id })
+                .from(threadMessages)
+                .where(and(
+                    eq(threadMessages.threadId, threadId),
+                    eq(threadMessages.companyId, companyId),
+                    sql`${threadMessages.metadataJson}->>'loopGuard' = 'true'`,
+                    sql`${threadMessages.createdAt} > ${resetAt}`,
+                ))
+                .limit(1);
+            if (existing) return null;
+            const [row] = await tx.insert(threadMessages).values({
+                threadId,
+                companyId,
+                senderType: "system",
+                text: `Paused: ${max + 1} agent messages in a row without progress. A human or the lead can resume.`,
+                metadataJson: { loopGuard: true, maxAgentTurns: max, resumable: true },
+                deliveryState: "resolved",
+            }).returning();
+            return row;
         });
+        if (!notice) return;
+        await notifyLoopPaused(companyId, thread, max).catch((error) => {
+            console.warn("[loop-guard] notification failed:", error instanceof Error ? error.message : error);
+        });
+        return notice;
     } catch (error) {
         console.warn("Loop-guard notice failed:", error instanceof Error ? error.message : error);
+        return null;
     }
+}
+
+/**
+ * Tell the people (and, when known, the lead agent) that a thread was paused.
+ * Fires once per pause, with a dedupe key so it never spams.
+ */
+async function notifyLoopPaused(
+    companyId: string,
+    thread: { id: string; type: string; projectId: string | null },
+    max: number,
+): Promise<void> {
+    const title = thread.type === "group" ? `Agent conversation paused` : `Team chat paused`;
+    await notify(companyId, await companyAdminIds(companyId), {
+        kind: "loop_paused",
+        title,
+        body: `${max + 1} agent messages in a row without progress. A human or the lead can resume it.`,
+        link: `/messages`,
+        sourceType: "message_thread",
+        sourceId: thread.id,
+        dedupeKey: `loop_paused:${thread.id}`,
+    });
 }
 
 export async function appendThreadMessage(input: {

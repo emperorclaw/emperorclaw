@@ -1476,5 +1476,149 @@ class TestLiveProfile(unittest.TestCase):
         self.assertNotIn("note 0 ", text)
 
 
+class TestPromptEconomics(unittest.TestCase):
+    """Static/dynamic prompt split: the static block is sent once per session."""
+
+    def _run(self, state, message=None, roster="ROSTER"):
+        import subprocess
+        from unittest.mock import patch
+        stream = '{"type": "result", "session_id": "sess-1", "text": "ACK"}'
+        completed = subprocess.CompletedProcess(["hermes"], 0, stream, "")
+        with patch.object(bridge, "format_agent_roster", return_value=roster), \
+             patch.object(bridge, "fetch_company_brain_context", return_value={"sources": []}), \
+             patch.object(bridge, "is_direct_thread", return_value=False), \
+             patch.object(bridge, "format_main_chat_context", return_value=""), \
+             patch.object(bridge, "format_group_context", return_value=""), \
+             patch.object(bridge, "format_my_open_tasks", return_value="MY TASKS"), \
+             patch.object(bridge, "refresh_live_profile"), \
+             patch.object(bridge, "current_instructions", return_value=""), \
+             patch.object(bridge, "format_memory_context", return_value=""), \
+             patch.object(bridge, "invoke_hermes", return_value=completed) as invoke:
+            bridge.run_hermes(message or {"threadId": "t1", "threadType": "team", "text": "hello"}, state)
+            return invoke.call_args.args[0]
+
+    def test_first_turn_sends_static_and_resumed_turn_skips_it(self):
+        state = {}
+        cmd1 = self._run(state)
+        prompt1 = cmd1[cmd1.index("-q") + 1]
+        self.assertIn("ROSTER", prompt1)
+        self.assertIn("MY TASKS", prompt1)
+        self.assertNotIn("--resume", cmd1)
+
+        cmd2 = self._run(state)
+        prompt2 = cmd2[cmd2.index("-q") + 1]
+        self.assertIn("--resume", cmd2)
+        self.assertIn("MY TASKS", prompt2, "the dynamic block repeats every turn")
+        self.assertNotIn("ROSTER", prompt2, "the static block must not repeat on a resumed turn")
+
+    def test_reprimes_when_static_block_changes(self):
+        state = {}
+        self._run(state)
+        cmd = self._run(state, roster="ROSTER-V2")
+        prompt = cmd[cmd.index("-q") + 1]
+        self.assertIn("ROSTER-V2", prompt)
+
+    def test_rotates_after_max_turns(self):
+        state = {
+            "sessions": {"TestAgent:t1": "old-session"},
+            "primed": {"TestAgent:t1": {"staticHash": "x", "turns": bridge.SESSION_MAX_TURNS, "startedAt": 0.0}},
+        }
+        cmd = self._run(state)
+        self.assertNotIn("--resume", cmd, "a rotated session starts fresh")
+        prompt = cmd[cmd.index("-q") + 1]
+        self.assertIn("ROSTER", prompt, "a fresh session sends the static block again")
+
+    def test_roster_shows_role_and_skills(self):
+        from unittest.mock import patch
+        with patch.object(bridge, "fetch_agent_roster", return_value=[
+            {"id": "1", "name": "Ada", "role": "developer", "skillsJson": ["web", "api"]},
+        ]):
+            roster = bridge.format_agent_roster("2")
+        self.assertIn("developer", roster)
+        self.assertIn("web", roster)
+        self.assertIn("@Ada", roster)
+
+    def test_open_tasks_lists_active_and_skips_done(self):
+        from unittest.mock import patch
+        payload = {"tasks": [
+            {"id": "t1", "state": "in_progress", "taskType": "write", "assignedAgentId": bridge.AGENT_ID, "inputJson": {"title": "Write the report"}},
+            {"id": "t2", "state": "done", "taskType": "x", "assignedAgentId": bridge.AGENT_ID, "inputJson": {"title": "Closed"}},
+        ]}
+        with patch.object(bridge, "api", return_value=payload):
+            text = bridge.format_my_open_tasks()
+        self.assertIn("Write the report", text)
+        self.assertIn("t1", text)
+        self.assertNotIn("t2", text)
+        self.assertNotIn("Closed", text)
+
+    def test_open_tasks_filters_out_other_agents_tasks(self):
+        """Old servers ignore the assignedAgentId query filter; the bridge must
+        still only show THIS agent's tasks."""
+        from unittest.mock import patch
+        payload = {"tasks": [
+            {"id": "mine", "state": "in_progress", "taskType": "write", "assignedAgentId": bridge.AGENT_ID, "inputJson": {"title": "My task"}},
+            {"id": "theirs", "state": "in_progress", "taskType": "write", "assignedAgentId": "other-agent-id", "inputJson": {"title": "Their task"}},
+            {"id": "unassigned", "state": "in_progress", "taskType": "write", "inputJson": {"title": "No assignee"}},
+        ]}
+        with patch.object(bridge, "api", return_value=payload):
+            text = bridge.format_my_open_tasks()
+        self.assertIn("My task", text)
+        self.assertNotIn("Their task", text)
+        self.assertNotIn("unassigned", text)
+
+    def test_open_tasks_sanitizes_and_quotes_titles(self):
+        from unittest.mock import patch
+        payload = {"tasks": [
+            {"id": "t1", "state": "in_progress", "taskType": "write", "assignedAgentId": bridge.AGENT_ID,
+             "inputJson": {"title": "multi\nline   title"}},
+        ]}
+        with patch.object(bridge, "api", return_value=payload):
+            text = bridge.format_my_open_tasks()
+        self.assertIn('"multi line title"', text)
+        self.assertNotIn("multi\nline", text)
+
+    def test_clean_task_text_collapses_and_caps(self):
+        self.assertEqual(bridge.clean_task_text("a\n\n  b   c"), "a b c")
+        self.assertLessEqual(len(bridge.clean_task_text("x" * 500)), bridge.MAX_TASK_TEXT_CHARS)
+        self.assertEqual(bridge.clean_task_text(""), "")
+
+    def test_fresh_session_without_resume_id_is_primed(self):
+        """A dropped session (no resume id) must still send the static block.
+
+        Simulates the "Session not found" recovery: the session id is popped but
+        the primed entry (with a matching static hash) survives. Without the
+        `not resume_id` guard, that fresh session would skip the static block.
+        """
+        state = {}
+        self._run(state)  # primes the session with the real static hash
+        state["sessions"] = {}  # the session id is gone; primed entry remains
+        cmd = self._run(state)
+        self.assertNotIn("--resume", cmd)
+        prompt = cmd[cmd.index("-q") + 1]
+        self.assertIn("ROSTER", prompt, "a fresh session with no resume id is primed with the static block")
+
+    def test_open_tasks_graceful_fallback(self):
+        from unittest.mock import patch
+        with patch.object(bridge, "api", side_effect=RuntimeError("offline")):
+            self.assertEqual(bridge.format_my_open_tasks(), "")
+        with patch.object(bridge, "api", return_value={"tasks": []}):
+            self.assertIn("none", bridge.format_my_open_tasks())
+
+
+class TestOperatingGuideFallback(unittest.TestCase):
+    """The built-in fallback guide must not teach @mention delegation."""
+
+    def test_builtin_does_not_teach_mention_delegation(self):
+        guide = bridge.BUILTIN_OPERATING_GUIDE
+        for phrase in ("send one concrete @SiblingName", "look up GET /agents", "@SiblingName request"):
+            self.assertNotIn(phrase, guide)
+        self.assertIn("assign it a task", guide)
+        self.assertIn("targetAgentId", guide)
+
+    def test_builtin_matches_packaged_doctrine_on_ownership(self):
+        self.assertIn("Every task has exactly one owner", bridge.BUILTIN_OPERATING_GUIDE)
+        self.assertIn("A chat @mention is not an assignment", bridge.BUILTIN_OPERATING_GUIDE)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

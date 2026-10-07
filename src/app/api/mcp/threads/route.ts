@@ -4,7 +4,7 @@ import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { messageThreads, threadParticipants, projects, tasks } from "@/db/schema";
 import { ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
-import { createGroup, GroupError, GROUP_THREAD_TYPE } from "@/lib/groups";
+import { createGroup, GroupError, GROUP_THREAD_TYPE, isAgentPairThread } from "@/lib/groups";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -17,9 +17,20 @@ export async function GET(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
-    const agentId = searchParams.get("agentId");
     const projectId = searchParams.get("projectId");
     const taskId = searchParams.get("taskId");
+
+    // A token bound to an agent may only list that agent's own threads — its
+    // direct thread and the pair threads it participates in — never another
+    // agent's pair threads. An unbound (company-wide) token keeps the old
+    // behaviour: agentId scopes the listing, or everything when omitted.
+    let agentId: string | null;
+    try {
+        agentId = await resolveBoundAgentId(companyId, auth.companyToken!, searchParams.get("agentId"));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Access denied";
+        return NextResponse.json({ error: message }, { status: message.startsWith("Access denied") ? 403 : 500 });
+    }
 
     const conditions = [
         eq(messageThreads.companyId, companyId),
@@ -33,7 +44,10 @@ export async function GET(req: NextRequest) {
     const threads = await db.select().from(messageThreads).where(and(...conditions));
 
     if (!agentId) {
-        return NextResponse.json({ threads });
+        // No participant scoping → an everything-listing. Private agent pair
+        // threads are excluded from it; a caller sees them only via its own
+        // participant-scoped query (agentId=…) or via message sync.
+        return NextResponse.json({ threads: threads.filter((thread) => !isAgentPairThread(thread)) });
     }
 
     const participants = await db.select().from(threadParticipants).where(

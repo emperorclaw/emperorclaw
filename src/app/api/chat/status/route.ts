@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { threadParticipants } from "@/db/schema";
+import { messageThreads, threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
 import { markThreadRead, updateThreadExecutionState } from "@/lib/control-plane";
+import { isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 
 export async function POST(req: NextRequest) {
     const companyId = await getCompanyId();
@@ -18,6 +19,15 @@ export async function POST(req: NextRequest) {
 
         let markedReadAt: Date | undefined;
         if (markRead) {
+            // A pair thread is a private two-agent handoff: only owners/admins
+            // may open (and thereby mark) it. Everyone else is refused.
+            const [thread] = await db.select({ type: messageThreads.type, description: messageThreads.description, createdByType: messageThreads.createdByType })
+                .from(messageThreads)
+                .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
+                .limit(1);
+            if (thread && isAgentPairThread(thread) && !(await isCompanyOwnerOrAdmin(companyId, userId))) {
+                return NextResponse.json({ error: "Access denied: that pair thread is private" }, { status: 403 });
+            }
             // Blind UPDATE can no-op: the shared team thread never gets a
             // human threadParticipants row from ensureTeamThread, so this
             // finds-or-creates it instead.

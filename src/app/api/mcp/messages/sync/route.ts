@@ -3,9 +3,10 @@ import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
-import { GROUP_THREAD_TYPE, loadGroupMembers } from "@/lib/groups";
-import { agentStreaks, decideDelivery, type RouteDecision } from "@/lib/message-routing";
+import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpose } from "@/lib/groups";
+import { agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, decideDelivery, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
+import { progressTimestampsForThread } from "@/lib/control-plane";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -160,7 +161,7 @@ export async function GET(req: NextRequest) {
                     const { threadInfo, threads } = await describeThreads(companyId, filtered.map((m) => m.threadId))
                         .catch((error) => {
                             console.warn("Thread details unavailable for sync:", error instanceof Error ? error.message : error);
-                            return { threadInfo: new Map<string, { type: string; title: string | null }>(), threads: {} };
+                            return { threadInfo: new Map<string, { type: string; title: string | null; description: string | null; isAgentPair: boolean }>(), threads: {} };
                         });
                     // The server's verdict on who answers each message, so every
                     // runtime routes the same way (see lib/message-routing.ts).
@@ -179,6 +180,7 @@ export async function GET(req: NextRequest) {
                             ...m,
                             threadType: threadInfo.get(m.threadId)?.type ?? null,
                             threadTitle: threadInfo.get(m.threadId)?.title ?? null,
+                            isAgentPair: threadInfo.get(m.threadId)?.isAgentPair ?? false,
                             ...(routing?.get(m.id) ?? {}),
                         })),
                     });
@@ -201,23 +203,27 @@ export async function GET(req: NextRequest) {
 
 async function describeThreads(companyId: string, threadIds: string[]) {
     const ids = [...new Set(threadIds.filter(Boolean))];
-    const threadInfo = new Map<string, { type: string; title: string | null }>();
+    const threadInfo = new Map<string, { type: string; title: string | null; description: string | null; isAgentPair: boolean }>();
     const threads: Record<string, { id: string; type: string; title: string | null; description: string | null; members: { kind: string; id: string; name: string; role: string }[] }> = {};
     if (ids.length === 0) return { threadInfo, threads };
-    const rows = await db.select({ id: messageThreads.id, type: messageThreads.type, title: messageThreads.title, description: messageThreads.description })
+    const rows = await db.select({ id: messageThreads.id, type: messageThreads.type, title: messageThreads.title, description: messageThreads.description, createdByType: messageThreads.createdByType })
         .from(messageThreads)
         .where(and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, ids)));
-    for (const row of rows) threadInfo.set(row.id, { type: row.type, title: row.title });
+    for (const row of rows) threadInfo.set(row.id, { type: row.type, title: row.title, description: row.description, isAgentPair: isAgentPairThread(row) });
     const groupIds = rows.filter((r) => r.type === GROUP_THREAD_TYPE).map((r) => r.id);
     if (groupIds.length) {
         const members = await loadGroupMembers(companyId, groupIds);
         for (const row of rows.filter((r) => r.type === GROUP_THREAD_TYPE)) {
+            const rowMembers = members.get(row.id) ?? [];
+            // Never expose the raw "agent-pair" marker as the purpose: give the
+            // agent a readable description while keeping the isAgentPair flag.
+            const description = isAgentPairThread(row) ? pairThreadPurpose(rowMembers) : row.description;
             threads[row.id] = {
                 id: row.id,
                 type: row.type,
                 title: row.title,
-                description: row.description,
-                members: (members.get(row.id) ?? []).map(({ kind, id, name, role }) => ({ kind, id, name, role })),
+                description,
+                members: rowMembers.map(({ kind, id, name, role }) => ({ kind, id, name, role })),
             };
         }
     }
@@ -229,12 +235,14 @@ async function routeForAgent(
     companyId: string,
     agentId: string,
     messages: (typeof threadMessages.$inferSelect)[],
-    threadInfo: Map<string, { type: string; title: string | null }>,
+    threadInfo: Map<string, { type: string; title: string | null; description: string | null; isAgentPair: boolean }>,
 ): Promise<Map<string, RouteDecision>> {
     const roster = await db.select({ id: agents.id, name: agents.name }).from(agents)
         .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 
     // Consecutive-agent streaks per thread, from the recent tail of each thread.
+    // Progress (task state changes, notes, artifacts) by the thread's agent
+    // participants resets the streak, so cooperative work never trips the guard.
     const streaks = new Map<string, number>();
     const byThread = new Map<string, Date>();
     for (const m of messages) {
@@ -243,22 +251,31 @@ async function routeForAgent(
     }
     await Promise.all([...byThread.entries()].map(async ([threadId, latest]) => {
         if (threadInfo.get(threadId)?.type === "direct") return;
-        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt })
+        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt, metadataJson: threadMessages.metadataJson })
             .from(threadMessages)
             .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId), lte(threadMessages.createdAt, latest)))
             .orderBy(desc(threadMessages.createdAt))
             .limit(200);
-        for (const [id, streak] of agentStreaks(tail.reverse())) streaks.set(id, streak);
+        const ordered = tail.reverse();
+        const since = new Date((ordered[0]?.createdAt.getTime() ?? latest.getTime()) - AGENT_LOOP_COOLDOWN_MS);
+        const { core, notes } = await progressTimestampsForThread(companyId, threadId, since);
+        const msgs = ordered.map((m) => ({ id: m.id, senderType: m.senderType, createdAt: m.createdAt, resumes: isLoopGuardResume(m.metadataJson) }));
+        for (const [id, streak] of agentStreaks(msgs, [...core, ...noteProgressResets(msgs, notes)])) streaks.set(id, streak);
     }));
 
     const verdicts = new Map<string, RouteDecision>();
     for (const m of messages) {
+        const info = threadInfo.get(m.threadId);
+        const metadata = (m.metadataJson && typeof m.metadataJson === "object" ? m.metadataJson : {}) as Record<string, unknown>;
         verdicts.set(m.id, decideDelivery({
             agentId,
             message: { senderType: m.senderType, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text },
-            threadType: threadInfo.get(m.threadId)?.type ?? null,
+            threadType: info?.type ?? null,
             roster,
             agentStreak: streaks.get(m.id) ?? 0,
+            maxAgentTurns: agentLoopMaxTurnsFor(Boolean(info?.isAgentPair)),
+            isAgentPair: info?.isAgentPair ?? false,
+            taskAssignedWake: metadata.taskAssigned === true,
         }));
     }
     return verdicts;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -93,6 +94,21 @@ MAX_REPLY_FORMAT_GUIDE_CHARS = 1600
 # team thread with no human message in between, stop invoking Hermes and post
 # one pause notice instead, until a human message resets the counter.
 LOOP_GUARD_MAX_AGENT_TURNS = int(os.environ.get("EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS", "3"))
+
+# ── Prompt economics: static/dynamic split ───────────────────────────────────
+# The static block (operating guide, messaging/storage/lookup rules, roster,
+# brain context, role instructions, memory) used to be sent as the user turn of
+# every --resume'd wake, so it accumulated in the session history forever
+# (quadratic growth). Now it is sent only on the first turn of a session; a
+# resumed turn sends only the dynamic block. A session is re-primed when the
+# static block's hash changes (doctrine/roster/brain edited).
+SESSION_MAX_TURNS = int(os.environ.get("EMPEROR_CLAW_HERMES_SESSION_MAX_TURNS", "40"))
+SESSION_MAX_HOURS = float(os.environ.get("EMPEROR_CLAW_HERMES_SESSION_MAX_HOURS", "24"))
+# Direct human↔agent threads keep resuming but obey a larger cap.
+DIRECT_SESSION_MAX_TURNS = int(os.environ.get("EMPEROR_CLAW_HERMES_DIRECT_SESSION_MAX_TURNS", "400"))
+DIRECT_SESSION_MAX_HOURS = float(os.environ.get("EMPEROR_CLAW_HERMES_DIRECT_SESSION_MAX_HOURS", "168"))
+OPEN_TASKS_LIMIT = int(os.environ.get("EMPEROR_CLAW_OPEN_TASKS_LIMIT", "5"))
+_OPEN_TASK_STATES = {"inbox", "in_progress", "review"}
 
 # Cached agent LLM provider — read once at startup for documentation
 _agent_llm_provider: str | None = None
@@ -451,6 +467,9 @@ def format_agent_roster(agent_id: str) -> str:
     for agent in agents[:24]:
         name = str(agent.get("name") or agent.get("id") or "unknown")
         marker = " (you)" if str(agent.get("id") or "") == agent_id else ""
+        role = str(agent.get("role") or "").strip()
+        skills = agent.get("skillsJson") if isinstance(agent.get("skillsJson"), list) else (agent.get("skills") if isinstance(agent.get("skills"), list) else [])
+        skill_summary = ", ".join(str(s) for s in skills[:3])
         sibling_aliases = {
             normalize_mention(alias)
             for sibling in agents if str(sibling.get("id") or "") != str(agent.get("id") or "")
@@ -462,11 +481,13 @@ def format_agent_roster(agent_id: str) -> str:
         # card (emperor://agent/<id>) without spending a tool call to find it.
         agent_ref = str(agent.get("id") or "")
         id_suffix = f" · id {agent_ref}" if agent_ref and rich_replies_active() else ""
+        role_part = f" — {role}" if role else ""
+        skill_part = f" · {skill_summary}" if skill_summary else ""
         if unique_aliases:
-            lines.append(f"- {name}{marker}: @{unique_aliases[0]}{id_suffix}")
+            lines.append(f"- {name}{marker}{role_part}: @{unique_aliases[0]}{skill_part}{id_suffix}")
         else:
-            lines.append(f"- {name}{marker}: no unambiguous alias; use an explicitly assigned task or ask for distinct agent names{id_suffix}")
-    return "Team roster aliases:\n" + "\n".join(lines)
+            lines.append(f"- {name}{marker}{role_part}: no unambiguous alias; use an explicitly assigned task or ask for distinct agent names{id_suffix}")
+    return "Team roster (name, role, and a distinct @alias):\n" + "\n".join(lines)
 
 
 def fetch_shared_resources() -> List[Dict[str, Any]]:
@@ -847,6 +868,10 @@ def format_group_context(message: Dict[str, Any]) -> str:
         return ""
     thread_id = str(message.get("threadId") or message.get("thread_id") or "")
     detail = _thread_details.get(thread_id) or {}
+    # A two-agent pair thread is addressed via the routing verdict (agent_pair),
+    # not @mentions — suppress the members-only group boilerplate for it.
+    if str(detail.get("description") or "") == "agent-pair":
+        return ""
     title = str(detail.get("title") or message.get("threadTitle") or "this group")
     lines = [f'You are replying in the group chat "{title}" (members only).']
     description = str(detail.get("description") or "").strip()
@@ -1763,10 +1788,10 @@ BUILTIN_OPERATING_GUIDE = """## Emperor minimum operating practices
 
 Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rules before assuming company conventions. Use tools before claiming writes succeeded.
 
-### Group chat, mentions, and privacy
+### Chat, mentions, and privacy
 
 - Reply in the current thread. Direct threads are private; no @mention is needed. Team chat is visible to the company — never copy private details or secrets into it.
-- Act on a team message only when it addresses your @name. To ask a sibling to act, look up GET /agents and send one concrete @SiblingName request with context IDs, expected output, and a deadline. A mention requests attention; it does not assign a task.
+- Act on a team message only when it addresses your @name. To ask a sibling a question, open a private pair thread (emperor_send_message with targetAgentId). To ask a sibling to do work, assign it a task — a @mention requests attention, it does not assign work.
 - Group chats are members-only team channels with the same @mention rules; only their members receive them. A human's @all in a group addresses every member; never write @all yourself.
 - Reply to a requested handoff once. When a reply closes your own request, stop — no acknowledgment loop. FYI/status updates have no @mention.
 
@@ -1774,7 +1799,7 @@ Emperor is the durable source of truth. Read the relevant scoped Knowledge & Rul
 
 - Reuse a project by outcome; keep the goal to 3–8 words and put background and success criteria in memory/tasks.
 - Every task has exactly one owner: assign it to the responsible agent or person. A chat @mention is not an assignment.
-- The assignee closes the task, and only after the acceptance criteria are met with evidence attached. Keep progress and blockers in task notes.
+- The assignee closes the task, and only after the acceptance criteria are met with evidence attached. Keep progress and blockers in task notes (emperor_add_task_note) or task updates, not chat.
 - A request that needs real work becomes a task (assigned, with acceptance criteria) before you start; quick questions don't. Keep its state true: in_progress, review while waiting on a person, done with evidence.
 - Request an approval (emperor_request_approval) before spending money, sending anything outside the company, publishing, deleting, or closing work that needs sign-off. Don't act until approved.
 - Emperor sends you a daily review of your open tasks: work through it and reply with a short summary.
@@ -1898,18 +1923,58 @@ def format_memory_context(entries: List[Dict[str, Any]] | None = None) -> str:
     return "What you remember (your Emperor memory; people can edit it in the app):\n" + "\n".join(reversed(lines)) + "\n\n"
 
 
-def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
-    thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
-    text = str(message.get("text") or "")
+MAX_TASK_TEXT_CHARS = 120
+
+
+def clean_task_text(value: Any) -> str:
+    """Collapse whitespace/newlines and cap task text that is injected into a prompt."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) > MAX_TASK_TEXT_CHARS:
+        text = text[: MAX_TASK_TEXT_CHARS - 1] + "…"
+    return text
+
+
+def format_my_open_tasks() -> str:
+    """My open tasks (id, title, state, who is waiting) — max OPEN_TASKS_LIMIT lines."""
+    try:
+        payload = api("GET", "/tasks", query={"assignedAgentId": AGENT_ID, "limit": 25})
+        task_rows = payload.get("tasks") if isinstance(payload, dict) else []
+        if not isinstance(task_rows, list):
+            return ""
+        active = [
+            t for t in task_rows
+            if isinstance(t, dict)
+            and str(t.get("state") or "") in _OPEN_TASK_STATES
+            # Older servers ignore the assignedAgentId query filter and return
+            # every agent's tasks; re-check locally so the prompt never claims
+            # another agent's work as "mine".
+            and str(t.get("assignedAgentId") or "") == AGENT_ID
+        ]
+        if not active:
+            return "My open tasks: none."
+        lines: List[str] = []
+        for t in active[:OPEN_TASKS_LIMIT]:
+            tid = str(t.get("id") or "")
+            spec = t.get("inputJson") if isinstance(t.get("inputJson"), dict) else {}
+            title = clean_task_text(spec.get("title") or t.get("taskType") or "task")
+            state = str(t.get("state") or "").replace("_", " ")
+            summary = t.get("approvalSummary") if isinstance(t.get("approvalSummary"), dict) else {}
+            waiting = " · waiting for approval" if summary.get("pending") else ""
+            lines.append(f'- {tid}: "{title}" [{state}]{waiting}')
+        return "My open tasks:\n" + "\n".join(lines)
+    except Exception as exc:
+        log(f"open tasks fetch failed: {exc}")
+        return ""
+
+
+def build_static_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+    """The block that must not accumulate in session history: guide, rules,
+    roster, brain context, instructions, memory. Sent once per session."""
     roster_context = format_agent_roster(AGENT_ID)
     shared_context = format_company_brain_context(message)
-    # A DM runs in its own session, so it needs the team channel read into the
-    # turn explicitly; team turns already carry it in their own session.
-    main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
-    group_context = format_group_context(message)
     refresh_live_profile()
     instructions = current_instructions()
-    prompt = (
+    return (
         "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
         f"Agent name: {AGENT_NAME}\n"
         f"Agent role: {AGENT_ROLE}\n"
@@ -1943,29 +2008,77 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         "- Team chat is the shared visible coordination thread for humans and all agents.\n"
         "- Group chats are members-only team channels (e.g. a development team): the same @mention rules apply, and only their members receive them. Find yours with emperor_list_groups. A human's @all in a group is addressed to you; never write @all yourself.\n"
         "- ONLY respond to a team chat message if your @name appears in it. If your name is absent, the message is for someone else — stay silent.\n"
-        "- To ask a sibling to do something: post in team chat with @SiblingName and one concrete request (use the roster aliases below for the exact @name).\n"
-        "- When a sibling @mentions you with a request, complete the work then reply with the answer and @mention them ONCE so it routes back: '@Viktor done, here are the results...'. That reply CLOSES the request.\n"
+        "- To ask a sibling to do something: post in team chat with @SiblingName and one concrete request (use the roster below for the exact @name).\n"
+        "- When a sibling @mentions you with a request, complete the work then reply with the answer and @mention them ONCE so it routes back. That reply CLOSES the request.\n"
         "- If you receive a reply that answers a request YOU made, do not reply again — no 'thanks', no acknowledgment, no follow-up @mention. A closing reply ends the exchange; only reply if you have a genuinely new, different request.\n"
         "- Never @mention the same agent twice in a row without a new human message or a materially new question in between — that is what causes infinite back-and-forth.\n"
         "- Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention.\n"
         "- Safety net: if you and a sibling exchange more than a few consecutive messages in team chat with no human input, the bridge will automatically pause your replies in that thread until a human sends a new message. Don't rely on this — follow the rules above so it never triggers.\n\n"
         f"{roster_context}\n\n"
         + f"{shared_context}\n\n"
+    )
+
+
+def build_dynamic_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+    """The per-turn block: latest message, thread id, team digest, group context,
+    and my open tasks. Sent on every wake (it is short and changes each turn)."""
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
+    text = str(message.get("text") or "")
+    main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
+    group_context = format_group_context(message)
+    open_tasks = format_my_open_tasks()
+    return (
+        (f"{open_tasks}\n\n" if open_tasks else "")
         + (f"{main_chat_context}\n\n" if main_chat_context else "")
         + (f"{group_context}\n\n" if group_context else "")
         + f"Thread: {thread_id}\n"
         + f"Latest message: {text}"
     )
+
+
+def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     session_key = f"{AGENT_NAME}:{thread_id}"
     sessions = state.setdefault("sessions", {})
-    resume_id = str(sessions.get(session_key) or "")
+    primed = state.setdefault("primed", {})
+    entry = primed.get(session_key)
+    entry = entry if isinstance(entry, dict) else None
+    turns = int(entry.get("turns", 0)) if entry else 0
+    started_at = float(entry.get("startedAt", time.time())) if entry else time.time()
+
+    direct = is_direct_thread(message, state)
+    max_turns = DIRECT_SESSION_MAX_TURNS if direct else SESSION_MAX_TURNS
+    max_hours = DIRECT_SESSION_MAX_HOURS if direct else SESSION_MAX_HOURS
+
+    static_block = build_static_block(message, state)
+    static_hash = hashlib.sha256(static_block.encode("utf-8")).hexdigest()
+    dynamic_block = build_dynamic_block(message, state)
+
+    elapsed_hours = (time.time() - started_at) / 3600.0
+    rotate = turns >= max_turns or (max_hours > 0 and elapsed_hours >= max_hours)
+    if rotate:
+        # Start a fresh Hermes session so the static block is re-sent once and
+        # the accumulated history is dropped. Team/group sessions rotate; direct
+        # human threads rotate only on the much larger cap.
+        sessions.pop(session_key, None)
+        resume_id = ""
+        turns = 0
+        started_at = time.time()
+        send_static = True
+    else:
+        resume_id = str(sessions.get(session_key) or "")
+        hash_changed = entry is not None and str(entry.get("staticHash") or "") != static_hash
+        # A fresh session must always be primed: if there is no resume id (e.g.
+        # the session was dropped by a "Session not found" recovery but the primed
+        # entry survived) the static block still has to be sent.
+        send_static = entry is None or hash_changed or not resume_id
+
+    prompt = (static_block + "\n\n" if send_static else "") + dynamic_block
+
     cmd = [
         HERMES_BIN,
         "chat",
         "-Q",
-        # Structured output: only the final answer (and session id/tokens) come
-        # back, so tool previews — the TUI's `┊ review diff` blocks, command
-        # output — can never be mistaken for the reply.
         "--format",
         "stream-json",
         "--source",
@@ -1981,10 +2094,6 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     _last_turn_reasoning = None
     turn_started = time.time()
     try:
-        # resume_id is the only session id we know BEFORE the turn ends, and it
-        # is what scopes the reasoning lookup. On a brand-new session it is
-        # empty, so that first turn simply reports no reasoning rather than
-        # risking a read of some other agent's session.
         result = invoke_hermes(cmd, message, resumed=bool(resume_id), session_id=resume_id, state=state)
     except subprocess.TimeoutExpired as exc:
         _persist_killed_session(sessions, session_key, exc)
@@ -1992,6 +2101,8 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     if result.returncode != 0 and resume_id and "Session not found" in (result.stderr or result.stdout):
         sessions.pop(session_key, None)
         cmd = [part for index, part in enumerate(cmd) if not (part == "--resume" or (index > 0 and cmd[index - 1] == "--resume"))]
+        # A fresh session is a first turn: it must carry the static block.
+        cmd[cmd.index("-q") + 1] = static_block + "\n\n" + dynamic_block
         try:
             result = invoke_hermes(cmd, message, resumed=False, state=state)
         except subprocess.TimeoutExpired as exc:
@@ -2005,19 +2116,12 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         stream_reply, _ = extract_stream_json(result.stdout)
         combined = "\n".join(filter(None, [result.stdout, result.stderr]))
         raise RuntimeError(stream_reply or clean_hermes_output(combined) or combined.strip() or "Hermes failed")
-    # `--format stream-json` carries the final answer and the session id as
-    # structured events; prefer those so no tool preview can reach the reply.
-    # Fall back to the plain-text path and the `session_id:` stderr footer for
-    # an older Hermes that ignored the flag.
     stream_reply, stream_session = extract_stream_json(result.stdout)
     new_session_id = stream_session or extract_session_id("\n".join([result.stdout or "", result.stderr or ""]))
     if new_session_id:
         sessions[session_key] = new_session_id
-    # ONE read, at the end of the turn — history is not streamed. Reading it now
-    # also means the FIRST turn of a session gets a transcript: the live status
-    # line only ever knows `resume_id`, which is empty until a session exists,
-    # but by here Hermes has printed the id it actually used.
     _last_turn_reasoning = turn_reasoning_history(new_session_id or resume_id, turn_started)
+    primed[session_key] = {"staticHash": static_hash, "turns": turns + 1, "startedAt": started_at}
     if stream_reply is not None:
         return stream_reply
     return clean_hermes_output(result.stdout)

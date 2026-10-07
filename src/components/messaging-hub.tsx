@@ -64,6 +64,7 @@ export type GroupThreadSummary = {
     title: string;
     description: string | null;
     icon?: string | null;
+    isAgentPair?: boolean;
     members: { kind: "agent" | "human"; id: string; name: string; role: string; avatarUrl?: string | null }[];
     unreadCount: number;
     lastMessageText: string | null;
@@ -213,12 +214,16 @@ export function MessagingHub({
         });
     };
 
-    const conversationTitle = activeGroup?.title || activeAgent?.name || "Team Channel";
-    const conversationDescription = activeGroup
-        ? activeGroup.description || `${groupAgents.length} agent${groupAgents.length === 1 ? "" : "s"} · @mention a member to get a reply`
-        : activeAgent
-            ? activeAgent.role || "Direct agent conversation"
-            : "Everyone can see & reply. @mention an agent to get replies.";
+    const conversationTitle = activeGroup?.isAgentPair
+        ? `Agent conversation: ${activeGroup.title}`
+        : activeGroup?.title || activeAgent?.name || "Team Channel";
+    const conversationDescription = activeGroup?.isAgentPair
+        ? activeGroup.description || "Private agent conversation"
+        : activeGroup
+            ? activeGroup.description || `${groupAgents.length} agent${groupAgents.length === 1 ? "" : "s"} · @mention a member to get a reply`
+            : activeAgent
+                ? activeAgent.role || "Direct agent conversation"
+                : "Everyone can see & reply. @mention an agent to get replies.";
     const teamSelected = selectedAgentId === null && selectedGroupId === null;
     const editingGroup = groupDialog?.mode === "edit" ? groups.find((g) => g.id === groupDialog.groupId) ?? null : null;
 
@@ -543,7 +548,7 @@ export function MessagingHub({
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                    {activeGroup && (
+                    {activeGroup && !activeGroup.isAgentPair && (
                         <button
                             type="button"
                             onClick={() => setGroupDialog({ mode: "edit", groupId: activeGroup.id })}
@@ -586,9 +591,11 @@ export function MessagingHub({
                                     initialMessages={[]}
                                     agents={agents}
                                     mentionAgents={groupAgents.length > 1 ? [EVERYONE_MENTION, ...groupAgents] : groupAgents}
-                                    sendable={true}
+                                    sendable={!activeGroup.isAgentPair}
                                     groupId={activeGroup.id}
-                                    placeholder={`Message ${activeGroup.title}… (@ a member, or @all)`}
+                                    placeholder={activeGroup.isAgentPair
+                                        ? "This is a private agent conversation (read-only)"
+                                        : `Message ${activeGroup.title}… (@ a member, or @all)`}
                                 />
                             </div>
                         </div>

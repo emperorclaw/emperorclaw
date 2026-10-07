@@ -9,7 +9,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     return groupMcpRoute(req, searchParams.get("agentId"), async ({ companyId, actor }) => {
         const mine = searchParams.get("mine") === "1" || searchParams.get("mine") === "true";
-        return { groups: await listGroups(companyId, { agentId: mine && actor.type === "agent" ? actor.id : null }) };
+        const agentId = mine && actor.type === "agent" ? actor.id : null;
+        // Pair threads are private handoffs: only the "mine" (participant) view
+        // of a real agent may include them, never an operator/system token and
+        // never the unscoped everything-listing.
+        return { groups: await listGroups(companyId, { agentId, includePairThreads: mine && actor.type === "agent" }) };
     });
 }
 

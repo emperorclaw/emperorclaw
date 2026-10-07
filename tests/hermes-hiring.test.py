@@ -33,12 +33,6 @@ class HermesHiringTests(unittest.TestCase):
         self.assertNotIn("Emperor minimum operating practices", context)
         self.assertIn("durable state", context)
 
-    def test_task_overview_uses_compact_endpoint(self):
-        with patch.object(plugin, "_request", return_value={"ok": True}) as request:
-            plugin.emperor_get_task_overview({"projectId": "project-1", "maxItems": 7})
-        self.assertEqual(request.call_args.args[:2], ("GET", "/tasks/overview"))
-        self.assertEqual(request.call_args.kwargs["query"]["maxItems"], 7)
-
     def test_batch_upload_reports_partial_failures(self):
         responses = [json.dumps({"ok": True}), json.dumps({"ok": False, "error": "nope"})]
         with patch.object(plugin, "emperor_upload_artifact", side_effect=responses):
@@ -50,6 +44,25 @@ class HermesHiringTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["succeeded"], 1)
         self.assertEqual(result["failed"], 1)
+
+    def test_task_overview_uses_compact_endpoint(self):
+        with patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_get_task_overview({"projectId": "project-1", "maxItems": 7})
+        self.assertEqual(request.call_args.args[:2], ("GET", "/tasks/overview"))
+        self.assertEqual(request.call_args.kwargs["query"]["maxItems"], 7)
+
+    def test_add_task_note_defaults_agent_to_own_identity(self):
+        with patch.dict(os.environ, {"EMPEROR_CLAW_AGENT_ID": "self-agent"}), patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_add_task_note({"taskId": "task-1", "note": "did the thing"})
+        self.assertEqual(request.call_args.args[:2], ("POST", "/tasks/task-1/notes"))
+        body = request.call_args.kwargs["body"]
+        self.assertEqual(body["note"], "did the thing")
+        self.assertEqual(body["agentId"], "self-agent")
+
+    def test_add_task_note_explicit_agent_wins(self):
+        with patch.dict(os.environ, {"EMPEROR_CLAW_AGENT_ID": "self-agent"}), patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_add_task_note({"taskId": "task-1", "note": "handoff", "kind": "handoff", "agentId": "explicit-agent"})
+        self.assertEqual(request.call_args.kwargs["body"]["agentId"], "explicit-agent")
 
     def test_hiring_tool_registered(self):
         class Context:

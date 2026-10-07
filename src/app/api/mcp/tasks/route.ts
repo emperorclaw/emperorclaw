@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
     const stateParam = searchParams.get("state");
     const projectId = searchParams.get("projectId");
     const agentIdParam = searchParams.get("agentId");
+    const assignedAgentId = searchParams.get("assignedAgentId");
 
     try {
         let resolvedAgentId: string | null = null;
@@ -55,6 +56,16 @@ export async function GET(req: NextRequest) {
                 resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
             } catch {
                 return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+            }
+        }
+        // The assignee filter accepts an id or a name (company-scoped). An
+        // unknown agent is a caller error, never an internal 500.
+        let resolvedAssignedAgentId: string | null = null;
+        if (assignedAgentId) {
+            try {
+                resolvedAssignedAgentId = await resolveAgentId(companyId, assignedAgentId);
+            } catch {
+                return NextResponse.json({ error: "Agent not found" }, { status: 400 });
             }
         }
         const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
@@ -70,6 +81,7 @@ export async function GET(req: NextRequest) {
             limit,
             state: stateParam,
             projectId,
+            assignedAgentId: resolvedAssignedAgentId,
             projectIdFilter: projectId ? null : allowedProjectIds,
         });
 
@@ -144,16 +156,22 @@ export async function POST(req: NextRequest) {
         agentId,
     } = parsed.data;
 
+    let actorAgentId: string | null = null;
     if (agentId) {
         try {
-            const resolvedAgentId = await resolveAgentId(companyId, agentId);
-            const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+            actorAgentId = await resolveAgentId(companyId, agentId);
+            const { allowedProjectIds } = await loadAgentScopeContext(companyId, actorAgentId);
             if (!isProjectAllowed(allowedProjectIds, projectId)) {
                 return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
             }
         } catch {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
+    } else {
+        // A token bound to an agent creates the task as that agent, so the
+        // wake-on-assignment skips self-assignment and stall escalation can find
+        // the creator.
+        actorAgentId = auth.companyToken!.agentId || null;
     }
 
     const inputPayload = {
@@ -200,6 +218,8 @@ export async function POST(req: NextRequest) {
             assignee,
             assignedAgentId,
             source: "mcp_api",
+            actorType: actorAgentId ? "agent" : "system",
+            actorId: actorAgentId,
         });
 
         const res = { message: "Task generated", task: serializeTaskWithAssignee(task) };

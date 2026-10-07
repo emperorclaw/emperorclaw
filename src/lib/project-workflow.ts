@@ -6,7 +6,7 @@ import {
   projects,
   tasks,
 } from "@/db/schema";
-import { normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "./task-state";
+import { normalizeTaskState, TASK_STATES, isTerminalTaskState, type PersistedTaskState, type TaskState } from "./task-state";
 
 export const REVIEW_BUCKETS = {
   approvalNeeded: "approval_needed",
@@ -80,7 +80,7 @@ export function validateTaskStateTransition(input: {
     "commentRequiredForReview" |
     "blockStatusChangesWithPendingApproval" |
     "onlyLeadCanChangeStatus">;
-  task: Pick<WorkflowTask, "state">;
+  task: Pick<WorkflowTask, "state" | "assignedAgentId">;
   requestedState: TaskState;
   actorAgentId: string | null;
   hasPendingApproval?: boolean;
@@ -88,8 +88,30 @@ export function validateTaskStateTransition(input: {
 }) {
   const { project, task, requestedState, actorAgentId } = input;
   const isLead = isLeadForProject(project, actorAgentId);
+  const isAssignee = Boolean(actorAgentId && task.assignedAgentId && task.assignedAgentId === actorAgentId);
   const hasPendingApproval = Boolean(input.hasPendingApproval);
   const trimmedComment = input.comment?.trim() || "";
+
+  // Requesting the state the task is already in is a no-op success, not an
+  // error: re-saving in_progress (or re-requesting done on a done task) must
+  // not trip the source-state rules below.
+  if (requestedState === task.state) return null;
+
+  // Terminal states are never reopened — a done or failed task stays closed.
+  if (isTerminalTaskState(task.state as PersistedTaskState) && requestedState !== task.state) {
+    return "A done or failed task cannot be reopened.";
+  }
+
+  // Self-start: the assignee starts only from a queued/assigned state and hands
+  // to review only from in_progress. The lead is exempt (it routes and decides).
+  if (isAssignee && !isLead) {
+    if (requestedState === TASK_STATES.inProgress && task.state !== TASK_STATES.inbox) {
+      return "A task can only move to in_progress from a queued or assigned state.";
+    }
+    if (requestedState === TASK_STATES.review && task.state !== TASK_STATES.inProgress) {
+      return "A task can only move to review from in_progress.";
+    }
+  }
 
   if (
     project.blockStatusChangesWithPendingApproval &&
@@ -123,7 +145,9 @@ export function validateTaskStateTransition(input: {
     project.onlyLeadCanChangeStatus &&
     !isLead &&
     requestedState !== TASK_STATES.review &&
-    requestedState !== TASK_STATES.failed
+    requestedState !== TASK_STATES.failed &&
+    // The assignee still starts its own work: "accept, then set in_progress".
+    !(requestedState === TASK_STATES.inProgress && isAssignee)
   ) {
     return "Only the project lead can perform this status transition.";
   }

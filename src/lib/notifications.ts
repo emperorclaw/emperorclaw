@@ -28,7 +28,7 @@ import { decryptSecretPayload } from "@/lib/secrets";
  * catches its own failures.
  */
 
-export const NOTIFICATION_KINDS = ["mention", "decision", "approval", "task_assigned", "agent_failed", "agent_down", "incident"] as const;
+export const NOTIFICATION_KINDS = ["mention", "decision", "approval", "task_assigned", "agent_failed", "agent_down", "incident", "stall", "loop_paused", "doctrine"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
@@ -39,6 +39,9 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
     agent_failed: "An agent could not process your message",
     agent_down: "An agent goes offline with work waiting",
     incident: "A serious incident opens",
+    stall: "A task has stalled",
+    loop_paused: "Agent conversation paused",
+    doctrine: "New team doctrine available",
 };
 
 /** Default email kinds for someone who never changed their preferences. */

@@ -4,7 +4,10 @@ import { db } from "@/db";
 import { agentSessions, agents, tasks, threadMessages } from "@/db/schema";
 import { notifyAgentDown } from "./notifications";
 import { runDailyRoutines } from "./agent-routines";
+import { runStallSweep } from "./stall-sweep";
+import { flushPendingAgentWakes } from "./task-wake";
 import { deliverRequestCallbacks } from "./agent-requests";
+import { runStarterDoctrineUpgrades } from "./starter-knowledge";
 import { SLA_TRACKED_TASK_STATES } from "./task-state";
 import { broadcastMcpEvent } from "./pubsub";
 
@@ -14,9 +17,17 @@ const ADVISORY_LOCK_ID = 20261011;
 const MAX_WAKE_ATTEMPTS = 3;
 /** Runtimes heartbeat every ~60s; this long without one means the agent is down. */
 export const AGENT_OFFLINE_AFTER_MS = 5 * 60 * 1000;
+/** The stall sweep is a heavier query; run it on its own, slower cadence. */
+const STALL_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
+
+export function stallSweepIntervalMs(env: Record<string, string | undefined> = process.env): number {
+    const value = Number(env.EMPEROR_STALL_SWEEP_INTERVAL_MS);
+    return Number.isFinite(value) && value >= 60_000 ? value : STALL_SWEEP_INTERVAL_MS;
+}
 
 let isLifecycleMonitorRunning = false;
 let lastRoutineCheck = 0;
+let lastStallSweepCheck = 0;
 let lastCallbackCheck = 0;
 
 const pool = new Pool({
@@ -52,6 +63,18 @@ async function runLifecycleMonitor() {
     if (now.getTime() - lastRoutineCheck >= 60_000) {
       lastRoutineCheck = now.getTime();
       await runDailyRoutines(now).catch((error) => console.error("Daily review failed:", error));
+      // Coalesced assignment wakes flush here (cheap — SQL filters to agents
+      // with a non-empty pending queue).
+      await flushPendingAgentWakes(now).catch((error) => console.error("Wake flush failed:", error));
+    }
+    // The stale-task sweep is a heavier query; it runs on its own slower cadence
+    // (env-configurable), never on the 60s tick.
+    if (now.getTime() - lastStallSweepCheck >= stallSweepIntervalMs()) {
+      lastStallSweepCheck = now.getTime();
+      await runStallSweep(now).catch((error) => console.error("Stall sweep failed:", error));
+      // The starter-doctrine rollout shares the slow cadence: it is idempotent
+      // per company and cheap when every company is already up to date.
+      await runStarterDoctrineUpgrades().catch((error) => console.error("Starter doctrine upgrade failed:", error));
     }
     // Requests from other platforms: post status callbacks (cheap when none).
     if (now.getTime() - lastCallbackCheck >= 15_000) {

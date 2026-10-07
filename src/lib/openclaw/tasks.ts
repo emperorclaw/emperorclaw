@@ -17,8 +17,9 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeTaskState, TASK_STATES, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
-import { getAgentScope, getAllowedProjectIds } from "@/lib/agent-scope";
+import { getAgentScope, getAllowedProjectIds, isProjectAllowed } from "@/lib/agent-scope";
 import { notifyTaskAssigned } from "@/lib/notifications";
+import { wakeAgentOnTaskAssignment } from "@/lib/task-wake";
 
 type ClaimTaskInput = {
   companyId: string;
@@ -245,6 +246,16 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
   });
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
+  // "claim" is the claiming agent taking it for itself (no wake); an explicit
+  // "assign" of a task to a *different* agent wakes the new owner.
+  if (mode !== "claim" && existingTask.assignedAgentId !== internalAgentId) {
+    await wakeAgentOnTaskAssignment({
+      companyId: input.companyId,
+      task,
+      actorAgentId: null,
+      reason: existingTask.assignedAgentId ? "reassigned" : "assigned",
+    });
+  }
   return { status: 200 as const, task };
 }
 
@@ -338,6 +349,16 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
 
   await broadcastMcpEvent(input.companyId, { type: "task_updated", task });
   await notifyTaskAssigned(input.companyId, task, existingTask.assignedMemberId);
+  // Wake the agent only when the owner actually became a different agent; a
+  // title/priority/state edit that keeps the assignee must not re-wake it.
+  if (assignmentChanged && resolvedAssignedAgentId) {
+    await wakeAgentOnTaskAssignment({
+      companyId: input.companyId,
+      task,
+      actorAgentId: input.actorType === "agent" ? input.actorId : null,
+      reason: "reassigned",
+    });
+  }
   return { status: 200 as const, task };
 }
 
@@ -400,6 +421,12 @@ export async function createTaskForProject(input: CreateTaskInput) {
 
   await broadcastMcpEvent(input.companyId, { type: "new_task", task });
   await notifyTaskAssigned(input.companyId, task);
+  await wakeAgentOnTaskAssignment({
+    companyId: input.companyId,
+    task,
+    actorAgentId: input.actorType === "agent" ? input.actorId : null,
+    reason: "assigned",
+  });
   return { task, project };
 }
 
@@ -496,11 +523,66 @@ export async function finalizeTaskForAgent(input: FinalizeTaskInput) {
   return { status: 200 as const, task };
 }
 
+export const TASK_NOTE_MAX_CHARS = 4000;
+
+export async function addTaskNote(input: {
+  companyId: string;
+  taskId: string;
+  note: string;
+  kind?: "progress" | "handoff" | "blocker";
+  actorAgentId?: string | null;
+}) {
+  const note = String(input.note ?? "").slice(0, TASK_NOTE_MAX_CHARS);
+  if (!note.trim()) throw new Error("note is required");
+
+  const [task] = await db.select({ id: tasks.id, projectId: tasks.projectId }).from(tasks).where(
+    and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId), isNull(tasks.deletedAt)),
+  ).limit(1);
+  if (!task) throw new Error("Task not found");
+
+  // A restricted agent may only annotate tasks under its scoped projects —
+  // a note counts as visible progress, so it must not be farmable outside scope.
+  if (input.actorAgentId) {
+    const scope = await getAgentScope(input.companyId, input.actorAgentId);
+    const allowedProjectIds = await getAllowedProjectIds(input.companyId, scope);
+    if (!isProjectAllowed(allowedProjectIds, task.projectId)) {
+      throw new Error("Task's project is outside this agent's scope");
+    }
+  }
+
+  const [event] = await db.insert(taskEvents).values({
+    companyId: input.companyId,
+    taskId: input.taskId,
+    eventType: "task_note",
+    actorType: input.actorAgentId ? "agent" : "system",
+    actorId: input.actorAgentId || null,
+    payloadJson: { note, kind: input.kind || "progress" },
+  }).returning();
+
+  // A note is activity on the task: advance updatedAt so the stall sweep and
+  // the progress-aware loop guard both see it as movement.
+  await db.update(tasks).set({ updatedAt: new Date() }).where(
+    and(eq(tasks.id, input.taskId), eq(tasks.companyId, input.companyId)),
+  );
+
+  await broadcastMcpEvent(input.companyId, {
+    type: "task_note_added",
+    taskId: input.taskId,
+    projectId: task.projectId,
+    event,
+  });
+
+  return event;
+}
+
 export async function listTasksForCompany(input: {
   companyId: string;
   limit: number;
   state?: string | null;
   projectId?: string | null;
+  // Filter to tasks assigned to this agent id (added for the Hermes bridge's
+  // "my open tasks" injection; optional and backward compatible).
+  assignedAgentId?: string | null;
   // null/undefined = unrestricted; a Set (possibly empty) restricts to those
   // project ids. Comes from an agent's scope — see src/lib/agent-scope.ts.
   projectIdFilter?: Set<string> | null;
@@ -520,6 +602,10 @@ export async function listTasksForCompany(input: {
 
   if (input.projectId) {
     conditions.push(eq(tasks.projectId, input.projectId));
+  }
+
+  if (input.assignedAgentId) {
+    conditions.push(eq(tasks.assignedAgentId, input.assignedAgentId));
   }
 
   if (input.projectIdFilter) {

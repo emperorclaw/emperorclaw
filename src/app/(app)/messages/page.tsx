@@ -187,6 +187,7 @@ export default async function MessagesPage() {
                         title: g.title,
                         description: g.description,
                         icon: g.icon,
+                        isAgentPair: g.isAgentPair,
                         members: g.members.map((m) => ({ kind: m.kind, id: m.id, name: m.name, role: m.role, avatarUrl: m.avatarUrl ?? null })),
                         unreadCount: g.unreadCount,
                         lastMessageText: g.lastMessageText,

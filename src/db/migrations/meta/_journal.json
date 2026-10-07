@@ -365,6 +365,27 @@
       "when": 1791216388642,
       "tag": "0051_agent-avatar-appearance",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791405458212,
+      "tag": "0052_add-agent-metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791408170793,
+      "tag": "0053_starter-doctrine-version",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791409580967,
+      "tag": "0054_task_event_progress_indexes",
+      "breakpoints": true
     }
   ]
 }

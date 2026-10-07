@@ -26,6 +26,17 @@ function normalizeBaseUrl(url: string): string {
     return url.trim().replace(/\/+$/, "");
 }
 
+/**
+ * The first host in a comma-separated `x-forwarded-host` header. A chain of
+ * reverse proxies appends each hop, so the client's original host is the first
+ * entry. A plain `host` value (no comma) is returned unchanged.
+ */
+export function firstForwardedHost(value: string | null | undefined): string | null {
+    if (!value) return null;
+    const first = value.split(",")[0].trim();
+    return first || null;
+}
+
 export function getAppUrl(request?: {
     nextUrl?: { origin?: string };
     headers?: { get(name: string): string | null };

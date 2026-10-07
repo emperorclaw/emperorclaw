@@ -145,3 +145,20 @@ maybe("the raw thread-messages route enforces group membership too", async () =>
     assert.equal((await post(stranger.id)).status, 403);
     assert.equal((await post(member.id)).status, 201);
 });
+
+maybe("W9: an operator token never lists pair threads, even with mine=1", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { ensureAgentPairThread } = await import("@/lib/groups");
+    await ensureAgentPairThread(companyId, a.id, b.id);
+
+    const groups = await import("@/app/api/mcp/groups/route");
+    const headers = { authorization: `Bearer ${rawToken}` };
+    // The operator token is unbound (no agentId), so `mine=1` must not reveal
+    // any pair thread.
+    const res = await (await groups.GET(makeRequest("http://localhost/api/mcp/groups?mine=1", { headers }))).json();
+    assert.ok(Array.isArray(res.groups), "groups is a list");
+    assert.ok(!res.groups.some((g: { isAgentPair: boolean }) => g.isAgentPair), "operator token sees no pair threads");
+});

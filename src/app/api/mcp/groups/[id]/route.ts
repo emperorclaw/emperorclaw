@@ -8,7 +8,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(req: NextRequest, { params }: Params) {
     const { id } = await params;
-    return groupMcpRoute(req, new URL(req.url).searchParams.get("agentId"), async ({ companyId }) => ({ group: await getGroup(companyId, id) }));
+    return groupMcpRoute(req, new URL(req.url).searchParams.get("agentId"), async ({ companyId, actor }) => ({ group: await getGroup(companyId, id, actor) }));
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

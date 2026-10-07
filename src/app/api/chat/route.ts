@@ -9,7 +9,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
 import { requestAgentControl } from "@/lib/agent-control";
-import { getGroupThread, GroupError, joinGroupAsHuman } from "@/lib/groups";
+import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 
 type ThreadMessageLike = {
     fromUserId?: string | null;
@@ -49,6 +49,15 @@ export async function GET(req: NextRequest) {
             : targetAgentId
                 ? await ensureDirectThread(companyId, targetAgentId, await getUserId())
                 : await ensureTeamThread(companyId);
+
+        // An agent pair thread is a private handoff: only owners/admins may read
+        // it from the human UI, and then read-only.
+        if (groupId && isAgentPairThread(thread)) {
+            const viewerId = await getUserId();
+            if (!viewerId || !(await isCompanyOwnerOrAdmin(companyId, viewerId))) {
+                return NextResponse.json({ error: "Access denied" }, { status: 403 });
+            }
+        }
 
         const messages = await getThreadMessages(
             companyId,
@@ -134,6 +143,11 @@ export async function POST(req: NextRequest) {
             : resolvedTargetAgentId
                 ? await ensureDirectThread(companyId, resolvedTargetAgentId, userId)
                 : await ensureTeamThread(companyId);
+        // Pair threads are read-only from the human side: nobody posts into a
+        // private agent handoff.
+        if (groupId && isAgentPairThread(thread)) {
+            return NextResponse.json({ error: "Read-only: you cannot post to an agent pair thread" }, { status: 403 });
+        }
         // Posting in a group makes you a member of it.
         if (groupId) await joinGroupAsHuman(companyId, thread.id, userId);
 

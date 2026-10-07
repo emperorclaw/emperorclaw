@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectMemory, taskEvents, tasks } from "@/db/schema";
 import { eq, and, asc } from "drizzle-orm";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveBoundAgentId } from "@/lib/mcp";
+import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+import { TASK_NOTE_MAX_CHARS } from "@/lib/openclaw/tasks";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,10 +89,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     try {
         const body = await req.json();
-        const { note, agentId, handoff } = body;
+        const { note, agentId, handoff, kind } = body;
 
-        if (!note || !agentId) {
-            return NextResponse.json({ error: "note and agentId are required" }, { status: 400 });
+        const noteText = typeof note === "string" ? note.slice(0, TASK_NOTE_MAX_CHARS) : "";
+        if (!noteText.trim()) {
+            return NextResponse.json({ error: "note is required" }, { status: 400 });
         }
 
         const handoffError = validateHandoff(handoff);
@@ -98,13 +101,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             return NextResponse.json({ error: handoffError }, { status: 400 });
         }
 
-        const internalAgentId = await resolveAgentId(companyId, agentId);
+        // Token→agent binding: a token bound to an agent may only act as that
+        // agent, so a caller-supplied agentId cannot impersonate another agent.
+        let internalAgentId: string | null;
+        try {
+            internalAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, typeof agentId === "string" && agentId ? agentId : null);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Internal Server Error";
+            return NextResponse.json({ error: message }, { status: message.startsWith("Access denied") ? 403 : 404 });
+        }
+        if (!internalAgentId) {
+            return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+        }
 
         const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.companyId, companyId))).limit(1);
 
         if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
-        const payload: { note: string; handoff?: TaskHandoff } = { note };
+        // A restricted agent may only annotate tasks under its scoped projects.
+        const { allowedProjectIds } = await loadAgentScopeContext(companyId, internalAgentId);
+        if (!isProjectAllowed(allowedProjectIds, task.projectId)) {
+            return NextResponse.json({ error: "Task's project is outside this agent's scope" }, { status: 403 });
+        }
+
+        const noteKind = kind === "handoff" || kind === "blocker" || kind === "progress" ? kind : "progress";
+        const payload: { note: string; handoff?: TaskHandoff; kind?: string } = { note: noteText, kind: noteKind };
         if (handoff) payload.handoff = handoff;
 
         const [newEvent] = await db.insert(taskEvents).values({
@@ -115,6 +136,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             actorId: internalAgentId,
             payloadJson: payload,
         }).returning();
+
+        // A note is activity on the task: it counts as progress for the loop
+        // guard and the stall sweep.
+        await db.update(tasks).set({ updatedAt: new Date() }).where(and(eq(tasks.id, taskId), eq(tasks.companyId, companyId)));
 
         let memoryItem = null;
         if (handoff) {
