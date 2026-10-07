@@ -42,8 +42,10 @@ test("operator and MCP surfaces expose unified assignment without removing compa
 
   assert.match(projects, /Search people and agents/);
   assert.match(projects, /Assigned to me/);
-  assert.match(dashboard, /Dashboard work filter/);
-  assert.match(dashboard, /People/);
+  // The live office shows agents only (no people/my-work filter), but the
+  // dashboard still reads both assignee kinds so human-owned work is counted.
+  assert.match(dashboard, /assignedAgentId/);
+  assert.match(dashboard, /assignedMemberId/);
   assert.match(apiDocs, /assignedAgentId/);
   assert.match(apiDocs, /assignedMemberId/);
   assert.match(apiDocs, /new clients should prefer `assignee`/);

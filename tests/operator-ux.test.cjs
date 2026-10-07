@@ -73,7 +73,8 @@ test("Storage keeps operator workflow folder-first and hides technical metadata"
 
 test("Core workspaces use the standardized Emperor visual system", () => {
   const globals = read("src/app/globals.css");
-  const dashboard = read("src/app/(app)/page.tsx");
+  // The dashboard page is a data container; its panels live in team-dashboard.
+  const dashboard = read("src/app/(app)/page.tsx") + read("src/components/team-dashboard/team-dashboard.tsx");
   const projects = read("src/app/(app)/projects/projects-client.tsx");
   const messages = read("src/app/(app)/messages/page.tsx");
   const messagingHub = read("src/components/messaging-hub.tsx");
