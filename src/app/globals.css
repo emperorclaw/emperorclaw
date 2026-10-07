@@ -757,3 +757,32 @@
 @media (prefers-reduced-motion: reduce) {
   .ec-chart-grow-y, .ec-chart-grow-x, .ec-chart-draw, .ec-chart-pop, .ec-rich-rise, .ec-rich-fade { animation: none; }
 }
+
+/* ─── Team dashboard: isometric office ─────────────────────── */
+@keyframes office-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
+@keyframes office-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes office-dash { to { stroke-dashoffset: -28; } }
+@keyframes office-glow { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.24; } }
+@keyframes office-flicker { 0%, 100% { opacity: 1; } 48% { opacity: 0.88; } 52% { opacity: 0.97; } }
+@keyframes office-steam { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 0.7; } 100% { transform: translateY(-8px); opacity: 0; } }
+@keyframes office-alert { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.08); } }
+@keyframes office-ring { 0%, 100% { opacity: 0.18; } 50% { opacity: 0.34; } }
+@keyframes office-dot { 0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55); } 60% { box-shadow: 0 0 0 4px rgba(56, 189, 248, 0); } }
+@keyframes office-zzz { 0% { transform: translate(0, 0); opacity: 0; } 40% { opacity: 0.9; } 100% { transform: translate(4px, -8px); opacity: 0; } }
+
+.office-scene .office-bob { animation: office-bob 2.6s ease-in-out infinite; }
+.office-scene .office-eyes { transform-box: fill-box; transform-origin: center; animation: office-blink 5.5s infinite; }
+.office-scene .office-dash { animation: office-dash 1.4s linear infinite; }
+.office-scene .office-screen-glow { animation: office-glow 3.2s ease-in-out infinite; }
+.office-scene .office-screen { animation: office-flicker 4s steps(2, end) infinite; }
+.office-scene .office-steam { animation: office-steam 2.8s ease-out infinite; }
+.office-scene .office-alert { animation: office-alert 1.6s ease-in-out infinite; }
+.office-scene .office-ring { animation: office-ring 2.4s ease-in-out infinite; }
+.office-scene .office-dot-pulse { animation: office-dot 2s ease-out infinite; }
+.office-scene .office-zzz { animation: office-zzz 3s ease-in-out infinite; }
+.office-scene .office-antenna { animation: office-flicker 2.2s ease-in-out infinite; }
+.office-scene .office-offline { filter: saturate(0.25) brightness(0.8); }
+
+@media (prefers-reduced-motion: reduce) {
+  .office-scene * { animation: none !important; }
+}

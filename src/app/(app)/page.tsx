@@ -1,63 +1,43 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, count, desc, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm";
-import { IconAlertTriangle, IconArrowRight, IconBell, IconCircleCheck, IconHeartbeat, IconRosetteDiscountCheck, IconUserCheck } from "@tabler/icons-react";
+import { and, desc, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, approvals, companies, companyMembers, incidents, notifications, projects, tasks, threadParticipants, users } from "@/db/schema";
+import { agents, approvals, approvalTaskLinks, companies, companyMembers, incidents, projects, taskEvents, tasks, threadParticipants, users } from "@/db/schema";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { computeCompanyHealth, type HealthStatus } from "@/lib/agent-health";
+import { computeCompanyHealth } from "@/lib/agent-health";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
-import { PageHeader } from "@/components/page-header";
+import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
+import {
+    skillNames,
+    type ActivityEvent, type AttentionEntry, type CollaborationEvent, type DashboardData, type DashboardMember, type DashboardTask,
+} from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
-import { SceneDashboard } from "@/components/scene/scene-layout";
 
 export const dynamic = "force-dynamic";
 
 type WorkFilter = "all" | "mine" | "human" | "agent";
 
-type BoardTask = { id: string; projectId: string; title: string; state: string; dueAt: Date | null; projectName: string | null };
-type Worker = {
-    key: string;
-    kind: "agent" | "human";
-    id: string;
-    name: string;
-    subtitle: string | null;
-    avatarUrl: string | null;
-    status: HealthStatus | null;
-    activity: string | null;
-    working: BoardTask[];
-    waiting: BoardTask[];
-    next: BoardTask[];
-    doneToday: number;
-    href: string;
-};
-
-const STATUS_STYLE: Record<HealthStatus, { label: string; className: string }> = {
-    down: { label: "Down", className: "bg-rose-500/12 text-rose-300 ring-rose-500/30" },
-    attention: { label: "Needs attention", className: "bg-amber-500/12 text-amber-200 ring-amber-500/30" },
-    healthy: { label: "Online", className: "bg-emerald-500/12 text-emerald-300 ring-emerald-500/25" },
-    idle: { label: "Idle", className: "bg-zinc-500/12 text-zinc-400 ring-zinc-500/25" },
-};
+const BOARD_LIMIT = 100;
 
 function taskTitle(inputJson: unknown, taskType: string): string {
     const input = inputJson && typeof inputJson === "object" ? inputJson as Record<string, unknown> : {};
     return typeof input.title === "string" && input.title.trim() ? input.title.trim() : taskType;
 }
 
-function ago(date: Date): string {
-    const minutes = Math.round((Date.now() - date.getTime()) / 60_000);
-    if (minutes < 60) return `${Math.max(1, minutes)}m`;
-    if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
-    return `${Math.round(minutes / 1440)}d`;
+function excerpt(text: string, max = 60): string {
+    const clean = text.replace(/\s+/g, " ").trim();
+    return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
+
+const humanize = (value: string) => value.replace(/_/g, " ");
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ work?: string; view?: string }> }) {
     const session = await getValidatedServerSession();
-    const requested = (await searchParams).work;
-    const workFilter: WorkFilter = ["mine", "human", "agent"].includes(requested || "") ? requested as WorkFilter : "all";
-    const view: "list" | "scene" = (await searchParams).view === "scene" ? "scene" : "list";
+    const params = await searchParams;
+    const workFilter: WorkFilter = ["mine", "human", "agent"].includes(params.work || "") ? params.work as WorkFilter : "all";
+    const view: "list" | "scene" = params.view === "list" ? "list" : "scene";
     const companyId = await getCompanyId();
     if (!companyId) {
         // A fresh self-hosted install has no company yet. Send the operator to
@@ -69,78 +49,157 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const now = new Date();
     const dayAgo = new Date(now.getTime() - 86_400_000);
 
-    const [[currentUser], members, agentRows, openTasks, doneRecently, pendingApprovals, [myUnread], [openIncidents], typing, health, projectRows] = await Promise.all([
+    const [[currentUser], members, agentRows, openTasks, doneRecently, pendingApprovals, openIncidents, typing, health, projectRows, recentEvents] = await Promise.all([
         userId
             ? db.select({ onboardingCompletedAt: users.onboardingCompletedAt, onboardingDismissedAt: users.onboardingDismissedAt }).from(users).where(eq(users.id, userId)).limit(1)
             : Promise.resolve([]),
         db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email, roleTitle: users.roleTitle })
             .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
             .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
-        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl }).from(agents)
+        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, skillsJson: agents.skillsJson }).from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
-        db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
+        db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt)))
             .orderBy(desc(tasks.priority), tasks.createdAt),
         db.select({ id: tasks.id, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt)))
             .orderBy(desc(tasks.updatedAt)).limit(50),
-        db.select({ id: approvals.id, requestedAt: approvals.requestedAt }).from(approvals)
-            .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending"))).orderBy(approvals.requestedAt),
-        userId
-            ? db.select({ value: count() }).from(notifications).where(and(eq(notifications.companyId, companyId), eq(notifications.userId, userId), isNull(notifications.readAt))).catch(() => [{ value: 0 }])
-            : Promise.resolve([{ value: 0 }]),
-        db.select({ value: count() }).from(incidents).where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt))),
+        db.select({ id: approvals.id, requestedAt: approvals.requestedAt, actionType: approvals.actionType, rationale: approvals.rationale, projectId: approvals.projectId, requesterAgentId: approvals.requesterAgentId, taskInput: tasks.inputJson, taskType: tasks.taskType })
+            .from(approvals)
+            .leftJoin(approvalTaskLinks, eq(approvalTaskLinks.approvalId, approvals.id))
+            .leftJoin(tasks, and(eq(tasks.id, approvalTaskLinks.taskId), eq(tasks.companyId, companyId)))
+            .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending"))).orderBy(desc(approvals.requestedAt)),
+        db.select({ id: incidents.id, summary: incidents.summary, severity: incidents.severity, projectId: incidents.projectId, taskId: incidents.taskId, createdAt: incidents.createdAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
+            .from(incidents).leftJoin(tasks, and(eq(tasks.id, incidents.taskId), eq(tasks.companyId, companyId)))
+            .where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(20),
         db.select({ agentId: threadParticipants.participantId, activity: threadParticipants.currentActivity }).from(threadParticipants)
             .where(and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), gt(threadParticipants.typingUntil, now))),
         computeCompanyHealth(companyId, { now }),
         db.select({ id: projects.id, goal: projects.goal }).from(projects).where(eq(projects.companyId, companyId)),
+        db.select({ id: taskEvents.id, eventType: taskEvents.eventType, actorType: taskEvents.actorType, actorId: taskEvents.actorId, createdAt: taskEvents.createdAt, inputJson: tasks.inputJson, taskType: tasks.taskType, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
+            .from(taskEvents).innerJoin(tasks, eq(tasks.id, taskEvents.taskId))
+            .where(and(eq(taskEvents.companyId, companyId), gte(taskEvents.createdAt, dayAgo))).orderBy(desc(taskEvents.createdAt)).limit(80),
     ]);
 
     const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
     const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, t.activity || "working…"]));
     const currentMemberId = members.find((m) => m.userId === userId)?.id ?? null;
-    const toBoardTask = (t: (typeof openTasks)[number]): BoardTask => ({ id: t.id, projectId: t.projectId, title: taskTitle(t.inputJson, t.taskType), state: t.state, dueAt: t.slaDueAt, projectName: projectName.get(t.projectId) ?? null });
+    const memberKeyByUser = new Map(members.map((m) => [m.userId, `human:${m.id}`]));
+    const nameByKey = new Map<string, string>([
+        ...agentRows.map((a) => [`agent:${a.id}`, a.name] as const),
+        ...members.map((m) => [`human:${m.id}`, m.displayName || m.email] as const),
+    ]);
+    const assigneeKey = (t: { assignedAgentId: string | null; assignedMemberId: string | null }) =>
+        t.assignedAgentId ? `agent:${t.assignedAgentId}` : t.assignedMemberId ? `human:${t.assignedMemberId}` : null;
+    const toTask = (t: (typeof openTasks)[number]): DashboardTask => ({
+        id: t.id, projectId: t.projectId, projectName: projectName.get(t.projectId) ?? null, title: taskTitle(t.inputJson, t.taskType),
+        state: t.state, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: t.slaDueAt?.toISOString() ?? null,
+    });
+    const doneTasks: DashboardTask[] = doneRecently.map((t) => ({
+        id: t.id, projectId: t.projectId, projectName: projectName.get(t.projectId) ?? null, title: taskTitle(t.inputJson, t.taskType),
+        state: TASK_STATES.done, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: null,
+    }));
 
-    const workers: Worker[] = [];
-    const build = (mine: (t: { assignedAgentId: string | null; assignedMemberId: string | null }) => boolean): Pick<Worker, "working" | "waiting" | "next" | "doneToday"> => {
-        const own = openTasks.filter(mine);
+    const workFor = (key: string): Pick<DashboardMember, "working" | "waiting" | "next" | "doneToday"> => {
+        const own = openTasks.filter((t) => assigneeKey(t) === key);
         return {
-            working: own.filter((t) => t.state === TASK_STATES.inProgress).map(toBoardTask),
-            waiting: own.filter((t) => t.state === TASK_STATES.review).map(toBoardTask),
-            next: own.filter((t) => t.state === TASK_STATES.inbox).slice(0, 3).map(toBoardTask),
-            doneToday: doneRecently.filter(mine).length,
+            working: own.filter((t) => t.state === TASK_STATES.inProgress).map(toTask),
+            waiting: own.filter((t) => t.state === TASK_STATES.review).map(toTask),
+            next: own.filter((t) => t.state === TASK_STATES.inbox).slice(0, 3).map(toTask),
+            doneToday: doneTasks.filter((t) => t.assigneeKey === key).length,
         };
     };
+
+    const dashboardMembers: DashboardMember[] = [];
     if (workFilter === "all" || workFilter === "agent") {
         for (const a of agentRows) {
             const h = healthById.get(a.id);
-            workers.push({
-                key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, subtitle: a.role, avatarUrl: a.avatarUrl,
-                status: h?.status ?? null, activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
-                ...build((t) => t.assignedAgentId === a.id),
+            dashboardMembers.push({
+                key: `agent:${a.id}`, kind: "agent", id: a.id, name: a.name, role: a.role, avatarUrl: a.avatarUrl, skills: skillNames(a.skillsJson),
+                health: h?.status ?? null, healthReasons: h?.reasons ?? [], activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
+                ...workFor(`agent:${a.id}`),
             });
         }
     }
     if (workFilter !== "agent") {
         for (const m of members) {
             if (workFilter === "mine" && m.id !== currentMemberId) continue;
-            workers.push({
-                key: `human:${m.id}`, kind: "human", id: m.id, name: m.displayName || m.email, subtitle: m.roleTitle, avatarUrl: null,
-                status: null, activity: null, href: `/projects?assignee=human:${m.id}`,
-                ...build((t) => t.assignedMemberId === m.id),
+            dashboardMembers.push({
+                key: `human:${m.id}`, kind: "human", id: m.id, name: m.displayName || m.email, role: m.roleTitle, avatarUrl: null, skills: [],
+                health: null, healthReasons: [], activity: null, href: `/projects?assignee=human:${m.id}`,
+                ...workFor(`human:${m.id}`),
             });
         }
     }
-    // Busy first; people and agents with nothing open stay out of the way.
-    const rank = (w: Worker) => (w.status === "down" ? 0 : w.status === "attention" ? 1 : 2) * 1000 - (w.working.length * 3 + w.waiting.length * 2 + w.next.length);
-    const active = workers.filter((w) => w.working.length + w.waiting.length + w.next.length + w.doneToday > 0 || w.status === "down" || w.status === "attention" || w.activity).sort((a, b) => rank(a) - rank(b));
-    const quiet = workers.filter((w) => !active.includes(w));
 
-    const serializedWorkers = JSON.parse(JSON.stringify(workers));
-    const myTasks = currentMemberId ? openTasks.filter((t) => t.assignedMemberId === currentMemberId).length : 0;
-    const agentsNeedingAttention = health.agents.filter((a) => a.status === "down" || a.status === "attention").length;
-    const oldestApproval = pendingApprovals[0]?.requestedAt ?? null;
+    // Things only a person can unblock, most urgent kinds first.
+    const attention: AttentionEntry[] = [];
+    for (const i of openIncidents) {
+        const key = assigneeKey(i);
+        attention.push({
+            id: `incident:${i.id}`, kind: "incident", title: excerpt(i.summary), memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null,
+            area: projectName.get(i.projectId) ?? null, at: i.createdAt.toISOString(), actionLabel: "View issue",
+            href: i.taskId ? `/projects?project=${i.projectId}&task=${i.taskId}` : `/projects?project=${i.projectId}`,
+        });
+    }
+    for (const a of health.agents.filter((h) => h.status === "down")) {
+        attention.push({
+            id: `agent:${a.id}`, kind: "agent", title: `${a.name} is offline with work waiting`, memberKey: `agent:${a.id}`, memberName: a.name,
+            area: a.role, at: a.lastSeenAt ?? now.toISOString(), actionLabel: "Check agent", href: "/agents/health",
+        });
+    }
+    const seenApprovals = new Set<string>();
+    for (const a of pendingApprovals) {
+        if (seenApprovals.has(a.id)) continue;
+        seenApprovals.add(a.id);
+        const what = a.taskType ? taskTitle(a.taskInput, a.taskType) : a.rationale ? excerpt(a.rationale, 48) : humanize(a.actionType);
+        const key = a.requesterAgentId ? `agent:${a.requesterAgentId}` : null;
+        attention.push({
+            id: `approval:${a.id}`, kind: "approval", title: a.actionType === "task_done" ? `Approve ${excerpt(what, 52)}` : `Approve ${humanize(a.actionType)}: ${excerpt(what, 40)}`,
+            memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null, area: projectName.get(a.projectId) ?? null,
+            at: a.requestedAt.toISOString(), actionLabel: a.actionType === "task_done" ? "Review work" : "Review request", href: "/approvals",
+        });
+    }
+    for (const item of health.attention.slice(0, 6)) {
+        attention.push({
+            id: `message:${item.messageId}`, kind: "message",
+            title: item.kind === "failed" ? `Message failed: “${excerpt(item.text, 40)}”` : `Waiting on a reply: “${excerpt(item.text, 36)}”`,
+            memberKey: `agent:${item.agentId}`, memberName: item.agentName, area: "Messages", at: item.since,
+            actionLabel: "Open chat", href: item.link,
+        });
+    }
+
+    // Who passed work to whom in the last day, and the activity ticker.
+    const collaborations: CollaborationEvent[] = [];
+    const activity: ActivityEvent[] = [];
+    for (const e of recentEvents) {
+        const actorKey = e.actorId ? (e.actorType === "agent" ? `agent:${e.actorId}` : e.actorType === "human" ? memberKeyByUser.get(e.actorId) ?? null : null) : null;
+        const targetKey = assigneeKey(e);
+        const title = taskTitle(e.inputJson, e.taskType);
+        const at = e.createdAt.toISOString();
+        if (actorKey && targetKey && actorKey !== targetKey) {
+            collaborations.push({ id: e.id, fromKey: actorKey, toKey: targetKey, kind: e.eventType === "task_note" || e.eventType === "task_review" ? "review" : "handoff", taskTitle: title, at });
+        }
+        const actorName = actorKey ? nameByKey.get(actorKey) : null;
+        if (actorName && activity.length < 20) {
+            activity.push({ id: e.id, eventType: e.eventType, actorKey, actorName, targetName: targetKey && targetKey !== actorKey ? nameByKey.get(targetKey) ?? null : null, taskTitle: title, at });
+        }
+    }
+
+    const data: DashboardData = {
+        generatedAt: now.toISOString(),
+        members: dashboardMembers,
+        board: {
+            inProgress: openTasks.filter((t) => t.state === TASK_STATES.inProgress).slice(0, BOARD_LIMIT).map(toTask),
+            review: openTasks.filter((t) => t.state === TASK_STATES.review).slice(0, BOARD_LIMIT).map(toTask),
+            done: doneTasks,
+        },
+        attention,
+        collaborations,
+        activity,
+    };
+
     const setup = await (async () => {
         if (!userId || currentUser?.onboardingCompletedAt || currentUser?.onboardingDismissedAt) return null;
         const [[membership], [company]] = await Promise.all([
@@ -155,316 +214,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         return { companyName: company?.name ?? "", profileComplete, businessType };
     })();
 
-    const workerName = (t: { assignedAgentId: string | null; assignedMemberId: string | null }) =>
-        t.assignedAgentId ? agentRows.find((a) => a.id === t.assignedAgentId)?.name : t.assignedMemberId ? members.find((m) => m.id === t.assignedMemberId)?.displayName : null;
+    const filterNav = (
+        <nav aria-label="Dashboard work filter" className="emperor-panel flex items-center gap-0.5 rounded-xl p-0.5">
+            {([["all", "Everyone"], ["agent", "Agents"], ["human", "People"], ["mine", "My work"]] as const).map(([value, label]) => (
+                <Link key={value} href={value === "all" ? "/" : `/?work=${value}`} aria-current={workFilter === value ? "page" : undefined}
+                    className={cn("inline-flex min-h-8 items-center rounded-[10px] px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                        workFilter === value ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                    {label}
+                </Link>
+            ))}
+        </nav>
+    );
 
     return (
-        <div className="mx-auto max-w-[1600px] space-y-6 animate-in fade-in duration-500">
-            <PageHeader eyebrow="Dashboard" title="Today" description="What needs you, and what every agent and person is working on right now." />
-
+        <div className="mx-auto max-w-[1600px] space-y-5 animate-in fade-in duration-500">
             {/* First-run setup: owners and admins, until they finish or skip it,
                 while the company has no agents or no profile yet. */}
             {!currentUser?.onboardingCompletedAt && !currentUser?.onboardingDismissedAt && setup && (
                 <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} />
             )}
-
-            <section aria-label="Needs you" className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-5">
-                <NeedCard href="/approvals" icon={IconRosetteDiscountCheck} label="Approvals waiting" value={pendingApprovals.length} hint={oldestApproval ? `oldest ${ago(oldestApproval)} ago` : "nothing waiting"} alert={pendingApprovals.length > 0} />
-                <NeedCard href="/messages" icon={IconBell} label="Unread for you" value={Number(myUnread?.value) || 0} hint="mentions, decisions, alerts" alert={(Number(myUnread?.value) || 0) > 0} />
-                <NeedCard href={currentMemberId ? `/projects?assignee=human:${currentMemberId}` : "/projects"} icon={IconUserCheck} label="Your open tasks" value={myTasks} hint="assigned to you" />
-                <NeedCard href="/agents/health" icon={IconHeartbeat} label="Agents needing attention" value={agentsNeedingAttention} hint={health.totals.unanswered ? `${health.totals.unanswered} unanswered message${health.totals.unanswered === 1 ? "" : "s"}` : "all answering"} alert={agentsNeedingAttention > 0} />
-                <NeedCard href="/projects?attention=1" icon={IconAlertTriangle} label="Open incidents" value={Number(openIncidents?.value) || 0} hint="failed tasks & SLA breaches" alert={(Number(openIncidents?.value) || 0) > 0} />
-            </section>
-
-            <nav aria-label="Dashboard work filter" className="flex flex-wrap items-center gap-2">
-                {([["all", "Everyone"], ["agent", "Agents"], ["human", "People"], ["mine", "My work"]] as const).map(([value, label]) => (
-                    <Link key={value} href={value === "all" ? "/" : `/?work=${value}`} aria-current={workFilter === value ? "page" : undefined}
-                        className={cn("inline-flex min-h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
-                            workFilter === value ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200")}>
-                        {label}
-                    </Link>
-                ))}
-            </nav>
-
-            <nav aria-label="View mode" className="flex items-center gap-2">
-                <Link href="/" className={cn("inline-flex min-h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
-                    view === "list" ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200")}>
-                    List
-                </Link>
-                <Link href="/?view=scene" className={cn("inline-flex min-h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
-                    view === "scene" ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200")}>
-                    Scene
-                </Link>
-            </nav>
-            {view === "scene" ? (
-                <SceneDashboard workers={serializedWorkers} />
-            ) : (
-            <section aria-label="Team board" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                {active.map((w) => <WorkerCard key={w.key} worker={w} now={now} />)}
-                {active.length === 0 && (
-                    <div className="emperor-panel col-span-full rounded-2xl p-10 text-center text-sm text-zinc-500">
-                        {agentRows.length === 0 ? (
-                            <>No agents yet. <Link href="/agents" className="text-cyan-300 hover:text-cyan-200">Hire your first agent</Link> to get started.</>
-                        ) : (
-                            <>Nobody has open work right now. Ask an agent for something in <Link href="/messages" className="text-cyan-300 hover:text-cyan-200">Messages</Link>, or plan work in <Link href="/projects" className="text-cyan-300 hover:text-cyan-200">Projects</Link>.</>
-                        )}
-                    </div>
-                )}
-            </section>
-            )}
-            {quiet.length > 0 && (
-                <p className="text-xs text-zinc-600">
-                    No open work: {quiet.map((w, i) => <span key={w.key}>{i ? ", " : ""}<Link href={w.href} className="hover:text-zinc-300">{w.name}</Link></span>)}
-                </p>
-            )}
-
-            {doneRecently.length > 0 && (
-                <section className="emperor-panel rounded-2xl p-4">
-                    <h2 className="mb-1 flex items-center gap-2 px-1 text-sm font-semibold text-zinc-200"><IconCircleCheck className="h-4 w-4 text-emerald-400" />Done in the last 24 hours</h2>
-                    <ul className="divide-y divide-zinc-800/70">
-                        {doneRecently.slice(0, 12).map((t) => (
-                            <li key={t.id}>
-                                <Link href={`/projects?project=${t.projectId}&task=${t.id}`} className="flex items-center gap-3 rounded-lg px-1 py-2 hover:bg-zinc-900">
-                                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-300">{taskTitle(t.inputJson, t.taskType)}</span>
-                                    <span className="shrink-0 text-xs text-zinc-500">{workerName(t) ?? "—"}</span>
-                                    <span className="w-10 shrink-0 text-right text-[11px] text-zinc-600">{ago(t.updatedAt)}</span>
-                                </Link>
-                            </li>
-                        ))}
-                    </ul>
-                </section>
-            )}
+            <TeamDashboard data={data} initialView={view} workFilter={filterNav} hasAgents={agentRows.length > 0} />
         </div>
     );
-}
-
-function NeedCard({ href, icon: Icon, label, value, hint, alert }: { href: string; icon: typeof IconBell; label: string; value: number; hint: string; alert?: boolean }) {
-    return (
-        <Link href={href} className={cn("emperor-panel group rounded-2xl p-3.5 transition-colors hover:border-zinc-600 sm:p-4", alert && "border-amber-500/30")}>
-            <div className="flex items-center justify-between gap-2">
-                <span className="line-clamp-2 text-[11px] font-medium uppercase leading-tight tracking-wider text-zinc-500">{label}</span>
-                <Icon className={cn("h-4 w-4 shrink-0", alert ? "text-amber-300" : "text-zinc-600")} />
-            </div>
-            <div className={cn("mt-1 text-2xl font-semibold tabular-nums", alert ? "text-amber-100" : "text-zinc-100")}>{value}</div>
-            <div className="mt-0.5 truncate text-xs text-zinc-500">{hint}</div>
-        </Link>
-    );
-}
-
-function TaskLine({ task, now, tone }: { task: BoardTask; now: Date; tone: "working" | "waiting" | "next" }) {
-    const overdue = task.dueAt && task.dueAt.getTime() < now.getTime();
-    return (
-        <li>
-            <Link href={`/projects?project=${task.projectId}&task=${task.id}`} className="group flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-zinc-900">
-                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone === "working" ? "bg-cyan-400" : tone === "waiting" ? "bg-amber-400" : "bg-zinc-600")} />
-                <span className="min-w-0 flex-1 truncate text-sm text-zinc-300 group-hover:text-zinc-100">{task.title}</span>
-                {overdue && <span className="shrink-0 rounded bg-rose-500/15 px-1.5 text-[10px] font-medium text-rose-300">overdue</span>}
-            </Link>
-        </li>
-    );
-}
-
-function WorkerCard({ worker, now }: { worker: Worker; now: Date }) {
-    const status = worker.status ? STATUS_STYLE[worker.status] : null;
-    return (
-        <article className="emperor-panel flex min-w-0 flex-col gap-3 rounded-2xl p-4">
-            <div className="flex items-start gap-3">
-                {worker.kind === "agent" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={worker.avatarUrl || `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(worker.id)}`} alt="" className="h-9 w-9 shrink-0 rounded-xl border border-zinc-800 bg-zinc-900 object-cover" />
-                ) : (
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-zinc-800 bg-zinc-900 text-sm font-semibold text-zinc-400">{worker.name.slice(0, 1).toUpperCase()}</span>
-                )}
-                <div className="min-w-0 flex-1">
-                    <Link href={worker.href} className="block truncate text-sm font-semibold text-zinc-100 hover:text-zinc-50">{worker.name}</Link>
-                    <div className="truncate text-xs text-zinc-500">{worker.activity ? <span className="text-cyan-300">{worker.activity}</span> : worker.subtitle || (worker.kind === "human" ? "Person" : "Agent")}</div>
-                </div>
-                {status && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", status.className)}>{status.label}</span>}
-            </div>
-            {worker.working.length > 0 && (
-                <div>
-                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Working on</div>
-                    <ul>{worker.working.map((t) => <TaskLine key={t.id} task={t} now={now} tone="working" />)}</ul>
-                </div>
-            )}
-            {worker.waiting.length > 0 && (
-                <div>
-                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Waiting on a person</div>
-                    <ul>{worker.waiting.map((t) => <TaskLine key={t.id} task={t} now={now} tone="waiting" />)}</ul>
-                </div>
-            )}
-            {worker.next.length > 0 && (
-                <div>
-                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Next up</div>
-                    <ul>{worker.next.map((t) => <TaskLine key={t.id} task={t} now={now} tone="next" />)}</ul>
-                </div>
-            )}
-            <div className="mt-auto flex items-center justify-between border-t border-zinc-800/80 pt-2.5 text-xs text-zinc-500">
-                <span><span className="tabular-nums text-zinc-300">{worker.doneToday}</span> done today</span>
-                <Link href={worker.href} className="inline-flex items-center gap-1 hover:text-zinc-300">Details<IconArrowRight className="h-3 w-3" /></Link>
-            </div>
-        </article>
-    );
-}
-
-/* ── Scene rendering for /?view=scene ── */
-const SCENE_W = 1200;
-const SCENE_H = 800;
-const AGENT_R = 40;
-const COL_GAP = 140;
-const ROW_GAP = 140;
-const CLUSTER_GAP = 80;
-const MARGIN = 60;
-const LABEL_H = 32;
-
-function hexPoints(r: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i - Math.PI / 2;
-    pts.push(`${(r * Math.cos(angle)).toFixed(1)},${(r * Math.sin(angle)).toFixed(1)}`);
-  }
-  return pts.join(" ");
-}
-
-function sceneLabel(worker: Worker): { label: string; emoji: string } {
-  if (worker.status === "down") return { label: "Offline", emoji: "\uD83D\uDCA4" };
-  if (worker.waiting.length > 0) return { label: "Blocked", emoji: "\u270B" };
-  if (worker.working.length > 0) {
-    const act = worker.activity?.toLowerCase() || "";
-    if (act.includes("type") || act.includes("code")) return { label: "Coding", emoji: "\u2328\uFE0F" };
-    if (act.includes("search") || act.includes("read")) return { label: "Researching", emoji: "\uD83D\uDD0D" };
-    if (act.includes("review") || act.includes("test")) return { label: "Reviewing", emoji: "\uD83D\uDD0E" };
-    return { label: "Working", emoji: "\u2699\uFE0F" };
-  }
-  if (worker.doneToday > 0) return { label: "Done", emoji: "\u2615" };
-  return { label: "Idle", emoji: "\u2615" };
-}
-
-function layoutScene(workers: Worker[]) {
-  const byProject = new Map<string, { label: string; members: Worker[] }>();
-  const general: Worker[] = [];
-  const placed = new Set<string>();
-
-  for (const w of workers) {
-    const pids = new Set([...w.working, ...w.waiting, ...w.next].map((t) => t.projectId).filter(Boolean));
-    if (pids.size === 0) { general.push(w); continue; }
-    for (const pid of pids) {
-      const label = w.working.find((t) => t.projectId === pid)?.projectName
-        ?? w.waiting.find((t) => t.projectId === pid)?.projectName
-        ?? w.next.find((t) => t.projectId === pid)?.projectName
-        ?? pid.slice(0, 12);
-      if (!byProject.has(pid)) byProject.set(pid, { label, members: [] });
-      byProject.get(pid)!.members.push(w);
-    }
-  }
-
-  const clusters: Array<{ label: string; members: Worker[] }> = [];
-  for (const [, cl] of byProject) {
-    const unique = cl.members.filter((w) => {
-      if (placed.has(w.key)) return false;
-      placed.add(w.key);
-      return true;
-    });
-    if (unique.length) clusters.push({ label: cl.label, members: unique });
-  }
-  const unplaced = workers.filter((w) => !placed.has(w.key));
-  if (unplaced.length) clusters.push({ label: "General", members: unplaced });
-
-  const positions: Array<{ w: Worker; x: number; y: number; proj: string | null }> = [];
-  const lines: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
-  let cy = MARGIN;
-
-  for (const c of clusters) {
-    const perRow = Math.max(1, Math.min(c.members.length, Math.floor((SCENE_W - MARGIN * 2) / COL_GAP) + 1));
-    const rows = Math.ceil(c.members.length / perRow);
-    cy += LABEL_H;
-    let cx = MARGIN;
-    let row = 0;
-    for (let i = 0; i < c.members.length; i++) {
-      const x = cx + (i % perRow) * COL_GAP;
-      const y = cy + row * ROW_GAP;
-      positions.push({ w: c.members[i], x, y, proj: c.label });
-      if (i > 0 && i % perRow === 0) { row++; cx = MARGIN; }
-    }
-    // Connection lines along the row
-    for (let i = 0; i < c.members.length - 1; i++) {
-      const a = c.members[i], b = c.members[i + 1];
-      const pa = positions.find((p) => p.w.key === a.key);
-      const pb = positions.find((p) => p.w.key === b.key);
-      if (pa && pb) lines.push({ x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y });
-    }
-    cy += rows * ROW_GAP + CLUSTER_GAP;
-  }
-
-  return { positions, lines, sceneH: Math.max(SCENE_H, cy + MARGIN) };
-}
-
-function AgentSceneSVG({ workers }: { workers: Worker[] }) {
-  const { positions, lines, sceneH } = layoutScene(workers);
-  return (
-    <svg viewBox={`0 0 ${SCENE_W} ${sceneH}`} className="w-full h-auto" style={{ maxHeight: "700px" }}>
-      <defs>
-        <pattern id="fg" width={40} height={40} patternUnits="userSpaceOnUse">
-          <rect width={40} height={40} fill="none" stroke="var(--zinc-800)" strokeWidth={0.5} />
-        </pattern>
-      </defs>
-      <rect width={SCENE_W} height={sceneH} fill="var(--zinc-950)" rx={16} />
-      <rect width={SCENE_W} height={sceneH} fill="url(#fg)" opacity={0.3} />
-      <text x={MARGIN} y={28} fontSize={16} fontWeight={700} fill="var(--zinc-100)">
-        {"\uD83C\uDFE2"} Agent Office &middot; {workers.length} agent{workers.length === 1 ? "" : "s"}
-      </text>
-
-      {lines.map((l, i) => (
-        <g key={`l${i}`}>
-          <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="var(--zinc-600)" strokeWidth={1.5} strokeDasharray="6 4" />
-        </g>
-      ))}
-
-      {(() => {
-        const seen = new Set<string>();
-        return positions.filter((p) => p.proj && !seen.has(p.proj!)).map((p) => {
-          seen.add(p.proj!);
-          return (
-            <text key={`pl-${p.proj}`} x={p.x} y={p.y - AGENT_R - 32} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--zinc-400)">
-              {"\uD83D\uDCC1"} {p.proj}
-            </text>
-          );
-        });
-      })()}
-
-      {positions.map((p) => {
-        const st = p.w.status === "healthy" ? "emerald" : p.w.status === "attention" ? "amber" : p.w.status === "down" ? "rose" : "zinc";
-        const { label, emoji } = sceneLabel(p.w);
-        return (
-          <Link key={p.w.key} href={p.w.href}>
-            <g transform={`translate(${p.x},${p.y})`} className="cursor-pointer hover:opacity-80" style={{ transition: "transform 0.3s" }}>
-              <circle r={AGENT_R + 4} fill="none" stroke={`var(--${st}-400)`} strokeWidth={3} />
-              <polygon points={hexPoints(AGENT_R)} fill="var(--zinc-900)" stroke="var(--zinc-700)" strokeWidth={1} />
-              {p.w.avatarUrl ? (
-                <image href={p.w.avatarUrl} x={-14} y={-14} width={28} height={28} style={{ borderRadius: 8 }} />
-              ) : (
-                <text x={0} y={5} textAnchor="middle" fontSize={18} fill="var(--zinc-300)">{p.w.kind === "agent" ? "\uD83E\uDD16" : "\uD83D\uDC64"}</text>
-              )}
-              <text x={0} y={-AGENT_R - 10} textAnchor="middle" fontSize={14}>{emoji}</text>
-              <text x={0} y={AGENT_R + 18} textAnchor="middle" fontSize={11} fill="var(--zinc-200)" fontWeight={600}>
-                {p.w.name.length > 14 ? p.w.name.slice(0, 13) + "\u2026" : p.w.name}
-              </text>
-              <text x={0} y={AGENT_R + 32} textAnchor="middle" fontSize={9} fill={`var(--${st}-300)`}>{label}</text>
-            </g>
-          </Link>
-        );
-      })}
-
-      <g transform={`translate(${MARGIN}, ${sceneH - 50})`}>
-        <rect x={0} y={0} width={320} height={40} rx={8} fill="var(--zinc-900)" opacity={0.8} />
-        <text x={10} y={16} fontSize={9} fill="var(--zinc-400)">Status:</text>
-        {[["emerald", "Online"], ["amber", "Attention"], ["rose", "Down"], ["zinc", "Idle"]].map(([c, l], i) => (
-          <g key={i} transform={`translate(${80 + i * 65}, 0)`}>
-            <circle cx={0} cy={12} r={4} fill={`var(--${c}-400)`} />
-            <text x={8} y={16} fontSize={9} fill="var(--zinc-500)">{l}</text>
-          </g>
-        ))}
-      </g>
-    </svg>
-  );
 }

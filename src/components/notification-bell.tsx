@@ -54,7 +54,8 @@ function ago(value: string): string {
  * assigned to you, agent failures, serious incidents). Polls quietly; the tab
  * title is left alone so the badge is the only signal.
  */
-export function NotificationBell({ collapsed }: { collapsed: boolean }) {
+export function NotificationBell({ collapsed, variant = "sidebar" }: { collapsed: boolean; variant?: "sidebar" | "header" }) {
+    const header = variant === "header";
     const router = useRouter();
     const [items, setItems] = useState<Notification[]>([]);
     const [unread, setUnread] = useState(0);
@@ -101,13 +102,15 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
                     type="button"
                     aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
                     className={cn(
-                        "relative flex w-full cursor-pointer items-center rounded-xl text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground",
-                        collapsed ? "justify-center px-2 py-2" : "gap-3 px-2.5 py-2",
+                        "relative flex cursor-pointer items-center rounded-xl text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground",
+                        header ? "h-10 w-10 justify-center" : "w-full",
+                        !header && (collapsed ? "justify-center px-2 py-2" : "gap-3 px-2.5 py-2"),
                     )}
                 >
-                    <IconBell className={cn("h-4 w-4", unread > 0 && "text-cyan-300")} />
+                    <IconBell className={cn(header ? "h-5 w-5" : "h-4 w-4", unread > 0 && "text-cyan-300")} />
                     <span className={cn("flex-1 text-left", collapsed ? "hidden" : "hidden md:inline")}>Notifications</span>
-                    {unread > 0 && (
+                    {unread > 0 && header && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background" />}
+                    {unread > 0 && !header && (
                         <span className={cn(
                             "rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-cyan-950",
                             collapsed ? "absolute right-1 top-1" : "min-w-5",
@@ -117,7 +120,7 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
                     )}
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent side="right" align="end" sideOffset={12} className="w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border-zinc-800 bg-zinc-950 p-0 text-zinc-200 shadow-2xl shadow-black/50">
+            <DropdownMenuContent side={header ? "bottom" : "right"} align="end" sideOffset={header ? 8 : 12} className="w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border-zinc-800 bg-zinc-950 p-0 text-zinc-200 shadow-2xl shadow-black/50">
                 <div className="flex items-center justify-between border-b border-zinc-800 px-3.5 py-2.5">
                     <span className="text-sm font-semibold text-zinc-100">Notifications</span>
                     <span className="flex items-center gap-1">
