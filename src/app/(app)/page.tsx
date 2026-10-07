@@ -52,10 +52,11 @@ function ago(date: Date): string {
     return `${Math.round(minutes / 1440)}d`;
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ work?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ work?: string; view?: string }> }) {
     const session = await getValidatedServerSession();
     const requested = (await searchParams).work;
     const workFilter: WorkFilter = ["mine", "human", "agent"].includes(requested || "") ? requested as WorkFilter : "all";
+    const view: "list" | "scene" = (await searchParams).view === "scene" ? "scene" : "list";
     const companyId = await getCompanyId();
     if (!companyId) {
         // A fresh self-hosted install has no company yet. Send the operator to
@@ -183,6 +184,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 ))}
             </nav>
 
+            <nav aria-label="View mode" className="flex items-center gap-2">
+                <Link href="/" className={cn("inline-flex min-h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                    view === "list" ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200")}>
+                    List
+                </Link>
+                <Link href="/?view=scene" className={cn("inline-flex min-h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                    view === "scene" ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200")}>
+                    Scene
+                </Link>
+            </nav>
+            {view === "scene" ? (
+                <AgentSceneSVG workers={workers} />
+            ) : (
             <section aria-label="Team board" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {active.map((w) => <WorkerCard key={w.key} worker={w} now={now} />)}
                 {active.length === 0 && (
@@ -195,6 +209,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                     </div>
                 )}
             </section>
+            )}
             {quiet.length > 0 && (
                 <p className="text-xs text-zinc-600">
                     No open work: {quiet.map((w, i) => <span key={w.key}>{i ? ", " : ""}<Link href={w.href} className="hover:text-zinc-300">{w.name}</Link></span>)}
@@ -288,4 +303,166 @@ function WorkerCard({ worker, now }: { worker: Worker; now: Date }) {
             </div>
         </article>
     );
+}
+
+/* ── Scene rendering for /?view=scene ── */
+const SCENE_W = 1200;
+const SCENE_H = 800;
+const AGENT_R = 40;
+const COL_GAP = 140;
+const ROW_GAP = 140;
+const CLUSTER_GAP = 80;
+const MARGIN = 60;
+const LABEL_H = 32;
+
+function hexPoints(r: number): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 2;
+    pts.push(`${(r * Math.cos(angle)).toFixed(1)},${(r * Math.sin(angle)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+function sceneLabel(worker: Worker): { label: string; emoji: string } {
+  if (worker.status === "down") return { label: "Offline", emoji: "\uD83D\uDCA4" };
+  if (worker.waiting.length > 0) return { label: "Blocked", emoji: "\u270B" };
+  if (worker.working.length > 0) {
+    const act = worker.activity?.toLowerCase() || "";
+    if (act.includes("type") || act.includes("code")) return { label: "Coding", emoji: "\u2328\uFE0F" };
+    if (act.includes("search") || act.includes("read")) return { label: "Researching", emoji: "\uD83D\uDD0D" };
+    if (act.includes("review") || act.includes("test")) return { label: "Reviewing", emoji: "\uD83D\uDD0E" };
+    return { label: "Working", emoji: "\u2699\uFE0F" };
+  }
+  if (worker.doneToday > 0) return { label: "Done", emoji: "\u2615" };
+  return { label: "Idle", emoji: "\u2615" };
+}
+
+function layoutScene(workers: Worker[]) {
+  const byProject = new Map<string, { label: string; members: Worker[] }>();
+  const general: Worker[] = [];
+  const placed = new Set<string>();
+
+  for (const w of workers) {
+    const pids = new Set([...w.working, ...w.waiting, ...w.next].map((t) => t.projectId).filter(Boolean));
+    if (pids.size === 0) { general.push(w); continue; }
+    for (const pid of pids) {
+      const label = w.working.find((t) => t.projectId === pid)?.projectName
+        ?? w.waiting.find((t) => t.projectId === pid)?.projectName
+        ?? w.next.find((t) => t.projectId === pid)?.projectName
+        ?? pid.slice(0, 12);
+      if (!byProject.has(pid)) byProject.set(pid, { label, members: [] });
+      byProject.get(pid)!.members.push(w);
+    }
+  }
+
+  const clusters: Array<{ label: string; members: Worker[] }> = [];
+  for (const [, cl] of byProject) {
+    const unique = cl.members.filter((w) => {
+      if (placed.has(w.key)) return false;
+      placed.add(w.key);
+      return true;
+    });
+    if (unique.length) clusters.push({ label: cl.label, members: unique });
+  }
+  const unplaced = workers.filter((w) => !placed.has(w.key));
+  if (unplaced.length) clusters.push({ label: "General", members: unplaced });
+
+  const positions: Array<{ w: Worker; x: number; y: number; proj: string | null }> = [];
+  const lines: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+  let cy = MARGIN;
+
+  for (const c of clusters) {
+    const perRow = Math.max(1, Math.min(c.members.length, Math.floor((SCENE_W - MARGIN * 2) / COL_GAP) + 1));
+    const rows = Math.ceil(c.members.length / perRow);
+    cy += LABEL_H;
+    let cx = MARGIN;
+    let row = 0;
+    for (let i = 0; i < c.members.length; i++) {
+      const x = cx + (i % perRow) * COL_GAP;
+      const y = cy + row * ROW_GAP;
+      positions.push({ w: c.members[i], x, y, proj: c.label });
+      if (i > 0 && i % perRow === 0) { row++; cx = MARGIN; }
+    }
+    // Connection lines along the row
+    for (let i = 0; i < c.members.length - 1; i++) {
+      const a = c.members[i], b = c.members[i + 1];
+      const pa = positions.find((p) => p.w.key === a.key);
+      const pb = positions.find((p) => p.w.key === b.key);
+      if (pa && pb) lines.push({ x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y });
+    }
+    cy += rows * ROW_GAP + CLUSTER_GAP;
+  }
+
+  return { positions, lines, sceneH: Math.max(SCENE_H, cy + MARGIN) };
+}
+
+function AgentSceneSVG({ workers }: { workers: Worker[] }) {
+  const { positions, lines, sceneH } = layoutScene(workers);
+  return (
+    <svg viewBox={`0 0 ${SCENE_W} ${sceneH}`} className="w-full h-auto" style={{ maxHeight: "700px" }}>
+      <defs>
+        <pattern id="fg" width={40} height={40} patternUnits="userSpaceOnUse">
+          <rect width={40} height={40} fill="none" stroke="var(--zinc-800)" strokeWidth={0.5} />
+        </pattern>
+      </defs>
+      <rect width={SCENE_W} height={sceneH} fill="var(--zinc-950)" rx={16} />
+      <rect width={SCENE_W} height={sceneH} fill="url(#fg)" opacity={0.3} />
+      <text x={MARGIN} y={28} fontSize={16} fontWeight={700} fill="var(--zinc-100)">
+        {"\uD83C\uDFE2"} Agent Office &middot; {workers.length} agent{workers.length === 1 ? "" : "s"}
+      </text>
+
+      {lines.map((l, i) => (
+        <g key={`l${i}`}>
+          <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="var(--zinc-600)" strokeWidth={1.5} strokeDasharray="6 4" />
+        </g>
+      ))}
+
+      {(() => {
+        const seen = new Set<string>();
+        return positions.filter((p) => p.proj && !seen.has(p.proj!)).map((p) => {
+          seen.add(p.proj!);
+          return (
+            <text key={`pl-${p.proj}`} x={p.x} y={p.y - AGENT_R - 32} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--zinc-400)">
+              {"\uD83D\uDCC1"} {p.proj}
+            </text>
+          );
+        });
+      })()}
+
+      {positions.map((p) => {
+        const st = p.w.status === "healthy" ? "emerald" : p.w.status === "attention" ? "amber" : p.w.status === "down" ? "rose" : "zinc";
+        const { label, emoji } = sceneLabel(p.w);
+        return (
+          <Link key={p.w.key} href={p.w.href}>
+            <g transform={`translate(${p.x},${p.y})`} className="cursor-pointer hover:opacity-80" style={{ transition: "transform 0.3s" }}>
+              <circle r={AGENT_R + 4} fill="none" stroke={`var(--${st}-400)`} strokeWidth={3} />
+              <polygon points={hexPoints(AGENT_R)} fill="var(--zinc-900)" stroke="var(--zinc-700)" strokeWidth={1} />
+              {p.w.avatarUrl ? (
+                <image href={p.w.avatarUrl} x={-14} y={-14} width={28} height={28} style={{ borderRadius: 8 }} />
+              ) : (
+                <text x={0} y={5} textAnchor="middle" fontSize={18} fill="var(--zinc-300)">{p.w.kind === "agent" ? "\uD83E\uDD16" : "\uD83D\uDC64"}</text>
+              )}
+              <text x={0} y={-AGENT_R - 10} textAnchor="middle" fontSize={14}>{emoji}</text>
+              <text x={0} y={AGENT_R + 18} textAnchor="middle" fontSize={11} fill="var(--zinc-200)" fontWeight={600}>
+                {p.w.name.length > 14 ? p.w.name.slice(0, 13) + "\u2026" : p.w.name}
+              </text>
+              <text x={0} y={AGENT_R + 32} textAnchor="middle" fontSize={9} fill={`var(--${st}-300)`}>{label}</text>
+            </g>
+          </Link>
+        );
+      })}
+
+      <g transform={`translate(${MARGIN}, ${sceneH - 50})`}>
+        <rect x={0} y={0} width={320} height={40} rx={8} fill="var(--zinc-900)" opacity={0.8} />
+        <text x={10} y={16} fontSize={9} fill="var(--zinc-400)">Status:</text>
+        {[["emerald", "Online"], ["amber", "Attention"], ["rose", "Down"], ["zinc", "Idle"]].map(([c, l], i) => (
+          <g key={i} transform={`translate(${80 + i * 65}, 0)`}>
+            <circle cx={0} cy={12} r={4} fill={`var(--${c}-400)`} />
+            <text x={8} y={16} fontSize={9} fill="var(--zinc-500)">{l}</text>
+          </g>
+        ))}
+      </g>
+    </svg>
+  );
 }
