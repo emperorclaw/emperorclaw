@@ -9,6 +9,33 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.73] — 2026-10-08
+
+### Added
+- Avatar-based Pulse dashboard with shared ESP32 colors, paginated team views and mobile controls.
+
+### Changed
+- Human actions are separated from observations; approvals and connection status remain visible alongside ongoing work.
+- Dashboard motion follows fresh activity, supports reduced motion and can be paused. Playful idle behavior is optional.
+
+### Fixed
+- False attention warnings from historical activity, private activity descriptions, viewer controls and quick-chat error recovery.
+
+## [0.8.72] — 2026-10-08
+
+### Added
+- One-click Render deployment: a Blueprint that provisions managed Postgres, the app image and a Hermes worker, generating the required secrets automatically.
+- Remote worker pairing for hosts without a Docker socket: a Hermes worker polls `POST /api/runtime/pair` until an agent is assigned, and its agent-bound token is delivered exactly once.
+- Pair-thread views: the dashboard lists an agent's active pair conversations (counterpart, last message, related task), and Messages links a pair thread to the task it is about.
+- Bridge priority queue: human DMs and approvals first (P0), then task wakes (P1), pair threads (P2) and room mentions (P3), with per-thread coalescing and age-based anti-starvation.
+
+### Changed
+- At most one worker can hold an agent: the database enforces the binding, and the LLM key only travels with a freshly minted token.
+- A worker that lost its token or presents a revoked one is released or rotated instead of silently re-issued.
+
+### Fixed
+- The Messages chat rebuilt its transcript and jumped the scroll position on the 15s dashboard refresh; the transcript is now seeded once and kept current by the 5s poll.
+
 ## [0.8.71] — 2026-10-08
 
 ### Fixed
