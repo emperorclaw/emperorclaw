@@ -9,6 +9,21 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.70] — 2026-10-08
+
+### Added
+- Dashboard: spend today and this month against budget, team throughput (done in 24h and 7 days, median cycle time, blocked), and a "What's moving" feed of handoffs.
+- Needs your attention: ordered by urgency, with inline Approve, Reject, Resume, Reassign and Restart.
+
+### Changed
+- Agent states on the dashboard are truthful: "Stuck" only for real problems, "Running late" for SLA breaches, "Hasn't started" for unclaimed work; stale incidents are ignored.
+- List mode is a responsive table that fits its panel and collapses to cards on narrow screens.
+
+### Fixed
+- The watchdog now closes its own SLA and unclaimed incidents once the task moves on, and no longer re-raises them for deleted tasks.
+- Horizontal overflow on the dashboard at tablet and phone widths.
+- Pair-thread activity is only sent to owners and admins; the approvals, task and runtime-restart routes require a signed-in company member.
+
 ## [0.8.69] — 2026-10-08
 
 ### Added
