@@ -162,5 +162,6 @@ maybe("agent health flags unanswered requests but not ones answered later", asyn
     assert.equal(ops.status, "attention");
     assert.equal(ops.medianResponseMs, 60_000);
     assert.equal(health.attention.length, 1);
-    assert.equal(health.attention[0].text, "Where is the report?");
+    assert.equal(health.attention[0].text, "Private message", "company health must not expose a private DM preview");
+    assert.equal(health.attention[0].link, `/messages?agent=${agent.id}`, "the private request remains reachable through its permission-checked conversation");
 });
