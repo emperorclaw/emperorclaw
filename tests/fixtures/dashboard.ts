@@ -25,7 +25,7 @@ export function dashboardFixture(count = 8, generatedAt = new Date().toISOString
         ...Array.from({ length: 4 }, (_, i) => ({ ...entry("approval", i % count, `Review request ${i + 2}: supporting assets for the autumn launch`), id: `fixture-additional-approval-${i}`, approvalId: `fixture-approval-${i}` })),
     ] : [];
     return {
-        generatedAt, members, attention, board: { inProgress: members.flatMap((m) => m.working), review: members.flatMap((m) => m.waiting), done: count ? [task(0, "done", "Published the research summary")] : [] },
+        companyName: "Orbit Labs", generatedAt, members, attention, board: { inProgress: members.flatMap((m) => m.working), review: members.flatMap((m) => m.waiting), done: count ? [task(0, "done", "Published the research summary")] : [] },
         collaborations: [], activity: [], feed: [],
         cost: { spendTodayCents: 3478, spendMonthCents: 18240, budgetCents: 80000, agents: members.slice(0, 3).map((m) => ({ key: m.key, name: m.name, spendTodayCents: m.spendTodayCents, monthCents: m.monthlyCostCents, budgetCents: m.monthlyBudgetCents })) },
         throughput: { doneToday: 16, doneThisWeek: 91, sparkline: [8, 12, 14, 9, 18, 14, 16], medianCycleMs: 1800000, blocked: 1 },

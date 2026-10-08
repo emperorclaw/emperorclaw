@@ -1405,6 +1405,17 @@ class TestGroupChats(unittest.TestCase):
         self.assertIn("José", text)
         self.assertEqual(bridge.format_group_context({"threadId": "t1", "threadType": "team"}), "")
 
+    def test_group_coordinator_is_scoped_and_project_rules_remain(self):
+        bridge.remember_thread_details({"coordinated": {"title": "Design", "members": [
+            {"kind": "agent", "name": "Ada", "role": "coordinator"},
+            {"kind": "human", "name": "Owner", "role": "owner"},
+        ]}})
+        text = bridge.format_group_context({"threadId": "coordinated", "threadType": "group"})
+        self.assertIn("Team coordinator: Ada (agent)", text)
+        self.assertIn("only to this group", text)
+        self.assertIn("project leads and approval rules still apply", text)
+        self.assertNotIn("Team coordinator:", bridge.format_group_context({"threadId": "g2", "threadType": "group"}))
+
     def test_group_context_degrades_without_details(self):
         text = bridge.format_group_context({"threadId": "g2", "threadType": "group", "threadTitle": "Ops"})
         self.assertIn('"Ops"', text)

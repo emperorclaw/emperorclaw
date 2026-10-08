@@ -6,13 +6,13 @@ This page explains how the current Emperor model is meant to be used in practice
 
 The dashboard separates work, connection, and human action:
 
-- **Scene** shows the office, with your configured agent avatars beside each character.
+- **Scene** opens the live observatory: your configured agent characters work at holographic stations, in stable numbered sectors. Sectors are visual seating, not departments or exclusive teams. Agents may belong to multiple chats; selecting any chat includes all its members. Select a chat to explore its members, or page through the whole company. Message previews are bounded plain text; long Markdown and code responses stay in Messages. New messages appear above the speaking agent; direct conversations and handoffs draw brief paths. Messages and paths expire after 30 seconds and stop when updates are stale. Private pair conversations remain restricted to owners and admins.
 - **Pulse** offers an avatar-first overview that uses the same identity colors as the ESP32 desk display.
-- **List** is the default on phones and for teams larger than 24 agents. Lists and Pulse pages keep every agent reachable through search and pagination.
+- **List** offers compact rows or mobile cards. Scene, List and Pulse keep every agent reachable through search and pagination; the Scene shows up to 12 agents on desktop and 6 on phones.
 - **Action inbox** holds approvals, task problems, failed deliveries, unavailable agents with work waiting, and conversations that need resuming. Expand it to see every loaded action.
 - **Watchlist** holds timing and agent-response observations. “Awaiting agent response” means the agent owes the response; it does not ask you to reply.
 
-An approval or a problem in another task does not stop an agent's ongoing work. “Available” is the default idle label; playful idle routines are optional in Workspace options. Continuous working animation requires fresh runtime activity. A task record alone is labeled “Task in progress.”
+An approval or a problem in another task does not stop an agent's ongoing work. “Available” is the default idle label. Continuous working animation requires fresh runtime activity. A task record alone is labeled “Task in progress.”
 
 The top workspace counters count agents; the action counter counts inbox items. Task filters select task states on the board. The board previews up to 100 tasks per state; use Projects for the full board. Spend and completed-work figures labeled 24h use a rolling 24-hour window.
 

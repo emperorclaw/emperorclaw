@@ -114,8 +114,29 @@ export interface ActivityEvent {
     at: string;
 }
 
+export interface DashboardTeam {
+    id: string;
+    name: string;
+    memberKeys: string[];
+    coordinator?: { key: string; name: string; kind: "agent" | "human" } | null;
+    humanCount?: number;
+}
+
+export interface SceneCommunication {
+    id: string;
+    actorKey: string;
+    targetKey: string | null;
+    teamId: string | null;
+    text: string;
+    at: string;
+    href: string;
+}
+
 export interface DashboardData {
+    companyName?: string;
     generatedAt: string;
+    teams?: DashboardTeam[];
+    communications?: SceneCommunication[];
     members: DashboardMember[];
     board: { inProgress: DashboardTask[]; review: DashboardTask[]; done: DashboardTask[] };
     attention: AttentionEntry[];

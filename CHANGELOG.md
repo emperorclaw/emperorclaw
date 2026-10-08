@@ -9,6 +9,25 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.74] — 2026-10-08
+
+### Added
+- Living Observatory dashboard with recognizable agent avatars, activity-driven motion, real communication previews, and the user's company name.
+- Teams view that highlights overlapping memberships, optional human or agent coordinators, and agents without a team.
+- Optional group coordinators through the UI, REST and MCP; Hermes receives group-scoped coordination instructions.
+- Read-only agent conversation visibility toggle in Messages, remembered in the browser.
+
+### Changed
+- Onboarding assigns the Boss as coordinator when included and successfully created, while sharing specialists across teams.
+- Scene seating is independent of team membership, supports large teams through pagination, and keeps status labels clear on mobile.
+- Long Markdown replies become bounded scene previews with links to the full conversation.
+- Group controls have larger touch targets and readable mobile inputs.
+
+### Compatibility
+- Existing groups remain unchanged unless a coordinator is selected. No database migration is required.
+- Coordinator responsibilities grant no additional permissions and preserve project leads, approval rules and message routing.
+- Existing runtimes continue receiving group messages; updating Hermes enables the new coordination context.
+
 ## [0.8.73] — 2026-10-08
 
 ### Added

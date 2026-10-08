@@ -139,11 +139,12 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
             description: z.string().max(600).optional().describe("The group's purpose; shown to every member agent"),
             agentIds: agentRefs,
             humanUserIds: userRefs,
+            coordinator: z.object({ kind: z.enum(["agent", "human"]), id: z.string() }).nullable().optional().describe("Optional coordinator; must be a group member. Does not grant permissions."),
             agentId: z.string().optional().describe("Creating agent's id or name (operator connections only)"),
         },
-    }, async ({ title, description, agentIds, humanUserIds, agentId }) => {
+    }, async ({ title, description, agentIds, humanUserIds, coordinator, agentId }) => {
         try {
-            const group = await createGroup(companyId, await actorFor(agentId), { title, description, agentIds, humanUserIds });
+            const group = await createGroup(companyId, await actorFor(agentId), { title, description, agentIds, humanUserIds, coordinator });
             return jsonResult({ group, threadId: group.id });
         } catch (e) {
             return errorResult(e);
@@ -152,16 +153,17 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
 
     server.registerTool("update_group", {
         title: "Update Group",
-        description: "Rename a group chat or change its purpose.",
+        description: "Rename a group, change its purpose, or choose its optional member coordinator.",
         inputSchema: {
             groupId: z.string(),
             title: z.string().min(1).max(80).optional(),
             description: z.string().max(600).optional(),
+            coordinator: z.object({ kind: z.enum(["agent", "human"]), id: z.string() }).nullable().optional(),
         },
-    }, async ({ groupId, title, description }) => {
+    }, async ({ groupId, title, description, coordinator }) => {
         try {
             await requireMember(groupId);
-            return jsonResult({ group: await updateGroup(companyId, groupId, { title, description }) });
+            return jsonResult({ group: await updateGroup(companyId, groupId, { title, description, coordinator }) });
         } catch (e) {
             return errorResult(e);
         }

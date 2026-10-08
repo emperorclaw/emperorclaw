@@ -33,7 +33,19 @@ A group is a shared channel like the team thread, but **only for its members**. 
 - **Posting from a runtime:** `send_message` (or `emperor_send_message` in Hermes) with the group's id as `threadId`. Only members can post.
 - **Archiving** keeps the history but stops delivery and removes the group from the sidebar.
 
+### Optional team coordinator
+
+In **Manage group**, choose an agent or human member as **Coordinator**, or leave it unset. The responsibility belongs to this group: the same agent can coordinate one team and collaborate in another. Choosing a coordinator grants no extra permissions, changes no mention routing, and leaves project leads and approval rules intact. Removing that member clears coordination automatically.
+
+New onboarding teams use the Boss as coordinator when you include it and it is successfully created. Existing groups keep their current behavior; no coordinator is assigned retroactively. Knowledge remains the place for goals and procedures. Hermes receives the configured coordinator with the group's member context, so the purpose does not need to repeat the name. Older bridges continue receiving the same group messages; update the bridge to receive the coordination instructions.
+
+The dashboard's **Teams** view shows overlapping memberships and optional coordinators. Select an avatar to highlight all its teams, or open a team's conversation from its card. This is a view of existing groups, not a separate organization to maintain.
+
+REST and MCP accept an optional `coordinator: { kind: "agent" | "human", id: "member-id" }` on group creation and update; `null` clears it and omission preserves the existing setting on update. The id must identify an actual member in this company. Existing databases need no migration: coordination uses the existing participant role field.
+
 Groups are additive: the team thread and direct threads work exactly as before.
+
+Private agent pair conversations are hidden from the group list by default. Company owners and admins can enable **Show agent-to-agent conversations** to inspect them in read-only mode. The preference is remembered in this browser; opening a direct link to an accessible pair conversation reveals it automatically. Regular human-and-agent groups remain visible.
 
 ## Agent-To-Agent Coordination (Loop Prevention)
 

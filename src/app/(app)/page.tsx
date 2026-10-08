@@ -7,13 +7,14 @@ import {
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { computeCompanyHealth } from "@/lib/agent-health";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
-import { AGENT_PAIR_DESCRIPTION, isAgentPairThread } from "@/lib/groups";
+import { AGENT_PAIR_DESCRIPTION, isAgentPairThread, listGroups } from "@/lib/groups";
 import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
+import { sceneMessagePreview } from "@/lib/observatory";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import {
     dashboardActivity, attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
-    type ActivityEvent, type AttentionEntry, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type PausedNotice, type ThroughputSummary,
+    type SceneCommunication, type ActivityEvent, type AttentionEntry, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type PausedNotice, type ThroughputSummary,
 } from "@/lib/team-scene";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ function shortReason(reasonCode: string): string {
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
     const session = await getValidatedServerSession();
     const params = await searchParams;
-    const view: "list" | "pulse" | "scene" | undefined = params.view === "list" ? "list" : params.view === "pulse" ? "pulse" : params.view === "scene" ? "scene" : undefined;
+    const view: "list" | "pulse" | "scene" | "teams" | undefined = params.view === "teams" ? "teams" : params.view === "list" ? "list" : params.view === "pulse" ? "pulse" : params.view === "scene" ? "scene" : undefined;
     const companyId = await getCompanyId();
     if (!companyId) {
         // A fresh self-hosted install has no company yet. Send the operator to
@@ -62,7 +63,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const canAct = instanceRole === "instance_admin" || companyRole !== "viewer";
     const isOwnerOrAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
 
-    const [[currentUser], members, agentRows, openTasks, pendingApprovals, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount] = await Promise.all([
+    const [[company], [currentUser], members, agentRows, openTasks, pendingApprovals, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount] = await Promise.all([
+        db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         userId
             ? db.select({ onboardingCompletedAt: users.onboardingCompletedAt, onboardingDismissedAt: users.onboardingDismissedAt }).from(users).where(eq(users.id, userId)).limit(1)
             : Promise.resolve([]),
@@ -127,6 +129,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         ? await db.select({ id: messageThreads.id }).from(messageThreads)
             .where(and(eq(messageThreads.companyId, companyId), eq(messageThreads.type, "group"), eq(messageThreads.description, AGENT_PAIR_DESCRIPTION), eq(messageThreads.createdByType, "system")))
         : [];
+
+    // Ordinary group chats follow the same company-wide read policy as Messages.
+    // Private pair threads stay in the owner/admin-only query above.
+    const chatGroups = await listGroups(companyId, { includePairThreads: false });
+    const teams = chatGroups.map((g) => ({ id: g.id, name: g.title, coordinator: g.coordinator ? { key: `${g.coordinator.kind}:${g.coordinator.id}`, name: g.coordinator.name, kind: g.coordinator.kind } : null, humanCount: g.members.filter((m) => m.kind === "human").length, memberKeys: g.members.filter((m) => m.kind === "agent").map((m) => `agent:${m.id}`) }));
+    const roomIds = teams.map((g) => g.id);
+    const roomMessages = roomIds.length ? await db.select({ id: threadMessages.id, threadId: threadMessages.threadId, senderId: threadMessages.senderId, text: sql<string>`LEFT(${threadMessages.text}, 4096)`, createdAt: threadMessages.createdAt })
+        .from(threadMessages).where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, roomIds), eq(threadMessages.senderType, "agent"), gte(threadMessages.createdAt, new Date(now.getTime() - 60_000))))
+        .orderBy(desc(threadMessages.createdAt)).limit(30) : [];
 
     const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
@@ -201,7 +212,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         ? await Promise.all([
             db.select({ threadId: threadParticipants.threadId, participantId: threadParticipants.participantId })
                 .from(threadParticipants).where(and(eq(threadParticipants.companyId, companyId), inArray(threadParticipants.threadId, pairThreadIds), eq(threadParticipants.participantType, "agent"))),
-            db.select({ id: threadMessages.id, threadId: threadMessages.threadId, senderId: threadMessages.senderId, text: threadMessages.text, createdAt: threadMessages.createdAt })
+            db.select({ id: threadMessages.id, threadId: threadMessages.threadId, senderId: threadMessages.senderId, text: sql<string>`LEFT(${threadMessages.text}, 4096)`, createdAt: threadMessages.createdAt })
                 .from(threadMessages).where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, pairThreadIds), eq(threadMessages.senderType, "agent"), gte(threadMessages.createdAt, dayAgo)))
                 .orderBy(desc(threadMessages.createdAt)).limit(20),
         ])
@@ -356,6 +367,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             text: excerpt(m.text, 64), at: m.createdAt.toISOString(),
         });
     }
+    const communications: SceneCommunication[] = [
+        ...pairActivity.filter((p) => p.actorKey).map((p) => ({ id: p.id, actorKey: p.actorKey!, targetKey: p.targetKey, teamId: null, text: sceneMessagePreview(pairMessages.find((m) => m.id === p.id)?.text ?? p.text), at: p.at, href: `/messages?group=${p.threadId}` })),
+        ...roomMessages.filter((m) => m.senderId && nameByKey.has(`agent:${m.senderId}`)).map((m) => ({ id: m.id, actorKey: `agent:${m.senderId}`, targetKey: null, teamId: m.threadId, text: sceneMessagePreview(m.text), at: m.createdAt.toISOString(), href: `/messages?group=${m.threadId}` })),
+    ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30);
     const feed: FeedEvent[] = buildFeed(activity, pairActivity, 8);
 
     const cost: CostSummary = {
@@ -389,6 +404,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const data: DashboardData = {
         generatedAt: now.toISOString(),
+        companyName: company?.name ?? "Your company",
+        teams, communications,
         members: dashboardMembers,
         board: {
             inProgress: openTasks.filter((t) => t.state === TASK_STATES.inProgress).slice(0, BOARD_LIMIT).map(toTask),

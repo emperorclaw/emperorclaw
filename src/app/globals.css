@@ -837,3 +837,24 @@
   .office-eyes { animation: none !important; }
   .office-scene .office-offline { filter: saturate(0.25) brightness(0.8); }
 }
+
+/* The observatory is a shared company space. Only fresh signals activate work cues. */
+.observatory-stage { background: radial-gradient(ellipse at 50% 15%, #163b52 0%, #081728 38%, #030914 85%); }
+.observatory-stars { background-image: radial-gradient(circle, rgb(165 243 252 / .3) 1px, transparent 1px), radial-gradient(circle, rgb(196 181 253 / .2) 1px, transparent 1px); background-size: 67px 73px, 113px 127px; background-position: 17px 9px, 53px 31px; opacity: .4; }
+@keyframes observatory-work { 25% { transform: translate(1px, -2px) rotate(.6deg); } 75% { transform: translate(-1px, -1px) rotate(-.6deg); } }
+@keyframes observatory-terminal { 50% { opacity: .35; } }
+@keyframes observatory-transfer { to { stroke-dashoffset: -60; } }
+@keyframes observatory-arrive { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
+.observatory-working { animation: observatory-work var(--typing-t, 2.5s) ease-in-out infinite; animation-delay: var(--typing-d, 0s); }
+.observatory-terminal { animation: observatory-terminal var(--screen-t, 2s) ease-in-out infinite; animation-delay: var(--screen-d, 0s); }
+.observatory-transfer { stroke-dasharray: 8 22; animation: observatory-transfer 1.8s linear 3; }
+.observatory-bubble { animation: observatory-arrive 180ms ease-out both; }
+.observatory-paused *, .observatory-paused { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .observatory * { animation: none !important; } }
+
+@keyframes observatory-power { 50% { opacity: .9; } }
+.observatory-power { animation: observatory-power var(--screen-t, 2s) ease-in-out infinite; animation-delay: var(--screen-d, 0s); }
+.observatory .office-code { animation: office-code var(--screen-t, 1.6s) ease-in-out infinite; animation-delay: var(--screen-d, 0s); }
+.observatory .office-key { animation: office-typing var(--typing-t, 3.2s) ease-in-out infinite; animation-delay: var(--typing-d, 0s); }
+.observatory .office-bar { transform-box: fill-box; animation: office-bar var(--cue-t, 1.8s) ease-in-out infinite alternate; animation-delay: var(--cue-d, 0s); }
+.observatory .office-dots { animation: office-dots var(--cue-t, 1.3s) ease-in-out infinite; animation-delay: var(--cue-d, 0s); }

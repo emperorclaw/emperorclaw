@@ -2,21 +2,22 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX } from "@tabler/icons-react";
+import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX, IconUsersGroup } from "@tabler/icons-react";
 import {
-    requiresHumanAction, filterDashboardBoard, snapshotFreshness, buildOfficeLayout, collaborationLinks, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, ZONES,
+    requiresHumanAction, filterDashboardBoard, snapshotFreshness, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, ZONES,
     type DashboardData, type KpiFilter, type SceneAgent, type ZoneId,
 } from "@/lib/team-scene";
 import { NotificationBell } from "@/components/notification-bell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { TeamObservatory } from "./team-observatory";
+import { TeamStructure } from "./team-structure";
 import { TeamPulse } from "./team-pulse";
 import { AgentList } from "./agent-list";
 import { KpiRow } from "./kpi-row";
 import { MetricsRow } from "./metrics-row";
 import { MovementFeed } from "./movement-feed";
 import { NeedsAttention } from "./needs-attention";
-import { OfficeScene, SceneEmptyState } from "./office-scene";
 import { SelectedAgent } from "./selected-agent";
 import { WorkBoard, type BoardAssignee } from "./work-board";
 
@@ -36,42 +37,34 @@ function subscribeClock(onChange: () => void) {
     window.addEventListener("offline", onChange);
     return () => { window.clearInterval(timer); window.removeEventListener("online", onChange); window.removeEventListener("offline", onChange); };
 }
-function subscribeCompact(onChange: () => void) {
-    const query = window.matchMedia("(max-width: 767px)");
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-}
-
 /** Container: owns filters and selection, derives everything else from server data. */
-export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrAdmin }: {
+export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     data: DashboardData;
-    initialView?: "scene" | "pulse" | "list";
+    initialView?: "scene" | "pulse" | "list" | "teams";
     hasAgents: boolean;
     canAct: boolean;
     isOwnerOrAdmin: boolean;
 }) {
-    const [chosenView, setChosenView] = useState<"scene" | "pulse" | "list" | null>(null);
-    const setView = (nextView: "scene" | "pulse" | "list") => {
+    const [chosenView, setChosenView] = useState<"scene" | "pulse" | "list" | "teams" | null>(null);
+    const setView = (nextView: "scene" | "pulse" | "list" | "teams") => {
         setChosenView(nextView);
         const url = new URL(window.location.href);
         url.searchParams.set("view", nextView);
         window.history.replaceState(window.history.state, "", url);
     };
-    const compact = useSyncExternalStore(subscribeCompact, () => window.matchMedia("(max-width: 767px)").matches, () => false);
-    const view = chosenView ?? initialView ?? (compact || data.members.filter((m) => m.kind === "agent").length > 24 ? "list" : "scene");
+    const view = chosenView ?? initialView ?? "scene";
     const [motionPaused, setMotionPaused] = useState(false);
-    const [playfulIdle, setPlayfulIdle] = useState(false);
+    const playfulIdle = false;
     const inboxRef = useRef<HTMLDivElement>(null);
     const detailRef = useRef<HTMLDivElement>(null);
     const [kpi, setKpi] = useState<KpiFilter | null>(null);
     const [query, setQuery] = useState("");
     const [zoneFilter, setZoneFilter] = useState<ZoneId | null>(null);
     const [selected, setSelected] = useState<string | null>(null);
-    const [hovered, setHovered] = useState<string | null>(null);
     const reducedMotion = usePrefersReducedMotion() || motionPaused;
     const searchRef = useRef<HTMLInputElement>(null);
     const clock = useSyncExternalStore(subscribeClock, () => Math.floor(Date.now() / 10_000) * 10_000, () => Date.parse(data.generatedAt));
-    const now = useMemo(() => new Date(clock), [clock]);
+    const now = useMemo(() => new Date(Math.max(clock, Date.parse(data.generatedAt))), [clock, data.generatedAt]);
     const online = useSyncExternalStore(subscribeClock, () => navigator.onLine, () => true);
     const freshness = snapshotFreshness(data.generatedAt, now, online);
     const actions = useMemo(() => data.attention.filter(requiresHumanAction), [data.attention]);
@@ -80,8 +73,6 @@ export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrA
 
     const observedData = useMemo(() => freshness === "current" ? data : { ...data, members: data.members.map((member) => ({ ...member, activity: null, runtimeOnline: false })) }, [data, freshness]);
     const agents = useMemo(() => deriveSceneAgents(observedData, playfulIdle, now), [observedData, playfulIdle, now]);
-    const layout = useMemo(() => buildOfficeLayout(agents), [agents]);
-    const links = useMemo(() => collaborationLinks(data.collaborations.filter((event) => { const age = now.getTime() - Date.parse(event.at); return age >= 0 && age < 30_000; }), layout.agents), [data.collaborations, layout.agents, now]);
     const counts = useMemo(() => kpiCounts(agents, data), [agents, data]);
     const byKey = useMemo(() => new Map(agents.map((a) => [a.member.key, a])), [agents]);
 
@@ -178,7 +169,7 @@ export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrA
                                 <IconBox className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                                 <div className="min-w-0">
                                     <h2 id="live-workspace-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
-                                        Team workspace
+                                        Live workspace
                                         <span role="status" className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset", freshness === "current" ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300")}>
                                             <span className={cn("h-1.5 w-1.5 rounded-full", freshness === "current" ? "bg-emerald-500" : "bg-amber-500")} />
                                             {freshness === "current" ? "Updated recently" : freshness === "offline" ? "Offline · saved snapshot" : "Updates delayed"}
@@ -189,7 +180,7 @@ export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrA
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                                 <div role="tablist" aria-label="Workspace view" className="flex rounded-xl border border-border bg-muted/40 p-0.5 dark:bg-white/[0.03]">
-                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
+                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList], ["teams", "Teams", IconUsersGroup]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
                                             className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                                 view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
@@ -202,8 +193,7 @@ export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrA
                                         <button type="button" aria-label="Workspace options" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-52">
-                                        <DropdownMenuCheckboxItem checked={motionPaused} onCheckedChange={setMotionPaused}>Pause scene motion</DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem checked={playfulIdle} onCheckedChange={setPlayfulIdle}>Playful idle animations</DropdownMenuCheckboxItem>
+                                        <DropdownMenuCheckboxItem checked={motionPaused} onCheckedChange={setMotionPaused}>Pause motion</DropdownMenuCheckboxItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem asChild><Link href="/agents">Manage agents</Link></DropdownMenuItem>
                                         <DropdownMenuItem asChild><Link href="/agents/health">Agent health</Link></DropdownMenuItem>
@@ -229,11 +219,11 @@ export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrA
                         )}
 
                         {view === "scene" ? (
-                            <OfficeScene layout={layout} links={links} selectedKey={selectedKey} hoveredKey={hovered} isActive={isActive} reducedMotion={reducedMotion}
-                                onSelect={selectMember} onHover={setHovered} onOverflow={(zone) => { setZoneFilter(zone); setView("list"); }}
-                                emptyState={hasAgents ? undefined : <SceneEmptyState />} />
+                            <TeamObservatory companyName={data.companyName ?? "Your company"} agents={agents.filter(isActive)} teams={data.teams ?? []} communications={data.communications ?? []} events={data.collaborations} selectedKey={selectedKey} onSelect={selectMember} now={now} reducedMotion={reducedMotion} fresh={freshness === "current"} />
                         ) : view === "pulse" ? (
                             <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />
+                        ) : view === "teams" ? (
+                            <TeamStructure teams={data.teams ?? []} agents={agents.filter(isActive)} onSelect={selectMember} />
                         ) : (
                             <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} now={now} />
                         )}

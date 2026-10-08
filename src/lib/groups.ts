@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm
 import { db } from "@/db";
 import { agents, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
 import { resolveAgentId } from "@/lib/mcp";
+import { coordinationRole, isCoordinatorRole, teamCoordinator, type CoordinatorRef } from "@/lib/team-coordination";
 
 /**
  * Group chats: shared channels like the team channel, but only for their
@@ -57,6 +58,7 @@ export interface GroupSummary {
     members: GroupMember[];
     /** True when this is a machine-managed two-agent pair thread. */
     isAgentPair: boolean;
+    coordinator: GroupMember | null;
 }
 
 function cleanTitle(value: unknown): string {
@@ -179,6 +181,7 @@ function summarize(thread: typeof messageThreads.$inferSelect, members: GroupMem
         createdAt: thread.createdAt.toISOString(),
         members,
         isAgentPair: isPair,
+        coordinator: isPair ? null : teamCoordinator(members),
     };
 }
 
@@ -249,12 +252,35 @@ async function insertMembers(companyId: string, groupId: string, agentIds: strin
     }
 }
 
+function cleanCoordinator(value: unknown): CoordinatorRef | null {
+    if (value === null) return null;
+    if (!value || typeof value !== "object") throw new GroupError("coordinator must be a member reference or null", 400);
+    const ref = value as Record<string, unknown>;
+    if ((ref.kind !== "agent" && ref.kind !== "human") || typeof ref.id !== "string" || !ref.id) {
+        throw new GroupError("coordinator needs kind and member id", 400);
+    }
+    return { kind: ref.kind, id: ref.id };
+}
+
+/** Existing text roles keep older databases/runtimes compatible; no schema migration. */
+async function applyCoordinator(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], companyId: string, groupId: string, coordinator: CoordinatorRef | null) {
+    const members = await tx.select().from(threadParticipants).where(and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.threadId, groupId))).for("update");
+    const target = coordinator ? members.find((m) => m.role !== READER_ROLE && m.participantType === coordinator.kind && (coordinator.kind === "agent" ? m.participantId : m.participantRef) === coordinator.id) : null;
+    if (coordinator && !target) throw new GroupError("The coordinator must be a member of this group", 400);
+    for (const member of members) {
+        if (member.id === target?.id || isCoordinatorRole(member.role)) {
+            await tx.update(threadParticipants).set({ role: coordinationRole(member.role, member.id === target?.id) }).where(eq(threadParticipants.id, member.id));
+        }
+    }
+}
+
 export async function createGroup(companyId: string, actor: GroupActor, input: {
     title: unknown;
     description?: unknown;
     icon?: unknown;
     agentIds?: unknown;
     humanUserIds?: unknown;
+    coordinator?: unknown;
 }): Promise<GroupSummary> {
     const title = cleanTitle(input.title);
     const description = cleanDescription(input.description);
@@ -265,6 +291,8 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
     // The creator is always a member, so an agent that opens a group can talk in it.
     if (actor.type === "agent" && actor.id && !agentIds.includes(actor.id)) agentIds.unshift(actor.id);
     if (actor.type === "human" && actor.id && !userIds.includes(actor.id)) userIds.unshift(actor.id);
+    const coordinator = input.coordinator === undefined ? null : cleanCoordinator(input.coordinator);
+    if (coordinator && !(coordinator.kind === "agent" ? agentIds : userIds).includes(coordinator.id)) throw new GroupError("The coordinator must be a member of this group", 400);
     if (agentIds.length + userIds.length > MAX_GROUP_MEMBERS) throw new GroupError(`Groups are limited to ${MAX_GROUP_MEMBERS} members`, 400);
 
     const [existing] = await db.select({ value: count() }).from(messageThreads).where(and(
@@ -294,17 +322,23 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
             eq(creator.col, actor.id),
         ));
     }
+    if (coordinator) await db.transaction((tx) => applyCoordinator(tx, companyId, thread.id, coordinator));
     return getGroup(companyId, thread.id);
 }
 
-export async function updateGroup(companyId: string, groupId: string, input: { title?: unknown; description?: unknown; icon?: unknown }): Promise<GroupSummary> {
+export async function updateGroup(companyId: string, groupId: string, input: { title?: unknown; description?: unknown; icon?: unknown; coordinator?: unknown }): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
     if (isAgentPairThread(thread)) throw new GroupError("A pair thread cannot be edited", 403);
     const patch: Partial<typeof messageThreads.$inferInsert> = {};
     if (input.title !== undefined) patch.title = cleanTitle(input.title);
     if (input.description !== undefined) patch.description = cleanDescription(input.description);
     if (input.icon !== undefined) patch.icon = cleanIcon(input.icon);
-    if (Object.keys(patch).length) await db.update(messageThreads).set(patch).where(eq(messageThreads.id, thread.id));
+    const coordinator = input.coordinator === undefined ? undefined : cleanCoordinator(input.coordinator);
+    await db.transaction(async (tx) => {
+        await tx.select({ id: messageThreads.id }).from(messageThreads).where(eq(messageThreads.id, thread.id)).for("update");
+        if (coordinator !== undefined) await applyCoordinator(tx, companyId, thread.id, coordinator);
+        if (Object.keys(patch).length) await tx.update(messageThreads).set(patch).where(eq(messageThreads.id, thread.id));
+    });
     return getGroup(companyId, thread.id);
 }
 

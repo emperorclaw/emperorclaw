@@ -240,10 +240,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         for (const g of groups) {
             const members = g.roles.map((role) => byRole.get(role)).filter((r): r is Created => Boolean(r));
             if (!members.some((m) => m.templateId !== "boss")) continue;
+            const coordinatorId = members.find((m) => m.templateId === "boss")?.agentId;
             const res = await fetch("/api/groups", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title: g.title, description: g.description, icon: g.icon, agentIds: members.map((m) => m.agentId) }),
+                body: JSON.stringify({ title: g.title, description: g.description, icon: g.icon, agentIds: members.map((m) => m.agentId), coordinator: coordinatorId ? { kind: "agent", id: coordinatorId } : null }),
             }).catch(() => null);
             made.push({ title: g.title, icon: g.icon, ok: Boolean(res?.ok), members: members.map((m) => m.name) });
         }

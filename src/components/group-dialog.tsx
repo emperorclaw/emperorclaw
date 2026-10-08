@@ -5,6 +5,7 @@ import { IconCheck, IconRobot, IconSearch, IconTrash, IconUser, IconUsersGroup }
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { agentAvatarSrc } from "@/lib/avatar";
+import { teamCoordinator } from "@/lib/team-coordination";
 import { GROUP_ICONS, GroupIcon } from "@/components/group-icon";
 
 export type GroupDialogAgent = { id: string; name: string; role: string | null; avatarUrl: string | null; status: string };
@@ -60,6 +61,10 @@ export function GroupDialog({
     const [icon, setIcon] = useState<string | null>(group?.icon ?? null);
     const [agentIds, setAgentIds] = useState<Set<string>>(new Set(initialAgents));
     const [humanIds, setHumanIds] = useState<Set<string>>(new Set(initialHumans));
+    const initialCoordinator = teamCoordinator(group?.members ?? []);
+    const [coordinator, setCoordinator] = useState(initialCoordinator ? `${initialCoordinator.kind}:${initialCoordinator.id}` : "");
+    const selectedCoordinator = coordinator && (coordinator.startsWith("agent:") ? agentIds.has(coordinator.slice(6)) : humanIds.has(coordinator.slice(6)) || (!editing && coordinator.slice(6) === currentUserId)) ? coordinator : "";
+    const coordinatorRef = selectedCoordinator ? { kind: selectedCoordinator.startsWith("agent:") ? "agent" : "human", id: selectedCoordinator.slice(6) } : null;
     const [query, setQuery] = useState("");
     const [saving, setSaving] = useState(false);
     const [confirmArchive, setConfirmArchive] = useState(false);
@@ -98,6 +103,7 @@ export function GroupDialog({
                     icon,
                     agentIds: [...agentIds],
                     humanUserIds: [...humanIds],
+                    coordinator: coordinatorRef,
                 });
                 onSaved(data.group.id);
             } else {
@@ -115,6 +121,8 @@ export function GroupDialog({
                 for (const id of [...initialHumans].filter((id) => !humanIds.has(id))) {
                     await call(`/api/groups/${group.id}/members`, "DELETE", { kind: "human", id });
                 }
+                const oldCoordinator = initialCoordinator ? `${initialCoordinator.kind}:${initialCoordinator.id}` : "";
+                if (selectedCoordinator !== oldCoordinator) await call(`/api/groups/${group.id}`, "PATCH", { coordinator: coordinatorRef });
                 onSaved(group.id);
             }
             onOpenChange(false);
@@ -148,7 +156,7 @@ export function GroupDialog({
                         {editing ? "Manage group" : "New group"}
                     </DialogTitle>
                     <DialogDescription className="mt-1 text-xs">
-                        Like the team channel, but only its members see it. Agents in the group reply when you @mention them.
+                        A shared workspace for selected agents and people. Agents reply when you @mention them.
                     </DialogDescription>
                 </div>
 
@@ -160,7 +168,7 @@ export function GroupDialog({
                                     key={t.title}
                                     type="button"
                                     onClick={() => { setTitle(t.title); setDescription(t.description); setIcon(t.icon); }}
-                                    className="rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10 hover:text-cyan-100"
+                                    className="min-h-11 rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/10 hover:text-cyan-100"
                                 >
                                     {t.title}
                                 </button>
@@ -171,12 +179,12 @@ export function GroupDialog({
                         <span className="text-xs font-medium text-zinc-400">Icon</span>
                         <div className="mt-1 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Group icon">
                             <button type="button" role="radio" aria-checked={!icon} onClick={() => setIcon(null)} title="Default"
-                                className={cn("grid h-9 w-9 place-items-center rounded-lg border transition-colors", !icon ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-600")}>
+                                className={cn("grid h-11 w-11 place-items-center rounded-lg border transition-colors", !icon ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 text-zinc-500 hover:border-zinc-600")}>
                                 <GroupIcon className="h-4 w-4" />
                             </button>
                             {GROUP_ICONS.map((emoji) => (
                                 <button key={emoji} type="button" role="radio" aria-checked={icon === emoji} onClick={() => setIcon(emoji)}
-                                    className={cn("grid h-9 w-9 place-items-center rounded-lg border text-lg transition-colors", icon === emoji ? "border-cyan-400/60 bg-cyan-400/10" : "border-zinc-800 hover:border-zinc-600")}>
+                                    className={cn("grid h-11 w-11 place-items-center rounded-lg border text-lg transition-colors", icon === emoji ? "border-cyan-400/60 bg-cyan-400/10" : "border-zinc-800 hover:border-zinc-600")}>
                                     {emoji}
                                 </button>
                             ))}
@@ -189,7 +197,7 @@ export function GroupDialog({
                             onChange={(e) => setTitle(e.target.value)}
                             maxLength={80}
                             placeholder="Development team"
-                            className="mt-1 h-10 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+                            className="mt-1 h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
                         />
                     </label>
                     <label className="block">
@@ -200,7 +208,7 @@ export function GroupDialog({
                             maxLength={600}
                             rows={2}
                             placeholder="What this group works on, and how members should use it."
-                            className="mt-1 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+                            className="mt-1 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
                         />
                     </label>
 
@@ -216,7 +224,7 @@ export function GroupDialog({
                                 onChange={(e) => setQuery(e.target.value)}
                                 placeholder="Find agents or people"
                                 aria-label="Find members"
-                                className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+                                className="h-11 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-base text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
                             />
                         </div>
                         <div className="max-h-64 space-y-0.5 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -229,7 +237,7 @@ export function GroupDialog({
                                         role="checkbox"
                                         aria-checked={selected}
                                         onClick={() => toggle(agentIds, setAgentIds, agent.id)}
-                                        className={cn("flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors", selected ? "bg-cyan-400/10" : "hover:bg-zinc-900")}
+                                        className={cn("flex min-h-11 w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors", selected ? "bg-cyan-400/10" : "hover:bg-zinc-900")}
                                     >
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img src={avatarFor(agent)} alt="" className="h-7 w-7 shrink-0 rounded-lg border border-zinc-800 object-cover" />
@@ -253,7 +261,7 @@ export function GroupDialog({
                                         role="checkbox"
                                         aria-checked={selected}
                                         onClick={() => toggle(humanIds, setHumanIds, human.id)}
-                                        className={cn("flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors", selected ? "bg-cyan-400/10" : "hover:bg-zinc-900")}
+                                        className={cn("flex min-h-11 w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors", selected ? "bg-cyan-400/10" : "hover:bg-zinc-900")}
                                     >
                                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-800 text-zinc-400">
                                             <IconUser className="h-4 w-4" />
@@ -271,10 +279,19 @@ export function GroupDialog({
                         </div>
                         {!editing && <p className="mt-1.5 text-[11px] text-zinc-500">You are added automatically. Anyone in the company can open the group; people become members when they post.</p>}
                     </div>
+                    <label className="block">
+                        <span className="text-sm font-medium text-zinc-300">Coordinator <span className="font-normal text-zinc-500">(optional)</span></span>
+                        <select value={selectedCoordinator} onChange={(e) => setCoordinator(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
+                            <option value="">No coordinator</option>
+                            {agents.filter((a) => agentIds.has(a.id)).map((a) => <option key={a.id} value={`agent:${a.id}`}>{a.name} · Agent</option>)}
+                            {humans.filter((h) => humanIds.has(h.id) || (!editing && h.id === currentUserId)).map((h) => <option key={h.id} value={`human:${h.id}`}>{h.name} · Human</option>)}
+                        </select>
+                        <span className="mt-1.5 block text-xs leading-relaxed text-zinc-400">Coordinates work and helps resolve blockers in this team. Members can belong to other teams too.</span>
+                    </label>
                     {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div>}
                 </div>
 
-                <div className="flex items-center gap-2 border-t border-zinc-800 px-5 py-3">
+                <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-5 py-3">
                     {editing && (
                         confirmArchive ? (
                             <span className="flex items-center gap-2 text-xs text-zinc-400">

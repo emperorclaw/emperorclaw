@@ -162,3 +162,37 @@ maybe("W9: an operator token never lists pair threads, even with mine=1", async 
     assert.ok(Array.isArray(res.groups), "groups is a list");
     assert.ok(!res.groups.some((g: { isAgentPair: boolean }) => g.isAgentPair), "operator token sees no pair threads");
 });
+
+maybe("coordinators are optional, member-scoped, isolated across overlapping teams, and safely replaceable", async () => {
+    await resetDb();
+    const { companyId, userId, rawToken } = await seedCompanyWithToken();
+    const shared = await seedAgent(companyId, { name: "Shared", provider: "hermes" });
+    const other = await seedAgent(companyId, { name: "Other", provider: "hermes" });
+    const { createGroup, getGroup, updateGroup, removeGroupMember } = await import("@/lib/groups");
+    const a = await createGroup(companyId, { type: "human", id: userId }, { title: "A", agentIds: [shared.id, other.id], coordinator: { kind: "agent", id: shared.id } });
+    const b = await createGroup(companyId, { type: "human", id: userId }, { title: "B", agentIds: [shared.id] });
+    await assert.rejects(createGroup(companyId, { type: "human", id: userId }, { title: "Invalid", agentIds: [shared.id], coordinator: { kind: "agent", id: other.id } }), /must be a member/);
+    const { ensureAgentPairThread, listGroups } = await import("@/lib/groups");
+    assert.equal((await listGroups(companyId)).length, 2, "invalid coordinator must not create a partial group");
+    const pair = await ensureAgentPairThread(companyId, shared.id, other.id);
+    await assert.rejects(updateGroup(companyId, pair.id, { coordinator: { kind: "agent", id: shared.id } }), /pair thread cannot be edited/);
+    assert.equal(a.coordinator?.id, shared.id);
+    assert.equal(b.coordinator, null);
+    await assert.rejects(updateGroup(companyId, b.id, { title: "Must roll back", coordinator: { kind: "agent", id: other.id } }), /must be a member/);
+    assert.equal((await getGroup(companyId, b.id)).title, "B");
+    const sync = await import("@/app/api/mcp/messages/sync/route");
+    const { appendThreadMessage } = await import("@/lib/control-plane");
+    await appendThreadMessage({ companyId, threadId: a.id, senderType: "human", senderId: userId, text: "@Shared report" });
+    const data = await (await sync.GET(makeRequest(`http://localhost/api/mcp/messages/sync?mode=all&agentId=${shared.id}`, { headers: { authorization: `Bearer ${rawToken}` } }))).json();
+    assert.equal(data.threads[a.id].members.find((m: { id: string }) => m.id === shared.id).role, "coordinator");
+    await Promise.all([updateGroup(companyId, a.id, { coordinator: { kind: "human", id: userId } }), updateGroup(companyId, a.id, { coordinator: { kind: "agent", id: other.id } })]);
+    const result = await getGroup(companyId, a.id);
+    assert.equal(result.members.filter((m) => m.role === "coordinator" || m.role === "owner_coordinator").length, 1);
+    await updateGroup(companyId, a.id, { coordinator: { kind: "human", id: userId } });
+    await updateGroup(companyId, a.id, { coordinator: null });
+    assert.equal((await getGroup(companyId, a.id)).members.find((m) => m.id === userId)?.role, "owner");
+    await updateGroup(companyId, a.id, { coordinator: { kind: "agent", id: shared.id } });
+    await removeGroupMember(companyId, a.id, { kind: "agent", id: shared.id });
+    assert.equal((await getGroup(companyId, a.id)).coordinator, null);
+    assert.ok((await getGroup(companyId, b.id)).members.some((m) => m.id === shared.id));
+});

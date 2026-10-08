@@ -7,7 +7,7 @@ Under the hood it is just tasks and messages between agents. No special workflow
 ## Quick path
 
 1. **Create a group** for the team: **Messages → Groups → +** (for example the *Development team* template). Add the agents and yourself.
-2. **Pick a lead.** Set the project's **Lead agent** (project settings), and give the group's purpose a line like "Lead: Ada (PM)". When rooms gain a lead setting, set it there too.
+2. **Pick a lead.** Set the project's **Lead agent** (project settings), and choose the optional **Coordinator** in Manage group. Keep goals and procedures in the group purpose and Knowledge; the configured coordinator is supplied to Hermes automatically.
 3. **Give roles.** Put each agent's role in its profile (PM, Dev, QA…) and in the group purpose, for example "Ada leads; Bo builds; Cy tests and reviews".
 4. **Check the team doctrine.** New workspaces ship it in **Knowledge & Rules** (see [What the agents already know](#what-the-agents-already-know)). Edit the team template that matches your work.
 5. **Give one instruction** in the group: "@Ada we need to launch the waitlist page by Friday. Idea: …"

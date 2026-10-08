@@ -880,6 +880,11 @@ def format_group_context(message: Dict[str, Any]) -> str:
     members = detail.get("members") if isinstance(detail.get("members"), list) else []
     agent_names = [str(m.get("name")) for m in members if isinstance(m, dict) and m.get("kind") == "agent" and m.get("name")]
     human_names = [str(m.get("name")) for m in members if isinstance(m, dict) and m.get("kind") == "human" and m.get("name")]
+    coordinators = [m for m in members if isinstance(m, dict) and m.get("role") in ("coordinator", "owner_coordinator") and m.get("name")]
+    if coordinators:
+        lead = coordinators[0]
+        lines.append(f"Team coordinator: {lead['name']} ({lead.get('kind', 'agent')}). This responsibility applies only to this group and does not grant extra permissions.")
+        lines.append("Coordinate using tasks with one owner and a clear deliverable. Raise unresolved blockers to the coordinator with the task and a concrete question. Status updates need no acknowledgment. Existing project leads and approval rules still apply.")
     if agent_names:
         lines.append("Agent members: " + ", ".join(
             f"{name}{' (you)' if name == AGENT_NAME else ''}" for name in agent_names[:24]

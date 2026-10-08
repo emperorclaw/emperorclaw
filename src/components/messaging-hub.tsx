@@ -74,6 +74,7 @@ export type GroupThreadSummary = {
 const GROUP_PREFIX = "group:";
 
 const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
+const AGENT_CONVERSATIONS_KEY = "emperor-messages-show-agent-conversations";
 const FOCUS_MODE_KEY = "emperor-messages-focus-mode";
 const TEAM_CONVERSATION = "team";
 
@@ -117,6 +118,7 @@ export function MessagingHub({
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
     const [groupDialog, setGroupDialog] = useState<{ mode: "create" } | { mode: "edit"; groupId: string } | null>(null);
+    const [showAgentConversations, setShowAgentConversations] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [mobileChatOpen, setMobileChatOpen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
@@ -133,8 +135,8 @@ export function MessagingHub({
 
     const activeGroup = useMemo(() => groups.find((g) => g.id === selectedGroupId) ?? null, [groups, selectedGroupId]);
     const filteredGroups = useMemo(
-        () => groups.filter((group) => group.title.toLowerCase().includes(searchQuery.toLowerCase())),
-        [groups, searchQuery],
+        () => groups.filter((group) => (showAgentConversations || !group.isAgentPair) && group.title.toLowerCase().includes(searchQuery.toLowerCase())),
+        [groups, searchQuery, showAgentConversations],
     );
     const groupAgents = useMemo(() => {
         if (!activeGroup) return [];
@@ -156,10 +158,12 @@ export function MessagingHub({
         // `?group=<id>`: a notification or shared link opens that group.
         const requestedGroup = new URLSearchParams(window.location.search).get("group");
         const savedConversation = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+        setShowAgentConversations(localStorage.getItem(AGENT_CONVERSATIONS_KEY) === "1");
         const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
 
         if (requestedGroup && groups.some((g) => g.id === requestedGroup)) {
             setSelectedGroupId(requestedGroup);
+            if (groups.find((g) => g.id === requestedGroup)?.isAgentPair) setShowAgentConversations(true);
             setSelectedAgentId(null);
             setMobileChatOpen(true);
             localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${GROUP_PREFIX}${requestedGroup}`);
@@ -308,6 +312,10 @@ export function MessagingHub({
                                 <IconPlus className="h-3.5 w-3.5" />
                             </button>
                         </div>
+                        {groups.some((g) => g.isAgentPair) && <label className="mb-2 flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs text-zinc-400">
+                            <input type="checkbox" checked={showAgentConversations} onChange={(e) => { setShowAgentConversations(e.target.checked); localStorage.setItem(AGENT_CONVERSATIONS_KEY, e.target.checked ? "1" : "0"); }} className="h-4 w-4 accent-cyan-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" />
+                            Show agent-to-agent conversations
+                        </label>}
                         {filteredGroups.map((group) => {
                             const agentCount = group.members.filter((m) => m.kind === "agent").length;
                             const selected = selectedGroupId === group.id;
@@ -495,7 +503,7 @@ export function MessagingHub({
                                         <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
                                             Groups
                                         </DropdownMenuLabel>
-                                        {groups.map((group) => (
+                                        {groups.filter((group) => showAgentConversations || !group.isAgentPair).map((group) => (
                                             <DropdownMenuItem
                                                 key={group.id}
                                                 onSelect={() => openGroup(group.id)}
