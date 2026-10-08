@@ -236,6 +236,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     // added as its creator. A failed group never blocks the agents.
     const createGroups = async (groups: PlannedGroup[], results: Created[]) => {
         const byRole = new Map(results.filter((r) => r.success && r.agentId).map((r) => [r.templateId, r]));
+        const teamIds: string[] = [];
         const made: { title: string; icon: string; ok: boolean; members: string[] }[] = [];
         for (const g of groups) {
             const members = g.roles.map((role) => byRole.get(role)).filter((r): r is Created => Boolean(r));
@@ -246,8 +247,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title: g.title, description: g.description, icon: g.icon, agentIds: members.map((m) => m.agentId), coordinator: coordinatorId ? { kind: "agent", id: coordinatorId } : null }),
             }).catch(() => null);
+            if (res?.ok) { const group = await res.json().catch(() => null); if (group?.group?.id) teamIds.push(group.group.id); }
             made.push({ title: g.title, icon: g.icon, ok: Boolean(res?.ok), members: members.map((m) => m.name) });
         }
+        // Initialize only once; never overwrite a company structure during retries.
+        if (teamIds.length) await fetch("/api/organization", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initialize: true, leader: byRole.get("boss")?.agentId ? {kind: "agent", id: byRole.get("boss")!.agentId} : null, teamIds }) }).catch(() => null);
         setGroupsMade(made);
     };
 

@@ -46,6 +46,8 @@ export const companies = pgTable("companies", {
     createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
     retentionPolicyJson: jsonb("retention_policy_json").default('{}'),
     contextNotes: text("context_notes"),
+    // Organization is opt-in; branches reuse existing group chats.
+    organizationJson: jsonb("organization_json").$type<{ leader: { kind: "agent" | "human"; id: string } | null; teamIds: string[] }>(),
     // Daily agent review (lib/agent-routines.ts). NULL = defaults: on, 09:00 UTC, weekdays.
     agentRoutineJson: jsonb("agent_routine_json").$type<{ enabled?: boolean; time?: string; timezone?: string; weekdaysOnly?: boolean }>(),
     // Local date (YYYY-MM-DD, in the routine's timezone) of the last daily review run.

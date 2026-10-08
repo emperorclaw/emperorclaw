@@ -186,7 +186,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                                 <div role="tablist" aria-label="Workspace view" className="grid grid-cols-2 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex dark:bg-white/[0.03]">
-                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList], ["teams", "Organization", IconHierarchy2]] as const).map(([id, label, Icon]) => (
+                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
                                             className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                                 view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
@@ -194,6 +194,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                         </button>
                                     ))}
                                 </div>
+                                <Link href="/agents/organization" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-3 text-sm text-muted-foreground hover:text-foreground"><IconHierarchy2 className="h-4 w-4" />Organization</Link>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <button type="button" aria-label="Workspace options" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
@@ -229,7 +230,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                         ) : view === "pulse" ? (
                             <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />
                         ) : view === "teams" ? (
-                            <TeamStructure companyName={data.companyName} people={data.members} canEdit={canAct} teams={data.teams ?? []} agents={agents} onSelect={selectMember} />
+                            <TeamStructure companyName={data.companyName} people={data.members} canEdit={false} teams={data.teams ?? []} agents={agents} onSelect={selectMember} />
                         ) : (
                             <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} now={now} />
                         )}

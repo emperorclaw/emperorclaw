@@ -544,3 +544,12 @@ Use **Pause**, **Resume** and **Clear objective**, or `/goal pause`, `/goal resu
 This requires a Hermes runtime with native `GoalManager` support. Update older runtime images; ordinary messaging remains compatible. Other runtimes keep their normal messages and do not advertise objectives until a compatible adapter is available. Advanced `/goal draft`, gates and manual wait commands are not exposed through this web integration.
 
 For custom Hermes installations, set `HERMES_INSTALL_DIR` to the checkout containing its dependency environment, or `EMPEROR_HERMES_GOAL_PYTHON` to its Python interpreter. The bundled runtime discovers the environment automatically.
+
+
+### Organization and reporting
+
+Open **Agents → Organization** to choose one company leader and add teams. Each team reuses one group chat; adding an existing group keeps its conversation and members. Ordinary chat groups do not become chart branches automatically. Agents may work across several teams. Team coordinators remain optional. Company owners and admins configure the chart.
+
+Hermes reads current reporting guidance on each new turn: company leader, up to four of its teams, and who to report to. A team coordinator takes priority for that team's work; otherwise the company leader is the contact. Coordinators report to the company leader, and the leader reports to humans. The summary is capped at 1,100 characters. Agents can retrieve full current team purposes, IDs and reporting rules with `emperor_request GET /organization`, and membership details with `GET /groups?mine=1`. Agent-bound tokens only retrieve their own team memberships.
+
+Changing the chart does not start work or send agent messages. Existing mention routing, loop guards, task ownership, approval permissions and budgets still apply. Update the app and Hermes runtime for this context. Migration `0055_company-organization` adds a nullable company configuration field; existing chats remain intact. Older servers fall back to the existing group context. Onboarding initializes the Boss and created teams once, without overwriting an existing chart.

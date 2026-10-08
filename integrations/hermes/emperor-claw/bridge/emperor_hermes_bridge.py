@@ -928,6 +928,39 @@ def format_my_team_roles() -> str:
     return "\n".join(lines)
 
 
+def format_organization_context() -> str:
+    """Fetch current reporting guidance, bounded independently of company prompts."""
+    try:
+        info = api("GET", "/organization", query={"agentId": AGENT_ID})
+    except Exception:
+        # Older servers keep their existing group context and message flow.
+        return ""
+    if not isinstance(info, dict) or not info.get("configured"):
+        return ""
+    leader = info.get("leader")
+    leader = leader if isinstance(leader, dict) else {}
+    lines = ["Company reporting structure:",
+             "Company leader: " + str(leader.get("name") or "unassigned")[:64]]
+    if leader.get("kind") == "agent" and leader.get("id") == AGENT_ID:
+        lines.append("You are the company leader; coordinate cross-team work and report to humans.")
+    teams = info.get("teams") if isinstance(info.get("teams"), list) else []
+    for team in teams[:4]:
+        if not isinstance(team, dict):
+            continue
+        coordinator = team.get("coordinator")
+        coordinator = coordinator if isinstance(coordinator, dict) else {}
+        target = coordinator.get("name") or leader.get("name") or "unassigned"
+        if coordinator.get("kind") == "agent" and coordinator.get("id") == AGENT_ID:
+            target = leader.get("name") or "humans"
+            if leader.get("kind") == "agent" and leader.get("id") == AGENT_ID:
+                target = "humans"
+        lines.append(str(team.get("name") or "Team")[:48] + ": report to " + str(target)[:64])
+    if len(teams) > 4:
+        lines.append(f"Plus {len(teams) - 4} teams; consult the endpoint for full details.")
+    lines.append("Consult current IDs, team purposes and reporting rules with emperor_request GET /organization; use /groups?mine=1 for members. Report useful progress, never ping-pong acknowledgments. Task ownership, approvals and access rules still apply.")
+    return "\n".join(lines)[:1100]
+
+
 def update_chat_status(
     message: Dict[str, Any],
     *,
@@ -2063,12 +2096,14 @@ def build_dynamic_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     text = str(message.get("text") or "")
     main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
     group_context = format_group_context(message)
-    team_roles = format_my_team_roles() if is_direct_thread(message, state) else ""
+    organization = format_organization_context()
+    team_roles = format_my_team_roles() if not organization and is_direct_thread(message, state) else ""
     open_tasks = format_my_open_tasks()
     return (
         (f"{open_tasks}\n\n" if open_tasks else "")
         + (f"{main_chat_context}\n\n" if main_chat_context else "")
         + (f"{group_context}\n\n" if group_context else "")
+        + (f"{organization}\n\n" if organization else "")
         + (f"{team_roles}\n\n" if team_roles else "")
         + f"Thread: {thread_id}\n"
         + f"Latest message: {text}"
