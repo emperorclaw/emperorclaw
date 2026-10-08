@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -65,6 +66,7 @@ export type GroupThreadSummary = {
     description: string | null;
     icon?: string | null;
     isAgentPair?: boolean;
+    relatedTaskId?: string | null;
     members: { kind: "agent" | "human"; id: string; name: string; role: string; avatarUrl?: string | null }[];
     unreadCount: number;
     lastMessageText: string | null;
@@ -571,6 +573,14 @@ export function MessagingHub({
                             <span className="text-xs tabular-nums">{activeGroup.members.length}</span>
                             <IconSettings className="h-4 w-4" />
                         </button>
+                    )}
+                    {activeGroup && activeGroup.isAgentPair && activeGroup.relatedTaskId && (
+                        <Link
+                            href={`/projects?task=${activeGroup.relatedTaskId}`}
+                            className="ml-auto flex h-10 shrink-0 items-center gap-2 rounded-xl border border-zinc-800 px-3 text-xs font-medium text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                        >
+                            Related task
+                        </Link>
                     )}
                     <button
                         type="button"

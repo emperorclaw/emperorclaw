@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX } from "@tabler/icons-react";
 import {
@@ -46,10 +47,11 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
     const reducedMotion = usePrefersReducedMotion();
     const searchRef = useRef<HTMLInputElement>(null);
     const now = useMemo(() => new Date(data.generatedAt), [data.generatedAt]);
+    const router = useRouter();
 
     const agents = useMemo(() => deriveSceneAgents(data), [data]);
     const layout = useMemo(() => buildOfficeLayout(agents), [agents]);
-    const links = useMemo(() => collaborationLinks(data.collaborations, layout.agents), [data.collaborations, layout.agents]);
+    const links = useMemo(() => collaborationLinks(data.collaborations, layout.agents, data.pairThreads), [data.collaborations, data.pairThreads, layout.agents]);
     const counts = useMemo(() => kpiCounts(agents, data), [agents, data]);
     const byKey = useMemo(() => new Map(agents.map((a) => [a.member.key, a])), [agents]);
 
@@ -97,6 +99,11 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
         setSelected(key);
         setKpi(null);
         setZoneFilter(null);
+    };
+    // Opening a collaboration line is owner/admin-only: pair threads are private.
+    const openLink = (threadId: string) => {
+        if (!isOwnerOrAdmin) return;
+        router.push(`/messages?group=${threadId}`);
     };
 
     // Throughput/cost KPI cards open the list view pre-filtered to their state.
@@ -190,6 +197,7 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
 
                         {view === "scene" ? (
                             <OfficeScene layout={layout} links={links} selectedKey={selectedKey} hoveredKey={hovered} isActive={isActive} reducedMotion={reducedMotion}
+                                linksClickable={isOwnerOrAdmin} onSelectLink={openLink}
                                 onSelect={selectMember} onHover={setHovered} onOverflow={(zone) => { setZoneFilter(zone); setView("list"); }}
                                 emptyState={hasAgents ? undefined : <SceneEmptyState />} />
                         ) : (
@@ -200,7 +208,7 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
 
                 <aside aria-label="Details" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
                     <NeedsAttention entries={data.attention} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />
-                    <SelectedAgent agent={selectedAgent} canAct={canAct} />
+                    <SelectedAgent agent={selectedAgent} canAct={canAct} isOwnerOrAdmin={isOwnerOrAdmin} />
                 </aside>
             </div>
 

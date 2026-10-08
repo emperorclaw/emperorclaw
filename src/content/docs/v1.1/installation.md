@@ -116,3 +116,30 @@ Hosted services without Docker socket access can run Emperor, but require a
 worker on another machine. They do not provide the local click-to-create flow.
 Use [Hermes runtime setup](/docs/v1.1/hermes-runtime) for remote workers. Source
 builds require Node.js and PostgreSQL and are described in the upgrade guide.
+
+## Deploy on Render (Hermes included)
+
+Render has no Docker socket, so onboarding can create your first agent but has
+nowhere to run it locally. The Render blueprint now provisions a paired **Hermes
+worker** alongside the app, so your first agent starts on Render automatically:
+
+1. Click **Deploy to Render** on the [README](../../../README.md) (or open
+   `render.yaml` in the repo) and create the blueprint. It provisions the
+   managed Postgres, the app, and one Hermes worker.
+2. Create your admin account, then complete **Emperor setup**. Because the
+   paired worker exists, onboarding proceeds and shows *"Starting on your Render
+   worker…"*.
+3. Your first agent starts on the Hermes worker and comes online once it pairs.
+
+How it works: the app and worker share a generated pairing secret
+(`EMPEROR_WORKER_PAIRING_SECRET`). When onboarding creates a Hermes agent, it is
+assigned to the idle worker and its agent-bound token is minted. The worker polls
+`POST /api/runtime/pair` with the secret until it receives the assignment, then
+runs the normal Hermes bridge flow. The worker's profiles and bridge state live
+on a persistent disk, so restarts reuse the same agent without re-pairing.
+
+**Cost:** the worker uses Render's cheapest paid background-worker plan
+(`0.5c-512mb`) plus a small persistent disk — workers have no free tier. Add more
+agents by scaling to more workers (one agent per worker). See
+[Hermes runtime setup](/docs/v1.1/hermes-runtime) to run workers on your own
+hardware instead.

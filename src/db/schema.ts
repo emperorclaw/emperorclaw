@@ -337,6 +337,27 @@ export const runtimeNodes = pgTable("runtime_nodes", {
     deletedAt: timestamp("deleted_at"),
 });
 
+// A Hermes worker that pairs with the app through the pairing endpoint (Render
+// and other hosts without a Docker socket). A worker starts unbound
+// (companyId null); its first assigned agent locks it to that company and it
+// never crosses companies. `agentId` is the currently-assigned agent, claimed
+// exactly once by an atomic conditional update — two workers can never claim
+// the same agent.
+export const pairedWorkers = pgTable("paired_workers", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workerId: text("worker_id").notNull(),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    // The raw agent-bound token, encrypted with the master key, minted at
+    // assignment time and delivered to the worker exactly once (cleared on
+    // first delivery so a restart cannot mint a new one).
+    pendingTokenEncrypted: text("pending_token_encrypted"),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    workerIdUnique: uniqueIndex("paired_workers_worker_id_unique").on(table.workerId),
+}));
+
 export const agentSessions = pgTable("agent_sessions", {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),

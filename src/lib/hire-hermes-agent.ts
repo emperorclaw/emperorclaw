@@ -6,6 +6,7 @@ import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
 import { mintAgentSetupToken, provisionHermesContainer } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { logAudit } from "@/lib/mcp";
+import { assignAgentToIdleWorker } from "@/lib/worker-pairing";
 
 /** Hire an isolated worker without exposing the source worker's credentials. */
 export async function hireHermesAgent(input: {
@@ -15,7 +16,6 @@ export async function hireHermesAgent(input: {
     sourceAgentId: string;
     doctrineJson?: Record<string, string>;
 }) {
-    if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) throw new Error("Local Hermes hiring requires Docker with its socket mounted");
     const name = input.name.trim();
     if (!name || name.length > 200) throw new Error("Agent name must contain 1–200 characters");
     const [source] = await db.select().from(agents).where(and(
@@ -24,8 +24,13 @@ export async function hireHermesAgent(input: {
     )).limit(1);
     if (!source?.llmApiKeyEncrypted || !source.llmProvider) throw new Error("Choose a Hermes agent with a stored LLM key and provider");
     const role = input.role?.trim() || "operator";
+    // With a Docker socket the agent runs in a sibling container; without one,
+    // it is assigned to an idle paired worker (Render). Either way the agent
+    // record is created; the runtime is what differs.
+    const dockerAvailable = isDocker() && fs.existsSync(DOCKER_SOCKET);
     const [agent] = await db.insert(agents).values({
-        companyId: input.companyId, name, role, provider: "hermes", deploymentMode: "local",
+        companyId: input.companyId, name, role, provider: "hermes",
+        deploymentMode: dockerAvailable ? "local" : "remote_paired",
         llmProvider: source.llmProvider, llmModel: source.llmModel,
         llmApiKeyEncrypted: source.llmApiKeyEncrypted, llmApiKeyVersion: source.llmApiKeyVersion,
         scopeJson: source.scopeJson,
@@ -33,6 +38,14 @@ export async function hireHermesAgent(input: {
     }).returning();
     const safeName = hermesSafeName(name);
     try {
+        if (!dockerAvailable) {
+            const workerId = await assignAgentToIdleWorker(input.companyId, agent);
+            await logAudit(input.companyId, "agent", source.id, "hire_hermes_agent", "agent", agent.id, { success: Boolean(workerId), deploymentMode: "remote_paired" });
+            if (!workerId) {
+                return { agentId: agent.id, name, success: false, message: "No idle remote worker available to run this agent.", outputs: [] };
+            }
+            return { agentId: agent.id, name, success: true, message: `${name} is assigned to a remote worker and will come online when it pairs.`, outputs: [] };
+        }
         const { rawToken } = await mintAgentSetupToken(input.companyId, safeName, agent.id);
         const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
         if (result.success) {

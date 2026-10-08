@@ -94,6 +94,28 @@ MAX_REPLY_FORMAT_GUIDE_CHARS = 1600
 # team thread with no human message in between, stop invoking Hermes and post
 # one pause notice instead, until a human message resets the counter.
 LOOP_GUARD_MAX_AGENT_TURNS = int(os.environ.get("EMPEROR_CLAW_LOOP_GUARD_MAX_TURNS", "3"))
+# ── Priority queue ─────────────────────────────────────────────────────────
+# Pending work is no longer handled in arrival order. Each addressed message is
+# classified into a priority band, then coalesced into one turn per thread so a
+# busy room never starves a human DM or a task wake.
+#
+# Priority bands (lower = more urgent):
+#   P0  human DM + approval decisions
+#   P1  task assignment / reassignment wakes
+#   P2  agent pair-thread messages (another agent is blocked waiting)
+#   P3  room mentions / lead-routed
+# Unaddressed FYI messages never reach the queue (is_for_agent filters them).
+#
+# Anti-starvation: age boosts priority by one level per this many minutes
+# waiting, so a backlogged room is eventually promoted ahead of fresher work.
+PRIORITY_HUMAN_DM = 0
+PRIORITY_TASK_WAKE = 1
+PRIORITY_PAIR_THREAD = 2
+PRIORITY_ROOM = 3
+PRIORITY_BOOST_MINUTES = max(1, int(os.environ.get("EMPEROR_CLAW_PRIORITY_BOOST_MINUTES", "5")))
+# Compact listing of earlier coalesced messages in a turn's prompt.
+MAX_EARLIER_MESSAGES = 8
+MAX_EARLIER_MESSAGE_CHARS = 200
 
 # ── Prompt economics: static/dynamic split ───────────────────────────────────
 # The static block (operating guide, messaging/storage/lookup rules, roster,
@@ -809,6 +831,128 @@ def check_loop_guard(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
     entry["last_activity"] = now
     entry["count"] = entry.get("count", 0) + 1
     return entry["count"] <= LOOP_GUARD_MAX_AGENT_TURNS
+
+
+def _message_metadata(message: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = message.get("metadataJson") or message.get("metadata_json") or {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _message_timestamp(message: Dict[str, Any], now: float) -> float:
+    """Epoch seconds a message was posted; falls back to `now` (no age)."""
+    created = message.get("createdAt") or message.get("created_at")
+    if not created:
+        return now
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(created).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return now
+
+
+def message_priority(message: Dict[str, Any], agent_id: str) -> int:
+    """Classify an addressed message into a priority band (lower = more urgent).
+
+    The server's `routeReason` verdict (new servers) is authoritative for the
+    channel kind; older servers send none and the fields below still classify
+    the message, with anything unrecognised treated as P3 (room) rather than
+    being lost.
+    """
+    route_reason = str(message.get("routeReason") or "").lower()
+    sender_type = str(message.get("senderType") or message.get("sender_type") or "").lower()
+    thread_type = str(message.get("threadType") or message.get("thread_type") or "").lower()
+    target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
+    metadata = _message_metadata(message)
+
+    if route_reason == "direct":
+        return PRIORITY_HUMAN_DM
+    if route_reason == "task_assigned":
+        return PRIORITY_TASK_WAKE
+    if route_reason == "agent_pair":
+        return PRIORITY_PAIR_THREAD
+
+    # Approval decision: a system message to this agent carrying the verdict.
+    if sender_type == "system" and target == agent_id and "approvalDecision" in metadata:
+        return PRIORITY_HUMAN_DM
+
+    # Task assignment/reassignment wake: a system notice stamped taskAssigned.
+    if sender_type == "system" and target == agent_id and metadata.get("taskAssigned") is True:
+        return PRIORITY_TASK_WAKE
+
+    # Human DM: a person wrote in this agent's private direct thread.
+    if thread_type == "direct" and sender_type == "human":
+        return PRIORITY_HUMAN_DM
+
+    # Pair thread: the counterpart addressed this agent.
+    if message.get("isAgentPair") is True:
+        return PRIORITY_PAIR_THREAD
+
+    # Room mention / lead-routed / anything else addressed (incl. old servers
+    # that send no verdict and no richer fields).
+    return PRIORITY_ROOM
+
+
+def message_age_boost(message: Dict[str, Any], now: float) -> int:
+    """Whole boost levels earned by waiting: +1 level per PRIORITY_BOOST_MINUTES."""
+    age_seconds = max(0.0, now - _message_timestamp(message, now))
+    return int(age_seconds // (PRIORITY_BOOST_MINUTES * 60))
+
+
+def effective_priority(message: Dict[str, Any], agent_id: str, now: float) -> int:
+    """Priority after the anti-starvation boost (clamped at P0, the most urgent)."""
+    return max(0, message_priority(message, agent_id) - message_age_boost(message, now))
+
+
+def format_earlier_messages(messages: List[Dict[str, Any]]) -> str:
+    """Compact listing of the earlier messages in a coalesced thread turn.
+
+    The latest message is the prompt focus; these are listed oldest-first so the
+    agent still sees what it was asked before without one turn per message.
+    """
+    lines: List[str] = []
+    for message in messages[-MAX_EARLIER_MESSAGES:]:
+        text = " ".join(summarize_rich_blocks(str(message.get("text") or "")).split())
+        if not text:
+            continue
+        if len(text) > MAX_EARLIER_MESSAGE_CHARS:
+            text = text[: MAX_EARLIER_MESSAGE_CHARS - 1] + "…"
+        lines.append(f"- {text}")
+    if not lines:
+        return ""
+    return "Earlier messages in this thread (oldest first):\n" + "\n".join(lines)
+
+
+def plan_dispatch(messages: List[Dict[str, Any]], agent_id: str, now: float | None = None) -> List[List[Dict[str, Any]]]:
+    """Order addressed messages by boosted priority and coalesce them into one
+    turn per thread.
+
+    Returns a list of groups, each a list of messages for one thread sorted
+    oldest → newest (the last message is the prompt focus). Group order is the
+    most-urgent effective priority across its messages, then the oldest waiting
+    message (so a starving room is promoted but never outranks a human DM).
+    """
+    now = time.time() if now is None else now
+    by_thread: Dict[str, List[Dict[str, Any]]] = {}
+    order: List[str] = []
+    for message in messages:
+        thread_id = str(message.get("threadId") or message.get("thread_id") or "") or f"\0{message.get('id')}"
+        if thread_id not in by_thread:
+            by_thread[thread_id] = []
+            order.append(thread_id)
+        by_thread[thread_id].append(message)
+
+    groups: List[List[Dict[str, Any]]] = []
+    for thread_id in order:
+        group = by_thread[thread_id]
+        group.sort(key=lambda m: _message_timestamp(m, now))
+        groups.append(group)
+
+    def group_key(group: List[Dict[str, Any]]) -> tuple[int, float]:
+        urgency = min(effective_priority(m, agent_id, now) for m in group)
+        oldest = min(_message_timestamp(m, now) for m in group)
+        return (urgency, oldest)
+
+    return sorted(groups, key=group_key)
 
 
 def sync_messages(state: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -2019,24 +2163,32 @@ def build_static_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     )
 
 
-def build_dynamic_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+def build_dynamic_block(message: Dict[str, Any], state: Dict[str, Any], earlier: List[Dict[str, Any]] | None = None) -> str:
     """The per-turn block: latest message, thread id, team digest, group context,
-    and my open tasks. Sent on every wake (it is short and changes each turn)."""
+    and my open tasks. Sent on every wake (it is short and changes each turn).
+    When `earlier` is provided (a coalesced turn), those messages are listed
+    compactly before the latest one so a single turn covers the whole thread."""
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     text = str(message.get("text") or "")
     main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
     group_context = format_group_context(message)
     open_tasks = format_my_open_tasks()
+    earlier_block = format_earlier_messages(earlier) if earlier else ""
     return (
         (f"{open_tasks}\n\n" if open_tasks else "")
         + (f"{main_chat_context}\n\n" if main_chat_context else "")
         + (f"{group_context}\n\n" if group_context else "")
         + f"Thread: {thread_id}\n"
+        + (f"{earlier_block}\n\n" if earlier_block else "")
         + f"Latest message: {text}"
     )
 
 
-def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+def run_hermes(messages: Dict[str, Any] | List[Dict[str, Any]], state: Dict[str, Any]) -> str:
+    if isinstance(messages, dict):
+        messages = [messages]
+    message = messages[-1]
+    earlier = messages[:-1]
     thread_id = str(message.get("threadId") or message.get("thread_id") or "team")
     session_key = f"{AGENT_NAME}:{thread_id}"
     sessions = state.setdefault("sessions", {})
@@ -2052,7 +2204,7 @@ def run_hermes(message: Dict[str, Any], state: Dict[str, Any]) -> str:
 
     static_block = build_static_block(message, state)
     static_hash = hashlib.sha256(static_block.encode("utf-8")).hexdigest()
-    dynamic_block = build_dynamic_block(message, state)
+    dynamic_block = build_dynamic_block(message, state, earlier)
 
     elapsed_hours = (time.time() - started_at) / 3600.0
     rotate = turns >= max_turns or (max_hours > 0 and elapsed_hours >= max_hours)
@@ -2198,6 +2350,125 @@ def check_budget() -> bool:
         return False
 
 
+def dispatch_group(group: List[Dict[str, Any]], state: Dict[str, Any], agent_id: str) -> None:
+    """Run one coalesced turn for a thread's pending messages.
+
+    `group` is a list of addressed messages for a single thread, oldest → newest;
+    the newest message is the prompt focus, the rest are listed compactly inside
+    the turn. Acks, retries, loop guard, session priming/rotation, and delivery
+    state transitions all apply to every message in the group exactly as they did
+    before for a single message.
+    """
+    focus = group[-1]
+    focus_id = str(focus.get("id") or "")
+
+    # The server's verdict already includes its loop guard (and posts one visible
+    # notice); the local guard is only for older servers.
+    if not server_routed(focus) and not check_loop_guard(focus, state):
+        thread_id = str(focus.get("threadId") or focus.get("thread_id") or "")
+        entry = state.get("loop_guard", {}).get(thread_id, {})
+        if not entry.get("notified"):
+            entry["notified"] = True
+            log(f"loop guard tripped in thread {thread_id}, pausing until a human message arrives")
+            try:
+                send_reply(focus, (
+                    f"{AGENT_NAME}: pausing replies in this thread — too many consecutive "
+                    "agent turns without a human message. Send a new instruction to resume."
+                ))
+            except Exception as exc:
+                log(f"loop guard notice failed: {exc}")
+        for message in group:
+            remember_seen(state, str(message.get("id") or ""))
+            ts = message.get("createdAt")
+            if ts:
+                state["lastSeenAt"] = ts
+        return
+
+    # Recheck cached batches: a /kill or /replace can arrive while an earlier
+    # message in this same batch is running.
+    control = fetch_runtime_control(focus)
+    apply_runtime_controls(control, state)
+    if control.get("cancelled") or focus.get("deliveryState") == "cancelled":
+        for message in group:
+            remember_seen(state, str(message.get("id") or ""))
+        return
+
+    if len(group) > 1:
+        log(f"dispatching message {focus_id} (+{len(group) - 1} more in thread)")
+    else:
+        log(f"dispatching message {focus_id}")
+    for message in group:
+        update_chat_status(message, mark_read=True, execution_state="seen")
+    update_chat_status(focus, typing=True, execution_state="acting")
+    send_heartbeat(1)
+    text = str(focus.get("text") or "")
+    try:
+        reply = run_hermes(group, state)
+        try:
+            report_token_usage(len(text), len(reply))
+        except Exception as exc:
+            log(f"usage report pending; future dispatch blocked: {exc}")
+        reply_message_id = send_reply(focus, reply)
+        # Reasoning history is a bonus artifact, so it is isolated the same way
+        # the recovery calls below are: a transcript is never worth losing a reply.
+        if reply_message_id and _last_turn_reasoning:
+            try:
+                post_reasoning_history(reply_message_id, _last_turn_reasoning)
+            except Exception as reasoning_exc:
+                log(f"reasoning history not stored for {reply_message_id}: {reasoning_exc}")
+        for message in group:
+            update_chat_status(message, typing=False, execution_state="resolved")
+            clear_retry(state, str(message.get("id") or ""))
+    except TurnInterrupted:
+        log(f"operator stopped message {focus_id}")
+        try:
+            update_chat_status(focus, typing=False)
+        except Exception as status_exc:
+            log(f"failed to clear stopped turn status: {status_exc}")
+        for message in group:
+            message_id = str(message.get("id") or "")
+            clear_retry(state, message_id)
+            remember_seen(state, message_id)
+    except Exception as exc:
+        # Preserve the prompt for retry. The durable ledger gives a failed
+        # runtime backoff without turning one transient error into a hot loop,
+        # and the server keeps retry IDs visible even after the normal
+        # incremental sync cursor has advanced.
+        try:
+            update_chat_status(focus, typing=False, execution_state="queued")
+        except Exception as status_exc:
+            log(f"failed to requeue message {focus_id}: {status_exc}")
+        for message in group:
+            message_id = str(message.get("id") or "")
+            attempts = schedule_retry(state, message_id)
+            if attempts >= MAX_RETRY_ATTEMPTS:
+                # Do not let one poison prompt monopolize this serial queue forever.
+                try:
+                    update_chat_status(message, typing=False, execution_state="cancelled")
+                except Exception as status_exc:
+                    log(f"failed to expose exhausted message {message_id}: {status_exc}")
+                clear_retry(state, message_id)
+                remember_seen(state, message_id)
+                log(f"message {message_id} cancelled visibly after {attempts} failed attempts")
+            else:
+                log(f"error processing message {message_id}; retry {attempts} scheduled")
+        log(f"turn for message {focus_id} failed: {describe_processing_error(exc)}")
+    finally:
+        try:
+            send_heartbeat(0)
+        except Exception as heartbeat_exc:
+            log(f"failed to send heartbeat after {focus_id}: {heartbeat_exc}")
+
+    for message in group:
+        message_id = str(message.get("id") or "")
+        if message_id not in retry_entries(state):
+            remember_seen(state, message_id)
+        ts = message.get("createdAt")
+        if ts and message_id not in retry_entries(state):
+            state["lastSeenAt"] = ts
+    save_state(state)  # Persist immediately after each dispatch
+
+
 def main() -> int:
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
@@ -2226,6 +2497,7 @@ def main() -> int:
                 refresh_server_capabilities()
                 last_capability_refresh = time.time()
             apply_runtime_controls(fetch_runtime_control(), state)
+            pending: List[Dict[str, Any]] = []
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")
                 if not message_id:
@@ -2286,101 +2558,15 @@ def main() -> int:
                     if ts:
                         state["lastSeenAt"] = ts
                     continue
-                if not check_budget():
-                    # Preserve this message and everything after it for retry.
-                    break
-                # The server's verdict already includes its loop guard (and posts
-                # one visible notice); the local guard is only for older servers.
-                if not server_routed(message) and not check_loop_guard(message, state):
-                    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
-                    entry = state.get("loop_guard", {}).get(thread_id, {})
-                    if not entry.get("notified"):
-                        entry["notified"] = True
-                        log(f"loop guard tripped in thread {thread_id}, pausing until a human message arrives")
-                        try:
-                            send_reply(message, (
-                                f"{AGENT_NAME}: pausing replies in this thread — too many consecutive "
-                                "agent turns without a human message. Send a new instruction to resume."
-                            ))
-                        except Exception as exc:
-                            log(f"loop guard notice failed: {exc}")
-                    remember_seen(state, message_id)
-                    if ts:
-                        state["lastSeenAt"] = ts
-                    continue
-                # Recheck cached batches: a /kill or /replace can arrive while
-                # an earlier message in this same batch is running.
-                control = fetch_runtime_control(message)
-                apply_runtime_controls(control, state)
-                if control.get("cancelled") or message.get("deliveryState") == "cancelled":
-                    remember_seen(state, message_id)
-                    continue
-                log(f"dispatching message {message_id}")
-                update_chat_status(message, mark_read=True, execution_state="seen")
-                update_chat_status(message, typing=True, execution_state="acting")
-                send_heartbeat(1)
-                text = str(message.get("text") or "")
-                try:
-                    reply = run_hermes(message, state)
-                    try:
-                        report_token_usage(len(text), len(reply))
-                    except Exception as exc:
-                        log(f"usage report pending; future dispatch blocked: {exc}")
-                    reply_message_id = send_reply(message, reply)
-                    # Reasoning history is a bonus artifact, so it is isolated
-                    # the same way the recovery calls below are: if this write
-                    # throws it must NOT escape into the except block, which
-                    # would post an error notice for a turn that actually
-                    # succeeded and re-send the reply on the next poll. A
-                    # transcript is never worth losing a reply over.
-                    if reply_message_id and _last_turn_reasoning:
-                        try:
-                            post_reasoning_history(reply_message_id, _last_turn_reasoning)
-                        except Exception as reasoning_exc:
-                            log(f"reasoning history not stored for {reply_message_id}: {reasoning_exc}")
-                    update_chat_status(message, typing=False, execution_state="resolved")
-                    clear_retry(state, message_id)
-                except TurnInterrupted:
-                    log(f"operator stopped message {message_id}")
-                    try:
-                        update_chat_status(message, typing=False)
-                    except Exception as status_exc:
-                        log(f"failed to clear stopped turn status: {status_exc}")
-                    clear_retry(state, message_id)
-                    remember_seen(state, message_id)
-                except Exception as exc:
-                    # Preserve the prompt for retry. The durable ledger gives a
-                    # failed runtime backoff without turning one transient error
-                    # into a hot loop, and the server keeps retry IDs visible even
-                    # after the normal incremental sync cursor has advanced.
-                    try:
-                        update_chat_status(message, typing=False, execution_state="queued")
-                    except Exception as status_exc:
-                        log(f"failed to requeue message {message_id}: {status_exc}")
-                    attempts = schedule_retry(state, message_id)
-                    if attempts >= MAX_RETRY_ATTEMPTS:
-                        # Do not let one poison prompt monopolize this serial
-                        # queue forever. Cancel is visible in the direct-chat
-                        # transcript and can be explicitly retried by the human.
-                        try:
-                            update_chat_status(message, typing=False, execution_state="cancelled")
-                        except Exception as status_exc:
-                            log(f"failed to expose exhausted message {message_id}: {status_exc}")
-                        clear_retry(state, message_id)
-                        remember_seen(state, message_id)
-                        log(f"message {message_id} cancelled visibly after {attempts} failed attempts: {describe_processing_error(exc)}")
-                    else:
-                        log(f"error processing message {message_id}; retry {attempts} scheduled: {describe_processing_error(exc)}")
-                finally:
-                    try:
-                        send_heartbeat(0)
-                    except Exception as heartbeat_exc:
-                        log(f"failed to send heartbeat after {message_id}: {heartbeat_exc}")
-                if message_id not in retry_entries(state):
-                    remember_seen(state, message_id)
-                if ts and message_id not in retry_entries(state):
-                    state["lastSeenAt"] = ts
-                save_state(state)  # Persist immediately after each dispatch
+                pending.append(message)
+
+            if pending:
+                # Budget is a global gate, not a per-message one: check once before
+                # any dispatch, and on failure preserve every pending message for the
+                # next poll (none are marked seen).
+                if check_budget():
+                    for group in plan_dispatch(pending, agent_id):
+                        dispatch_group(group, state, agent_id)
             save_state(state)
         except Exception as exc:
             log(f"error: {exc}")

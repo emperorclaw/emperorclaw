@@ -25,7 +25,14 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 
 ### Working in a team
 
-A team is tasks and messages. Use each for its job:
+A team is tasks and messages. Use each for its job. Pick the smallest surface that fits:
+
+1. **Someone must do work → a task.** Assign it to the right owner; assignment wakes the assignee.
+2. **Need an answer from one specific agent to proceed → a pair thread.** emperor_send_message with targetAgentId.
+3. **Several people must know or decide → a room.** Post in the group or team channel; it wakes nobody unless you @mention someone.
+4. **An irreversible or business decision → emperor_request_approval.**
+
+Decisions live in the task, not the chat: after you settle something in a pair thread, record the outcome with emperor_add_task_note so it is not lost when the thread scrolls away.
 
 - Work = a task with one owner. To hand off, create or reassign a task to the next owner with acceptance criteria, input IDs (task, artifact, note), the expected output, and a due date when known. Assignment wakes the assignee; no @mention needed.
 - Questions = a pair thread. emperor_send_message with targetAgentId opens a private two-way thread with that agent; its reply comes back to you. Ask one complete question. Never hand off work there.

@@ -118,6 +118,8 @@ export interface DashboardData {
     cost: CostSummary;
     throughput: ThroughputSummary;
     feed: FeedEvent[];
+    /** Agent pairs with a machine-managed pair thread (for collaboration links). */
+    pairThreads: PairThreadEdge[];
 }
 
 /* ── Cost & throughput summaries ─────────────────────────────────────── */
@@ -246,6 +248,15 @@ export interface PausedNotice {
     threadId: string;
     createdAt: string;
     isPairThread: boolean;
+}
+
+/**
+ * Who may open machine-managed pair threads: instance admins and company
+ * owners/admins. Members and viewers never see pair-thread content (or the
+ * clickable collaboration lines that open it).
+ */
+export function canViewPairThreads(instanceRole: string | null | undefined, companyRole: string | null | undefined): boolean {
+    return instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
 }
 
 /**
@@ -1002,22 +1013,54 @@ export interface CollaborationLink {
     to: PlacedAgent;
     kind: CollaborationEvent["kind"];
     taskTitle: string;
+    /** The two agents' pair thread, when one exists — the line's click target. */
+    threadId: string | null;
 }
 
-/** One link per pair of visible agents, newest first. */
-export function collaborationLinks(events: CollaborationEvent[], placed: PlacedAgent[], limit = 6): CollaborationLink[] {
+/** A machine-managed pair thread between two agents, with its latest activity. */
+export interface PairThreadEdge {
+    threadId: string;
+    fromKey: string;
+    toKey: string;
+    at: string;
+}
+
+/**
+ * One link per pair of visible agents, newest first. Links come from two
+ * sources: task handoff/review events, and recent pair-thread activity. Every
+ * link carries the pair thread id (when one exists) so clicking a line opens
+ * the two agents' conversation; pairs with only private chatter still get a
+ * line, not just pairs that passed a task.
+ */
+export function collaborationLinks(events: CollaborationEvent[], placed: PlacedAgent[], pairEdges: PairThreadEdge[] = [], limit = 6): CollaborationLink[] {
     const byKey = new Map(placed.map((p) => [p.member.key, p]));
+    const threadIdByPair = new Map<string, string>();
+    for (const e of pairEdges) {
+        threadIdByPair.set([e.fromKey, e.toKey].sort().join("|"), e.threadId);
+    }
     const seen = new Set<string>();
     const links: CollaborationLink[] = [];
-    for (const e of [...events].sort((a, b) => b.at.localeCompare(a.at))) {
-        if (e.fromKey === e.toKey) continue;
-        const from = byKey.get(e.fromKey);
-        const to = byKey.get(e.toKey);
+    const merged: Array<{ at: string; kind: "event" | "pair"; event?: CollaborationEvent; edge?: PairThreadEdge }> = [
+        ...events.map((event) => ({ at: event.at, kind: "event" as const, event })),
+        ...pairEdges.map((edge) => ({ at: edge.at, kind: "pair" as const, edge })),
+    ].sort((a, b) => b.at.localeCompare(a.at));
+
+    for (const item of merged) {
+        const fromKey = item.kind === "pair" ? item.edge!.fromKey : item.event!.fromKey;
+        const toKey = item.kind === "pair" ? item.edge!.toKey : item.event!.toKey;
+        if (fromKey === toKey) continue;
+        const from = byKey.get(fromKey);
+        const to = byKey.get(toKey);
         if (!from || !to) continue;
-        const pair = [e.fromKey, e.toKey].sort().join("|");
+        const pair = [fromKey, toKey].sort().join("|");
         if (seen.has(pair)) continue;
         seen.add(pair);
-        links.push({ id: e.id, from, to, kind: e.kind, taskTitle: e.taskTitle });
+        const threadId = threadIdByPair.get(pair) ?? null;
+        if (item.kind === "pair") {
+            links.push({ id: `pair:${item.edge!.threadId}`, from, to, kind: "handoff", taskTitle: "Pair thread", threadId });
+        } else {
+            links.push({ id: item.event!.id, from, to, kind: item.event!.kind, taskTitle: item.event!.taskTitle, threadId });
+        }
         if (links.length >= limit) break;
     }
     return links;

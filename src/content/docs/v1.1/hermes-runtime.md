@@ -533,3 +533,31 @@ Hermes is the only supported local runtime. In **Agents → Hire an Agent → Lo
 Hermes workers can hire other Hermes workers with the `emperor_create_agent` tool, passing `name`, `role`, and optionally `doctrineJson` (a mapping of doctrine filenames to text). The server uses the authenticated worker's configuration. No API key needs to appear in prompts or tool results. Check the returned `success` and `agentId`; failed provisioning leaves an offline profile that can be retried through local setup. Container startup is reported separately from online status, which is confirmed by runtime heartbeats.
 
 MCP clients can call `create_agent` with `deploymentMode: "local"`. Company tokens also supply `sourceAgentId`; agent-bound tokens use their own agent as the source. REST clients use the same fields with `POST /api/mcp/agents`. Local hiring requires the Docker installation with its socket mounted. Remote integrations remain available.
+
+## Deploy on Render (Hermes included)
+
+Render has no Docker socket, so the paired-worker path replaces sibling-container
+provisioning. The `render.yaml` blueprint adds a Hermes worker service that runs
+the same entrypoint and bridge, but starts in **pairing mode**:
+
+1. The app and worker share `EMPEROR_WORKER_PAIRING_SECRET`; the worker gets the
+   app's private address via `EMPEROR_CLAW_API_URL` (`host:port`, which the
+   pairing script prefixes with `http://`).
+2. When `EMPEROR_CLAW_API_TOKEN` is empty and the pairing secret is set, the
+   entrypoint runs the pairing script instead of requiring
+   `EMPEROR_CLAW_AGENT_NAME`. It persists a stable worker id on the disk and
+   polls `POST /api/runtime/pair` until an agent is assigned.
+3. On assignment the worker receives the agent's name, id, role, a freshly
+   minted agent-bound token, and the LLM provider/model/key. These are persisted
+   on the disk (under `EMPEROR_CLAW_HERMES_STATE_PATH`'s directory), then the
+   normal entrypoint flow continues (profile create, plugin, provider config,
+   bridge).
+4. On restart the worker re-uses the persisted config; the app re-delivers the
+   same assignment without minting a new token. If the token is revoked or the
+   agent deleted, the worker returns to pairing mode.
+
+The endpoint is authenticated only by constant-time comparison with the pairing
+secret, is rate-limited, and is disabled entirely when the secret is unset. The
+worker's profiles and bridge state live on a persistent disk mounted at
+`/home/hermes/.hermes/profiles`. Add more agents by scaling to more workers (one
+agent per worker).

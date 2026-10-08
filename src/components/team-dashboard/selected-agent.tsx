@@ -14,6 +14,10 @@ const AgentMiniChat = dynamic(() => import("./agent-mini-chat").then((m) => m.Ag
     loading: () => <div className="mt-3 rounded-xl border border-border/80 bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground animate-pulse dark:bg-white/[0.02]">Loading chat…</div>,
 });
 
+const AgentConversations = dynamic(() => import("./agent-conversations").then((m) => m.AgentConversations), {
+    loading: () => <div className="mt-3 rounded-xl border border-border/80 bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground animate-pulse dark:bg-white/[0.02]">Loading conversations…</div>,
+});
+
 const PILL: Record<SceneAgent["status"], string> = {
     working: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/30 dark:text-emerald-300",
     waiting: "bg-amber-500/12 text-amber-600 ring-amber-500/30 dark:text-amber-300",
@@ -22,7 +26,7 @@ const PILL: Record<SceneAgent["status"], string> = {
     offline: "bg-zinc-500/12 text-zinc-500 ring-zinc-500/30 dark:text-zinc-400",
 };
 
-export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; canAct: boolean }) {
+export function SelectedAgent({ agent, canAct, isOwnerOrAdmin }: { agent: SceneAgent | null; canAct: boolean; isOwnerOrAdmin: boolean }) {
     const router = useRouter();
     const [restarting, setRestarting] = useState(false);
     if (!agent) {
@@ -143,6 +147,8 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
             )}
 
             {member.kind === "agent" && <AgentMiniChat key={member.id} agentId={member.id} agentName={member.name} />}
+
+            {member.kind === "agent" && isOwnerOrAdmin && <AgentConversations agentId={member.id} />}
 
             <div className="mt-3 flex items-center gap-2">
                 <Link href={`/messages?agent=${member.id}`} className="inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/50 transition hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 dark:text-cyan-200">

@@ -28,6 +28,9 @@ interface OfficeSceneProps {
     hoveredKey: string | null;
     isActive: (agent: PlacedAgent) => boolean;
     reducedMotion: boolean;
+    /** Whether collaboration lines are clickable (owner/admin only — pair threads). */
+    linksClickable: boolean;
+    onSelectLink: (threadId: string) => void;
     onSelect: (key: string) => void;
     onHover: (key: string | null) => void;
     onOverflow: (zone: ZoneId) => void;
@@ -38,7 +41,7 @@ type Node = { row: number; depth: number; key: string; el: ReactNode };
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, reducedMotion, onSelect, onHover, onOverflow, emptyState }: OfficeSceneProps) {
+export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, reducedMotion, linksClickable, onSelectLink, onSelect, onHover, onOverflow, emptyState }: OfficeSceneProps) {
     const uid = useId().replace(/:/g, "");
     const { viewBox: vb, width: W, depth: D } = layout;
     const frameRef = useRef<HTMLDivElement>(null);
@@ -318,7 +321,7 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
                     {nodes.map((n) => <g key={n.key}>{n.el}</g>)}
 
                     {/* collaboration paths */}
-                    {links.map((link, i) => <LinkPath key={link.id} link={link} id={`${uid}-link-${i}`} reducedMotion={reducedMotion} dim={!isActive(link.from) && !isActive(link.to)} />)}
+                    {links.map((link, i) => <LinkPath key={link.id} link={link} id={`${uid}-link-${i}`} reducedMotion={reducedMotion} dim={!isActive(link.from) && !isActive(link.to)} clickable={linksClickable && Boolean(link.threadId)} onOpen={() => link.threadId && onSelectLink(link.threadId)} />)}
                 </svg>
 
                 {/* Floating labels are HTML so they stay sharp and readable at any scale. */}
@@ -597,7 +600,7 @@ function SceneCharacter({ agent, selected, hovered, onSelect, onHover, onCenter,
     );
 }
 
-function LinkPath({ link, id, reducedMotion, dim }: { link: CollaborationLink; id: string; reducedMotion: boolean; dim: boolean }) {
+function LinkPath({ link, id, reducedMotion, dim, clickable, onOpen }: { link: CollaborationLink; id: string; reducedMotion: boolean; dim: boolean; clickable: boolean; onOpen: () => void }) {
     const head = (a: PlacedAgent) => iso(a.gx, a.gy, (a.pose === "sofa" ? 12 : 0) + 34 * CHARACTER_SCALE);
     const a = head(link.from);
     const b = head(link.to);
@@ -607,7 +610,7 @@ function LinkPath({ link, id, reducedMotion, dim }: { link: CollaborationLink; i
     const lift = Math.min(90, Math.hypot(b.x - a.x, b.y - a.y) * 0.22);
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - lift / 2 };
     return (
-        <g opacity={dim ? 0.25 : 1} className="pointer-events-none transition-opacity duration-300">
+        <g opacity={dim ? 0.25 : 1} className={clickable ? "pointer-events-auto cursor-pointer transition-opacity duration-300" : "pointer-events-none transition-opacity duration-300"} onClick={clickable ? onOpen : undefined} onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined} role={clickable ? "button" : undefined} tabIndex={clickable ? 0 : undefined} aria-label={clickable ? `Open conversation between ${link.from.member.name} and ${link.to.member.name}` : undefined}>
             <title>{`${link.from.member.name} → ${link.to.member.name}: ${link.taskTitle}`}</title>
             <path d={d} fill="none" stroke={color} strokeOpacity={0.22} strokeWidth={7} strokeLinecap="round" style={{ filter: `blur(3px)` }} />
             <path id={id} d={d} fill="none" stroke={color} strokeWidth={2.2} strokeDasharray="7 7" strokeLinecap="round" className="office-dash" style={{ filter: `drop-shadow(0 0 3px ${color})` }} />

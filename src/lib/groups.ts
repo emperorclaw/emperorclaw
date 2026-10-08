@@ -503,10 +503,114 @@ export async function pairThreadCounterpart(companyId: string, threadId: string,
     return row?.participantId ?? null;
 }
 
+const TASK_LINK_RE = /emperor:\/\/task\/([0-9a-fA-F-]{36})/;
+
+/**
+ * The task a pair-thread conversation is about, if any: a task link in a
+ * message (`emperor://task/<id>`), or a task id carried in message metadata
+ * (`taskId` / `taskIds`). `messages` is newest-first; the newest match wins.
+ * Pure — no DB access — so the derivation is unit-tested directly.
+ */
+export function relatedTaskId(messages: Array<{ text?: string | null; metadataJson?: unknown }>): string | null {
+    for (const message of messages) {
+        const link = TASK_LINK_RE.exec(message.text ?? "");
+        if (link) return link[1];
+        const metadata = message.metadataJson && typeof message.metadataJson === "object" ? (message.metadataJson as Record<string, unknown>) : {};
+        const taskIds = metadata.taskIds;
+        if (Array.isArray(taskIds) && typeof taskIds[0] === "string" && taskIds[0]) return taskIds[0];
+        const taskId = metadata.taskId;
+        if (typeof taskId === "string" && taskId) return taskId;
+    }
+    return null;
+}
+
+/** A read-only summary of one of an agent's active pair threads. */
+export interface AgentConversation {
+    threadId: string;
+    counterpart: { id: string; name: string; avatarUrl: string | null } | null;
+    lastMessageText: string | null;
+    lastMessageAt: string | null;
+    relatedTaskId: string | null;
+}
+
+/** An agent's active pair threads, newest activity first, capped. */
+export async function listAgentConversations(companyId: string, agentId: string, limit = 5): Promise<AgentConversation[]> {
+    const pairThreads = await db.select({ id: messageThreads.id })
+        .from(messageThreads)
+        .innerJoin(threadParticipants, eq(threadParticipants.threadId, messageThreads.id))
+        .where(and(
+            eq(messageThreads.companyId, companyId),
+            eq(messageThreads.type, GROUP_THREAD_TYPE),
+            eq(messageThreads.description, AGENT_PAIR_DESCRIPTION),
+            eq(messageThreads.createdByType, "system"),
+            isNull(messageThreads.archivedAt),
+            eq(threadParticipants.companyId, companyId),
+            eq(threadParticipants.participantType, "agent"),
+            eq(threadParticipants.participantId, agentId),
+        ));
+    if (pairThreads.length === 0) return [];
+    const threadIds = pairThreads.map((t) => t.id);
+
+    const counterpartRows = await db.select({ threadId: threadParticipants.threadId, participantId: threadParticipants.participantId })
+        .from(threadParticipants)
+        .where(and(
+            eq(threadParticipants.companyId, companyId),
+            inArray(threadParticipants.threadId, threadIds),
+            eq(threadParticipants.participantType, "agent"),
+            ne(threadParticipants.participantId, agentId),
+        ));
+    const counterpartIdByThread = new Map<string, string>();
+    for (const row of counterpartRows) if (row.participantId) counterpartIdByThread.set(row.threadId, row.participantId);
+    const counterpartIds = [...new Set(counterpartIdByThread.values())];
+
+    const [agentRows, latest, recentMessages] = await Promise.all([
+        counterpartIds.length
+            ? db.select({ id: agents.id, name: agents.name, avatarUrl: agents.avatarUrl }).from(agents)
+                .where(and(eq(agents.companyId, companyId), inArray(agents.id, counterpartIds), isNull(agents.deletedAt)))
+            : Promise.resolve([]),
+        db.selectDistinctOn([threadMessages.threadId], { threadId: threadMessages.threadId, text: threadMessages.text, createdAt: threadMessages.createdAt })
+            .from(threadMessages)
+            .where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, threadIds)))
+            .orderBy(threadMessages.threadId, desc(threadMessages.createdAt)),
+        db.select({ threadId: threadMessages.threadId, text: threadMessages.text, metadataJson: threadMessages.metadataJson })
+            .from(threadMessages)
+            .where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, threadIds)))
+            .orderBy(desc(threadMessages.createdAt))
+            .limit(threadIds.length * 20),
+    ]);
+    const agentById = new Map(agentRows.map((a) => [a.id, a]));
+    const latestByThread = new Map(latest.map((l) => [l.threadId, l]));
+    const messagesByThread = new Map<string, Array<{ text: string | null; metadataJson: unknown }>>();
+    for (const m of recentMessages) {
+        const list = messagesByThread.get(m.threadId) ?? [];
+        list.push({ text: m.text, metadataJson: m.metadataJson });
+        messagesByThread.set(m.threadId, list);
+    }
+
+    return pairThreads
+        .map((t) => {
+            const counterpartId = counterpartIdByThread.get(t.id);
+            const counterpart = counterpartId ? agentById.get(counterpartId) ?? null : null;
+            const last = latestByThread.get(t.id);
+            return {
+                threadId: t.id,
+                counterpart: counterpart ? { id: counterpart.id, name: counterpart.name, avatarUrl: counterpart.avatarUrl } : null,
+                lastMessageText: last?.text ?? null,
+                lastMessageAt: last ? last.createdAt.toISOString() : null,
+                relatedTaskId: relatedTaskId(messagesByThread.get(t.id) ?? []),
+            };
+        })
+        .filter((c) => c.counterpart !== null)
+        .sort((a, b) => (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? ""))
+        .slice(0, limit);
+}
+
 export interface GroupListEntry extends GroupSummary {
     unreadCount: number;
     lastMessageText: string | null;
     lastMessageAt: string | null;
+    /** The task a pair-thread conversation is about (pair threads only). */
+    relatedTaskId: string | null;
 }
 
 /** Groups for the Messages sidebar: last message and this user's unread count. */
@@ -539,6 +643,23 @@ export async function listGroupsForUser(companyId: string, userId: string): Prom
         ))
         .groupBy(threadMessages.threadId);
     const unreadBy = new Map(unread.map((u) => [u.threadId, Number(u.value) || 0]));
+    // Related task for pair threads, derived from their recent messages.
+    const pairIds = groups.filter((g) => g.isAgentPair).map((g) => g.id);
+    const pairMessages = pairIds.length
+        ? await db.select({ threadId: threadMessages.threadId, text: threadMessages.text, metadataJson: threadMessages.metadataJson })
+            .from(threadMessages)
+            .where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, pairIds)))
+            .orderBy(desc(threadMessages.createdAt))
+            .limit(pairIds.length * 20)
+        : [];
+    const pairMessagesByThread = new Map<string, Array<{ text: string | null; metadataJson: unknown }>>();
+    for (const m of pairMessages) {
+        const list = pairMessagesByThread.get(m.threadId) ?? [];
+        list.push({ text: m.text, metadataJson: m.metadataJson });
+        pairMessagesByThread.set(m.threadId, list);
+    }
+    const relatedTaskByThread = new Map<string, string | null>();
+    for (const id of pairIds) relatedTaskByThread.set(id, relatedTaskId(pairMessagesByThread.get(id) ?? []));
     return groups
         .map((g) => {
             const last = latestBy.get(g.id);
@@ -547,6 +668,7 @@ export async function listGroupsForUser(companyId: string, userId: string): Prom
                 unreadCount: unreadBy.get(g.id) ?? 0,
                 lastMessageText: last?.text ?? null,
                 lastMessageAt: last ? last.createdAt.toISOString() : null,
+                relatedTaskId: g.isAgentPair ? relatedTaskByThread.get(g.id) ?? null : null,
             };
         })
         .sort((a, b) => (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt));

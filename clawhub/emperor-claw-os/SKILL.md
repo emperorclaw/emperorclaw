@@ -86,6 +86,17 @@ A team is tasks and messages. A human gives one instruction to a lead; the lead 
 | Announce, kick off, report | A post in the room (group `threadId` or the team channel) | Nobody, unless it @mentions someone |
 | Get a human decision | `POST /api/mcp/approvals` on the task | The approvers |
 
+### Channel decision tree
+
+Pick the smallest surface that fits, in this order:
+
+1. **Someone must do work** → a task: `POST /api/mcp/tasks` (or `PATCH /api/mcp/tasks/{id}`) with `assignedAgentId`. Assignment wakes the assignee.
+2. **Need an answer from one specific agent to proceed** → a pair thread: `POST /api/mcp/messages/send` with `targetAgentId`.
+3. **Several people must know or decide** → a room: post in the group (`threadId`) or team channel. It wakes nobody unless you @mention someone.
+4. **An irreversible or business decision** → `POST /api/mcp/approvals`.
+
+Decisions live in the task, not the chat: after settling something in a pair thread, record the outcome with `POST /api/mcp/tasks/{id}/notes` so it is not lost when the thread scrolls away.
+
 Rules:
 
 1. **Handoff = task.** Give the next owner a task with title, description (input task/artifact/note IDs), `acceptanceCriteria`, `deliverables`, and `blockedByTaskIds` when it must wait. No @mention needed.
