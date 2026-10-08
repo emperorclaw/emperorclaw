@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-    activityText, arcPath, avatarVariant, buildOfficeLayout, collaborationLinks, defaultSelection, deriveSceneAgents, deskGrid, describeActivity,
+    activityText, arcPath, avatarVariant, buildOfficeLayout, canViewPairThreads, collaborationLinks, defaultSelection, deriveSceneAgents, deskGrid, describeActivity,
     iso, kpiCounts, labelLifts, labelModeFor, LOUNGE_SEATS, matchesKpi, MAX_DESKS_PER_ZONE, MIN_WORK_ZONES, sceneStatus, skillNames, taskStep, timeAgo,
     workZoneFor, workZonesToRender,
     type AttentionEntry, type DashboardMember, type DashboardTask, type SceneAgent,
@@ -141,6 +141,49 @@ test("collaboration links dedupe pairs and skip hidden agents", () => {
     assert.equal(links[0].id, "e2");
     assert.equal(links[0].kind, "review");
     assert.match(arcPath(iso(0, 0), iso(4, 0)), /^M .* Q .*/);
+});
+
+test("pair-thread activity derives a clickable collaboration line", () => {
+    const layout = buildOfficeLayout([...agentsInZone(2, "Content writer"), ...agentsInZone(1, "QA tester")]);
+    const [a] = layout.agents.filter((p) => p.zone === "content");
+    const qa = layout.agents.find((p) => p.zone === "qa")!;
+    const pairEdges = [{ threadId: "thread-1", fromKey: a.member.key, toKey: qa.member.key, at: "2026-10-07T12:00:00.000Z" }];
+    // A pair thread alone, with no task event, still yields a line with a thread id.
+    const links = collaborationLinks([], layout.agents, pairEdges);
+    assert.equal(links.length, 1);
+    assert.equal(links[0].threadId, "thread-1");
+});
+
+test("a task link gains the pair thread id when the pair has a thread", () => {
+    const layout = buildOfficeLayout([...agentsInZone(2, "Content writer"), ...agentsInZone(1, "QA tester")]);
+    const [a] = layout.agents.filter((p) => p.zone === "content");
+    const qa = layout.agents.find((p) => p.zone === "qa")!;
+    const events = [{ id: "e1", fromKey: a.member.key, toKey: qa.member.key, kind: "handoff" as const, taskTitle: "Draft", at: "2026-10-07T10:00:00.000Z" }];
+    const pairEdges = [{ threadId: "thread-1", fromKey: a.member.key, toKey: qa.member.key, at: "2026-10-07T09:00:00.000Z" }];
+    const links = collaborationLinks(events, layout.agents, pairEdges);
+    assert.equal(links.length, 1);
+    assert.equal(links[0].id, "e1");
+    assert.equal(links[0].threadId, "thread-1");
+});
+
+test("task and pair activity for one pair collapse into a single link", () => {
+    const layout = buildOfficeLayout([...agentsInZone(2, "Content writer"), ...agentsInZone(1, "QA tester")]);
+    const [a] = layout.agents.filter((p) => p.zone === "content");
+    const qa = layout.agents.find((p) => p.zone === "qa")!;
+    const events = [{ id: "e1", fromKey: a.member.key, toKey: qa.member.key, kind: "handoff" as const, taskTitle: "Draft", at: "2026-10-07T10:00:00.000Z" }];
+    const pairEdges = [{ threadId: "thread-1", fromKey: qa.member.key, toKey: a.member.key, at: "2026-10-07T11:00:00.000Z" }];
+    const links = collaborationLinks(events, layout.agents, pairEdges);
+    assert.equal(links.length, 1);
+    assert.equal(links[0].threadId, "thread-1");
+});
+
+test("only owners, admins, and instance admins may open pair threads", () => {
+    assert.equal(canViewPairThreads("instance_admin", null), true);
+    assert.equal(canViewPairThreads("member", "owner"), true);
+    assert.equal(canViewPairThreads("member", "admin"), true);
+    assert.equal(canViewPairThreads("member", "member"), false);
+    assert.equal(canViewPairThreads("member", "viewer"), false);
+    assert.equal(canViewPairThreads(null, null), false);
 });
 
 test("avatar variants are stable per id and people always look human", () => {

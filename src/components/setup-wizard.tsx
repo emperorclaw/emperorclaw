@@ -60,6 +60,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
     // Model
     const [available, setAvailable] = useState<boolean | null>(null);
+    const [remotePaired, setRemotePaired] = useState(false);
     const [unavailableReason, setUnavailableReason] = useState("");
     const [provider, setProvider] = useState<string>(PROVIDERS[0].id);
     const [apiKey, setApiKey] = useState("");
@@ -99,6 +100,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 const data = await res.json();
                 if (cancelled) return;
                 setAvailable(Boolean(data.available));
+                setRemotePaired(Boolean(data.remotePaired));
                 setUnavailableReason(data.reason || "");
             } catch {
                 if (!cancelled) { setAvailable(false); setUnavailableReason("Could not check whether this installation can start agents."); }
@@ -442,8 +444,9 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-sm text-amber-100">
                                         <p className="font-medium">This installation can&apos;t start agents by itself.</p>
                                         <p className="mt-1 text-amber-100/80">{unavailableReason}</p>
-                                        <p className="mt-3 text-amber-100/80">Run Hermes on another machine and connect it, or reinstall with Docker so Emperor can start agents for you. You set the model key in Hermes in that case.</p>
+                                        <p className="mt-3 text-amber-100/80">Add a Hermes worker (Render), run Hermes on another machine and connect it, or reinstall with Docker so Emperor can start agents for you.</p>
                                         <div className="mt-4 flex flex-wrap gap-3">
+                                            <Link href="/docs/v1.1/installation#deploy-on-render" className="inline-flex items-center gap-1 text-cyan-300 underline">Add a Hermes worker <IconExternalLink className="h-3.5 w-3.5" /></Link>
                                             <Link href="/docs/v1.1/hermes-runtime" className="inline-flex items-center gap-1 text-cyan-300 underline">Connect a Hermes agent <IconExternalLink className="h-3.5 w-3.5" /></Link>
                                             <Link href="/docs/v1.1/installation" className="inline-flex items-center gap-1 text-cyan-300 underline">Docker install guide <IconExternalLink className="h-3.5 w-3.5" /></Link>
                                         </div>
@@ -586,7 +589,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                     <span className="text-xl" aria-hidden>{t?.emoji ?? "🤖"}</span>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-sm font-medium text-zinc-100">{r.name}</p>
-                                                        <p className="text-xs text-zinc-500">{!r.success ? r.message : up ? `${r.name} is created and online` : `${r.name} is created and starting up…`}</p>
+                                                        <p className="text-xs text-zinc-500">{!r.success ? r.message : up ? `${r.name} is created and online` : remotePaired ? "Starting on your Render worker…" : `${r.name} is created and starting up…`}</p>
                                                     </div>
                                                     {!r.success ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-200">Failed</span>
                                                         : up ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />Online</span>

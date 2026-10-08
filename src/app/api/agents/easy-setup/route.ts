@@ -12,6 +12,7 @@ import { encryptSecretPayload } from "@/lib/secrets";
 import { mintAgentSetupToken, provisionHermesContainer, type SetupOutput } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
+import { assignAgentToIdleWorker, listIdleWorkers } from "@/lib/worker-pairing";
 
 export const dynamic = "force-dynamic";
 
@@ -20,26 +21,32 @@ export const MAX_EASY_SETUP_AGENTS = 10;
 const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "grok", "deepseek"];
 
 // GET /api/agents/easy-setup — availability check for the Easy Setup entry
-// point: only meaningful when the app itself is running in Docker with the
-// socket mounted (sibling-container provisioning requires it).
+// point. Meaningful either when the app runs in Docker with the socket mounted
+// (sibling-container provisioning) or when an idle paired worker is available
+// (remote_paired provisioning for Render and similar hosts).
 export async function GET() {
     const companyId = await getCompanyId();
     let available = false;
+    let remotePaired = false;
     let reason = "Sign in to create a worker.";
     if (companyId) {
-        if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) reason = "This installation needs Docker with its socket mounted for automatic Hermes setup.";
-        else {
+        if (isDocker() && fs.existsSync(DOCKER_SOCKET)) {
             try {
                 available = (await dockerCall("GET", "/_ping")).code === 200;
                 reason = available ? "" : "Docker is not responding. Restart Docker and retry.";
             } catch {
                 reason = "The app cannot access Docker. Rerun the installer to repair socket permissions, then retry.";
             }
+        } else {
+            const idle = await listIdleWorkers(companyId);
+            remotePaired = idle.length > 0;
+            available = remotePaired;
+            reason = remotePaired ? "" : "This installation needs Docker with its socket mounted, or a paired remote worker, for automatic Hermes setup.";
         }
     }
     const configurations = available ? await db.select({ id: agents.id, name: agents.name, llmProvider: agents.llmProvider, llmModel: agents.llmModel })
         .from(agents).where(and(eq(agents.companyId, companyId!), eq(agents.provider, "hermes"), isNull(agents.deletedAt), isNotNull(agents.llmApiKeyEncrypted), isNotNull(agents.llmProvider))) : [];
-    return NextResponse.json({ available, configurations, reason });
+    return NextResponse.json({ available, remotePaired, configurations, reason });
 }
 
 type AgentSpec = {
@@ -74,9 +81,10 @@ export async function POST(req: NextRequest) {
     }
     const { companyId } = ctx;
 
-    if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) {
-        return NextResponse.json({ error: "Hiring a local agent requires a Docker install with the Docker socket mounted." }, { status: 400 });
-    }
+    // With a Docker socket the agents run in sibling containers; without one,
+    // they are assigned to idle paired workers (remote_paired). The batch
+    // proceeds when at least one path is available.
+    const dockerAvailable = isDocker() && fs.existsSync(DOCKER_SOCKET);
 
     const body = await req.json().catch(() => ({}));
     const llmProvider = typeof body.llmProvider === "string" && VALID_LLM_PROVIDERS.includes(body.llmProvider)
@@ -149,7 +157,7 @@ export async function POST(req: NextRequest) {
                 name,
                 role,
                 provider: "hermes",
-                deploymentMode: "local",
+                deploymentMode: dockerAvailable ? "local" : "remote_paired",
                 doctrineJson: spec.doctrineJson && typeof spec.doctrineJson === "object" ? spec.doctrineJson : {},
                 llmProvider: llmConfiguration.llmProvider,
                 llmModel: llmConfiguration.llmModel,
@@ -160,6 +168,20 @@ export async function POST(req: NextRequest) {
             agentId = agent.id;
 
             const safeName = hermesSafeName(name);
+            if (!dockerAvailable) {
+                const workerId = await assignAgentToIdleWorker(companyId, agent);
+                results.push({
+                    name,
+                    agentId: agent.id,
+                    success: Boolean(workerId),
+                    message: workerId
+                        ? `${name} is assigned to a remote worker and will come online when it pairs.`
+                        : "No idle remote worker available to run this agent.",
+                    outputs: [],
+                });
+                continue;
+            }
+
             const { rawToken } = await mintAgentSetupToken(companyId, safeName, agentId);
             const provisionResult = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
 

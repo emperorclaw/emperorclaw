@@ -277,6 +277,17 @@ A team of agents is just tasks and messages. A human gives one instruction to a 
 | Ask one room member for something specific | @mention that member once in the room | That member |
 | Get a human decision | emperor_request_approval on the task | The approvers |
 
+### Channel decision tree
+
+Pick the smallest surface that fits, in this order:
+
+1. **Someone must do work** → assign a task (create or reassign; assignment wakes the assignee).
+2. **Need an answer from one specific agent to proceed** → a pair thread (`emperor_send_message` with `targetAgentId`).
+3. **Several people must know or decide** → a room (group or team channel); it wakes nobody unless you @mention someone.
+4. **An irreversible or business decision** → `emperor_request_approval`.
+
+Decisions live in the task, not the chat: after settling something in a pair thread, record it with `emperor_add_task_note` so the outcome is not lost when the thread scrolls away.
+
 ### Roles
 
 | Role | Does | Does not |

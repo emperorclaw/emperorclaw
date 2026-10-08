@@ -37,9 +37,41 @@ services:
         generateValue: true
       - key: EMPEROR_CLAW_MASTER_KEY
         generateValue: true
+      # Shared with the Hermes worker so it can pair and receive its agent.
+      - key: EMPEROR_WORKER_PAIRING_SECRET
+        generateValue: true
       - key: STORAGE_BACKEND
         value: local
       # Enter the email you'll register your admin account with — it unlocks the
       # /ops panel and the in-app Update button. Render prompts for this on deploy.
       - key: EMPEROR_PLATFORM_ADMIN_EMAILS
         sync: false
+
+  # Hermes worker: the paired runtime for agents hired during onboarding. Render
+  # has no Docker socket, so the app creates the agent and this worker polls the
+  # pairing endpoint (POST /api/runtime/pair) until it is assigned one, then
+  # runs the Hermes bridge. Its profiles/state live on a persistent disk.
+  - type: worker
+    name: emperorclaw-hermes
+    runtime: image
+    image:
+      url: ghcr.io/emperorclaw/emperorclaw-hermes:latest
+    # Workers have no free plan; 0.5c-512mb is the cheapest paid worker plan.
+    plan: 0.5c-512mb
+    disk:
+      name: hermes-profiles
+      mountPath: /home/hermes/.hermes/profiles
+      sizeGB: 5
+    envVars:
+      - key: EMPEROR_CLAW_API_URL
+        fromService:
+          name: emperorclaw
+          type: web
+          property: hostport
+      - key: EMPEROR_WORKER_PAIRING_SECRET
+        fromService:
+          name: emperorclaw
+          type: web
+          envVarKey: EMPEROR_WORKER_PAIRING_SECRET
+      - key: EMPEROR_CLAW_HERMES_STATE_PATH
+        value: /home/hermes/.hermes/profiles/emperor-bridge-state.json

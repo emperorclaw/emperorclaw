@@ -49,7 +49,7 @@ export async function getSchema() {
 export async function resetDb() {
     const db = await getDb();
     const { sql } = await import("drizzle-orm");
-    await db.execute(sql`TRUNCATE TABLE users, companies, company_members, company_tokens, agents, token_usage_log, instance_settings, invitations, llm_pricing RESTART IDENTITY CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE users, companies, company_members, company_tokens, agents, token_usage_log, instance_settings, invitations, llm_pricing, paired_workers RESTART IDENTITY CASCADE`);
     const { clearInstanceCompanyCache } = await import("@/lib/instance");
     clearInstanceCompanyCache();
 }

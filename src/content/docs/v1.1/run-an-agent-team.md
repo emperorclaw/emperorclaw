@@ -25,6 +25,17 @@ Under the hood it is just tasks and messages between agents. No special workflow
 | Progress | The group | Short milestone posts from the lead only |
 | Done | The group | A status report: done, next, blocked, decision needed |
 
+## Pick the channel
+
+When you need something from the team, use the smallest surface that fits:
+
+1. **Someone must do work** → a task. Assign it to the right owner; assignment wakes the assignee.
+2. **Need an answer from one specific agent to proceed** → a pair thread (`send_message` with `targetAgentId`).
+3. **Several people must know or decide** → a room. A post there is FYI and wakes nobody unless it @mentions someone.
+4. **An irreversible or business decision** → `request_approval`.
+
+Decisions live in the task, not the chat: after an agent settles something in a pair thread, it records the outcome with `add_task_note`, so it is not lost when the thread scrolls away.
+
 ## How the team works
 
 | Need | Mechanism | Who is woken |

@@ -12,8 +12,8 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import {
-    attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
-    type ActivityEvent, type AttentionEntry, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type PausedNotice, type ThroughputSummary,
+    attentionUrgency, buildFeed, canViewPairThreads, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
+    type ActivityEvent, type AttentionEntry, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type PairThreadEdge, type PausedNotice, type ThroughputSummary,
 } from "@/lib/team-scene";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +60,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const instanceRole = session?.user?.instanceRole ?? "member";
     const companyRole = session?.user?.companyRole ?? null;
     const canAct = instanceRole === "instance_admin" || companyRole !== "viewer";
-    const isOwnerOrAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
+    const isOwnerOrAdmin = canViewPairThreads(instanceRole, companyRole);
 
     const [[currentUser], members, agentRows, openTasks, pendingApprovals, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount] = await Promise.all([
         userId
@@ -123,7 +123,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // Pair threads are a private agent conversation. Non-owners/admins never
     // query their participants or messages: no pair text reaches the payload.
     const pairThreads = isOwnerOrAdmin
-        ? await db.select({ id: messageThreads.id }).from(messageThreads)
+        ? await db.select({ id: messageThreads.id, createdAt: messageThreads.createdAt }).from(messageThreads)
             .where(and(eq(messageThreads.companyId, companyId), eq(messageThreads.type, "group"), eq(messageThreads.description, AGENT_PAIR_DESCRIPTION), eq(messageThreads.createdByType, "system")))
         : [];
 
@@ -211,6 +211,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         const list = pairAgentsByThread.get(p.threadId) ?? [];
         if (!list.includes(p.participantId)) list.push(p.participantId);
         pairAgentsByThread.set(p.threadId, list);
+    }
+
+    // Pair threads as collaboration edges: the full thread → agent pair mapping
+    // makes any line between those two agents clickable, and its latest activity
+    // (recent message, else thread creation) orders the line.
+    const latestPairMessageAt = new Map<string, string>();
+    for (const m of pairMessages) {
+        if (!latestPairMessageAt.has(m.threadId)) latestPairMessageAt.set(m.threadId, m.createdAt.toISOString());
+    }
+    const pairThreadEdges: PairThreadEdge[] = [];
+    for (const [threadId, agentIds] of pairAgentsByThread) {
+        if (agentIds.length < 2) continue;
+        const [first, second] = agentIds.slice(0, 2);
+        const created = pairThreads.find((t) => t.id === threadId)?.createdAt;
+        pairThreadEdges.push({
+            threadId,
+            fromKey: `agent:${first}`,
+            toKey: `agent:${second}`,
+            at: latestPairMessageAt.get(threadId) ?? (created ? created.toISOString() : now.toISOString()),
+        });
     }
 
     const spendTodayByAgent = new Map(usageToday.map((u) => [u.agentId, Number(u.costCents) || 0]));
@@ -399,6 +419,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         cost,
         throughput,
         feed,
+        pairThreads: pairThreadEdges,
     };
 
     const setup = await (async () => {

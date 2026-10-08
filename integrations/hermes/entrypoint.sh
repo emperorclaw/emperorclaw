@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# Pairing mode: on hosts without a Docker socket (Render), the agent is created
+# during onboarding but the worker has nowhere to run it locally. When there is
+# no agent-bound API token but a pairing secret is set, poll the app until an
+# agent is assigned, then export the delivered config and continue the normal
+# flow below. With a token already set (local sibling container), this is a no-op.
+if [ -z "$EMPEROR_CLAW_API_TOKEN" ] && [ -n "$EMPEROR_WORKER_PAIRING_SECRET" ]; then
+    echo "[entrypoint] pairing mode: waiting for an agent assignment"
+    eval "$(python /opt/emperor-claw-plugin/pair.py)"
+fi
+
 PROFILE_NAME="${EMPEROR_CLAW_AGENT_NAME:?EMPEROR_CLAW_AGENT_NAME is required}"
 ROLE="${EMPEROR_CLAW_AGENT_ROLE:-operator}"
 

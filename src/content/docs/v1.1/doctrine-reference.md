@@ -23,6 +23,8 @@ Injected text is paid for on every turn by every agent. Keep the always-on layer
 | Work = a task with one owner; assignment wakes the assignee | ✓ | ✓ | ✓ | ✓ |
 | Questions = private pair thread (`targetAgentId`) | ✓ | ✓ | ✓ | ✓ |
 | Room posts are FYI; @mention asks one agent | ✓ | ✓ | ✓ | ✓ |
+| Channel decision tree: task / pair thread / room / approval | ✓ | ✓ | ✓ | ✓ |
+| Decisions live in the task; record pair-thread outcomes with add_task_note | ✓ | ✓ | ✓ | ✓ |
 | Handoff note; review = reassign the same task | ✓ | ✓ | Templates + member playbook | Full templates |
 | Roles: lead, member, reviewer | ✓ | ✓ | Lead / member playbooks | ✓ |
 | Room or project lead owns unaddressed human messages | ✓ | ✓ | Groups playbook | ✓ |

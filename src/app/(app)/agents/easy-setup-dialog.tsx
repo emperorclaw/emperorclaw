@@ -88,6 +88,7 @@ export function EasySetupDialog({
     const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
     const [available, setAvailable] = useState<boolean | null>(null);
+    const [remotePaired, setRemotePaired] = useState(false);
     const [availabilityReason, setAvailabilityReason] = useState("");
     const [configurations, setConfigurations] = useState<{ id: string; name: string; llmProvider: string }[]>([]);
     const [sourceAgentId, setSourceAgentId] = useState("");
@@ -99,6 +100,7 @@ export function EasySetupDialog({
             const data = await response.json();
             setConfigurations(data.configurations || []);
             setAvailable(Boolean(data.available));
+            setRemotePaired(Boolean(data.remotePaired));
             setAvailabilityReason(data.reason || "Local Hermes setup is unavailable. Start Docker and retry.");
         } catch (e) {
             setAvailable(false);
@@ -209,7 +211,7 @@ export function EasySetupDialog({
                     <DialogDescription className="text-zinc-400">
                         {step === "count-and-roles" && "Choose a role and name. Emperor installs and connects Hermes on this server."}
                         {step === "provider-key" && "Your provider runs the model and bills its usage. Emperor encrypts this key and configures the workers for you."}
-                        {step === "provisioning" && "Keep this window open while each worker is installed and started. The first download may take a few minutes."}
+                        {step === "provisioning" && (remotePaired ? "Starting on your Render worker… keep this window open while each agent pairs." : "Keep this window open while each worker is installed and started. The first download may take a few minutes.")}
                         {step === "done" && "Here's what happened for each agent in this batch."}
                     </DialogDescription>
                 </DialogHeader>
@@ -220,6 +222,7 @@ export function EasySetupDialog({
                             <p>{availabilityReason}</p>
                             <div className="mt-2 flex gap-3">
                                 <button type="button" onClick={() => void checkAvailability()} className="underline">Retry</button>
+                                <a href="/docs/v1.1/installation#deploy-on-render" target="_blank" rel="noreferrer" className="underline">Add a Hermes worker</a>
                                 <a href="/docs/v1.1/installation" target="_blank" rel="noreferrer" className="underline">Docker setup guide</a>
                             </div>
                         </>}
