@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
-import { getCompanyId } from "@/lib/auth";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
+import { AuthError, requireRole } from "@/lib/roles";
 import { recreateHermesContainer } from "@/lib/hermes-provisioning";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +24,17 @@ export async function POST(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("member")();
+    } catch (error) {
+        if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        throw error;
+    }
 
     const { id } = await params;
     const [agent] = await db.select().from(agents).where(
-        and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))
+        and(eq(agents.id, id), eq(agents.companyId, ctx.companyId), isNull(agents.deletedAt))
     ).limit(1);
 
     if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });

@@ -12,6 +12,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { cn } from "@/lib/utils";
 import { AgentList } from "./agent-list";
 import { KpiRow } from "./kpi-row";
+import { MetricsRow } from "./metrics-row";
+import { MovementFeed } from "./movement-feed";
 import { NeedsAttention } from "./needs-attention";
 import { OfficeScene, SceneEmptyState } from "./office-scene";
 import { SelectedAgent } from "./selected-agent";
@@ -28,7 +30,13 @@ function usePrefersReducedMotion(): boolean {
 }
 
 /** Container: owns filters and selection, derives everything else from server data. */
-export function TeamDashboard({ data, initialView = "scene", hasAgents }: { data: DashboardData; initialView?: "scene" | "list"; hasAgents: boolean }) {
+export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, isOwnerOrAdmin }: {
+    data: DashboardData;
+    initialView?: "scene" | "list";
+    hasAgents: boolean;
+    canAct: boolean;
+    isOwnerOrAdmin: boolean;
+}) {
     const [view, setView] = useState<"scene" | "list">(initialView);
     const [kpi, setKpi] = useState<KpiFilter | null>(null);
     const [query, setQuery] = useState("");
@@ -91,6 +99,13 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents }: { data
         setZoneFilter(null);
     };
 
+    // Throughput/cost KPI cards open the list view pre-filtered to their state.
+    const openFiltered = (filter: KpiFilter) => {
+        setKpi(filter);
+        setZoneFilter(null);
+        setView("list");
+    };
+
     return (
         <div className="space-y-5">
             <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -118,6 +133,7 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents }: { data
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_21.5rem]">
                 <div className="min-w-0 space-y-4">
                     <KpiRow counts={counts} active={kpi} onToggle={(id) => setKpi((cur) => (cur === id ? null : id))} />
+                    <MetricsRow cost={data.cost} throughput={data.throughput} onFilter={openFiltered} />
 
                     <section aria-labelledby="live-workspace-title" className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -177,18 +193,19 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents }: { data
                                 onSelect={selectMember} onHover={setHovered} onOverflow={(zone) => { setZoneFilter(zone); setView("list"); }}
                                 emptyState={hasAgents ? undefined : <SceneEmptyState />} />
                         ) : (
-                            <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} />
+                            <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} />
                         )}
                     </section>
                 </div>
 
-                <aside aria-label="Details" className="grid min-w-0 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
-                    <NeedsAttention entries={data.attention} now={now} onFocusMember={focusMember} />
-                    <SelectedAgent agent={selectedAgent} />
+                <aside aria-label="Details" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
+                    <NeedsAttention entries={data.attention} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />
+                    <SelectedAgent agent={selectedAgent} canAct={canAct} />
                 </aside>
             </div>
 
-            <WorkBoard columns={columns} assignees={assignees} activity={data.activity} now={now} />
+            <MovementFeed feed={data.feed} now={now} isOwnerOrAdmin={isOwnerOrAdmin} />
+            <WorkBoard columns={columns} assignees={assignees} />
         </div>
     );
 }

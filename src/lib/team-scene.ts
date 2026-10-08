@@ -49,20 +49,41 @@ export interface DashboardMember {
     working: DashboardTask[];
     waiting: DashboardTask[];
     next: DashboardTask[];
+    /** Spend and budget (cents) for the cost cards and list column. */
+    spendTodayCents: number;
+    monthlyCostCents: number;
+    monthlyBudgetCents: number;
+    /** Last runtime heartbeat, for "last activity". */
+    lastActivityAt: string | null;
 }
 
-export type AttentionKind = "approval" | "incident" | "message" | "agent";
+export type AttentionKind = "approval" | "incident" | "message" | "agent" | "late" | "not_started" | "paused";
+
+/**
+ * An incident's classification, derived from its structured `reasonCode`
+ * (primary) with a summary-pattern fallback. Watchdog SLA/queue alerts are
+ * never a "stuck" problem: they are "late" (still working) or "not_started".
+ */
+export type IncidentClass = "late" | "not_started" | "problem";
 
 export interface AttentionEntry {
     id: string;
     kind: AttentionKind;
+    /** Primary actionable copy: the task title, or approval/reply copy. */
     title: string;
+    /** Short reason for "incident" items (e.g. "max retries exceeded"). */
+    reason?: string | null;
     memberKey: string | null;
     memberName: string | null;
     area: string | null;
     at: string;
     actionLabel: string;
     href: string;
+    /** Action targets for the inline actions in "Needs your attention". */
+    taskId?: string | null;
+    approvalId?: string | null;
+    agentId?: string | null;
+    threadId?: string | null;
 }
 
 export interface CollaborationEvent {
@@ -80,7 +101,10 @@ export interface ActivityEvent {
     actorKey: string | null;
     actorName: string;
     targetName: string | null;
+    targetKey: string | null;
     taskTitle: string;
+    taskId: string | null;
+    projectId: string | null;
     at: string;
 }
 
@@ -91,11 +115,170 @@ export interface DashboardData {
     attention: AttentionEntry[];
     collaborations: CollaborationEvent[];
     activity: ActivityEvent[];
+    cost: CostSummary;
+    throughput: ThroughputSummary;
+    feed: FeedEvent[];
+}
+
+/* ── Cost & throughput summaries ─────────────────────────────────────── */
+
+export interface AgentCost {
+    key: string;
+    name: string;
+    spendTodayCents: number;
+    monthCents: number;
+    budgetCents: number;
+}
+
+export interface CostSummary {
+    spendTodayCents: number;
+    spendMonthCents: number;
+    budgetCents: number;
+    /** Top agents by month spend, for the "who is spending" strip. */
+    agents: AgentCost[];
+}
+
+export interface ThroughputSummary {
+    doneToday: number;
+    doneThisWeek: number;
+    /** Tasks done per day for the last 7 days, oldest first. */
+    sparkline: number[];
+    /** Median assigned→done time (ms) over the last 7 days, or null. */
+    medianCycleMs: number | null;
+    blocked: number;
+}
+
+/** A single line in the "What's moving" feed. */
+export interface FeedEvent {
+    id: string;
+    kind: "handoff" | "review" | "done" | "claim" | "note" | "pair";
+    actorKey: string | null;
+    actorName: string | null;
+    targetKey: string | null;
+    targetName: string | null;
+    text: string;
+    href: string | null;
+    at: string;
 }
 
 /* ── Status ─────────────────────────────────────────────────────────── */
 
-/** Which members have something waiting on a human. */
+/** Kinds that genuinely block an agent (a human decision or a real problem). */
+export function isBlockingAttention(kind: AttentionKind): boolean {
+    return kind === "approval" || kind === "incident" || kind === "message" || kind === "agent";
+}
+
+/**
+ * Urgency for ordering "Needs your attention": stuck > offline > SLA late >
+ * approval > reply > paused loop > not started. Lower is more urgent.
+ */
+export function attentionUrgency(kind: AttentionKind): number {
+    switch (kind) {
+        case "incident": return 0;
+        case "agent": return 1;
+        case "late": return 2;
+        case "approval": return 3;
+        case "message": return 4;
+        case "paused": return 5;
+        case "not_started": return 6;
+    }
+}
+
+/**
+ * Classify an incident from its structured `reasonCode`, falling back to a
+ * summary pattern when the code is absent. Watchdog queue/SLA alerts are not
+ * problems — they are "late" or "not_started".
+ */
+export function classifyIncident(reasonCode: string | null | undefined, summary?: string | null): IncidentClass {
+    const code = (reasonCode ?? "").trim();
+    if (code === "sla_breach" || code.startsWith("sla_")) return "late";
+    if (code === "unclaimed_stale") return "not_started";
+    // Fallback discriminator when the structured field is missing.
+    if (!code) {
+        const text = (summary ?? "").toLowerCase();
+        if (text.includes("breached sla") || text.includes("sla deadline")) return "late";
+        if (text.includes("unclaimed") || text.includes("inbox")) return "not_started";
+    }
+    return "problem";
+}
+
+/** Task states that still count as "open" for incident staleness. */
+const OPEN_TASK_STATES = new Set(["inbox", "in_progress", "review"]);
+
+export function isOpenTaskState(state: string | null | undefined): boolean {
+    return typeof state === "string" && OPEN_TASK_STATES.has(state);
+}
+
+/**
+ * A watchdog (or stale) incident is only meaningful while it still reflects
+ * the current situation. The exact rule depends on the classification:
+ *  - "not_started" clears once the task is claimed (leaves the inbox);
+ *  - "late" clears once the task leaves the SLA-tracked open states;
+ *  - "problem" only clears when the task is actually done (or the task was
+ *    cancelled/deleted) — a failed/dead-letter task still needs a human.
+ * The "created before the current assignment" rule applies only to the
+ * assignment-scoped kinds (late / not_started): those belong to a previous
+ * owner. A "problem" is about the task itself, so reassigning it must not
+ * hide a failed/dead-letter task.
+ */
+export function isIncidentStale(input: {
+    classification: IncidentClass;
+    taskState: string | null;
+    incidentCreatedAt: string;
+    currentAssignmentAt: string | null;
+    taskDeleted?: boolean;
+}): boolean {
+    if (input.classification !== "problem" && input.currentAssignmentAt) {
+        const created = new Date(input.incidentCreatedAt).getTime();
+        const assigned = new Date(input.currentAssignmentAt).getTime();
+        if (!Number.isNaN(created) && !Number.isNaN(assigned) && created < assigned) return true;
+    }
+    switch (input.classification) {
+        case "not_started": return input.taskState !== "inbox";
+        case "late": return !isOpenTaskState(input.taskState);
+        case "problem": return input.taskState === "done" || input.taskDeleted === true;
+    }
+}
+
+/** A loop-guard pause notice, with whether it belongs to a private pair thread. */
+export interface PausedNotice {
+    id: string;
+    threadId: string;
+    createdAt: string;
+    isPairThread: boolean;
+}
+
+/**
+ * Keep only the pause notices that still need attention. A notice is dropped
+ * when a "Resume" marker (loopGuardResume) is newer than it, and pair-thread
+ * notices are hidden from anyone who is not an owner/admin (pair threads are
+ * private agent conversations). One notice per thread, newest first.
+ */
+export function filterPausedNotices(
+    notices: PausedNotice[],
+    latestResumeByThread: Map<string, string>,
+    isOwnerOrAdmin: boolean,
+): PausedNotice[] {
+    const seen = new Set<string>();
+    const out: PausedNotice[] = [];
+    for (const notice of notices) {
+        if (seen.has(notice.threadId)) continue;
+        seen.add(notice.threadId);
+        if (notice.isPairThread && !isOwnerOrAdmin) continue;
+        const resumeAt = latestResumeByThread.get(notice.threadId);
+        if (resumeAt && resumeAt > notice.createdAt) continue;
+        out.push(notice);
+    }
+    return out;
+}
+
+/** The one-line "Stuck: <reason>" caption, the only truly-stuck state. */
+export function stuckCaption(attention: AttentionEntry): string {
+    const reason = attention.reason?.trim();
+    return reason ? `Stuck: ${sentence(reason)}` : "Stuck";
+}
+
+/** The highest-priority entry per member, blocking kinds first. */
 export function attentionByMember(entries: AttentionEntry[]): Map<string, AttentionEntry> {
     const map = new Map<string, AttentionEntry>();
     for (const entry of entries) {
@@ -104,9 +287,33 @@ export function attentionByMember(entries: AttentionEntry[]): Map<string, Attent
     return map;
 }
 
+export interface MemberAttention {
+    /** A genuinely blocking entry (approval/incident/message/agent), if any. */
+    blocking: AttentionEntry | null;
+    /** The most-urgent non-blocking overlay (late / not_started), if any. */
+    overlay: AttentionEntry | null;
+}
+
+/** Split a member's attention into blocking vs. non-blocking overlays. */
+export function memberAttention(entries: AttentionEntry[], memberKey: string): MemberAttention {
+    let blocking: AttentionEntry | null = null;
+    let overlay: AttentionEntry | null = null;
+    for (const entry of entries) {
+        if (entry.memberKey !== memberKey) continue;
+        if (isBlockingAttention(entry.kind)) {
+            if (!blocking || attentionUrgency(entry.kind) < attentionUrgency(blocking.kind)) blocking = entry;
+        } else if (!overlay || attentionUrgency(entry.kind) < attentionUrgency(overlay.kind)) {
+            overlay = entry;
+        }
+    }
+    return { blocking, overlay };
+}
+
 export function sceneStatus(member: DashboardMember, attention?: AttentionEntry | null): SceneStatus {
     if (member.health === "down") return "offline";
-    if (attention || member.health === "attention") return "blocked";
+    // Only a real blocking decision/problem is "stuck". A watchdog SLA/queue
+    // alert or a bare health "attention" is not.
+    if (attention && isBlockingAttention(attention.kind)) return "blocked";
     if (member.working.length > 0 || member.activity) return "working";
     if (member.waiting.length > 0) return "waiting";
     return "idle";
@@ -114,9 +321,12 @@ export function sceneStatus(member: DashboardMember, attention?: AttentionEntry 
 
 const BLOCKED_COPY: Record<AttentionKind, string> = {
     approval: "Waiting for approval",
-    incident: "Hit a problem",
+    incident: "Stuck",
     message: "Waiting for a reply",
     agent: "Needs a check-in",
+    late: "Running late",
+    not_started: "Hasn't started",
+    paused: "Conversation paused",
 };
 
 function sentence(text: string): string {
@@ -130,14 +340,18 @@ export function activityText(member: DashboardMember, status: SceneStatus, atten
         case "offline":
             return member.working.length + member.waiting.length > 0 ? "Offline with work waiting" : "Offline";
         case "blocked":
+            if (attention?.kind === "incident") return stuckCaption(attention);
             if (attention) return BLOCKED_COPY[attention.kind];
             return member.healthReasons[0] ? sentence(member.healthReasons[0]) : "Needs you";
         case "working":
+            if (attention?.kind === "late") return `Running late on ${attention.title}`;
+            if (attention?.kind === "not_started") return `Hasn't started ${attention.title}`;
             if (member.activity && !/^working…?$/i.test(member.activity.trim())) return sentence(member.activity);
             return member.working[0]?.title ?? "Working";
         case "waiting":
             return "Waiting for review";
         default:
+            if (attention?.kind === "not_started") return `Hasn't started ${attention.title}`;
             return "Available";
     }
 }
@@ -260,6 +474,9 @@ export interface BehaviorInput {
     justDone?: boolean;
     taskType?: string | null;
     idleRoutine?: IdleRoutine | null;
+    /** Health flagged "attention" without a blocking reason → a check-in hint. */
+    checkIn?: boolean;
+    checkInReason?: string | null;
 }
 
 const MAX_IDLE_WALKERS = 3;
@@ -284,7 +501,7 @@ function activityVariant(memberKey: string, kind: string, variants = 2): number 
 
 /** Which animation kind an agent should play, plus the caption for it. */
 export function deriveBehavior(input: BehaviorInput): Behavior {
-    const { status, activity, memberKey, attention = null, talking = false, justDone = false, taskType = null, idleRoutine = null } = input;
+    const { status, activity, memberKey, attention = null, talking = false, justDone = false, taskType = null, idleRoutine = null, checkIn = false, checkInReason = null } = input;
 
     if (status === "offline") return { kind: "offline", caption: "Offline", variant: 0 };
 
@@ -295,36 +512,46 @@ export function deriveBehavior(input: BehaviorInput): Behavior {
         // human" — friendly and forward. A real problem is "blocked" — stuck.
         if (attention?.kind === "approval") return { kind: "waiting", caption: "Needs your approval", variant: activityVariant(memberKey, "waiting") };
         if (attention?.kind === "message") return { kind: "waiting", caption: "Waiting for your reply", variant: activityVariant(memberKey, "waiting") };
-        if (attention?.kind === "incident") return { kind: "blocked", caption: "Stuck on an issue", variant: activityVariant(memberKey, "blocked") };
+        if (attention?.kind === "incident") return { kind: "blocked", caption: stuckCaption(attention), variant: activityVariant(memberKey, "blocked") };
         return { kind: "blocked", caption: "Needs a check-in", variant: activityVariant(memberKey, "blocked") };
     }
 
     if (status === "waiting") return { kind: "reviewing", caption: "In review", variant: activityVariant(memberKey, "reviewing") };
 
     if (status === "idle") {
-        if (idleRoutine === "coffee") return { kind: "coffee", caption: "Coffee break", variant: activityVariant(memberKey, "coffee") };
-        if (idleRoutine === "nap") return { kind: "nap", caption: "Napping", variant: activityVariant(memberKey, "nap") };
-        if (idleRoutine === "stretch") return { kind: "stretch", caption: "Stretching", variant: activityVariant(memberKey, "stretch") };
-        return { kind: "nap", caption: "Napping", variant: 0 };
+        let base: Behavior;
+        if (idleRoutine === "coffee") base = { kind: "coffee", caption: "Coffee break", variant: activityVariant(memberKey, "coffee") };
+        else if (idleRoutine === "nap") base = { kind: "nap", caption: "Napping", variant: activityVariant(memberKey, "nap") };
+        else if (idleRoutine === "stretch") base = { kind: "stretch", caption: "Stretching", variant: activityVariant(memberKey, "stretch") };
+        else base = { kind: "nap", caption: "Napping", variant: 0 };
+        // A queued-but-unclaimed task shows as an amber "hasn't started" note.
+        if (attention?.kind === "not_started") return { ...base, caption: `Hasn't started ${attention.title}` };
+        return base;
     }
 
-    if (talking) return { kind: "talking", caption: "In a huddle", variant: activityVariant(memberKey, "talking") };
-
-    const text = activity.toLowerCase();
-    const type = (taskType ?? "").toLowerCase();
-    if (/present|teach|demo|whiteboard|onboard|train|explain|workshop/.test(text) || /present|teach|demo|workshop/.test(type)) {
-        return { kind: "presenting", caption: "Presenting", variant: activityVariant(memberKey, "presenting") };
+    let base: Behavior;
+    if (talking) {
+        base = { kind: "talking", caption: "In a huddle", variant: activityVariant(memberKey, "talking") };
+    } else {
+        const text = activity.toLowerCase();
+        const type = (taskType ?? "").toLowerCase();
+        if (/present|teach|demo|whiteboard|onboard|train|explain|workshop/.test(text) || /present|teach|demo|workshop/.test(type)) {
+            base = { kind: "presenting", caption: "Presenting", variant: activityVariant(memberKey, "presenting") };
+        } else if (/review|qa|test|verif|audit|approv|inspect/.test(text) || /qa|test|review|verif|audit/.test(type)) {
+            base = { kind: "reviewing", caption: "Reviewing", variant: activityVariant(memberKey, "reviewing") };
+        } else if (/writ|draft|article|copy|blog|content|post|document|report|newsletter/.test(text) || /content|writ|copy|blog|article|report/.test(type)) {
+            base = { kind: "writing", caption: "Writing", variant: activityVariant(memberKey, "writing") };
+        } else if (/research|analy|think|plan|investig|explor|scout|strateg/.test(text) || /research|analy|insight|strategy/.test(type)) {
+            base = { kind: "thinking", caption: "Researching", variant: activityVariant(memberKey, "thinking") };
+        } else {
+            base = { kind: "typing", caption: "Coding", variant: activityVariant(memberKey, "typing") };
+        }
     }
-    if (/review|qa|test|verif|audit|approv|inspect/.test(text) || /qa|test|review|verif|audit/.test(type)) {
-        return { kind: "reviewing", caption: "Reviewing", variant: activityVariant(memberKey, "reviewing") };
-    }
-    if (/writ|draft|article|copy|blog|content|post|document|report|newsletter/.test(text) || /content|writ|copy|blog|article|report/.test(type)) {
-        return { kind: "writing", caption: "Writing", variant: activityVariant(memberKey, "writing") };
-    }
-    if (/research|analy|think|plan|investig|explor|scout|strateg/.test(text) || /research|analy|insight|strategy/.test(type)) {
-        return { kind: "thinking", caption: "Researching", variant: activityVariant(memberKey, "thinking") };
-    }
-    return { kind: "typing", caption: "Coding", variant: activityVariant(memberKey, "typing") };
+    // Still working, but past its SLA: keep the working animation, flag the clock.
+    if (attention?.kind === "late") return { ...base, caption: `Running late on ${attention.title}` };
+    // Health attention without a blocking reason is a nudge, not "stuck".
+    if (checkIn) return { ...base, caption: checkInReason ? sentence(checkInReason) : "Needs a check-in" };
+    return base;
 }
 
 /* ── Deterministic per-agent animation jitter ───────────────────────── */
@@ -864,29 +1091,151 @@ export function skillNames(skillsJson: unknown): string[] {
         .map((s) => s.trim());
 }
 
+/* ── Cost & throughput helpers ───────────────────────────────────────── */
+
+/** Cents → "$12.34" (never invents data; null/NaN → null). */
+export function formatCents(cents: number | null | undefined): string | null {
+    if (cents === null || cents === undefined || !Number.isFinite(cents)) return null;
+    return `$${(cents / 100).toFixed(2)}`;
+}
+
+/** Fraction of budget spent (0..1), or null when the budget is unlimited (≤0). */
+export function budgetFraction(monthCents: number, budgetCents: number): number | null {
+    if (!budgetCents || budgetCents <= 0) return null;
+    return Math.max(0, Math.min(1, (monthCents || 0) / budgetCents));
+}
+
+/** True when an agent has spent >80% of a non-zero budget. */
+export function isOverBudgetWarning(monthCents: number, budgetCents: number): boolean {
+    const fraction = budgetFraction(monthCents, budgetCents);
+    return fraction !== null && fraction > 0.8;
+}
+
+/** Median assigned→done cycle time from done tasks that have a start time. */
+export function medianCycleMs(done: Array<{ startedAt: string | null; doneAt: string }>): number | null {
+    const values: number[] = [];
+    for (const t of done) {
+        if (!t.startedAt) continue;
+        const start = new Date(t.startedAt).getTime();
+        const end = new Date(t.doneAt).getTime();
+        if (Number.isNaN(start) || Number.isNaN(end) || end < start) continue;
+        values.push(end - start);
+    }
+    if (values.length === 0) return null;
+    values.sort((a, b) => a - b);
+    const mid = Math.floor(values.length / 2);
+    return values.length % 2 ? values[mid] : Math.round((values[mid - 1] + values[mid]) / 2);
+}
+
+/**
+ * The single "today" boundary for done/spend metrics: a rolling 24-hour window.
+ * There is no company timezone stored, so "today" is the last 24 hours (which
+ * is how the UI labels it) rather than a local calendar midnight.
+ */
+export const DONE_TODAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Tasks done per 24-hour bucket over the last `days` days, oldest first. The
+ * most recent bucket ("today") is the last 24 hours — consistent with the
+ * `doneToday` / `DONE_TODAY_MS` definition used everywhere else.
+ */
+export function donePerDay(doneAt: Array<string | Date>, now: Date, days = 7): number[] {
+    const buckets = Array(days).fill(0);
+    const nowMs = now.getTime();
+    for (const raw of doneAt) {
+        const t = new Date(raw).getTime();
+        if (Number.isNaN(t)) continue;
+        const age = nowMs - t;
+        if (age < 0) continue;
+        const dayIndex = Math.floor(age / DONE_TODAY_MS);
+        if (dayIndex < days) buckets[days - 1 - dayIndex] += 1;
+    }
+    return buckets;
+}
+
+/* ── "What's moving" feed ────────────────────────────────────────────── */
+
+/** Recent activity from an agent pair thread. */
+export interface PairThreadActivity {
+    id: string;
+    threadId: string;
+    actorKey: string | null;
+    actorName: string;
+    targetKey: string | null;
+    targetName: string | null;
+    text: string;
+    at: string;
+}
+
+/** Which task events belong in the movement feed (handoffs + review/done). */
+function feedKindFor(eventType: string): FeedEvent["kind"] | null {
+    switch (eventType) {
+        case "task_assigned":
+        case "task_reassigned":
+            return "handoff";
+        case "task_review":
+            return "review";
+        case "task_done":
+            return "done";
+        case "task_claimed":
+            return "claim";
+        case "task_note":
+            return "note";
+        default:
+            return null;
+    }
+}
+
+/** Build the live "What's moving" feed, newest first, capped at `limit`. */
+export function buildFeed(activity: ActivityEvent[], pairs: PairThreadActivity[], limit = 8): FeedEvent[] {
+    const items: FeedEvent[] = [];
+    for (const e of activity) {
+        const kind = feedKindFor(e.eventType);
+        if (!kind) continue;
+        const href = e.taskId ? `/projects?project=${e.projectId ?? ""}&task=${e.taskId}` : null;
+        items.push({
+            id: e.id, kind,
+            actorKey: e.actorKey, actorName: e.actorName,
+            targetKey: e.targetKey, targetName: e.targetName,
+            text: e.taskTitle, href, at: e.at,
+        });
+    }
+    for (const p of pairs) {
+        items.push({
+            id: p.id, kind: "pair",
+            actorKey: p.actorKey, actorName: p.actorName,
+            targetKey: p.targetKey, targetName: p.targetName,
+            text: p.text, href: `/messages?group=${p.threadId}`, at: p.at,
+        });
+    }
+    return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+}
+
 /* ── View derivation ────────────────────────────────────────────────── */
 
 /** Agents only — the live office doesn't seat people. */
 export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attention" | "activity" | "generatedAt">): SceneAgent[] {
-    const attention = attentionByMember(data.attention);
     const now = new Date(data.generatedAt);
     const justDone = recentlyDoneKeys(data.activity, now);
     const agents = data.members.filter((m) => m.kind === "agent");
-    const idleRoutines = assignIdleRoutines(agents.filter((m) => sceneStatus(m, attention.get(m.key) ?? null) === "idle").map((m) => m.key));
+    const idleRoutines = assignIdleRoutines(agents.filter((m) => sceneStatus(m) === "idle").map((m) => m.key));
     return agents.map((member) => {
-        const entry = attention.get(member.key) ?? null;
-        const status = sceneStatus(member, entry);
+        const { blocking, overlay } = memberAttention(data.attention, member.key);
+        const status = sceneStatus(member, blocking);
+        const attention = blocking ?? overlay;
         const taskType = member.working[0]?.taskType ?? member.waiting[0]?.taskType ?? member.next[0]?.taskType ?? null;
         const behavior = deriveBehavior({
             status,
-            activity: activityText(member, status, entry),
+            activity: activityText(member, status, attention),
             memberKey: member.key,
-            attention: entry,
+            attention,
             justDone: justDone.has(member.key),
             taskType,
             idleRoutine: status === "idle" ? idleRoutines.get(member.key) ?? null : null,
+            checkIn: member.health === "attention" && !blocking,
+            checkInReason: member.healthReasons[0] ?? null,
         });
-        return { member, status, activity: activityText(member, status, entry), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now) };
+        return { member, status, activity: activityText(member, status, attention), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now) };
     });
 }
 
@@ -894,7 +1243,7 @@ export function kpiCounts(agents: SceneAgent[], data: Pick<DashboardData, "board
     return {
         working: agents.filter((a) => a.status === "working").length,
         waiting: agents.filter((a) => a.status === "waiting").length,
-        done: data.board.done.length,
+        done: agents.filter((a) => a.member.doneToday > 0).length,
         attention: data.attention.length,
     };
 }

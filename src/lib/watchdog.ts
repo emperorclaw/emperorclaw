@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { lt, and, eq, inArray, isNull } from "drizzle-orm";
+import { lt, and, eq, inArray, isNotNull, isNull, ne, notInArray, or } from "drizzle-orm";
 import { tasks, taskEvents, incidents } from "@/db/schema";
 import { Pool } from "pg";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "./task-state";
@@ -37,6 +37,14 @@ async function runWatchdog() {
         }
 
         const now = new Date();
+
+        // 0. Resolve our own incidents once their task has moved on. Watchdog
+        // SLA/queue incidents are transient signals, not persistent problems:
+        // once the task is claimed, done, cancelled, or reassigned they must
+        // close themselves instead of lingering and (mis)marking an agent as
+        // stuck long after the task moved.
+        await resolveOwnStaleIncidents();
+
         // 1. Reclaim expired leases (Retry / Dead Letter)
         // Canonical in-progress tasks hold leases.
         const expiredTasks = await db.select().from(tasks).where(
@@ -123,7 +131,8 @@ async function runWatchdog() {
         const breachedTasks = await db.select().from(tasks).where(
             and(
                 inArray(tasks.state, SLA_TRACKED_TASK_STATES),
-                lt(tasks.slaDueAt, now)
+                lt(tasks.slaDueAt, now),
+                isNull(tasks.deletedAt)
             )
         );
 
@@ -202,4 +211,43 @@ async function runWatchdog() {
         }
         client.release();
     }
+}
+
+/**
+ * Close watchdog-owned incidents (SLA breach / unclaimed queue) whose task no
+ * longer matches the condition that created them. Only touches the two
+ * reason codes the watchdog itself writes; agent-reported and dead-letter
+ * incidents are left alone. Idempotent: the status re-check makes a repeat
+ * pass a no-op.
+ */
+const WATCHDOG_RESOLVABLE = ["sla_breach", "unclaimed_stale"];
+
+export async function resolveOwnStaleIncidents(): Promise<void> {
+    // One set-based pass: resolve every open watchdog incident whose task no
+    // longer matches the condition that created it. `tasks.id IS NULL` (task
+    // hard-deleted) or `tasks.deleted_at` set means the task is gone; an
+    // unclaimed notice clears once the task leaves the inbox; an SLA breach
+    // clears once the task leaves the SLA-tracked states. Idempotent: the
+    // status='open' re-check makes a repeat pass a no-op.
+    const stale = db
+        .select({ id: incidents.id })
+        .from(incidents)
+        .leftJoin(tasks, eq(tasks.id, incidents.taskId))
+        .where(
+            and(
+                eq(incidents.status, "open"),
+                isNull(incidents.deletedAt),
+                isNotNull(incidents.taskId),
+                inArray(incidents.reasonCode, WATCHDOG_RESOLVABLE),
+                or(
+                    isNull(tasks.id),
+                    isNotNull(tasks.deletedAt),
+                    and(eq(incidents.reasonCode, "unclaimed_stale"), ne(tasks.state, "inbox")),
+                    and(eq(incidents.reasonCode, "sla_breach"), notInArray(tasks.state, [...SLA_TRACKED_TASK_STATES])),
+                ),
+            )
+        );
+
+    await db.update(incidents).set({ status: "resolved", resolvedAt: new Date() })
+        .where(inArray(incidents.id, stale));
 }

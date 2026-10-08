@@ -32,7 +32,8 @@ const agentsInZone = (count: number, zoneRole: string, status: "working" | "idle
 test("status mapping prefers offline, then needs-you, then work", () => {
     assert.equal(sceneStatus(member({ health: "down", working: [task("in_progress")] })), "offline");
     assert.equal(sceneStatus(member({ working: [task("in_progress")] }), approval("agent:a1")), "blocked");
-    assert.equal(sceneStatus(member({ health: "attention" })), "blocked");
+    assert.equal(sceneStatus(member({ health: "attention" })), "idle", "health attention alone is a check-in hint, not stuck");
+    assert.equal(sceneStatus(member({ health: "attention", working: [task("in_progress")] })), "working");
     assert.equal(sceneStatus(member({ working: [task("in_progress")] })), "working");
     assert.equal(sceneStatus(member({ activity: "typing…" })), "working");
     assert.equal(sceneStatus(member({ waiting: [task("review")] })), "waiting");

@@ -42,7 +42,8 @@ const cap = (overrides: Parameters<typeof deriveBehavior>[0]): string => deriveB
 test("state → behavior covers every state with a caption", () => {
     assert.equal(kb({ status: "offline", activity: "x" }), "offline");
     assert.equal(kb({ status: "blocked", activity: "x", attention: attn("incident") }), "blocked");
-    assert.equal(cap({ status: "blocked", activity: "x", attention: attn("incident") }), "Stuck on an issue");
+    assert.equal(cap({ status: "blocked", activity: "x", attention: attn("incident") }), "Stuck");
+    assert.equal(cap({ status: "blocked", activity: "x", attention: { ...attn("incident"), reason: "max retries exceeded" } }), "Stuck: Max retries exceeded");
     assert.equal(kb({ status: "blocked", activity: "x", attention: attn("approval") }), "waiting");
     assert.equal(cap({ status: "blocked", activity: "x", attention: attn("approval") }), "Needs your approval");
     assert.equal(kb({ status: "blocked", activity: "x", attention: attn("message") }), "waiting");

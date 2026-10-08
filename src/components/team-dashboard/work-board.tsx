@@ -1,8 +1,8 @@
 import Link from "next/link";
 import {
-    IconArrowRight, IconFileText, IconBug, IconChartBar, IconCheck, IconChevronRight, IconCode, IconCoffee, IconListDetails, IconPencil, IconPlus, IconSend, IconSettings,
+    IconArrowRight, IconFileText, IconBug, IconChartBar, IconCheck, IconChevronRight, IconCode, IconCoffee, IconListDetails, IconPencil, IconPlus, IconSettings,
 } from "@tabler/icons-react";
-import { describeActivity, taskStep, timeAgo, type ActivityEvent, type DashboardMember, type DashboardTask, type ZoneId } from "@/lib/team-scene";
+import { taskStep, type DashboardMember, type DashboardTask, type ZoneId } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./agent-character";
 
@@ -25,13 +25,10 @@ const ROWS_PER_COLUMN = 4;
 
 export interface BoardAssignee { member: DashboardMember; zone: ZoneId }
 
-export function WorkBoard({ columns, assignees, activity, now }: {
+export function WorkBoard({ columns, assignees }: {
     columns: Record<(typeof COLUMNS)[number]["id"], DashboardTask[]>;
     assignees: Map<string, BoardAssignee>;
-    activity: ActivityEvent[];
-    now: Date;
 }) {
-    const latest = activity[0] ?? null;
     return (
         <section aria-labelledby="work-in-motion-title" className="emperor-panel rounded-2xl p-4">
             <header className="flex items-start justify-between gap-3">
@@ -74,7 +71,7 @@ export function WorkBoard({ columns, assignees, activity, now }: {
             </div>
 
             <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs">
-                {latest ? <TickerLine event={latest} now={now} /> : <span className="text-muted-foreground">No task activity in the last 24 hours.</span>}
+                <span className="text-muted-foreground">{`${columns.inProgress.length + columns.review.length + columns.done.length} tasks shown across the board.`}</span>
                 <Link href="/projects" className="inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground">View all activity<IconArrowRight className="h-3.5 w-3.5" /></Link>
             </footer>
         </section>
@@ -97,7 +94,7 @@ function TaskRow({ task, assignee }: { task: DashboardTask; assignee: BoardAssig
                                 <span className="truncate">{assignee.member.name}</span>
                             </>
                         ) : <span>Unassigned</span>}
-                        {task.projectName && <span className="max-w-[8rem] shrink-0 truncate rounded-md bg-cyan-500/10 px-1.5 py-px text-[10px] font-medium text-cyan-700 ring-1 ring-inset ring-cyan-500/20 dark:text-cyan-200">{task.projectName}</span>}
+                        {task.projectName && <span title={task.projectName} className="min-w-0 max-w-[8rem] truncate rounded-md bg-cyan-500/10 px-1.5 py-px text-[10px] font-medium text-cyan-700 ring-1 ring-inset ring-cyan-500/20 dark:text-cyan-200">{task.projectName}</span>}
                     </span>
                 </span>
                 <StepMark state={task.state} />
@@ -121,19 +118,6 @@ function StepMark({ state }: { state: string }) {
                 <circle cx={9} cy={9} r={r} fill="none" stroke={state === "review" ? "#a78bfa" : "#38bdf8"} strokeWidth={2} strokeDasharray={`${(c * step) / total} ${c}`} strokeLinecap="round" />
             </svg>
             {step}/{total}
-        </span>
-    );
-}
-
-function TickerLine({ event, now }: { event: ActivityEvent; now: Date }) {
-    const { actor, verb, target } = describeActivity(event);
-    return (
-        <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-            <IconSend className="h-4 w-4 shrink-0 text-cyan-500 dark:text-cyan-300" stroke={1.8} />
-            <span className="min-w-0 truncate">
-                <span className="font-semibold text-cyan-700 dark:text-cyan-300">{actor}</span> {verb}{target && <> <span className="font-semibold text-cyan-700 dark:text-cyan-300">{target}</span></>}
-                <span aria-hidden> · </span>{timeAgo(event.at, now)}
-            </span>
         </span>
     );
 }

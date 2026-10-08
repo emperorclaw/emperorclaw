@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId, getUserId } from "@/lib/auth";
+import { getCompanyId } from "@/lib/auth";
+import { AuthError, requireRole } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
 
 export async function GET(
@@ -24,10 +25,12 @@ export async function PATCH(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("member")();
+    } catch (error) {
+        if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        throw error;
     }
 
     try {
@@ -40,9 +43,9 @@ export async function PATCH(
         }
 
         const approval = await resolveApproval({
-            companyId,
+            companyId: ctx.companyId,
             approvalId: id,
-            resolverUserId: userId,
+            resolverUserId: ctx.userId,
             status,
             resolutionNote: resolutionNote || null,
         });

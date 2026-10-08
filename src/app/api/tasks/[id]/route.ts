@@ -2,24 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
-import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
+import { AuthError, requireRole } from "@/lib/roles";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("member")();
+    } catch (error) {
+        if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        throw error;
     }
 
     const { id: taskId } = await params;
     try {
         const body = await req.json();
-        const session = await getValidatedServerSession();
         const inputJson = body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined;
         const result = await updateTaskForCompany({
-            companyId,
+            companyId: ctx.companyId,
             taskId,
             title: typeof body.title === "string" ? body.title : undefined,
             goal: typeof body.goal === "string" ? body.goal : undefined,
@@ -29,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             state: body.state,
             inputJson,
             actorType: "human",
-            actorId: session?.user?.id || null,
+            actorId: ctx.userId,
         });
 
         if ("error" in result) {
@@ -45,16 +47,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let ctx;
+    try {
+        ctx = await requireRole("member")();
+    } catch (error) {
+        if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.statusCode });
+        throw error;
     }
 
     const { id: taskId } = await params;
     try {
         const [existing] = await db.select().from(tasks).where(and(
             eq(tasks.id, taskId),
-            eq(tasks.companyId, companyId),
+            eq(tasks.companyId, ctx.companyId),
             isNull(tasks.deletedAt),
         )).limit(1);
 
@@ -67,7 +72,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
             updatedAt: new Date(),
         }).where(eq(tasks.id, taskId)).returning();
 
-        await broadcastMcpEvent(companyId, { type: "task_updated", task });
+        await broadcastMcpEvent(ctx.companyId, { type: "task_updated", task });
         return NextResponse.json({ task });
     } catch (error) {
         console.error("Task delete error:", error);
