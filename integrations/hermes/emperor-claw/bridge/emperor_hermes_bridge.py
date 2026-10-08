@@ -944,7 +944,14 @@ def format_organization_context() -> str:
     if leader.get("kind") == "agent" and leader.get("id") == AGENT_ID:
         lines.append("You are the company leader; coordinate cross-team work and report to humans.")
     teams = info.get("teams") if isinstance(info.get("teams"), list) else []
-    for team in teams[:4]:
+    reporting = info.get("reporting") if isinstance(info.get("reporting"), list) else []
+    for relation in reporting[:4]:
+        if not isinstance(relation, dict):
+            continue
+        target = relation.get("reportsTo")
+        target = target if isinstance(target, dict) else {}
+        lines.append(str(relation.get("context") or "Direct reporting")[:48] + ": report to " + str(target.get("name") or "humans")[:64])
+    for team in ([] if reporting else teams[:4]):
         if not isinstance(team, dict):
             continue
         coordinator = team.get("coordinator")

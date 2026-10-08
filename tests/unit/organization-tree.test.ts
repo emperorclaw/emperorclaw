@@ -1,0 +1,29 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateOrganizationTree,removeOrganizationBranch,type OrganizationNode} from '../../src/lib/organization-tree';
+const root:OrganizationNode={id:'ceo',parentId:null,kind:'person',person:{kind:'human',id:'human'}};
+const ai:OrganizationNode={id:'ai',parentId:'ceo',kind:'person',person:{kind:'agent',id:'boss'}};
+const team:OrganizationNode={id:'team',parentId:'ai',kind:'team',teamId:'design',leaderAgentId:'lead'};
+test('human executive needs an AI leader below and teams need an AI leader',()=>{
+ assert.throws(()=>validateOrganizationTree([root]),/AI leader beneath/);
+ assert.deepEqual(validateOrganizationTree([root,ai,team]),[root,ai,team]);
+ assert.throws(()=>validateOrganizationTree([root,ai,{...team,leaderAgentId:''}]),/AI leader/);
+});
+test('shared agents can belong to sibling teams but never report to themselves',()=>{
+ const team2={...team,id:'team2',teamId:'research'};
+ const a:OrganizationNode={id:'a1',parentId:'team',kind:'person',person:{kind:'agent',id:'shared'}};
+ const b={...a,id:'a2',parentId:'team2'};
+ assert.equal(validateOrganizationTree([root,ai,team,team2,a,b]).length,6);
+ assert.throws(()=>validateOrganizationTree([root,ai,{id:'bad',parentId:'ai',kind:'person',person:ai.person}]),/itself/);
+});
+test('graph rejects cycles, missing parents, duplicate teams, and human reports below agents',()=>{
+ assert.throws(()=>validateOrganizationTree([root,{...ai,parentId:'missing'}]),/Parent/);
+ assert.throws(()=>validateOrganizationTree([root,{...ai,parentId:'team'},team]),/loop/);
+ assert.throws(()=>validateOrganizationTree([root,ai,team,{...team,id:'duplicate'}]),/already/);
+ assert.throws(()=>validateOrganizationTree([root,ai,{...root,id:'cto',parentId:'ai'}]),/above AI/);
+ assert.throws(()=>validateOrganizationTree([root,ai,team,{id:'recursive-boss',parentId:'team',kind:'person',person:ai.person}]),/descendants/);
+});
+test('removing a branch preserves sibling memberships for a shared agent',()=>{
+ const team2={...team,id:'team2',teamId:'research'};
+ assert.deepEqual(removeOrganizationBranch([root,ai,team,team2],team.id),[root,ai,team2]);
+});

@@ -56,6 +56,11 @@ class TestOrganizationReporting(unittest.TestCase):
         self.assertIn("report to humans", text)
         self.assertIn("GET /organization", text)
         self.assertIn("26 teams", text)
+    def test_chart_reporting_overrides_legacy_coordinator(self):
+        with patch.object(bridge, "api", return_value={"configured": True, "leader": {"name": "CEO"}, "teams": [{"name": "Design", "coordinator": {"name": "Old coordinator"}}], "reporting": [{"context": "Design", "reportsTo": {"name": "AI lead"}}]}):
+            text = _organization_formatter()
+        self.assertIn("Design: report to AI lead", text)
+        self.assertNotIn("Old coordinator", text)
     def test_old_server_does_not_interrupt_messages(self):
         with patch.object(bridge, "api", side_effect=RuntimeError("404")):
             self.assertEqual(_organization_formatter(), "")
