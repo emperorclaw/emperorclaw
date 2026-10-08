@@ -21,9 +21,18 @@ test('graph rejects cycles, missing parents, duplicate teams, and human reports 
  assert.throws(()=>validateOrganizationTree([root,{...ai,parentId:'team'},team]),/loop/);
  assert.throws(()=>validateOrganizationTree([root,ai,team,{...team,id:'duplicate'}]),/already/);
  assert.throws(()=>validateOrganizationTree([root,ai,{...root,id:'cto',parentId:'ai'}]),/above AI/);
- assert.throws(()=>validateOrganizationTree([root,ai,team,{id:'recursive-boss',parentId:'team',kind:'person',person:ai.person}]),/descendants/);
+ assert.throws(()=>validateOrganizationTree([root,ai,team,{id:'recursive-boss',parentId:'team',kind:'person',person:ai.person}]),/descendants|Team members/);
 });
 test('removing a branch preserves sibling memberships for a shared agent',()=>{
  const team2={...team,id:'team2',teamId:'research'};
  assert.deepEqual(removeOrganizationBranch([root,ai,team,team2],team.id),[root,ai,team2]);
+});
+
+test('teams are terminal work units: no nested team or branches through a teammate',()=>{
+ const member:OrganizationNode={id:'member',parentId:team.id,kind:'person',person:{kind:'agent',id:'worker'}};
+ const nested={...team,id:'nested',teamId:'nested-group',leaderAgentId:'nested-lead',parentId:team.id};
+ assert.throws(()=>validateOrganizationTree([root,ai,team,nested]),/Teams cannot contain/);
+ assert.throws(()=>validateOrganizationTree([root,ai,team,member,{...nested,parentId:member.id}]),/Team members cannot/);
+ assert.throws(()=>validateOrganizationTree([root,ai,team,member,{...member,id:'report',parentId:member.id,person:{kind:'agent',id:'other'}}]),/Team members cannot/);
+ assert.equal(validateOrganizationTree([root,ai,team,member,{...nested,parentId:ai.id}]).length,5);
 });

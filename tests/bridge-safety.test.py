@@ -61,6 +61,15 @@ class TestOrganizationReporting(unittest.TestCase):
             text = _organization_formatter()
         self.assertIn("Design: report to AI lead", text)
         self.assertNotIn("Old coordinator", text)
+    def test_shared_teams_select_reporting_by_work_context(self):
+        with patch.object(bridge, "api", return_value={"configured": True, "leader": {"name": "CEO"}, "teams": [], "reporting": [{"context": "Design", "reportsTo": {"name": "Mira"}}, {"context": "Research", "reportsTo": {"name": "Atlas"}}]}):
+            text = _organization_formatter()
+        self.assertIn("Design: report to Mira", text)
+        self.assertIn("Research: report to Atlas", text)
+        self.assertIn("task/conversation team", text)
+        self.assertIn("one coordinating owner per task", text)
+        self.assertIn("conflicting priorities", text)
+        self.assertLessEqual(len(text), 1100)
     def test_old_server_does_not_interrupt_messages(self):
         with patch.object(bridge, "api", side_effect=RuntimeError("404")):
             self.assertEqual(_organization_formatter(), "")

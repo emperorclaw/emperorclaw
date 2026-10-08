@@ -964,7 +964,8 @@ def format_organization_context() -> str:
         lines.append(str(team.get("name") or "Team")[:48] + ": report to " + str(target)[:64])
     if len(teams) > 4:
         lines.append(f"Plus {len(teams) - 4} teams; consult the endpoint for full details.")
-    lines.append("Consult current IDs, team purposes and reporting rules with emperor_request GET /organization; use /groups?mine=1 for members. Report useful progress, never ping-pong acknowledgments. Task ownership, approvals and access rules still apply.")
+    lines.append("Use the task/conversation team to choose its reporting line; one coordinating owner per task. Shared membership does not transfer ownership. Escalate conflicting priorities to the company leader or humans.")
+    lines.append("Consult current IDs, team purposes and reporting rules with emperor_request GET /organization; use /groups?mine=1 for members. Avoid acknowledgment loops. Ownership, approvals and access rules still apply.")
     return "\n".join(lines)[:1100]
 
 

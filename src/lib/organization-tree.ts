@@ -34,6 +34,8 @@ export function validateOrganizationTree(value: unknown): OrganizationNode[] {
             visited.add(parentId); parentId = parent.parentId;
         }
         const parent = n.parentId ? byId.get(n.parentId) : null;
+        if (parent && organizationTeamAncestor(nodes, parent.id)) throw Error('Team members cannot manage branches. Add another team under a company leader instead');
+        if (n.kind === 'team' && parent?.kind === 'team') throw Error('Teams cannot contain other teams. Add a sibling team under its manager');
         if (n.kind === 'person' && n.person.kind === 'human' && parent && !(parent.kind === 'person' && parent.person.kind === 'human')) throw Error('Human executives belong above AI agents');
         if (n.kind === 'person' && parent?.kind === 'person' && parent.person.kind === n.person.kind && parent.person.id === n.person.id) throw Error('An agent cannot report to itself');
         if (n.kind === 'person' && parent?.kind === 'team' && n.person.kind === 'agent' && n.person.id === parent.leaderAgentId) throw Error('The team leader is already represented on this team');
@@ -49,4 +51,17 @@ export function removeOrganizationBranch(nodes: OrganizationNode[], id: string) 
     const removed = new Set([id]); let count = 0;
     while (count !== removed.size) { count=removed.size; for (const n of nodes) if (n.parentId && removed.has(n.parentId)) removed.add(n.id); }
     return nodes.filter(n => !removed.has(n.id));
+}
+
+/** The containing team, excluding the node itself. Also works for legacy trees. */
+export function organizationTeamAncestor(nodes: OrganizationNode[], id: string): Extract<OrganizationNode, {kind:'team'}> | null {
+    const byId = new Map(nodes.map(node => [node.id,node]));
+    const seen = new Set<string>();
+    let node = byId.get(id);
+    while (node?.parentId && !seen.has(node.parentId)) {
+        seen.add(node.parentId);
+        node = byId.get(node.parentId);
+        if (node?.kind === 'team') return node;
+    }
+    return null;
 }
