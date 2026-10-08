@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.71] — 2026-10-08
+
+### Fixed
+- The dashboard failed to load in production: the throughput query grouped by an expression Postgres considered different from the selected one. It now groups by the selected bucket.
+
 ## [0.8.70] — 2026-10-08
 
 ### Added

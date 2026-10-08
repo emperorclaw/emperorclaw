@@ -114,7 +114,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, weekAgo), gte(tasks.updatedAt, tasks.processingStartedAt), isNull(tasks.deletedAt), isNotNull(tasks.processingStartedAt))),
         db.select({ bucket: sql<number>`FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - ${tasks.updatedAt})) / ${DONE_TODAY_MS / 1000})::int`, count: sql<number>`COUNT(*)::int` }).from(tasks)
             .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, weekAgo), isNull(tasks.deletedAt)))
-            .groupBy(sql`FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - ${tasks.updatedAt})) / ${DONE_TODAY_MS / 1000})::int`),
+            .groupBy(sql`1`),
         db.select({ id: tasks.id, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt)))
             .orderBy(desc(tasks.updatedAt)).limit(BOARD_LIMIT),
