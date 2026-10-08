@@ -171,7 +171,16 @@ export function AgentTeamChat({
         getItemKey: (index) => messages[index].id,
     });
 
+    // The (app) layout calls router.refresh() every 15s, so this component is
+    // handed a brand-new `initialMessages` array on every pass (and group chats
+    // get a fresh `[]` literal on every parent render). Re-applying it here
+    // would replace the transcript the 5s poll keeps current and yank the
+    // scroll position each time. Seed from props once, on mount; live updates
+    // come from the poll below.
+    const seededRef = useRef(false);
     useEffect(() => {
+        if (seededRef.current) return;
+        seededRef.current = true;
         setMessages(initialMessages);
         setLastSeenAt(initialMessages.length > 0 ? messageCursor(initialMessages[initialMessages.length - 1].createdAt) : null);
         setHasOlderMessages(initialHasMore);
