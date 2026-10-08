@@ -533,3 +533,14 @@ Hermes is the only supported local runtime. In **Agents → Hire an Agent → Lo
 Hermes workers can hire other Hermes workers with the `emperor_create_agent` tool, passing `name`, `role`, and optionally `doctrineJson` (a mapping of doctrine filenames to text). The server uses the authenticated worker's configuration. No API key needs to appear in prompts or tool results. Check the returned `success` and `agentId`; failed provisioning leaves an offline profile that can be retried through local setup. Container startup is reported separately from online status, which is confirmed by runtime heartbeats.
 
 MCP clients can call `create_agent` with `deploymentMode: "local"`. Company tokens also supply `sourceAgentId`; agent-bound tokens use their own agent as the source. REST clients use the same fields with `POST /api/mcp/agents`. Local hiring requires the Docker installation with its socket mounted. Remote integrations remain available.
+
+
+## Persistent objectives
+
+Open an agent on the dashboard and expand **Objective**, or use `/goal <objective>` in its direct chat. State the result and optionally add a `verify:` line with the completion criterion. Choose a limit of 5, 10 or 20 turns. Hermes checks progress after each turn and continues in the same session until complete, paused, blocked, waiting or out of turns.
+
+Use **Pause**, **Resume** and **Clear objective**, or `/goal pause`, `/goal resume`, `/goal clear` and `/goal status`. Resume is an explicit request for a fresh turn budget. **Stop & clear queue** and replacing work also pause automatic continuation. Existing agent and company budgets still apply. Goals are per agent; starting one does not automatically create a company mission or start other agents.
+
+This requires a Hermes runtime with native `GoalManager` support. Update older runtime images; ordinary messaging remains compatible. Other runtimes keep their normal messages and do not advertise objectives until a compatible adapter is available. Advanced `/goal draft`, gates and manual wait commands are not exposed through this web integration.
+
+For custom Hermes installations, set `HERMES_INSTALL_DIR` to the checkout containing its dependency environment, or `EMPEROR_HERMES_GOAL_PYTHON` to its Python interpreter. The bundled runtime discovers the environment automatically.

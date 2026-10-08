@@ -7,6 +7,8 @@ import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMes
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
+import { parseGoalCommand, replyAgentGoalStatus, requestAgentGoal } from "@/lib/agent-goal";
+import { requireRole, AuthError } from "@/lib/roles";
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
 import { requestAgentControl } from "@/lib/agent-control";
 import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
@@ -75,6 +77,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore });
     } catch (error: unknown) {
+        if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
         if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;
@@ -92,8 +95,19 @@ export async function POST(req: NextRequest) {
         const { text, targetAgentId, attachments, threadId: groupId } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
+        const goalCommand = typeof text === "string" ? parseGoalCommand(text) : null;
+        if (goalCommand) {
+            await requireRole("member")();
+            if (Array.isArray(attachments) && attachments.length) return NextResponse.json({error:"Send attachments as a normal message before setting an objective"},{status:400});
+            if (goalCommand.action === "unsupported") return NextResponse.json({error:"Supported commands: /goal <objective>, status, pause, resume, clear. Add verification criteria with verify: in the objective."},{status:400});
+            if (!targetAgentId || groupId) return NextResponse.json({error:"Use /goal in an agent's direct chat"},{status:400});
+            const id = await resolveAgentId(companyId,targetAgentId);
+            try { return NextResponse.json(goalCommand.action === "status" ? await replyAgentGoalStatus(companyId,userId,id) : await requestAgentGoal(companyId,userId,id,goalCommand)); }
+            catch(e) { return NextResponse.json({error:e instanceof Error?e.message:"Objective request failed"},{status:400}); }
+        }
         const command = typeof text === "string" ? parseAgentControlCommand(text) : null;
         if (command) {
+            await requireRole("member")();
             if (!targetAgentId || groupId) return NextResponse.json({ error: "Use runtime commands in an agent’s direct chat" }, { status: 400 });
             const error = validateAgentControl(command.action, command.prompt);
             if (error) return NextResponse.json({ error }, { status: 400 });
@@ -188,6 +202,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ thread, message: serializeMessage(message) });
     } catch (error: unknown) {
+        if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
         if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const isAgentNotFound = error instanceof Error && error.message.startsWith("Agent not found");
         const status = isAgentNotFound ? 404 : error instanceof Error && error.message.startsWith("Runtime controls") ? 400 : 500;

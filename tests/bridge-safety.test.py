@@ -32,6 +32,16 @@ os.environ.setdefault("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5")
 os.environ.setdefault("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "30")
 
 import emperor_hermes_bridge as bridge
+import emperor_goals
+from unittest.mock import patch
+# Goal scheduling is tested separately; ordinary messaging never calls a live endpoint.
+_goal_poll_patch = patch.object(emperor_goals, "process_commands", return_value=False)
+_goal_run_patch = patch.object(emperor_goals, "run_next", return_value=None)
+_goal_poll_patch.start()
+_goal_run_patch.start()
+_goal_record_patch = patch.object(emperor_goals, "record_external_turn", return_value=None)
+_goal_record_patch.start()
+
 
 
 class TestRuntimeControls(unittest.TestCase):
@@ -416,6 +426,12 @@ class TestBudgetGuard(unittest.TestCase):
                 bridge.main()
             run.assert_not_called()
             self.assertNotIn("blocked", state["seen"])
+
+    def test_usage_reports_runtime_model_instead_of_provider_name(self):
+        from unittest.mock import patch
+        with patch.dict(bridge.os.environ, {"EMPEROR_CLAW_RUNTIME_MODEL": "openai/gpt-4o-mini"}), patch.object(bridge, "_agent_llm_model", None), patch.object(bridge, "_agent_llm_provider", "openai"):
+            bridge.report_token_usage(400, 200)
+        self.assertEqual(self.api.call_args.kwargs["body"]["model"], "openai/gpt-4o-mini")
 
     def test_flushes_every_turn_and_retries_before_dispatch(self):
         self.api.side_effect = RuntimeError("offline")
@@ -1404,6 +1420,32 @@ class TestGroupChats(unittest.TestCase):
         self.assertIn("QA", text)
         self.assertIn("José", text)
         self.assertEqual(bridge.format_group_context({"threadId": "t1", "threadType": "team"}), "")
+
+    def test_direct_team_summary_includes_only_my_scoped_roles_and_stays_small(self):
+        from unittest.mock import patch
+        threads = {str(i): {"type":"group", "title":"T" * 1000, "members":[
+            {"kind":"agent", "id":bridge.AGENT_ID, "name":bridge.AGENT_NAME, "role":"coordinator" if i == 0 else "member"},
+            {"kind":"human", "id":"human", "name":"H" * 1000, "role":"coordinator" if i != 0 else "member"},
+        ]} for i in range(30)}
+        threads["foreign"] = {"type":"group", "title":"Foreign secret team", "members":[{"kind":"agent", "id":"other", "name":"Other"}]}
+        with patch.object(bridge, "_thread_details", threads):
+            text = bridge.format_my_team_roles()
+        self.assertLess(len(text), 900)
+        self.assertIn("you are coordinator", text)
+        self.assertIn("26 other teams", text)
+        self.assertNotIn("Foreign secret", text)
+
+    def test_group_context_stays_bounded_for_large_organizations(self):
+        bridge._thread_details["huge"] = {
+            "title": "T" * 10000, "description": "D" * 10000,
+            "members": [{"kind": kind, "name": "N" * 10000, "role": "coordinator" if i == 0 else "member"}
+                        for kind in ("agent", "human") for i in range(100)],
+        }
+        text = bridge.format_group_context({"threadId": "huge", "threadType": "group"})
+        self.assertLess(len(text), 4000)
+        self.assertIn("complete membership", text)
+        self.assertIn("exact names", text)
+        self.assertIn("Never write @all yourself", text)
 
     def test_group_coordinator_is_scoped_and_project_rules_remain(self):
         bridge.remember_thread_details({"coordinated": {"title": "Design", "members": [

@@ -182,3 +182,33 @@ maybe("report-usage records unpriced usage for uncapped agents instead of wedgin
     assert.equal(res.status, 200);
     assert.equal((await res.json()).costCents, 0);
 });
+
+maybe("provider-qualified models use the exact canonical tariff and preserve sub-cent spend", async () => {
+ await resetDb();
+ await seedPricing("gpt-4o-mini", 15, 60, "openai");
+ const {companyId,rawToken}=await seedCompanyWithToken();
+ const agent=await seedAgent(companyId,{llmModel:"openai/gpt-4o-mini",monthlyBudgetCents:100});
+ const {POST}=await import("@/app/api/mcp/agents/report-usage/route");
+ const response=await POST(makeRequest("http://localhost/api/mcp/agents/report-usage",{method:"POST",headers:{authorization:`Bearer ${rawToken}`},body:{agentId:agent.id,model:"openrouter/openai/gpt-4o-mini",inputTokens:1000,outputTokens:1000}}));
+ const data=await response.json();
+ assert.equal(response.status,200);
+ assert.equal(data.pricingStatus,"priced");
+ assert.equal(data.costCents,0.075);
+ const db=await getDb();const {tokenUsageLog}=await getSchema();
+ const rows=await db.select().from(tokenUsageLog);
+ assert.equal(rows[0].model,"gpt-4o-mini");
+ assert.equal(rows[0].costCents,0.075);
+});
+
+maybe("unknown models remain unpriced without substituting another model's tariff", async () => {
+ await resetDb();
+ await seedPricing("gpt-4o-mini",15,60,"openai");
+ const {companyId,rawToken}=await seedCompanyWithToken();
+ const agent=await seedAgent(companyId,{monthlyBudgetCents:0});
+ const {POST}=await import("@/app/api/mcp/agents/report-usage/route");
+ const response=await POST(makeRequest("http://localhost/api/mcp/agents/report-usage",{method:"POST",headers:{authorization:`Bearer ${rawToken}`},body:{agentId:agent.id,model:"custom/unknown",inputTokens:1000}}));
+ const data=await response.json();
+ assert.equal(response.status,200);
+ assert.equal(data.pricingStatus,"unpriced");
+ assert.equal(data.costCents,0);
+});

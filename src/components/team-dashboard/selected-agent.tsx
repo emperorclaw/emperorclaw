@@ -1,18 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import dynamic from "next/dynamic";
+import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { IconArrowsMaximize, IconMessage, IconRefresh, IconUserSquareRounded } from "@tabler/icons-react";
-import { budgetFraction, formatCents, requiresHumanAction, STATUS_LABEL, timeAgo, ZONES, type SceneAgent } from "@/lib/team-scene";
+import { IconMessage, IconRefresh, IconUserSquareRounded } from "@tabler/icons-react";
+import { requiresHumanAction, STATUS_LABEL, timeAgo, type SceneAgent } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
-
-const AgentMiniChat = dynamic(() => import("./agent-mini-chat").then((m) => m.AgentMiniChat), {
-    loading: () => <div className="mt-3 rounded-xl border border-border/80 bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground animate-pulse dark:bg-white/[0.02]">Loading chat…</div>,
-});
 
 const PILL: Record<SceneAgent["status"], string> = {
     working: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/30 dark:text-emerald-300",
@@ -22,14 +18,13 @@ const PILL: Record<SceneAgent["status"], string> = {
     offline: "bg-zinc-500/12 text-zinc-500 ring-zinc-500/30 dark:text-zinc-400",
 };
 
-export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null; canAct: boolean; now: Date }) {
+export function SelectedAgent({ agent, canAct, now, onMessage }: { agent: SceneAgent | null; canAct: boolean; now: Date; onMessage?: () => void }) {
     const router = useRouter();
     const [restarting, setRestarting] = useState(false);
-    const [chatOpen, setChatOpen] = useState(false);
     if (!agent) {
         return (
             <section className="emperor-panel rounded-2xl p-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Selected agent</h2>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Agent actions</h2>
                 <p className="mt-3 text-sm text-muted-foreground">Pick someone on the floor to see what they are doing.</p>
             </section>
         );
@@ -37,10 +32,6 @@ export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null
     const { member, status, behavior } = agent;
     const task = member.working[0] ?? member.waiting[0] ?? member.next[0] ?? null;
     const connection = member.activity || member.runtimeOnline ? "Connected" : member.lastActivityAt ? "No recent connection" : "Connection unconfirmed";
-
-    const description = member.skills.length > 0 ? `Skills: ${member.skills.slice(0, 4).join(", ")}${member.skills.length > 4 ? "…" : ""}` : ZONES[agent.zone === "lounge" ? "operations" : agent.zone].blurb;
-    const upNext = member.next.find((t) => t.id !== task?.id);
-    const budgetPct = member.kind === "agent" ? budgetFraction(member.monthlyCostCents, member.monthlyBudgetCents) : null;
 
     const restart = async () => {
         if (!member.kind || member.kind !== "agent") return;
@@ -59,12 +50,10 @@ export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null
     };
 
     return (
-        <section aria-labelledby="selected-agent-title" className="emperor-panel rounded-2xl p-4">
+        <section aria-labelledby="selected-agent-title" className="min-w-0 w-full rounded-2xl p-1">
             <header className="flex items-center justify-between">
-                <h2 id="selected-agent-title" className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Selected agent</h2>
-                <Link href={member.href} aria-label={`Open ${member.name}`} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground">
-                    <IconArrowsMaximize className="h-4 w-4" />
-                </Link>
+                <h2 id="selected-agent-title" className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Agent actions</h2>
+
             </header>
 
             <div className="mt-3 flex gap-3">
@@ -73,10 +62,10 @@ export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[status] }} />
                         <span className="truncate text-base font-semibold text-foreground">{member.name}</span>
-                        <span title="Runtime connection" className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset", PILL[status])}>{STATUS_LABEL[status]}</span>
+                        <span title="Work status" className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset", PILL[status])}>{STATUS_LABEL[status]}</span>
                     </div>
                     <div className="mt-0.5 truncate text-sm text-foreground/80">{member.role || (member.kind === "human" ? "Teammate" : "Agent")}</div>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
+
                 </div>
             </div>
 
@@ -86,18 +75,17 @@ export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null
                     {behavior.caption}
                 </span>
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate font-medium text-foreground">{task ? task.title : agent.activity}</span>
+                    <span className="min-w-0 line-clamp-3 font-medium text-foreground [overflow-wrap:anywhere]">{task ? task.title : agent.activity}</span>
                 </div>
                 {task && <Link href={`/projects?project=${task.projectId}&task=${task.id}`} className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Open task · {task.state.replaceAll("_", " ")}</Link>}
-                {upNext && <p className="mt-2 break-words text-xs text-muted-foreground">Also queued: {upNext.title}</p>}
                 <p className="mt-2 text-xs text-muted-foreground">{connection}{member.lastActivityAt && ` · last seen ${timeAgo(member.lastActivityAt, now)}`}</p>
             </div>
 
-            {(agent.notices?.length ?? 0) > 0 && <ul className="mt-3 space-y-2" aria-label="Issues alongside this agent’s work">
+            {(agent.notices?.length ?? 0) > 0 && <details className="mt-3 rounded-lg border border-border"><summary className="min-h-11 cursor-pointer px-3 py-3 text-sm text-muted-foreground">Actions & observations ({agent.notices?.length})</summary><ul className="space-y-2 px-2 pb-2" aria-label="Issues alongside this agent’s work">
                 {agent.notices?.map((entry) => <li key={entry.id}><Link href={entry.href} className="flex min-h-11 items-start gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                     <span className="shrink-0 font-semibold text-muted-foreground">{requiresHumanAction(entry) ? "Action" : "Watch"}</span><span className="min-w-0 break-words">{entry.title}</span>
                 </Link></li>)}
-            </ul>}
+            </ul></details>}
 
             {/* Health + fix action */}
             {member.kind === "agent" && member.health === "down" && !member.activity && (
@@ -116,42 +104,11 @@ export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null
                 </div>
             )}
 
-            {/* Spend + activity */}
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <div className="rounded-lg bg-muted/40 px-2.5 py-2 dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Spend 24h</div>
-                    <div className="mt-0.5 font-semibold tabular-nums text-foreground">{member.kind === "agent" ? formatCents(member.spendTodayCents) ?? "—" : "—"}</div>
-                </div>
-                <div className="rounded-lg bg-muted/40 px-2.5 py-2 dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Done 24h</div>
-                    <div className="mt-0.5 font-semibold tabular-nums text-foreground">{member.doneToday}</div>
-                </div>
-                <div className="rounded-lg bg-muted/40 px-2.5 py-2 dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Last connection</div>
-                    <div className="mt-0.5 truncate font-semibold tabular-nums text-foreground">{member.lastActivityAt ? timeAgo(member.lastActivityAt, now) : "—"}</div>
-                </div>
-            </div>
-            {budgetPct !== null && (
-                <div className="mt-2">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>{formatCents(member.monthlyCostCents)} this month</span>
-                        <span className="tabular-nums">{member.monthlyBudgetCents > 0 ? `${Math.round(budgetPct * 100)}% of ${formatCents(member.monthlyBudgetCents)}` : "unlimited"}</span>
-                    </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted dark:bg-white/10">
-                        <div className={cn("h-full rounded-full", budgetPct >= 1 ? "bg-rose-500" : budgetPct > 0.8 ? "bg-amber-400" : "bg-emerald-400")} style={{ width: `${Math.min(100, budgetPct * 100)}%` }} />
-                    </div>
-                </div>
-            )}
-
-            {member.kind === "agent" && <>
-                <button type="button" aria-expanded={chatOpen} aria-controls="selected-agent-chat" onClick={() => setChatOpen((open) => !open)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><IconMessage className="h-4 w-4" />{chatOpen ? "Close quick chat" : `Quick chat with ${member.name}`}</button>
-                {chatOpen && <div id="selected-agent-chat"><AgentMiniChat key={member.id} agentId={member.id} agentName={member.name} canSend={canAct} /></div>}
-            </>}
-
+            {canAct && <AgentGoalControls agentId={member.id} />}
             <div className="mt-3 flex items-center gap-2">
-                <Link href={`/messages?agent=${member.id}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/50 transition hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 dark:text-cyan-200">
-                    <IconMessage className="h-4 w-4" />Open in Messages
-                </Link>
+                <button type="button" onClick={onMessage} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/50 transition hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 dark:text-cyan-200">
+                    <IconMessage className="h-4 w-4" />{canAct ? "Send message" : "Read conversation"}
+                </button>
                 <Link href={member.href} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                     View agent
                 </Link>

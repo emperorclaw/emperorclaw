@@ -115,6 +115,9 @@ export interface ActivityEvent {
 }
 
 export interface DashboardTeam {
+    members?: { kind: "agent" | "human"; id: string; name: string; role: string }[];
+    description?: string | null;
+    icon?: string | null;
     id: string;
     name: string;
     memberKeys: string[];
@@ -160,6 +163,8 @@ export interface AgentCost {
 export interface CostSummary {
     spendTodayCents: number;
     spendMonthCents: number;
+    usageReportsToday?: number;
+    reportedTokensToday?: number;
     budgetCents: number;
     /** Top agents by month spend, for the "who is spending" strip. */
     agents: AgentCost[];
@@ -1139,6 +1144,7 @@ export function skillNames(skillsJson: unknown): string[] {
 /** Cents → "$12.34" (never invents data; null/NaN → null). */
 export function formatCents(cents: number | null | undefined): string | null {
     if (cents === null || cents === undefined || !Number.isFinite(cents)) return null;
+    if (cents > 0 && cents < 1) return "<$0.01";
     return `$${(cents / 100).toFixed(2)}`;
 }
 

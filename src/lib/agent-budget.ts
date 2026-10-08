@@ -1,4 +1,5 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
+import { pricingModelRefs } from "@/lib/pricing-model-refs";
 import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
 import { nextBudgetStatus, type BudgetStatus } from "@/lib/billing";
@@ -25,9 +26,18 @@ export async function lockAgentBudget(tx: Transaction, companyId: string, agentI
 
 /** Never substitute the cheapest provider model for an unknown model. */
 export async function lookupUsagePricing(tx: Transaction, model: string) {
-    const [pricing] = await tx.select().from(llmPricing)
-        .where(and(eq(llmPricing.model, model), eq(llmPricing.active, true))).limit(1);
-    return pricing ?? null;
+    const refs = pricingModelRefs(model);
+    if (!refs.length) return null;
+    const rows = await tx.select().from(llmPricing)
+        .where(and(inArray(llmPricing.model, refs), eq(llmPricing.active, true)));
+    for (const ref of refs) {
+        const matches = rows.filter((row) => row.model === ref);
+        if (!matches.length) continue;
+        // Conflicting tariffs for an ambiguous model must remain unpriced.
+        if (matches.some((row) => row.inputPricePer1k !== matches[0].inputPricePer1k || row.outputPricePer1k !== matches[0].outputPricePer1k)) return null;
+        return matches[0];
+    }
+    return null;
 }
 
 export async function readAgentBudget(companyId: string, agentId: string) {

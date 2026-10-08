@@ -87,7 +87,9 @@ if [ -n "$EMPEROR_CLAW_LLM_PROVIDER" ]; then
     esac
     MODEL="${EMPEROR_CLAW_LLM_MODEL:-$DEFAULT_MODEL}"
     if [ -n "$MODEL" ]; then
-        hermes -p "$PROFILE_NAME" config set model.default "$MODEL" || true
+        if hermes -p "$PROFILE_NAME" config set model.default "$MODEL"; then
+            export EMPEROR_CLAW_RUNTIME_MODEL="$MODEL"
+        fi
     fi
     # A cloned profile inherits agent.reasoning_effort: medium, which several
     # non-reasoning models (gpt-4o-mini among them) reject outright with an

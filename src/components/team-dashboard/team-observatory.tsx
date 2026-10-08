@@ -7,7 +7,6 @@ import { agentMotion, requiresHumanAction, type DashboardTeam, type SceneAgent, 
 import { observatoryBays, visibleCommunications, sceneMessagePreview } from "@/lib/observatory";
 import { resolveAppearance, resolveAvatarPhoto } from "@/lib/character/model";
 import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
-import { AgentAvatar } from "./agent-character";
 import { ActivityCue } from "./character-activity";
 import { cn } from "@/lib/utils";
 
@@ -75,8 +74,6 @@ export function TeamObservatory({ companyName, agents, teams, communications, ev
     ];
     const animate = awake && !reducedMotion && fresh;
     const focusIndex = crew.findIndex((a) => a.member.key === selectedKey);
-    const selectedAgent = agents.find((a) => a.member.key === selectedKey);
-    const memberships = selectedAgent ? teams.filter((t) => t.memberKeys.includes(selectedAgent.member.key)) : [];
     const origin = focusIndex < 0 ? { x: width / 2, y: height / 2 } : position(focusIndex);
 
     return <div className={cn("observatory", !animate && "observatory-paused")}>
@@ -122,7 +119,7 @@ export function TeamObservatory({ companyName, agents, teams, communications, ev
                         const vars = { "--agent-hue": hue, "--blink-t": `${motion.blink.duration}ms`, "--blink-d": `${motion.blink.delay}ms`, "--cue-t": `${motion.cue.duration}ms`, "--cue-d": `${motion.cue.delay}ms`, "--typing-t": `${motion.typing.duration}ms`, "--typing-d": `${motion.typing.delay}ms`, "--screen-t": `${motion.screen.duration}ms`, "--screen-d": `${motion.screen.delay}ms` } as CSSProperties;
                         const color = `hsl(${hue} 75% 65%)`;
                         return <g key={m.key} transform={`translate(${p.x} ${p.y})`} style={vars}>
-                            {/* Small floating work platforms, light rails and a glass console facing the agent. */}
+                            {/* Floating work platforms and a compact side console; keep the avatar unobstructed. */}
                             <ellipse cy="20" rx="109" ry="33" fill="#020617" opacity="0.5" />
                             <path d="M-104 -4 L-62 -30 L62 -30 L104 -4 L104 9 L62 38 L-62 38 L-104 9 Z" fill="#0a1728" stroke={selected ? color : "#23445e"} strokeWidth={selected ? 2 : 1} />
                             <path d="M-104 -4 L-62 -30 L62 -30 L104 -4 L62 25 L-62 25 Z" fill={`url(#${uid}-glass)`} stroke={color} strokeOpacity="0.4" />
@@ -148,7 +145,7 @@ export function TeamObservatory({ companyName, agents, teams, communications, ev
                 {crew.map((agent, i) => {
                     const p = position(i); const m = agent.member;
                     const actions = agent.notices?.filter(requiresHumanAction).length ?? 0;
-                    return <button key={m.key} type="button" onClick={() => onSelect(m.key)} aria-pressed={selectedKey === m.key} aria-label={`${m.name}: ${agent.behavior.caption}${actions ? `, ${actions} pending actions` : ""}`} title={`${m.name} · ${agent.behavior.caption}`}
+                    return <button key={m.key} type="button" onClick={() => onSelect(m.key)} aria-haspopup="dialog" aria-pressed={selectedKey === m.key} aria-label={`${m.name}: ${agent.behavior.caption}${actions ? `, ${actions} pending actions` : ""}`} title={`${m.name} · ${agent.behavior.caption}`}
                         style={{ left: `${p.x / width * 100}%`, top: `${(p.y - 75) / height * 100}%`, width: `${280 / width * 100}%`, height: `${180 / height * 100}%` }}
                         className="absolute flex -translate-x-1/2 flex-col justify-end rounded-xl px-1 pb-1 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
                         <span className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-100 sm:text-sm">{m.name}{actions > 0 && <span className="rounded bg-amber-400/20 px-1 text-[10px] text-amber-200">{actions}</span>}</span>
@@ -168,13 +165,6 @@ export function TeamObservatory({ companyName, agents, teams, communications, ev
             </div>
             {pages > 1 && <div className="flex gap-2"><button type="button" aria-label="Previous agents" disabled={current === 0} onClick={() => { setPage(current - 1); setZoom(1); }} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400">Previous</button><button type="button" aria-label="Next agents" disabled={current === pages - 1} onClick={() => { setPage(current + 1); setZoom(1); }} className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-cyan-400">Next</button></div>}
         </div>
-        {selectedAgent && <div className="mt-3 rounded-xl border border-border bg-muted/20 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3"><AgentAvatar id={selectedAgent.member.id} name={selectedAgent.member.name} kind="agent" avatarUrl={selectedAgent.member.avatarUrl} avatarAppearance={selectedAgent.member.avatarAppearance} size={36} /><div className="min-w-0"><p className="text-sm font-semibold text-foreground">{selectedAgent.member.name}</p><p className="text-xs text-muted-foreground">{selectedAgent.member.activity && fresh ? sceneMessagePreview(selectedAgent.member.activity, 100) : selectedAgent.member.working.length ? `${selectedAgent.member.working.length} active task${selectedAgent.member.working.length === 1 ? "" : "s"} · live activity unconfirmed` : selectedAgent.member.waiting.length ? "Work awaiting review" : selectedAgent.member.next.length ? `${selectedAgent.member.next.length} tasks queued · awaiting pickup` : selectedAgent.status === "offline" ? "No assigned work · connection unconfirmed" : selectedAgent.status === "blocked" ? "No active task · check pending actions" : "Available · no assigned work"}</p></div></div>
-                <button type="button" onClick={() => onSelect(selectedAgent.member.key)} className="min-h-11 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">Inspect agent</button>
-            </div>
-            <details className="mt-2 text-xs text-muted-foreground"><summary className="min-h-11 cursor-pointer py-3 focus-visible:ring-2 focus-visible:ring-cyan-400">{memberships.length} chat group{memberships.length === 1 ? "" : "s"} · membership can overlap</summary><div className="flex flex-wrap gap-2">{memberships.length ? memberships.map((t) => <Link key={t.id} href={`/messages?group=${t.id}`} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-cyan-700 dark:text-cyan-300">{t.name}</Link>) : <span>No chat groups assigned.</span>}</div></details>
-        </div>}
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"><IconMessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" /><div className="min-w-0 flex-1">{message ? <><span className="font-semibold text-foreground">{crew.find((a) => a.member.key === message.actorKey)?.member.name}</span>{message.teamId && <span> in {teams.find((t) => t.id === message.teamId)?.name ?? "team chat"}</span>}{message.targetKey && <span> → {agents.find((a) => a.member.key === message.targetKey)?.member.name}</span>}<p className="mt-1 line-clamp-2">{sceneMessagePreview(message.text)}</p><Link href={message.href} className="mt-1 inline-flex min-h-11 items-center font-medium text-cyan-700 dark:text-cyan-300">Open conversation →</Link></> : <><span className="font-medium text-foreground">Conversation channel</span><p className="mt-1">New team messages appear here and above the speaking agent. Paths show recorded handoffs and direct conversations.</p></>}</div>{team && <Link href={`/messages?group=${team.id}`} className="inline-flex min-h-11 shrink-0 items-center text-cyan-700 dark:text-cyan-300">Team chat →</Link>}</div>
+        {(message || team) && <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 text-xs text-muted-foreground"><IconMessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" /><div className="min-w-0 flex-1">{message ? <><span className="font-semibold text-foreground">{crew.find((a) => a.member.key === message.actorKey)?.member.name}</span>{message.teamId && <span> in {teams.find((t) => t.id === message.teamId)?.name ?? "team chat"}</span>}{message.targetKey && <span> → {agents.find((a) => a.member.key === message.targetKey)?.member.name}</span>}<p className="mt-1 line-clamp-2">{sceneMessagePreview(message.text)}</p><Link href={message.href} className="mt-1 inline-flex min-h-11 items-center font-medium text-cyan-700 dark:text-cyan-300">Open conversation →</Link></> : <><span className="font-medium text-foreground">Conversation channel</span><p className="mt-1">New team messages appear here and above the speaking agent. Paths show recorded handoffs and direct conversations.</p></>}</div>{team && <Link href={`/messages?group=${team.id}`} className="inline-flex min-h-11 shrink-0 items-center text-cyan-700 dark:text-cyan-300">Team chat →</Link>}</div>}
     </div>;
 }

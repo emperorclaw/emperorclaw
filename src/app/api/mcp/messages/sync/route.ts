@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
                 eq(threadMessages.companyId, companyId),
                 ne(threadMessages.deliveryState, 'cancelled'),
                 sql`NOT (${threadMessages.metadataJson} ? 'runtimeControl')`,
+                sql`NOT (${threadMessages.metadataJson} ? 'runtimeGoalRequest')`,
             ];
 
             if (senderTypeFilter) {

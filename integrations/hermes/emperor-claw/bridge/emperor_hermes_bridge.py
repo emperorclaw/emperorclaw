@@ -872,7 +872,7 @@ def format_group_context(message: Dict[str, Any]) -> str:
     # not @mentions — suppress the members-only group boilerplate for it.
     if str(detail.get("description") or "") == "agent-pair":
         return ""
-    title = str(detail.get("title") or message.get("threadTitle") or "this group")
+    title = str(detail.get("title") or message.get("threadTitle") or "this group")[:120]
     lines = [f'You are replying in the group chat "{title}" (members only).']
     description = str(detail.get("description") or "").strip()
     if description:
@@ -883,20 +883,48 @@ def format_group_context(message: Dict[str, Any]) -> str:
     coordinators = [m for m in members if isinstance(m, dict) and m.get("role") in ("coordinator", "owner_coordinator") and m.get("name")]
     if coordinators:
         lead = coordinators[0]
-        lines.append(f"Team coordinator: {lead['name']} ({lead.get('kind', 'agent')}). This responsibility applies only to this group and does not grant extra permissions.")
+        lines.append(f"Team coordinator: {str(lead['name'])[:80]} ({'human' if lead.get('kind') == 'human' else 'agent'}). This responsibility applies only to this group and does not grant extra permissions.")
         lines.append("Coordinate using tasks with one owner and a clear deliverable. Raise unresolved blockers to the coordinator with the task and a concrete question. Status updates need no acknowledgment. Existing project leads and approval rules still apply.")
     if agent_names:
         lines.append("Agent members: " + ", ".join(
-            f"{name}{' (you)' if name == AGENT_NAME else ''}" for name in agent_names[:24]
+            f"{name[:40]}{' (you)' if name == AGENT_NAME else ''}" for name in agent_names[:24]
         ))
     if human_names:
-        lines.append("Human members: " + ", ".join(human_names[:24]))
+        lines.append("Human members: " + ", ".join(name[:40] for name in human_names[:24]))
+    if len(agent_names) > 24 or len(human_names) > 24 or any(len(name) > 40 for name in agent_names + human_names):
+        lines.append("Roster preview only. Use emperor_list_groups for complete membership and exact names before mentioning anyone.")
     lines.append(
         "Group rules: it works like team chat but only these members see it. Reply in this group. "
         "To hand work to a member, @mention them once with one concrete request; agents outside the group "
         "do not receive it, so use team chat or a direct message for them. "
         "When a human writes @all, every member is asked: answer for your own part only. Never write @all yourself."
     )
+    return "\n".join(lines)
+
+
+def format_my_team_roles() -> str:
+    """Small matrix-role summary for direct turns; never the whole company graph."""
+    teams = []
+    for thread_id, detail in _thread_details.items():
+        if detail.get("type") != "group" or detail.get("description") == "agent-pair":
+            continue
+        members = detail.get("members") if isinstance(detail.get("members"), list) else []
+        own = next((m for m in members if isinstance(m, dict) and m.get("kind") == "agent" and
+                    (m.get("id") == AGENT_ID or (not m.get("id") and m.get("name") == AGENT_NAME))), None)
+        if not own:
+            continue
+        lead = next((m for m in members if isinstance(m, dict) and m.get("role") in ("coordinator", "owner_coordinator")), None)
+        role = "coordinator" if own.get("role") in ("coordinator", "owner_coordinator") else "member"
+        title = str(detail.get("title") or "Team")[:48]
+        coordinator = str(lead.get("name") or "")[:48] if lead else "none"
+        teams.append((str(thread_id), f"{title}: you are {role}; coordinator: {coordinator}"))
+    if not teams:
+        return ""
+    lines = ["Your work teams (responsibilities apply only within each team):"]
+    lines.extend(row for _, row in sorted(teams)[:4])
+    lines.append("Use emperor_list_groups for complete memberships and exact names. Coordinate through owned tasks; project leads and approval permissions still apply.")
+    if len(teams) > 4:
+        lines.append(f"Plus {len(teams) - 4} other teams available through that tool.")
     return "\n".join(lines)
 
 
@@ -1655,6 +1683,8 @@ def apply_runtime_controls(payload: Dict[str, Any], state: Dict[str, Any]) -> bo
         return False
     # Persist the fresh-session decision before acknowledging: a restart between
     # these writes must never resume the prompt the operator just stopped.
+    import emperor_goals
+    emperor_goals.pause_all(sys.modules[__name__], state)
     state["sessions"] = {}
     save_state(state)
     for command in commands:
@@ -1751,7 +1781,9 @@ def invoke_hermes(
                     # Temporary server failures do not abandon an otherwise healthy turn.
                     log(f"runtime control polling failed: {exc}")
                     control = {}
-                if control.get("commands") or control.get("cancelled"):
+                import emperor_goals
+                goal_interrupted = emperor_goals.process_commands(sys.modules[__name__], state if state is not None else {}, active=True)
+                if goal_interrupted or control.get("commands") or control.get("cancelled"):
                     _terminate_turn(proc)
                     finish_capture()
                     apply_runtime_controls(control, state if state is not None else {})
@@ -2031,11 +2063,13 @@ def build_dynamic_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
     text = str(message.get("text") or "")
     main_chat_context = format_main_chat_context(message) if is_direct_thread(message, state) else ""
     group_context = format_group_context(message)
+    team_roles = format_my_team_roles() if is_direct_thread(message, state) else ""
     open_tasks = format_my_open_tasks()
     return (
         (f"{open_tasks}\n\n" if open_tasks else "")
         + (f"{main_chat_context}\n\n" if main_chat_context else "")
         + (f"{group_context}\n\n" if group_context else "")
+        + (f"{team_roles}\n\n" if team_roles else "")
         + f"Thread: {thread_id}\n"
         + f"Latest message: {text}"
     )
@@ -2173,7 +2207,8 @@ def report_token_usage(input_chars: int, output_chars: int) -> None:
         # Estimate tokens: 4 chars ≈ 1 token
         est_input = max(1, total_input // 4)
         est_output = max(1, total_output // 4)
-        model = _agent_llm_model or _agent_llm_provider or None
+        # Report the worker's selected model; provider names are not pricing model IDs.
+        model = os.environ.get("EMPEROR_CLAW_RUNTIME_MODEL") or _agent_llm_model or os.environ.get("EMPEROR_CLAW_LLM_MODEL") or None
         body: dict = {
             "agentId": AGENT_ID,
             "inputTokens": est_input,
@@ -2230,7 +2265,9 @@ def main() -> int:
             if CAPABILITY_REFRESH_SECONDS > 0 and time.time() - last_capability_refresh >= CAPABILITY_REFRESH_SECONDS:
                 refresh_server_capabilities()
                 last_capability_refresh = time.time()
+            import emperor_goals
             apply_runtime_controls(fetch_runtime_control(), state)
+            emperor_goals.process_commands(sys.modules[__name__], state)
             for message in sync_messages(state):
                 message_id = str(message.get("id") or "")
                 if not message_id:
@@ -2332,6 +2369,7 @@ def main() -> int:
                     except Exception as exc:
                         log(f"usage report pending; future dispatch blocked: {exc}")
                     reply_message_id = send_reply(message, reply)
+                    emperor_goals.record_external_turn(sys.modules[__name__], message, reply, state)
                     # Reasoning history is a bonus artifact, so it is isolated
                     # the same way the recovery calls below are: if this write
                     # throws it must NOT escape into the except block, which
@@ -2386,6 +2424,8 @@ def main() -> int:
                 if ts and message_id not in retry_entries(state):
                     state["lastSeenAt"] = ts
                 save_state(state)  # Persist immediately after each dispatch
+            emperor_goals.process_commands(sys.modules[__name__], state)
+            emperor_goals.run_next(sys.modules[__name__], state)
             save_state(state)
         except Exception as exc:
             log(f"error: {exc}")

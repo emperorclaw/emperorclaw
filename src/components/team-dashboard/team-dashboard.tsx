@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX, IconUsersGroup } from "@tabler/icons-react";
 import {
@@ -37,6 +39,8 @@ function subscribeClock(onChange: () => void) {
     window.addEventListener("offline", onChange);
     return () => { window.clearInterval(timer); window.removeEventListener("online", onChange); window.removeEventListener("offline", onChange); };
 }
+const AgentDirectChat = dynamic(() => import("@/components/agent-direct-chat").then((module) => module.AgentDirectChat), { loading: () => <p className="p-6 text-sm text-muted-foreground">Loading conversation…</p> });
+
 /** Container: owns filters and selection, derives everything else from server data. */
 export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     data: DashboardData;
@@ -56,7 +60,8 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const [motionPaused, setMotionPaused] = useState(false);
     const playfulIdle = false;
     const inboxRef = useRef<HTMLDivElement>(null);
-    const detailRef = useRef<HTMLDivElement>(null);
+    const selectionTriggerRef = useRef<HTMLElement | null>(null);
+    const [agentPanel, setAgentPanel] = useState<"actions" | "chat" | null>(null);
     const [kpi, setKpi] = useState<KpiFilter | null>(null);
     const [query, setQuery] = useState("");
     const [zoneFilter, setZoneFilter] = useState<ZoneId | null>(null);
@@ -107,8 +112,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const shortcut = useSyncExternalStore(() => () => {}, () => (/mac|iphone|ipad/i.test(navigator.userAgent) ? "⌘K" : "Ctrl K"), () => "⌘K");
 
     const selectMember = (key: string) => {
+        selectionTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setSelected(key);
-        if (window.innerWidth < 1280) detailRef.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
+        setAgentPanel("actions");
     };
     const focusMember = (key: string) => {
         selectMember(key);
@@ -157,7 +163,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_21.5rem]">
                 <div className="min-w-0 space-y-4">
                     <KpiRow counts={counts} active={kpi} onToggle={toggleKpi} />
-                    <MetricsRow cost={data.cost} throughput={data.throughput} onFilter={openFiltered} />
+                    <details className="emperor-panel rounded-2xl"><summary className="min-h-11 cursor-pointer px-4 py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Performance & reported costs</summary><MetricsRow cost={data.cost} throughput={data.throughput} onFilter={openFiltered} /></details>
 
                     {(kpi || query || zoneFilter) && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
                         <span className="text-muted-foreground">{kpi === "attention" ? "Agents linked to the action inbox" : kpi === "done" ? "Agents that delivered in the last 24h" : kpi === "working" ? "Working agents and in-progress tasks" : kpi === "waiting" ? "Agents with work awaiting review" : "Filtered workspace"}{query && ` · “${query}”`}</span>
@@ -223,19 +229,27 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                         ) : view === "pulse" ? (
                             <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />
                         ) : view === "teams" ? (
-                            <TeamStructure teams={data.teams ?? []} agents={agents.filter(isActive)} onSelect={selectMember} />
+                            <TeamStructure people={data.members} canEdit={canAct} teams={data.teams ?? []} agents={agents} onSelect={selectMember} />
                         ) : (
                             <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} now={now} />
                         )}
                     </section>
                 </div>
 
-                <aside aria-label="Decisions and agent details" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <aside aria-label="Decisions and observations" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
                     <div ref={inboxRef} className="scroll-mt-4"><NeedsAttention entries={actions} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} /></div>
-                    <div ref={detailRef} className="scroll-mt-4"><SelectedAgent key={selectedAgent?.member.key} agent={selectedAgent} canAct={canAct} now={now} /></div>
+
                     {watchlist.length > 0 && <NeedsAttention entries={watchlist} watchlist now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />}
                 </aside>
             </div>
+
+            <Dialog open={agentPanel !== null && !!selected && selectedAgent?.member.key === selected} onOpenChange={(open) => { if (!open) setAgentPanel(null); }}>
+                <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); if (selectionTriggerRef.current?.isConnected) selectionTriggerRef.current.focus(); else searchRef.current?.focus(); }} className={cn("dark overflow-hidden [&_[data-slot=dialog-close]]:top-2 [&_[data-slot=dialog-close]]:right-2 [&_[data-slot=dialog-close]]:flex [&_[data-slot=dialog-close]]:h-11 [&_[data-slot=dialog-close]]:w-11 [&_[data-slot=dialog-close]]:items-center [&_[data-slot=dialog-close]]:justify-center", agentPanel === "chat" ? "flex h-[min(88dvh,850px)] max-w-[calc(100%-1rem)] flex-col gap-0 p-0 sm:max-w-3xl" : "max-h-[90dvh] overflow-y-auto sm:max-w-md")}>
+                    <DialogTitle className={agentPanel === "chat" ? "border-b border-border px-4 py-4 pr-14 text-base" : "sr-only"}>{agentPanel === "chat" ? `Conversation with ${selectedAgent?.member.name}` : `Actions for ${selectedAgent?.member.name}`}</DialogTitle>
+                    <DialogDescription className="sr-only">{agentPanel === "chat" ? "Direct conversation using the same chat and rich message renderer as Messages." : "Current work and actions for this agent."}</DialogDescription>
+                    {agentPanel === "chat" && selectedAgent ? <><div className="flex min-h-0 flex-1 flex-col"><AgentDirectChat key={selectedAgent.member.id} agentId={selectedAgent.member.id} agentName={selectedAgent.member.name} hideHeader canSend={canAct} /></div><Link href={`/messages?agent=${selectedAgent.member.id}`} className="min-h-11 border-t border-border px-4 py-3 text-center text-sm text-cyan-300">Open in Messages</Link></> : <SelectedAgent key={selectedAgent?.member.key} agent={selectedAgent} canAct={canAct} now={now} onMessage={() => setAgentPanel("chat")} />}
+                </DialogContent>
+            </Dialog>
 
             <MovementFeed feed={data.feed} now={now} isOwnerOrAdmin={isOwnerOrAdmin} />
             {kpi !== "attention" && <WorkBoard columns={columns} assignees={assignees} canAct={canAct} />}

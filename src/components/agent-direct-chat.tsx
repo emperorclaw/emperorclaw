@@ -10,6 +10,8 @@ import { RichMessageActionsContext } from "@/components/rich/rich-message-action
 import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
+import { queuePromptPreview } from "@/lib/queue-prompt-preview";
+import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceLabel } from "@/lib/request-label";
 
 const CHAT_PAGE_SIZE = 25;
@@ -91,11 +93,13 @@ export function AgentDirectChat({
     agentId,
     agentName,
     hideHeader = false,
+    canSend = true,
     onAgentReply,
 }: {
     agentId: string;
     agentName: string;
     hideHeader?: boolean;
+    canSend?: boolean;
     onAgentReply?: (message: { text: string; createdAt: string }) => void;
 }) {
     const { data: session } = useSession();
@@ -413,7 +417,7 @@ export function AgentDirectChat({
     };
 
     const sendVoice = async () => {
-        if (!audioBlobRef.current || isSending) return;
+        if (!canSend || !audioBlobRef.current || isSending) return;
         setIsSending(true);
         setMicError(null);
         try {
@@ -534,7 +538,7 @@ export function AgentDirectChat({
     const handleSend = async (event: React.FormEvent) => {
         event.preventDefault();
         const text = draft.trim();
-        if ((!text && pendingAttachments.length === 0) || isSending) return;
+        if (!canSend || (!text && pendingAttachments.length === 0) || isSending) return;
 
         setIsSending(true);
         setControlError(null);
@@ -603,6 +607,7 @@ export function AgentDirectChat({
     // operator (a "Show details" button, a drill-down in a chart). It is posted
     // exactly like a typed message, so it stays visible in the transcript.
     const sendWidgetPrompt = useCallback(async (prompt: string) => {
+        if (!canSend) return;
         setControlError(null);
         forceScrollToBottomRef.current = true;
         try {
@@ -627,8 +632,8 @@ export function AgentDirectChat({
             setControlError(error instanceof Error ? error.message : "Failed to send message");
             return false;
         }
-    }, [agentId, loadMessages]);
-    const richActions = useMemo(() => ({ sendPrompt: sendWidgetPrompt }), [sendWidgetPrompt]);
+    }, [agentId, loadMessages, canSend]);
+    const richActions = useMemo(() => canSend ? { sendPrompt: sendWidgetPrompt } : {}, [sendWidgetPrompt, canSend]);
     const queueItems = useMemo(() => messages.filter((message) => (
         message.senderType === "human" && ["queued", "seen", "acting"].includes(message.deliveryState || "")
     )), [messages]);
@@ -874,9 +879,12 @@ export function AgentDirectChat({
                 </button>
             )}
 
-            <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
+            {canSend && <AgentGoalControls agentId={agentId} />}
+            {canSend && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {(hasQueueBacklog || showCancelledHistory) && (
-                    <section aria-label="Agent message queue" className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-xs">
+                    <details key={showCancelledHistory ? "history" : "pending"} open={showCancelledHistory ? true : undefined} aria-label="Agent message queue" className="rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs">
+                        <summary className="min-h-11 cursor-pointer px-3 py-3 font-medium text-zinc-300">Message queue · {queueItems.length} pending</summary>
+                        <div className="max-h-48 overflow-y-auto px-3 pb-3">
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <span className="font-semibold text-zinc-200">Message queue</span>
                             <div className="flex items-center gap-3">
@@ -905,7 +913,7 @@ export function AgentDirectChat({
                                 onCancel={() => void updateQueueItem(message.id, "cancel")}
                             />
                         ))}
-                        {recentlyCancelledItems.length > 0 && (
+                        {showCancelledHistory && recentlyCancelledItems.length > 0 && (
                             <div className="mt-2 border-t border-zinc-800 pt-2">
                                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Recently cancelled</p>
                                 {recentlyCancelledItems.map((message) => (
@@ -919,9 +927,10 @@ export function AgentDirectChat({
                                 ))}
                             </div>
                         )}
-                    </section>
+                        </div>
+                    </details>
                 )}
-                {queueItems.length === 0 && recentlyCancelledItems.length > 0 && !showCancelledHistory && (
+                {recentlyCancelledItems.length > 0 && !showCancelledHistory && (
                     <button type="button" onClick={() => setShowCancelledHistory(true)} className="px-1 text-[10px] text-zinc-600 hover:text-zinc-300">
                         {recentlyCancelledItems.length} recently cancelled · Review or retry
                     </button>
@@ -1032,11 +1041,11 @@ export function AgentDirectChat({
                                 event.currentTarget.form?.requestSubmit();
                             }
                         }}
-                        placeholder={`Message ${agentName} directly...`}
+                        placeholder="Message…"
                         aria-label={`Message ${agentName}`}
                         aria-describedby="direct-message-shortcut"
                         rows={1}
-                        className="max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 sm:px-4"
+                        className="max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-base leading-5 text-zinc-200 sm:text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 sm:px-4"
                     />
                     <button
                         type="button"
@@ -1071,7 +1080,7 @@ export function AgentDirectChat({
                 </p>
             </form>
                 )}
-            </div>
+            </div>}
         </div>
         </RichMessageActionsContext.Provider>
     );
@@ -1112,18 +1121,18 @@ function QueueItem({
         <div className="flex items-center gap-2 py-1.5">
             <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", message.deliveryState === "acting" ? "bg-emerald-400 animate-pulse" : "bg-zinc-500")} />
             <div className="min-w-0 flex-1">
-                <p className="truncate text-zinc-300" title={message.text}>{message.text || "Attachment"}</p>
+                <p className="line-clamp-2 break-words text-zinc-300">{queuePromptPreview(message.text)}</p>
                 <p className="text-[10px] text-zinc-500">{stateLabel}</p>
             </div>
             {onCancel && (
                 <button type="button" onClick={onCancel} disabled={disabled}
-                    className="rounded border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-red-400/60 hover:text-red-300 disabled:opacity-50">
+                    className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-red-400/60 hover:text-red-300 disabled:opacity-50">
                     Cancel
                 </button>
             )}
             {onRetry && (
                 <button type="button" onClick={onRetry} disabled={disabled}
-                    className="rounded border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-50">
+                    className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-50">
                     Retry
                 </button>
             )}

@@ -49,10 +49,11 @@ export function MetricsRow({ cost, throughput, onFilter }: {
                         )}
                     </h2>
                     <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                        <span className="text-2xl font-semibold leading-7 tabular-nums text-foreground">{formatCents(cost.spendTodayCents) ?? "—"}</span>
+                        <span className="text-2xl font-semibold leading-7 tabular-nums text-foreground">{cost.usageReportsToday === 0 ? "Not reported" : formatCents(cost.spendTodayCents) ?? "—"}</span>
                         <span className="text-sm text-muted-foreground">last 24h</span>
                         <span className="text-sm tabular-nums text-foreground/80">{formatCents(cost.spendMonthCents) ?? "—"} <span className="text-muted-foreground">this month</span></span>
                     </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{cost.usageReportsToday === 0 ? "No usage reports in the last 24h." : cost.spendTodayCents === 0 && (cost.reportedTokensToday ?? 0) > 0 ? "Tokens reported with zero recorded cost. Check model pricing." : "Reported estimates; runtime coverage may vary."}</p>
                     {budgetPct !== null && (
                         <div className="mt-2">
                             <div className="flex items-center justify-between text-[11px] text-muted-foreground">

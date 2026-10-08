@@ -78,11 +78,11 @@ export async function POST(req: NextRequest) {
             await tx.update(agents).set({ monthlyTokenUsage, monthlyCostCents, budgetStatus })
                 .where(eq(agents.id, effectiveAgentId));
             if (totalTokens > 0) {
-                await tx.insert(tokenUsageLog).values({ companyId, agentId: effectiveAgentId, model: pricingLookupModel,
+                await tx.insert(tokenUsageLog).values({ companyId, agentId: effectiveAgentId, model: pricing?.model ?? pricingLookupModel,
                     ...split, costCents });
             }
             return NextResponse.json({ ok: true, agentId: effectiveAgentId, monthlyTokenUsage, monthlyCostCents,
-                budgetStatus, model: pricingLookupModel, costCents });
+                budgetStatus, model: pricingLookupModel, costCents, pricingStatus: pricing ? "priced" : "unpriced" });
         });
     } catch (error) {
         console.error("report-usage error:", error);

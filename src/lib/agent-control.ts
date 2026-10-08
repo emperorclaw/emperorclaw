@@ -23,7 +23,7 @@ export async function requestAgentControl(companyId: string, userId: string, age
                 inArray(threadMessages.deliveryState, ["queued", "seen", "acting"]),
                 // Direct requests plus a team request this agent is actually handling.
                 sql`(${threadMessages.targetAgentId} = ${agentId}::uuid OR (${threadMessages.senderType} = 'human' AND ${threadMessages.metadataJson}->>'executionActorId' = ${agentId}))`,
-                eq(threadMessages.senderType, "human"),
+                sql`(${threadMessages.senderType} = 'human' OR ${threadMessages.metadataJson} ? 'runtimeGoalRequest')`,
             )).returning();
             changed.push(...cancelled);
             const [command] = await tx.insert(threadMessages).values({

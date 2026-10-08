@@ -63,6 +63,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const canAct = instanceRole === "instance_admin" || companyRole !== "viewer";
     const isOwnerOrAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
 
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const usageSince = new Date(Math.min(monthStart.getTime(), dayAgo.getTime()));
     const [[company], [currentUser], members, agentRows, openTasks, pendingApprovals, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount] = await Promise.all([
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         userId
@@ -71,7 +73,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email, roleTitle: users.roleTitle })
             .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
             .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
-        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents })
+        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents, lastResetMonth: agents.lastResetMonth })
             .from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
         db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
@@ -93,8 +95,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: taskEvents.id, eventType: taskEvents.eventType, actorType: taskEvents.actorType, actorId: taskEvents.actorId, taskId: taskEvents.taskId, createdAt: taskEvents.createdAt, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(taskEvents).innerJoin(tasks, eq(tasks.id, taskEvents.taskId))
             .where(and(eq(taskEvents.companyId, companyId), gte(taskEvents.createdAt, dayAgo))).orderBy(desc(taskEvents.createdAt)).limit(120),
-        db.select({ agentId: tokenUsageLog.agentId, costCents: sql<number>`COALESCE(SUM(${tokenUsageLog.costCents}), 0)`.mapWith(Number) })
-            .from(tokenUsageLog).where(and(eq(tokenUsageLog.companyId, companyId), gte(tokenUsageLog.reportedAt, dayAgo)))
+        db.select({ agentId: tokenUsageLog.agentId, costCents: sql<number>`COALESCE(SUM(${tokenUsageLog.costCents}) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${dayAgo}), 0)`.mapWith(Number), monthCostCents: sql<number>`COALESCE(SUM(${tokenUsageLog.costCents}) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${monthStart}), 0)`.mapWith(Number), reports: sql<number>`COUNT(*) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${dayAgo})`.mapWith(Number), tokens: sql<number>`COALESCE(SUM(${tokenUsageLog.inputTokens} + ${tokenUsageLog.outputTokens}) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${dayAgo}), 0)`.mapWith(Number) })
+            .from(tokenUsageLog).where(and(eq(tokenUsageLog.companyId, companyId), gte(tokenUsageLog.reportedAt, usageSince)))
             .groupBy(tokenUsageLog.agentId),
         db.select({ count: sql<number>`COUNT(*)::int` }).from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [TASK_STATES.failed, TASK_STATES.deadLetter]), isNull(tasks.deletedAt))),
     ]);
@@ -133,7 +135,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // Ordinary group chats follow the same company-wide read policy as Messages.
     // Private pair threads stay in the owner/admin-only query above.
     const chatGroups = await listGroups(companyId, { includePairThreads: false });
-    const teams = chatGroups.map((g) => ({ id: g.id, name: g.title, coordinator: g.coordinator ? { key: `${g.coordinator.kind}:${g.coordinator.id}`, name: g.coordinator.name, kind: g.coordinator.kind } : null, humanCount: g.members.filter((m) => m.kind === "human").length, memberKeys: g.members.filter((m) => m.kind === "agent").map((m) => `agent:${m.id}`) }));
+    const teams = chatGroups.map((g) => ({ members: g.members, description: g.description, icon: g.icon, id: g.id, name: g.title, coordinator: g.coordinator ? { key: `${g.coordinator.kind}:${g.coordinator.id}`, name: g.coordinator.name, kind: g.coordinator.kind } : null, humanCount: g.members.filter((m) => m.kind === "human").length, memberKeys: g.members.filter((m) => m.kind === "agent").map((m) => `agent:${m.id}`) }));
     const roomIds = teams.map((g) => g.id);
     const roomMessages = roomIds.length ? await db.select({ id: threadMessages.id, threadId: threadMessages.threadId, senderId: threadMessages.senderId, text: sql<string>`LEFT(${threadMessages.text}, 4096)`, createdAt: threadMessages.createdAt })
         .from(threadMessages).where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, roomIds), eq(threadMessages.senderType, "agent"), gte(threadMessages.createdAt, new Date(now.getTime() - 60_000))))
@@ -225,6 +227,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         pairAgentsByThread.set(p.threadId, list);
     }
 
+    const spendMonthByAgent = new Map(usageToday.map((u) => [u.agentId, Number(u.monthCostCents) || 0]));
+    const monthSpend = (a: typeof agentRows[number]) => spendMonthByAgent.get(a.id) ?? (a.lastResetMonth === now.toISOString().slice(0, 7) ? Number(a.monthlyCostCents) || 0 : 0);
     const spendTodayByAgent = new Map(usageToday.map((u) => [u.agentId, Number(u.costCents) || 0]));
 
     const workFor = (key: string): Pick<DashboardMember, "working" | "waiting" | "next" | "doneToday"> => {
@@ -245,7 +249,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             health: h?.status ?? null, healthReasons: h?.reasons ?? [], activity: activityByAgent.get(a.id) ?? null, href: `/agents?agent=${a.id}`,
             createdAt: a.createdAt.toISOString(),
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
-            monthlyCostCents: Number(a.monthlyCostCents) || 0,
+            monthlyCostCents: monthSpend(a),
             monthlyBudgetCents: a.monthlyBudgetCents,
             lastActivityAt: h?.lastSeenAt ?? null, runtimeOnline: h?.online ?? false, canRestartRuntime: a.provider === "hermes" && a.deploymentMode === "local",
             ...workFor(`agent:${a.id}`),
@@ -375,12 +379,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const cost: CostSummary = {
         spendTodayCents: [...spendTodayByAgent.values()].reduce((s, n) => s + n, 0),
-        spendMonthCents: agentRows.reduce((s, a) => s + (Number(a.monthlyCostCents) || 0), 0),
+        spendMonthCents: usageToday.reduce((sum, row) => sum + row.monthCostCents, 0) + agentRows.filter((a) => !spendMonthByAgent.has(a.id)).reduce((sum, a) => sum + monthSpend(a), 0),
+        usageReportsToday: usageToday.reduce((sum, row) => sum + row.reports, 0),
+        reportedTokensToday: usageToday.reduce((sum, row) => sum + row.tokens, 0),
         budgetCents: agentRows.reduce((s, a) => s + a.monthlyBudgetCents, 0),
         agents: agentRows.map((a) => ({
             key: `agent:${a.id}`, name: a.name,
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
-            monthCents: Number(a.monthlyCostCents) || 0,
+            monthCents: monthSpend(a),
             budgetCents: a.monthlyBudgetCents,
         })).sort((a, b) => b.monthCents - a.monthCents).slice(0, 5),
     };
