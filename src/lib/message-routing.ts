@@ -206,15 +206,20 @@ export function decideDelivery(input: {
         return { addressedToYou: false, routeReason: "loop_paused" };
     }
 
+    // In a two-agent pair thread the counterpart is addressed without mention.
+    // This wins over `targeted`: pair messages keep targetAgentId set only so
+    // old runtimes still route them, but the verdict is the pair handoff.
+    if (
+        input.isAgentPair && senderType === "agent" && message.senderId && message.senderId !== agentId &&
+        (!message.targetAgentId || message.targetAgentId === agentId)
+    ) {
+        return { addressedToYou: true, routeReason: "agent_pair" };
+    }
+
     if (message.targetAgentId) {
         return message.targetAgentId === agentId
             ? { addressedToYou: true, routeReason: "targeted" }
             : { addressedToYou: false, routeReason: "targeted_other" };
-    }
-
-    // In a two-agent pair thread the counterpart is addressed without mention.
-    if (input.isAgentPair && senderType === "agent" && message.senderId && message.senderId !== agentId) {
-        return { addressedToYou: true, routeReason: "agent_pair" };
     }
 
     // Sync only returns direct threads this agent participates in: a human

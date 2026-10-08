@@ -149,8 +149,9 @@ maybe("loop guard trips on agent ping-pong in a pair thread", async () => {
     const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
     const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
 
-    const oldCap = process.env.EMPEROR_AGENT_LOOP_MAX_TURNS;
-    process.env.EMPEROR_AGENT_LOOP_MAX_TURNS = "2";
+    // A pair thread uses the pair cap (EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS), not the room cap.
+    const oldCap = process.env.EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS;
+    process.env.EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS = "2";
     try {
         const sent = await sendThreadMessageFromMcp({ companyId, text: "ping", agentId: b.id, targetAgentId: a.id });
         const threadId = sent.threadId;
@@ -158,12 +159,17 @@ maybe("loop guard trips on agent ping-pong in a pair thread", async () => {
         await sendThreadMessageFromMcp({ companyId, text: "ping 3", threadId, agentId: b.id });
 
         const messages = await syncFor(companyId, rawToken, a.id);
-        const pings = messages.filter((m) => m.threadId === threadId).reverse();
-        assert.equal(pings[0].routeReason, "loop_paused", "the third consecutive agent message is loop-paused");
-        assert.equal(pings[0].addressedToYou, false);
+        const inThread = messages.filter((m) => m.threadId === threadId);
+        // Pick the third agent ping itself: tripping the guard also posts a
+        // system "Paused" notice, which is the newest message in the thread.
+        const third = inThread.find((m) => m.text === "ping 3");
+        assert.ok(third, "Alpha sees the third ping");
+        assert.equal(third.routeReason, "loop_paused", "the third consecutive agent message is loop-paused");
+        assert.equal(third.addressedToYou, false);
+        assert.ok(inThread.some((m) => m.senderType === "system" && /^Paused:/.test(m.text)), "one pause notice is posted");
     } finally {
-        if (oldCap === undefined) delete process.env.EMPEROR_AGENT_LOOP_MAX_TURNS;
-        else process.env.EMPEROR_AGENT_LOOP_MAX_TURNS = oldCap;
+        if (oldCap === undefined) delete process.env.EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS;
+        else process.env.EMPEROR_AGENT_PAIR_LOOP_MAX_TURNS = oldCap;
     }
 });
 
@@ -283,6 +289,7 @@ maybe("stall sweep coalesces many stale tasks and ignores abandoned backlog", as
         { companyId, projectId: project.id, taskType: "work", state: "in_progress", assignedAgentId: dev.id, inputJson: { title: "Abandoned" }, updatedAt: abandoned },
     ]);
 
+    const { eq } = await import("drizzle-orm");
     const { runStallSweep } = await import("@/lib/stall-sweep");
     assert.equal(await runStallSweep(), 1, "two stale tasks coalesce into one nudge");
 

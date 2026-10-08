@@ -369,7 +369,7 @@ export async function isAgentGroupMember(companyId: string, groupId: string, age
  * other, and the routing verdict marks it `agent_pair` (addressed without
  * @mention). Company owners/admins can read it in the Messages UI under groups.
  */
-export function isAgentPairThread(thread: { description?: string | null; createdByType?: string | null }): boolean {
+export function isAgentPairThread(thread: { description: string | null; createdByType: string | null }): boolean {
     // Both the reserved marker AND a system creator: description alone is
     // user-settable, so a human/agent-created group with the marker is not a
     // pair thread (and `cleanDescription` rejects the marker anyway).

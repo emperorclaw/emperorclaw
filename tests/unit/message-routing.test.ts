@@ -99,6 +99,8 @@ test("loop limits read the environment safely", () => {
 test("decideDelivery: a two-agent pair thread addresses the counterpart without @mention", () => {
     const base = { agentId: "qa", roster, agentStreak: 0, threadType: "group", isAgentPair: true };
     assert.deepEqual(decideDelivery({ ...base, message: agent("need a review", "dev") }), { addressedToYou: true, routeReason: "agent_pair" });
+    // Pair messages keep targetAgentId for old runtimes; the verdict is still agent_pair.
+    assert.deepEqual(decideDelivery({ ...base, message: { ...agent("need a review", "dev"), targetAgentId: "qa" } }), { addressedToYou: true, routeReason: "agent_pair" });
     // The sender's own message never loops back to itself.
     assert.deepEqual(decideDelivery({ ...base, message: agent("mine", "qa") }), { addressedToYou: false, routeReason: "self" });
     // A human message in a pair thread is not addressed without a mention.

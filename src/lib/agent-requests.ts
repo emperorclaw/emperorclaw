@@ -151,6 +151,8 @@ export async function createAgentRequest(input: CreateAgentRequestInput): Promis
             },
             actorType: "system",
             source: "agent_request",
+            // This flow posts its own targeted brief below; skip the generic wake.
+            wake: false,
         });
 
         const { appendThreadMessage, ensureDirectThread } = await import("@/lib/control-plane");

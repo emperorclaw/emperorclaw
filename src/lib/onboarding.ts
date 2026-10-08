@@ -101,6 +101,8 @@ export async function startCompanyDocumentation(input: DocumentInput): Promise<{
         },
         actorType: "system",
         source: "onboarding",
+        // This flow posts its own targeted brief below; skip the generic wake.
+        wake: false,
     });
 
     const { appendThreadMessage, ensureDirectThread } = await import("@/lib/control-plane");

@@ -47,6 +47,12 @@ type CreateTaskInput = {
   assignedAgentId?: string | null;
   actorType?: "agent" | "human" | "system";
   actorId?: string | null;
+  /**
+   * Set to false when the caller posts its own targeted brief for this task
+   * (agent requests, onboarding first job): the generic assignment wake would
+   * be a second message for the same event.
+   */
+  wake?: boolean;
 };
 
 type FinalizeTaskInput = {
@@ -421,7 +427,7 @@ export async function createTaskForProject(input: CreateTaskInput) {
 
   await broadcastMcpEvent(input.companyId, { type: "new_task", task });
   await notifyTaskAssigned(input.companyId, task);
-  await wakeAgentOnTaskAssignment({
+  if (input.wake !== false) await wakeAgentOnTaskAssignment({
     companyId: input.companyId,
     task,
     actorAgentId: input.actorType === "agent" ? input.actorId : null,
