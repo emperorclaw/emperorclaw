@@ -9,6 +9,24 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.76] — 2026-10-09
+
+### Added
+- Dedicated Agents → Organization page with a single company leader and flexible team branches.
+- Team chats created with new teams, existing group reuse, shared agent memberships, and optional team coordinators.
+- Agent-bound organization consultation endpoint and compact Hermes reporting guidance refreshed each turn.
+- Onboarding initializes its leader and teams once without overwriting an existing organization.
+
+### Changed
+- Dashboard agent selection opens a focused work briefing, with current tasks, actionable decisions, recent exchanges and a primary chat action.
+- Desktop side panel and mobile bottom sheet keep navigation and long content manageable.
+- Organization editing lives on its own page, linked from Agents and the dashboard.
+
+### Compatibility
+- Migration 0055 adds a nullable company organization field; existing chats and memberships are retained.
+- Update both app and Hermes runtime for reporting context. Older servers keep normal group messaging.
+- Organizational roles do not grant permissions or trigger messages automatically.
+
 ## [0.8.75] — 2026-10-09
 
 ### Added
