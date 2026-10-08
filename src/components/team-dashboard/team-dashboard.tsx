@@ -4,7 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX, IconUsersGroup } from "@tabler/icons-react";
+import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX, IconHierarchy2 } from "@tabler/icons-react";
 import {
     requiresHumanAction, filterDashboardBoard, snapshotFreshness, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, ZONES,
     type DashboardData, type KpiFilter, type SceneAgent, type ZoneId,
@@ -185,8 +185,8 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <div role="tablist" aria-label="Workspace view" className="flex rounded-xl border border-border bg-muted/40 p-0.5 dark:bg-white/[0.03]">
-                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList], ["teams", "Teams", IconUsersGroup]] as const).map(([id, label, Icon]) => (
+                                <div role="tablist" aria-label="Workspace view" className="grid grid-cols-2 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex dark:bg-white/[0.03]">
+                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList], ["teams", "Organization", IconHierarchy2]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
                                             className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                                 view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
@@ -229,7 +229,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                         ) : view === "pulse" ? (
                             <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />
                         ) : view === "teams" ? (
-                            <TeamStructure people={data.members} canEdit={canAct} teams={data.teams ?? []} agents={agents} onSelect={selectMember} />
+                            <TeamStructure companyName={data.companyName} people={data.members} canEdit={canAct} teams={data.teams ?? []} agents={agents} onSelect={selectMember} />
                         ) : (
                             <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} now={now} />
                         )}
