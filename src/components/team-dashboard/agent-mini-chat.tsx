@@ -20,10 +20,11 @@ const POLL_MS = 3000;
  * so it never invents an API. Shows the last few messages with a one-line
  * composer and the same 3s polling cadence.
  */
-export function AgentMiniChat({ agentId, agentName }: { agentId: string; agentName: string }) {
+export function AgentMiniChat({ agentId, agentName, canSend = true }: { agentId: string; agentName: string; canSend?: boolean }) {
     const [messages, setMessages] = useState<MiniMessage[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
     const [draft, setDraft] = useState("");
     const [sending, setSending] = useState(false);
     const listRef = useRef<HTMLDivElement>(null);
@@ -49,7 +50,7 @@ export function AgentMiniChat({ agentId, agentName }: { agentId: string; agentNa
     useEffect(() => {
         aliveRef.current = true;
         void load();
-        const interval = setInterval(() => void load(), POLL_MS);
+        const interval = setInterval(() => { if (!document.hidden && navigator.onLine) void load(); }, POLL_MS);
         return () => { aliveRef.current = false; clearInterval(interval); };
     }, [load]);
 
@@ -62,9 +63,10 @@ export function AgentMiniChat({ agentId, agentName }: { agentId: string; agentNa
     const send = async () => {
         const text = draft.trim();
         // The ref blocks a double Enter in the same tick, before state updates land.
-        if (!text || sendingRef.current) return;
+        if (!canSend || !text || sendingRef.current) return;
         sendingRef.current = true;
         setSending(true);
+        setSendError(null);
         setDraft("");
         try {
             const res = await fetch("/api/chat", {
@@ -82,7 +84,7 @@ export function AgentMiniChat({ agentId, agentName }: { agentId: string; agentNa
         } catch (err) {
             if (aliveRef.current) {
                 setDraft(text);
-                setError(err instanceof Error ? err.message : "Failed to send");
+                setSendError(err instanceof Error ? err.message : "Failed to send");
             }
         } finally {
             sendingRef.current = false;
@@ -102,7 +104,7 @@ export function AgentMiniChat({ agentId, agentName }: { agentId: string; agentNa
             ) : error && messages.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-rose-500">{error}</div>
             ) : messages.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground">No messages yet. Say hi.</div>
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">{canSend ? "No messages yet. Say hi." : "No messages yet."}</div>
             ) : (
                 <div ref={listRef} className="max-h-44 space-y-2 overflow-y-auto px-3 py-2">
                     {messages.map((m) => {
@@ -120,19 +122,21 @@ export function AgentMiniChat({ agentId, agentName }: { agentId: string; agentNa
 
             {error && messages.length > 0 && <div className="px-3 pb-1 text-[10px] text-rose-500">{error}</div>}
 
-            <form className="flex items-center gap-1.5 border-t border-border/70 p-2" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+            {sendError && <p role="alert" className="px-3 py-2 text-xs text-rose-500 dark:text-rose-300">{sendError}</p>}
+            {canSend && <form className="flex items-center gap-1.5 border-t border-border/70 p-2" onSubmit={(e) => { e.preventDefault(); void send(); }}>
                 <input
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
+                    disabled={sending}
+                    onChange={(e) => { setDraft(e.target.value); setSendError(null); }}
                     placeholder={`Message ${agentName}…`}
                     aria-label={`Message ${agentName}`}
-                    className="min-w-0 flex-1 rounded-lg border border-border bg-background/70 px-2.5 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/30"
+                    className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-background/70 px-2.5 py-1.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/30"
                 />
                 <button type="submit" disabled={sending || !draft.trim()} aria-label="Send"
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-200">
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-200">
                     <IconSend className="h-3.5 w-3.5" />
                 </button>
-            </form>
+            </form>}
         </div>
     );
 }

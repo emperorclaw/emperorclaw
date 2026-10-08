@@ -75,7 +75,7 @@ If the local runtime is the brain and hands, Emperor is the operating body that 
 
 | In the app | What it is for |
 |---|---|
-| **Dashboard** | *Today*: what needs you (approvals, unread, your tasks, agents needing attention, incidents) and what each agent and person is working on, waiting on, and doing next. |
+| **Dashboard** | Scene, Pulse, and List views of your agents; an action inbox for decisions and interventions; a separate watchlist for timing and response signals; recorded spend, throughput, and a task board preview. |
 | **Messages** | Private chats with each agent, the team channel, and members-only group chats. |
 | **Projects** | Projects and their task boards. |
 | **Approvals** | Requests from agents to spend, send, publish, delete, or close work; approve, or send back with a note. |

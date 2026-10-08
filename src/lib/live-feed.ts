@@ -1,8 +1,9 @@
+import { resolveAppearance } from "@/lib/character/model";
 import { createHash } from "crypto";
 import { and, count, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { approvals, companies, companyMembers, messageThreads, tasks, threadMessages, threadParticipants } from "@/db/schema";
-import { computeCompanyHealth, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
+import { computeCompanyHealth, scoreAgent, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 
@@ -114,14 +115,9 @@ export function shortName(name: string | null | undefined, fallback = "Agent"): 
     return Array.from(first).slice(0, SHORT_NAME_MAX).join("");
 }
 
-/** A stable 0-359 hue from an id (FNV-1a), so an agent keeps its color on every screen. */
-export function agentHue(id: string): number {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < id.length; i++) {
-        hash ^= id.charCodeAt(i);
-        hash = Math.imul(hash, 0x01000193);
-    }
-    return (hash >>> 0) % 360;
+/** Reuse the configured web avatar color on constrained physical displays. */
+export function agentHue(id: string, source: { avatarUrl?: string | null; avatarAppearance?: unknown } = {}): number {
+    return resolveAppearance({ id, ...source }).hue;
 }
 
 const RICH_FENCE_RE = /(^|\n)[ \t]*(`{3,}|~{3,})[ \t]*([\w-]*)[^\n]*\n[\s\S]*?(?:\n[ \t]*\2[ \t]*(?=\n|$)|$)/g;
@@ -489,8 +485,8 @@ export async function buildLiveFeed(companyId: string, options: {
             id: a.id,
             name: a.name,
             short: shortName(a.name),
-            hue: agentHue(a.id),
-            health: a.status,
+            hue: agentHue(a.id, a),
+            health: scoreAgent({ ...a, online: Boolean(live) || a.online }).status,
             state: deriveLiveState({ typing: Boolean(live), online: a.online, hasTaskInProgress: Boolean(task) }),
             activity: live?.activity ? toPlainText(live.activity, ACTIVITY_MAX) || null : null,
             task: task ? { id: task.id, title: truncateText(taskTitle({ inputJson: { title: task.title }, taskType: task.taskType }), TASK_TITLE_MAX) } : null,

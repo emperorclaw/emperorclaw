@@ -30,6 +30,7 @@ export interface AgentHealth {
     name: string;
     role: string | null;
     avatarUrl: string | null;
+    avatarAppearance?: unknown;
     online: boolean;
     lastSeenAt: string | null;
     load: number;
@@ -93,7 +94,7 @@ export function scoreAgent(input: {
     if (input.budgetStatus && input.budgetStatus !== "active") reasons.push(`budget ${input.budgetStatus.replace(/_/g, " ")}`);
     if (!input.online && input.unanswered > 0) return { status: "down", reasons: ["offline with work waiting", ...reasons] };
     if (reasons.length > 0) return { status: "attention", reasons };
-    if (!input.online) return { status: input.requests + input.replies === 0 ? "idle" : "attention", reasons: input.requests + input.replies === 0 ? [] : ["offline"] };
+    if (!input.online) return { status: "idle", reasons: [] };
     return { status: "healthy", reasons: [] };
 }
 
@@ -199,7 +200,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
                 at,
                 deliveryState: m.deliveryState,
                 failed: m.deliveryState === "cancelled" && Boolean(failure) && (!failure!.agentId || failure!.agentId === agentId),
-                text: (m.text || "").slice(0, 160),
+                text: type === "direct" ? "Private message" : (m.text || "").slice(0, 160),
                 link: type === "group" ? `/messages?group=${m.threadId}` : type === "direct" ? `/messages?agent=${agentId}` : "/messages",
             };
             requests.push(req);
@@ -216,7 +217,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
     for (const req of requests) {
         const s = stats.get(req.agentId)!;
         const item = { agentId: req.agentId, agentName: agentName.get(req.agentId) ?? "Agent", messageId: req.messageId, text: req.text, since: new Date(req.at).toISOString(), link: req.link };
-        if (req.failed) {
+        if (req.failed && !answered.has(req)) {
             s.failed += 1;
             attention.push({ ...item, kind: "failed" });
         } else if (!answered.has(req) && ["queued", "seen", "acting"].includes(req.deliveryState) && now.getTime() - req.at > UNANSWERED_AFTER_MS) {
@@ -247,6 +248,7 @@ export async function computeCompanyHealth(companyId: string, options: { agentId
             name: a.name,
             role: a.role,
             avatarUrl: a.avatarUrl,
+            avatarAppearance: a.avatarAppearance,
             online,
             lastSeenAt: a.lastSeenAt ? a.lastSeenAt.toISOString() : null,
             load: a.currentLoad,

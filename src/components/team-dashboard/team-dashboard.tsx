@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX } from "@tabler/icons-react";
+import { IconRadar, IconBox, IconDotsVertical, IconLayoutList, IconSearch, IconX } from "@tabler/icons-react";
 import {
-    buildOfficeLayout, collaborationLinks, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, taskMatchesQuery, ZONES,
-    type DashboardData, type DashboardTask, type KpiFilter, type SceneAgent, type ZoneId,
+    requiresHumanAction, filterDashboardBoard, snapshotFreshness, buildOfficeLayout, collaborationLinks, defaultSelection, deriveSceneAgents, kpiCounts, matchesKpi, matchesQuery, ZONES,
+    type DashboardData, type KpiFilter, type SceneAgent, type ZoneId,
 } from "@/lib/team-scene";
 import { NotificationBell } from "@/components/notification-bell";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { TeamPulse } from "./team-pulse";
 import { AgentList } from "./agent-list";
 import { KpiRow } from "./kpi-row";
 import { MetricsRow } from "./metrics-row";
@@ -29,31 +30,62 @@ function usePrefersReducedMotion(): boolean {
     return useSyncExternalStore(subscribeReducedMotion, () => window.matchMedia("(prefers-reduced-motion: reduce)").matches, () => false);
 }
 
+function subscribeClock(onChange: () => void) {
+    const timer = window.setInterval(onChange, 10_000);
+    window.addEventListener("online", onChange);
+    window.addEventListener("offline", onChange);
+    return () => { window.clearInterval(timer); window.removeEventListener("online", onChange); window.removeEventListener("offline", onChange); };
+}
+function subscribeCompact(onChange: () => void) {
+    const query = window.matchMedia("(max-width: 767px)");
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+}
+
 /** Container: owns filters and selection, derives everything else from server data. */
-export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, isOwnerOrAdmin }: {
+export function TeamDashboard({ data, initialView, hasAgents, canAct, isOwnerOrAdmin }: {
     data: DashboardData;
-    initialView?: "scene" | "list";
+    initialView?: "scene" | "pulse" | "list";
     hasAgents: boolean;
     canAct: boolean;
     isOwnerOrAdmin: boolean;
 }) {
-    const [view, setView] = useState<"scene" | "list">(initialView);
+    const [chosenView, setChosenView] = useState<"scene" | "pulse" | "list" | null>(null);
+    const setView = (nextView: "scene" | "pulse" | "list") => {
+        setChosenView(nextView);
+        const url = new URL(window.location.href);
+        url.searchParams.set("view", nextView);
+        window.history.replaceState(window.history.state, "", url);
+    };
+    const compact = useSyncExternalStore(subscribeCompact, () => window.matchMedia("(max-width: 767px)").matches, () => false);
+    const view = chosenView ?? initialView ?? (compact || data.members.filter((m) => m.kind === "agent").length > 24 ? "list" : "scene");
+    const [motionPaused, setMotionPaused] = useState(false);
+    const [playfulIdle, setPlayfulIdle] = useState(false);
+    const inboxRef = useRef<HTMLDivElement>(null);
+    const detailRef = useRef<HTMLDivElement>(null);
     const [kpi, setKpi] = useState<KpiFilter | null>(null);
     const [query, setQuery] = useState("");
     const [zoneFilter, setZoneFilter] = useState<ZoneId | null>(null);
     const [selected, setSelected] = useState<string | null>(null);
     const [hovered, setHovered] = useState<string | null>(null);
-    const reducedMotion = usePrefersReducedMotion();
+    const reducedMotion = usePrefersReducedMotion() || motionPaused;
     const searchRef = useRef<HTMLInputElement>(null);
-    const now = useMemo(() => new Date(data.generatedAt), [data.generatedAt]);
+    const clock = useSyncExternalStore(subscribeClock, () => Math.floor(Date.now() / 10_000) * 10_000, () => Date.parse(data.generatedAt));
+    const now = useMemo(() => new Date(clock), [clock]);
+    const online = useSyncExternalStore(subscribeClock, () => navigator.onLine, () => true);
+    const freshness = snapshotFreshness(data.generatedAt, now, online);
+    const actions = useMemo(() => data.attention.filter(requiresHumanAction), [data.attention]);
+    const watchlist = useMemo(() => data.attention.filter((entry) => !requiresHumanAction(entry)), [data.attention]);
+    const actionMembers = useMemo(() => new Set(actions.map((entry) => entry.memberKey)), [actions]);
 
-    const agents = useMemo(() => deriveSceneAgents(data), [data]);
+    const observedData = useMemo(() => freshness === "current" ? data : { ...data, members: data.members.map((member) => ({ ...member, activity: null, runtimeOnline: false })) }, [data, freshness]);
+    const agents = useMemo(() => deriveSceneAgents(observedData, playfulIdle, now), [observedData, playfulIdle, now]);
     const layout = useMemo(() => buildOfficeLayout(agents), [agents]);
-    const links = useMemo(() => collaborationLinks(data.collaborations, layout.agents), [data.collaborations, layout.agents]);
+    const links = useMemo(() => collaborationLinks(data.collaborations.filter((event) => { const age = now.getTime() - Date.parse(event.at); return age >= 0 && age < 30_000; }), layout.agents), [data.collaborations, layout.agents, now]);
     const counts = useMemo(() => kpiCounts(agents, data), [agents, data]);
     const byKey = useMemo(() => new Map(agents.map((a) => [a.member.key, a])), [agents]);
 
-    const isActive = useCallback((agent: SceneAgent) => matchesKpi(kpi, agent.member, agent.status) && matchesQuery(agent, query) && (!zoneFilter || agent.zone === zoneFilter), [kpi, query, zoneFilter]);
+    const isActive = useCallback((agent: SceneAgent) => (kpi === "attention" ? actionMembers.has(agent.member.key) : matchesKpi(kpi, agent.member, agent.status)) && matchesQuery(agent, query) && (!zoneFilter || agent.zone === zoneFilter), [kpi, query, zoneFilter, actionMembers]);
 
     // Keep a valid selection across refreshes; fall back to the busiest member.
     const selectedKey = selected && byKey.has(selected) ? selected : defaultSelection(agents);
@@ -67,16 +99,7 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
         }
         return map;
     }, [data.members, byKey]);
-    const columns = useMemo(() => {
-        const keep = (t: DashboardTask) => {
-            const assignee = t.assigneeKey ? assignees.get(t.assigneeKey) : null;
-            if (!taskMatchesQuery(t, assignee?.member.name ?? null, query)) return false;
-            if (!t.assigneeKey) return !kpi && !zoneFilter;
-            const agent = byKey.get(t.assigneeKey);
-            return agent ? isActive(agent) || (!kpi && !zoneFilter) : !kpi && !zoneFilter;
-        };
-        return { inProgress: data.board.inProgress.filter(keep), review: data.board.review.filter(keep), done: data.board.done.filter(keep) };
-    }, [data.board, assignees, byKey, isActive, kpi, zoneFilter, query]);
+    const columns = useMemo(() => filterDashboardBoard(data.board, { kpi, query, zoneFilter, members: data.members }), [data.board, data.members, kpi, query, zoneFilter]);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -92,11 +115,21 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
 
     const shortcut = useSyncExternalStore(() => () => {}, () => (/mac|iphone|ipad/i.test(navigator.userAgent) ? "⌘K" : "Ctrl K"), () => "⌘K");
 
-    const selectMember = (key: string) => setSelected(key);
-    const focusMember = (key: string) => {
+    const selectMember = (key: string) => {
         setSelected(key);
+        if (window.innerWidth < 1280) detailRef.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
+    };
+    const focusMember = (key: string) => {
+        selectMember(key);
         setKpi(null);
+        setQuery("");
         setZoneFilter(null);
+    };
+
+    const toggleKpi = (id: KpiFilter) => {
+        setKpi((current) => current === id ? null : id);
+        setZoneFilter(null);
+        if (id === "attention") inboxRef.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
     };
 
     // Throughput/cost KPI cards open the list view pre-filtered to their state.
@@ -111,7 +144,7 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
             <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                     <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-[2.1rem]">Your team, in motion</h1>
-                    <p className="mt-1 text-base text-muted-foreground">See what is moving. Step in where it matters.</p>
+                    <p className="mt-1 text-base text-muted-foreground">Real work. Recognizable agents. Clear decisions.</p>
                 </div>
                 <div className="flex items-center gap-2 lg:pt-1">
                     <label className="relative flex min-w-0 flex-1 items-center lg:w-[22rem] lg:flex-none">
@@ -132,29 +165,33 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_21.5rem]">
                 <div className="min-w-0 space-y-4">
-                    <KpiRow counts={counts} active={kpi} onToggle={(id) => setKpi((cur) => (cur === id ? null : id))} />
+                    <KpiRow counts={counts} active={kpi} onToggle={toggleKpi} />
                     <MetricsRow cost={data.cost} throughput={data.throughput} onFilter={openFiltered} />
 
+                    {(kpi || query || zoneFilter) && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">{kpi === "attention" ? "Agents linked to the action inbox" : kpi === "done" ? "Agents that delivered in the last 24h" : kpi === "working" ? "Working agents and in-progress tasks" : kpi === "waiting" ? "Agents with work awaiting review" : "Filtered workspace"}{query && ` · “${query}”`}</span>
+                        <button type="button" onClick={() => { setKpi(null); setQuery(""); setZoneFilter(null); }} className="min-h-11 rounded-lg px-3 font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-400">Clear filters</button>
+                    </div>}
                     <section aria-labelledby="live-workspace-title" className="emperor-panel rounded-2xl p-3 sm:p-4">
                         <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
                             <div className="flex min-w-0 items-start gap-2.5">
                                 <IconBox className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                                 <div className="min-w-0">
                                     <h2 id="live-workspace-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
-                                        Live workspace
-                                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-emerald-600 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-300">
-                                            <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" /><span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400" /></span>
-                                            LIVE
+                                        Team workspace
+                                        <span role="status" className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset", freshness === "current" ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300")}>
+                                            <span className={cn("h-1.5 w-1.5 rounded-full", freshness === "current" ? "bg-emerald-500" : "bg-amber-500")} />
+                                            {freshness === "current" ? "Updated recently" : freshness === "offline" ? "Offline · saved snapshot" : "Updates delayed"}
                                         </span>
                                     </h2>
-                                    <p className="text-xs text-muted-foreground">Your agents, projects and work, in real time.</p>
+                                    <p className="text-xs text-muted-foreground">{`${agents.length} agents · refreshes every 15s · work and connection shown separately`}</p>
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                                 <div role="tablist" aria-label="Workspace view" className="flex rounded-xl border border-border bg-muted/40 p-0.5 dark:bg-white/[0.03]">
-                                    {([["scene", "Scene", IconBox], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
+                                    {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
-                                            className={cn("inline-flex min-h-8 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                                            className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                                 view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
                                             <Icon className="h-4 w-4" stroke={1.8} />{label}
                                         </button>
@@ -162,9 +199,12 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
                                 </div>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <button type="button" aria-label="Workspace options" className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
+                                        <button type="button" aria-label="Workspace options" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-52">
+                                        <DropdownMenuCheckboxItem checked={motionPaused} onCheckedChange={setMotionPaused}>Pause scene motion</DropdownMenuCheckboxItem>
+                                        <DropdownMenuCheckboxItem checked={playfulIdle} onCheckedChange={setPlayfulIdle}>Playful idle animations</DropdownMenuCheckboxItem>
+                                        <DropdownMenuSeparator />
                                         <DropdownMenuItem asChild><Link href="/agents">Manage agents</Link></DropdownMenuItem>
                                         <DropdownMenuItem asChild><Link href="/agents/health">Agent health</Link></DropdownMenuItem>
                                         <DropdownMenuItem asChild><Link href="/projects">Open projects board</Link></DropdownMenuItem>
@@ -192,20 +232,23 @@ export function TeamDashboard({ data, initialView = "scene", hasAgents, canAct, 
                             <OfficeScene layout={layout} links={links} selectedKey={selectedKey} hoveredKey={hovered} isActive={isActive} reducedMotion={reducedMotion}
                                 onSelect={selectMember} onHover={setHovered} onOverflow={(zone) => { setZoneFilter(zone); setView("list"); }}
                                 emptyState={hasAgents ? undefined : <SceneEmptyState />} />
+                        ) : view === "pulse" ? (
+                            <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />
                         ) : (
-                            <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} />
+                            <AgentList agents={agents} selectedKey={selectedKey} isActive={isActive} onSelect={selectMember} canAct={canAct} members={data.members} now={now} />
                         )}
                     </section>
                 </div>
 
-                <aside aria-label="Details" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
-                    <NeedsAttention entries={data.attention} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />
-                    <SelectedAgent agent={selectedAgent} canAct={canAct} />
+                <aside aria-label="Decisions and agent details" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
+                    <div ref={inboxRef} className="scroll-mt-4"><NeedsAttention entries={actions} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} /></div>
+                    <div ref={detailRef} className="scroll-mt-4"><SelectedAgent key={selectedAgent?.member.key} agent={selectedAgent} canAct={canAct} now={now} /></div>
+                    {watchlist.length > 0 && <NeedsAttention entries={watchlist} watchlist now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />}
                 </aside>
             </div>
 
             <MovementFeed feed={data.feed} now={now} isOwnerOrAdmin={isOwnerOrAdmin} />
-            <WorkBoard columns={columns} assignees={assignees} />
+            {kpi !== "attention" && <WorkBoard columns={columns} assignees={assignees} canAct={canAct} />}
         </div>
     );
 }

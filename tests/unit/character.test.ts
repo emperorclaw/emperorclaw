@@ -93,7 +93,7 @@ test("activity derivation follows status and live copy", () => {
     assert.equal(kind({ status: "blocked", activity: "x", attention: attn("incident") }), "blocked");
     assert.equal(kind({ status: "blocked", activity: "x", attention: attn("approval") }), "waiting");
     assert.equal(kind({ status: "blocked", activity: "x", attention: attn("message") }), "waiting");
-    assert.equal(kind({ status: "waiting", activity: "x" }), "reviewing");
+    assert.equal(kind({ status: "waiting", activity: "x" }), "waiting");
     assert.equal(kind({ status: "idle", activity: "x", idleRoutine: "nap" }), "nap");
     assert.equal(kind({ status: "idle", activity: "x", idleRoutine: "coffee" }), "coffee");
     assert.equal(kind({ status: "working", activity: "Writing article" }), "writing");

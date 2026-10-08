@@ -47,8 +47,8 @@ test("state → behavior covers every state with a caption", () => {
     assert.equal(kb({ status: "blocked", activity: "x", attention: attn("approval") }), "waiting");
     assert.equal(cap({ status: "blocked", activity: "x", attention: attn("approval") }), "Needs your approval");
     assert.equal(kb({ status: "blocked", activity: "x", attention: attn("message") }), "waiting");
-    assert.equal(cap({ status: "blocked", activity: "x", attention: attn("message") }), "Waiting for your reply");
-    assert.equal(kb({ status: "waiting", activity: "x" }), "reviewing");
+    assert.equal(cap({ status: "blocked", activity: "x", attention: attn("message") }), "Awaiting agent response");
+    assert.equal(kb({ status: "waiting", activity: "x" }), "waiting");
     assert.equal(kb({ status: "idle", activity: "x", idleRoutine: "coffee" }), "coffee");
     assert.equal(cap({ status: "idle", activity: "x", idleRoutine: "coffee" }), "Coffee break");
     assert.equal(kb({ status: "idle", activity: "x", idleRoutine: "nap" }), "nap");
@@ -200,10 +200,12 @@ test("deriveSceneAgents seats agents only and computes behaviour + captions", ()
     assert.equal(agents.length, 2, "humans never appear");
     assert.ok(agents.every((a) => a.member.kind === "agent"));
     const worker = agents.find((a) => a.member.key === "agent:w")!;
-    assert.equal(worker.behavior.kind, "typing");
-    assert.equal(worker.behavior.caption, "Coding");
+    assert.equal(worker.behavior.kind, "working");
+    assert.equal(worker.behavior.caption, "Task in progress");
     assert.equal(worker.isNew, false);
     const idle = agents.find((a) => a.member.key === "agent:i")!;
     assert.equal(idle.zone, "lounge");
-    assert.ok(["coffee", "nap", "stretch"].includes(idle.behavior.kind));
+    assert.equal(idle.behavior.kind, "available");
+    assert.equal(idle.behavior.caption, "Available");
+    assert.ok(["coffee", "nap", "stretch"].includes(deriveSceneAgents(data, true).find((a) => a.member.id === "i")!.behavior.kind));
 });

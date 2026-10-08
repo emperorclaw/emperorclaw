@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { IconArrowsMaximize, IconMessage, IconRefresh, IconUserSquareRounded } from "@tabler/icons-react";
-import { budgetFraction, formatCents, nextStepLabel, STATUS_LABEL, taskStep, timeAgo, ZONES, type SceneAgent } from "@/lib/team-scene";
+import { budgetFraction, formatCents, requiresHumanAction, STATUS_LABEL, timeAgo, ZONES, type SceneAgent } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 
@@ -22,9 +22,10 @@ const PILL: Record<SceneAgent["status"], string> = {
     offline: "bg-zinc-500/12 text-zinc-500 ring-zinc-500/30 dark:text-zinc-400",
 };
 
-export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; canAct: boolean }) {
+export function SelectedAgent({ agent, canAct, now }: { agent: SceneAgent | null; canAct: boolean; now: Date }) {
     const router = useRouter();
     const [restarting, setRestarting] = useState(false);
+    const [chatOpen, setChatOpen] = useState(false);
     if (!agent) {
         return (
             <section className="emperor-panel rounded-2xl p-4">
@@ -35,8 +36,8 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
     }
     const { member, status, behavior } = agent;
     const task = member.working[0] ?? member.waiting[0] ?? member.next[0] ?? null;
-    const { step, total } = task ? taskStep(task.state) : { step: 0, total: 4 };
-    const online = member.kind === "human" ? null : status === "offline" ? "Offline" : member.health === "idle" ? "Away" : "Online";
+    const connection = member.activity || member.runtimeOnline ? "Connected" : member.lastActivityAt ? "No recent connection" : "Connection unconfirmed";
+
     const description = member.skills.length > 0 ? `Skills: ${member.skills.slice(0, 4).join(", ")}${member.skills.length > 4 ? "…" : ""}` : ZONES[agent.zone === "lounge" ? "operations" : agent.zone].blurb;
     const upNext = member.next.find((t) => t.id !== task?.id);
     const budgetPct = member.kind === "agent" ? budgetFraction(member.monthlyCostCents, member.monthlyBudgetCents) : null;
@@ -46,8 +47,8 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
         setRestarting(true);
         try {
             const res = await fetch(`/api/agents/${member.id}/recreate-runtime`, { method: "POST" });
-            const data = await res.json().catch(() => ({})) as { error?: string };
-            if (!res.ok) throw new Error(data.error || "Couldn't restart the runtime");
+            const data = await res.json().catch(() => ({})) as { error?: string; success?: boolean; message?: string };
+            if (!res.ok || data.success === false) throw new Error(data.error || data.message || "Couldn't restart the runtime");
             toast.success("Restarting runtime…");
             router.refresh();
         } catch (error) {
@@ -61,7 +62,7 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
         <section aria-labelledby="selected-agent-title" className="emperor-panel rounded-2xl p-4">
             <header className="flex items-center justify-between">
                 <h2 id="selected-agent-title" className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Selected agent</h2>
-                <Link href={member.href} aria-label={`Open ${member.name}`} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground">
+                <Link href={member.href} aria-label={`Open ${member.name}`} className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground">
                     <IconArrowsMaximize className="h-4 w-4" />
                 </Link>
             </header>
@@ -72,7 +73,7 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[status] }} />
                         <span className="truncate text-base font-semibold text-foreground">{member.name}</span>
-                        <span title={online ? "Runtime connection" : undefined} className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset", PILL[status])}>{online ?? STATUS_LABEL[status]}</span>
+                        <span title="Runtime connection" className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset", PILL[status])}>{STATUS_LABEL[status]}</span>
                     </div>
                     <div className="mt-0.5 truncate text-sm text-foreground/80">{member.role || (member.kind === "human" ? "Teammate" : "Agent")}</div>
                     <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
@@ -86,24 +87,24 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
                 </span>
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate font-medium text-foreground">{task ? task.title : agent.activity}</span>
-                    {task && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">Step {step} of {total}</span>}
                 </div>
-                <div className="mt-2 grid grid-cols-4 gap-1.5" aria-hidden>
-                    {Array.from({ length: total }, (_, i) => (
-                        <span key={i} className={cn("h-1.5 rounded-full", i < step ? "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" : "bg-muted dark:bg-white/10")} />
-                    ))}
-                </div>
-                <p className="mt-2 truncate text-xs text-muted-foreground">
-                    {task ? <>Next: {task.state === "inbox" ? nextStepLabel(task.state) : upNext ? `${nextStepLabel(task.state)}, then “${upNext.title}”` : nextStepLabel(task.state)}</> : "No open task. Available for new work."}
-                </p>
+                {task && <Link href={`/projects?project=${task.projectId}&task=${task.id}`} className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Open task · {task.state.replaceAll("_", " ")}</Link>}
+                {upNext && <p className="mt-2 break-words text-xs text-muted-foreground">Also queued: {upNext.title}</p>}
+                <p className="mt-2 text-xs text-muted-foreground">{connection}{member.lastActivityAt && ` · last seen ${timeAgo(member.lastActivityAt, now)}`}</p>
             </div>
 
+            {(agent.notices?.length ?? 0) > 0 && <ul className="mt-3 space-y-2" aria-label="Issues alongside this agent’s work">
+                {agent.notices?.map((entry) => <li key={entry.id}><Link href={entry.href} className="flex min-h-11 items-start gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                    <span className="shrink-0 font-semibold text-muted-foreground">{requiresHumanAction(entry) ? "Action" : "Watch"}</span><span className="min-w-0 break-words">{entry.title}</span>
+                </Link></li>)}
+            </ul>}
+
             {/* Health + fix action */}
-            {member.kind === "agent" && member.health === "down" && (
+            {member.kind === "agent" && member.health === "down" && !member.activity && (
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs">
-                    <span className="min-w-0 truncate font-medium text-rose-600 dark:text-rose-300">Runtime offline</span>
-                    {canAct && (
-                        <button type="button" disabled={restarting} onClick={restart} className="inline-flex shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 font-semibold text-rose-700 ring-1 ring-inset ring-rose-500/40 transition hover:bg-rose-500/25 disabled:opacity-50 dark:text-rose-200">
+                    <span className="min-w-0 truncate font-medium text-rose-600 dark:text-rose-300">No recent runtime connection</span>
+                    {canAct && member.canRestartRuntime && (
+                        <button type="button" disabled={restarting} onClick={restart} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 font-semibold text-rose-700 ring-1 ring-inset ring-rose-500/40 transition hover:bg-rose-500/25 disabled:opacity-50 dark:text-rose-200">
                             <IconRefresh className="h-3.5 w-3.5" />{restarting ? "Restarting…" : "Restart"}
                         </button>
                     )}
@@ -111,14 +112,14 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
             )}
             {member.kind === "agent" && member.health === "attention" && member.healthReasons.length > 0 && (
                 <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                    Check-in: {member.healthReasons[0]}
+                    Observation: {member.healthReasons[0]}
                 </div>
             )}
 
             {/* Spend + activity */}
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-lg bg-muted/40 px-2.5 py-2 dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Spend today</div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Spend 24h</div>
                     <div className="mt-0.5 font-semibold tabular-nums text-foreground">{member.kind === "agent" ? formatCents(member.spendTodayCents) ?? "—" : "—"}</div>
                 </div>
                 <div className="rounded-lg bg-muted/40 px-2.5 py-2 dark:bg-white/[0.03]">
@@ -126,8 +127,8 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
                     <div className="mt-0.5 font-semibold tabular-nums text-foreground">{member.doneToday}</div>
                 </div>
                 <div className="rounded-lg bg-muted/40 px-2.5 py-2 dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Last activity</div>
-                    <div className="mt-0.5 truncate font-semibold tabular-nums text-foreground">{member.lastActivityAt ? timeAgo(member.lastActivityAt, new Date()) : "—"}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Last connection</div>
+                    <div className="mt-0.5 truncate font-semibold tabular-nums text-foreground">{member.lastActivityAt ? timeAgo(member.lastActivityAt, now) : "—"}</div>
                 </div>
             </div>
             {budgetPct !== null && (
@@ -142,13 +143,16 @@ export function SelectedAgent({ agent, canAct }: { agent: SceneAgent | null; can
                 </div>
             )}
 
-            {member.kind === "agent" && <AgentMiniChat key={member.id} agentId={member.id} agentName={member.name} />}
+            {member.kind === "agent" && <>
+                <button type="button" aria-expanded={chatOpen} aria-controls="selected-agent-chat" onClick={() => setChatOpen((open) => !open)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><IconMessage className="h-4 w-4" />{chatOpen ? "Close quick chat" : `Quick chat with ${member.name}`}</button>
+                {chatOpen && <div id="selected-agent-chat"><AgentMiniChat key={member.id} agentId={member.id} agentName={member.name} canSend={canAct} /></div>}
+            </>}
 
             <div className="mt-3 flex items-center gap-2">
-                <Link href={`/messages?agent=${member.id}`} className="inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/50 transition hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 dark:text-cyan-200">
+                <Link href={`/messages?agent=${member.id}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/50 transition hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 dark:text-cyan-200">
                     <IconMessage className="h-4 w-4" />Open in Messages
                 </Link>
-                <Link href={member.href} className="inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                <Link href={member.href} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                     View agent
                 </Link>
             </div>

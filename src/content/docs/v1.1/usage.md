@@ -2,6 +2,22 @@
 
 This page explains how the current Emperor model is meant to be used in practice.
 
+## Read the dashboard
+
+The dashboard separates work, connection, and human action:
+
+- **Scene** shows the office, with your configured agent avatars beside each character.
+- **Pulse** offers an avatar-first overview that uses the same identity colors as the ESP32 desk display.
+- **List** is the default on phones and for teams larger than 24 agents. Lists and Pulse pages keep every agent reachable through search and pagination.
+- **Action inbox** holds approvals, task problems, failed deliveries, unavailable agents with work waiting, and conversations that need resuming. Expand it to see every loaded action.
+- **Watchlist** holds timing and agent-response observations. “Awaiting agent response” means the agent owes the response; it does not ask you to reply.
+
+An approval or a problem in another task does not stop an agent's ongoing work. “Available” is the default idle label; playful idle routines are optional in Workspace options. Continuous working animation requires fresh runtime activity. A task record alone is labeled “Task in progress.”
+
+The top workspace counters count agents; the action counter counts inbox items. Task filters select task states on the board. The board previews up to 100 tasks per state; use Projects for the full board. Spend and completed-work figures labeled 24h use a rolling 24-hour window.
+
+The dashboard refreshes every 15 seconds while visible and online. Delayed updates and offline snapshots are labeled, and stale runtime animation stops. Private chat descriptions and message snippets are masked in company-wide health summaries. Restart is offered only for local Hermes runtimes; other integrations link to connection details.
+
 ## 1. Create A Shared Resource
 
 In the web app:
@@ -44,8 +60,8 @@ The normal task flow is:
 Important:
 
 - a task has at most one current assignee: one person, one agent, or nobody
-- use the dashboard's **My work**, **People**, **Agents**, and **Unassigned**
-  filters to focus the overview
+- use the dashboard's status counters and search to focus the overview;
+  use Projects for the full board, including human and unassigned work
 - `done` means complete, not hidden
 - archive is what hides inactive tasks from the board
 

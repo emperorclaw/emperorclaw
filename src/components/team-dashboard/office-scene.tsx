@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { IconPlus, IconZoomIn, IconZoomOut, IconArrowsMaximize } from "@tabler/icons-react";
 import {
     arcPath, CHARACTER_SCALE, hashString, iso, labelLifts, WALL_H,
-    agentMotion, centerOn, fitCamera, panCamera, worldTransform, zoomAtPoint,
+    requiresHumanAction, agentMotion, centerOn, fitCamera, panCamera, worldTransform, zoomAtPoint,
     type CameraState, type CollaborationLink, type OfficeLayout, type PlacedAgent, type SceneActivity, type ZoneId, type ZoneLayout,
 } from "@/lib/team-scene";
 import { resolveAppearance } from "@/lib/character/model";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
 import type { CharacterExpression } from "@/lib/character/draw";
 import { ActivityCue } from "./character-activity";
-import { STATUS_COLOR } from "./agent-character";
+import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 import {
     Box, Chair, CoffeeCounter, DeskFront, FloorEllipse, FloorLamp, Plant, PlaneGroup, RoundTable, Shelf, SofaArm, SofaBack, pts,
 } from "./office-props";
@@ -66,9 +66,9 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
     const mountedRef = useRef(false);
     useLayoutEffect(() => {
         cameraRef.current = camera;
-        applyTransform(camera, mountedRef.current);
+        applyTransform(camera, mountedRef.current && !reducedMotion);
         mountedRef.current = true;
-    }, [camera, applyTransform]);
+    }, [camera, applyTransform, reducedMotion]);
     useEffect(() => {
         // Re-apply on resize without animating.
         applyTransform(cameraRef.current, false);
@@ -265,9 +265,9 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
             onClickCapture={(e) => { if (movedRef.current) { e.preventDefault(); e.stopPropagation(); } }}
             className={cn(
-                "office-scene @container relative overflow-hidden rounded-xl bg-[radial-gradient(ellipse_at_50%_35%,#10213a_0%,#070d18_60%,#04070e_100%)] outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 [touch-action:none]",
+                "office-scene @container relative overflow-hidden rounded-xl bg-[radial-gradient(ellipse_at_50%_35%,#10213a_0%,#070d18_60%,#04070e_100%)] outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 [touch-action:pan-y] md:[touch-action:none]",
                 dragging ? "cursor-grabbing" : "cursor-grab",
-                paused && "office-paused", lite && "office-lite",
+                (paused || reducedMotion) && "office-paused", lite && "office-lite",
             )}
             style={{ aspectRatio: `${vb.w} / ${vb.h}`, width: `min(100%, ${Math.round(MAX_SCENE_HEIGHT * aspect)}px)` }}
         >
@@ -351,7 +351,7 @@ export function OfficeScene({ layout, links, selectedKey, hoveredKey, isActive, 
 function CameraButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
     return (
         <button type="button" aria-label={label} title={label} onClick={onClick}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-[#0b1426]/85 text-slate-200 shadow-lg shadow-black/40 backdrop-blur-md transition hover:border-cyan-300/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+            className="grid h-11 w-11 place-items-center rounded-lg border border-white/15 bg-[#0b1426]/85 text-slate-200 shadow-lg shadow-black/40 backdrop-blur-md transition hover:border-cyan-300/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
             {children}
         </button>
     );
@@ -562,7 +562,7 @@ function SceneCharacter({ agent, selected, hovered, onSelect, onHover, onCenter,
     const appearance = resolveAppearance({ id: agent.member.id, avatarUrl: agent.member.avatarUrl, avatarAppearance: agent.member.avatarAppearance });
     const mood = moodForStatus(agent.status);
     const behavior = agent.behavior;
-    const kind: SceneActivity = talking && (agent.status === "working" || agent.status === "waiting") ? "talking" : behavior.kind;
+    const kind: SceneActivity = talking && /huddle|discuss|meeting|collaborat/i.test(agent.member.activity ?? "") ? "talking" : behavior.kind;
     const motion = agentMotion(agent.member.id);
     const glow = selected ? "drop-shadow(0 0 7px #22d3ee) drop-shadow(0 0 2px #a5f3fc)" : hovered ? "drop-shadow(0 0 5px rgba(165,243,252,0.7))" : undefined;
 
@@ -622,7 +622,7 @@ function LinkPath({ link, id, reducedMotion, dim }: { link: CollaborationLink; i
                     <rect x={-4} y={4.6} width={5} height={1.4} fill="#94a3b8" />
                 </g>
                 {!reducedMotion && (
-                    <animateMotion dur="3.6s" repeatCount="indefinite" rotate="0" keyPoints="0;1" keyTimes="0;1" calcMode="linear">
+                    <animateMotion dur="1.8s" repeatCount="1" fill="freeze" rotate="0" keyPoints="0;1" keyTimes="0;1" calcMode="linear">
                         <mpath href={`#${id}`} />
                     </animateMotion>
                 )}
@@ -641,7 +641,7 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
     onSelect: (key: string) => void;
     onHover: (key: string | null) => void;
 }) {
-    const blocked = agent.status === "blocked";
+    const blocked = Boolean(agent.notices?.some((entry) => requiresHumanAction(entry)));
     const expanded = selected || hovered;
     const showName = mode !== "dot" || expanded || blocked;
     const showActivity = mode === "full" || expanded;
@@ -660,17 +660,18 @@ function AgentLabel({ agent, mode, position, selected, hovered, active, onSelect
                 expanded ? "z-20" : blocked ? "z-10" : "z-0",
                 active ? "opacity-100" : "opacity-35",
                 showName
-                    ? cn("max-w-[11.5rem] rounded-lg border bg-[#0a1324]/80 px-2.5 py-1.5 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8)] backdrop-blur-md",
+                    ? cn("min-h-11 max-w-[12.5rem] rounded-lg border bg-[#0a1324]/80 px-2.5 py-1.5 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8)] backdrop-blur-md",
                         selected ? "border-cyan-300/70 shadow-[0_0_0_1px_rgba(103,232,249,0.25),0_10px_30px_-8px_rgba(34,211,238,0.45)]" : "border-white/12 hover:border-white/25")
-                    : "grid h-4 w-4 place-items-center rounded-full border border-white/20 bg-[#0a1324]/80",
+                    : "grid h-11 w-11 place-items-center rounded-full border border-white/20 bg-[#0a1324]/80",
             )}>
             {showName ? (
                 <>
                     <span className="flex items-center gap-1.5">
                         <span className={cn("h-2 w-2 shrink-0 rounded-full", agent.status === "working" && "office-dot-pulse")} style={{ background: STATUS_COLOR[agent.status] }} />
+                        <AgentAvatar id={agent.member.id} kind={agent.member.kind} name={agent.member.name} avatarUrl={agent.member.avatarUrl} avatarAppearance={agent.member.avatarAppearance} size={24} />
                         <span className="truncate text-[12px] font-semibold leading-4 text-slate-50">{agent.member.name}</span>
                     </span>
-                    {showActivity && <span className="mt-0.5 block truncate pl-3.5 text-[11px] leading-4 text-slate-300 @max-[540px]:hidden">{agent.behavior.caption}</span>}
+                    {showActivity && <span className="mt-0.5 block truncate text-[11px] leading-4 text-slate-300">{agent.behavior.caption}</span>}
                     {blocked && (
                         <span aria-hidden className="office-alert absolute -right-2 -top-2 grid h-[18px] w-[18px] place-items-center rounded-full bg-amber-400 text-[11px] font-black text-amber-950 shadow-[0_0_10px_rgba(251,191,36,0.8)]">!</span>
                     )}

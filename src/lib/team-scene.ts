@@ -55,6 +55,9 @@ export interface DashboardMember {
     monthlyBudgetCents: number;
     /** Last runtime heartbeat, for "last activity". */
     lastActivityAt: string | null;
+    /** Connection evidence is independent of work and health. */
+    runtimeOnline?: boolean;
+    canRestartRuntime?: boolean;
 }
 
 export type AttentionKind = "approval" | "incident" | "message" | "agent" | "late" | "not_started" | "paused";
@@ -84,6 +87,9 @@ export interface AttentionEntry {
     approvalId?: string | null;
     agentId?: string | null;
     threadId?: string | null;
+    /** Explicit override for delivery failures and queue items. */
+    actionRequired?: boolean;
+    canRestartRuntime?: boolean;
 }
 
 export interface CollaborationEvent {
@@ -163,9 +169,18 @@ export interface FeedEvent {
 
 /* ── Status ─────────────────────────────────────────────────────────── */
 
-/** Kinds that genuinely block an agent (a human decision or a real problem). */
+/** A task problem or unavailable runtime can prevent work. Decisions are overlays. */
 export function isBlockingAttention(kind: AttentionKind): boolean {
-    return kind === "approval" || kind === "incident" || kind === "message" || kind === "agent";
+    return kind === "incident" || kind === "agent";
+}
+
+/** Timing and delivery observations do not imply that a human owes a response. */
+export function requiresHumanAction(entry: AttentionEntry): boolean {
+    return entry.actionRequired ?? ["approval", "incident", "agent", "paused"].includes(entry.kind);
+}
+
+export function attentionForMember(entries: AttentionEntry[], memberKey: string): AttentionEntry[] {
+    return entries.filter((entry) => entry.memberKey === memberKey);
 }
 
 /**
@@ -288,9 +303,9 @@ export function attentionByMember(entries: AttentionEntry[]): Map<string, Attent
 }
 
 export interface MemberAttention {
-    /** A genuinely blocking entry (approval/incident/message/agent), if any. */
+    /** A task problem or unavailable runtime, if any. */
     blocking: AttentionEntry | null;
-    /** The most-urgent non-blocking overlay (late / not_started), if any. */
+    /** A pending decision, timing observation, or delivery signal. */
     overlay: AttentionEntry | null;
 }
 
@@ -310,19 +325,22 @@ export function memberAttention(entries: AttentionEntry[], memberKey: string): M
 }
 
 export function sceneStatus(member: DashboardMember, attention?: AttentionEntry | null): SceneStatus {
+    // Fresh runtime evidence wins over the slower health scan.
+    if (member.activity) return "working";
     if (member.health === "down") return "offline";
-    // Only a real blocking decision/problem is "stuck". A watchdog SLA/queue
-    // alert or a bare health "attention" is not.
+    // A problem in one task does not stop unrelated work assigned to this agent.
+    const unaffectedWork = member.working.some((task) =>
+        attention?.kind !== "incident" || (Boolean(attention.taskId) && task.id !== attention.taskId));
+    if (unaffectedWork) return "working";
     if (attention && isBlockingAttention(attention.kind)) return "blocked";
-    if (member.working.length > 0 || member.activity) return "working";
-    if (member.waiting.length > 0) return "waiting";
+    if (member.waiting.length > 0 || attention?.kind === "approval") return "waiting";
     return "idle";
 }
 
 const BLOCKED_COPY: Record<AttentionKind, string> = {
     approval: "Waiting for approval",
     incident: "Stuck",
-    message: "Waiting for a reply",
+    message: "Awaiting agent response",
     agent: "Needs a check-in",
     late: "Running late",
     not_started: "Hasn't started",
@@ -338,14 +356,13 @@ function sentence(text: string): string {
 export function activityText(member: DashboardMember, status: SceneStatus, attention?: AttentionEntry | null): string {
     switch (status) {
         case "offline":
-            return member.working.length + member.waiting.length > 0 ? "Offline with work waiting" : "Offline";
+            return "No recent connection with work waiting";
         case "blocked":
             if (attention?.kind === "incident") return stuckCaption(attention);
             if (attention) return BLOCKED_COPY[attention.kind];
             return member.healthReasons[0] ? sentence(member.healthReasons[0]) : "Needs you";
         case "working":
-            if (attention?.kind === "late") return `Running late on ${attention.title}`;
-            if (attention?.kind === "not_started") return `Hasn't started ${attention.title}`;
+
             if (member.activity && !/^working…?$/i.test(member.activity.trim())) return sentence(member.activity);
             return member.working[0]?.title ?? "Working";
         case "waiting":
@@ -359,9 +376,9 @@ export function activityText(member: DashboardMember, status: SceneStatus, atten
 export const STATUS_LABEL: Record<SceneStatus, string> = {
     working: "Working",
     waiting: "In review",
-    blocked: "Needs you",
+    blocked: "Task blocked",
     idle: "Available",
-    offline: "Offline",
+    offline: "Connection stale",
 };
 
 export function matchesKpi(filter: KpiFilter | null, member: DashboardMember, status: SceneStatus): boolean {
@@ -453,6 +470,7 @@ export type SceneActivity =
     | "blocked"      // error / incident — the agent is stuck
     | "celebrate"    // just finished a task
     | "coffee" | "nap" | "stretch" // idle routines
+    | "available" | "working"
     | "offline";
 
 export type IdleRoutine = "coffee" | "nap" | "stretch";
@@ -477,6 +495,8 @@ export interface BehaviorInput {
     /** Health flagged "attention" without a blocking reason → a check-in hint. */
     checkIn?: boolean;
     checkInReason?: string | null;
+    /** Only a fresh runtime signal authorizes continuous working motion. */
+    liveActivity?: boolean;
 }
 
 const MAX_IDLE_WALKERS = 3;
@@ -501,33 +521,34 @@ function activityVariant(memberKey: string, kind: string, variants = 2): number 
 
 /** Which animation kind an agent should play, plus the caption for it. */
 export function deriveBehavior(input: BehaviorInput): Behavior {
-    const { status, activity, memberKey, attention = null, talking = false, justDone = false, taskType = null, idleRoutine = null, checkIn = false, checkInReason = null } = input;
+    const { status, activity, memberKey, attention = null, talking = false, justDone = false, taskType = null, idleRoutine = null } = input;
 
-    if (status === "offline") return { kind: "offline", caption: "Offline", variant: 0 };
+    if (status === "offline") return { kind: "offline", caption: "Connection stale", variant: 0 };
 
     if (justDone) return { kind: "celebrate", caption: "Just finished", variant: activityVariant(memberKey, "celebrate", 3) };
 
     if (status === "blocked") {
-        // A pending approval (or an unanswered message) is "waiting for the
-        // human" — friendly and forward. A real problem is "blocked" — stuck.
+        // Legacy callers may pass decisions here. Copy still identifies who owes the action.
         if (attention?.kind === "approval") return { kind: "waiting", caption: "Needs your approval", variant: activityVariant(memberKey, "waiting") };
-        if (attention?.kind === "message") return { kind: "waiting", caption: "Waiting for your reply", variant: activityVariant(memberKey, "waiting") };
+        if (attention?.kind === "message") return { kind: "waiting", caption: "Awaiting agent response", variant: activityVariant(memberKey, "waiting") };
         if (attention?.kind === "incident") return { kind: "blocked", caption: stuckCaption(attention), variant: activityVariant(memberKey, "blocked") };
         return { kind: "blocked", caption: "Needs a check-in", variant: activityVariant(memberKey, "blocked") };
     }
 
-    if (status === "waiting") return { kind: "reviewing", caption: "In review", variant: activityVariant(memberKey, "reviewing") };
+    if (status === "waiting") return { kind: "waiting", caption: attention?.kind === "approval" ? "Approval pending" : "Work awaiting review", variant: activityVariant(memberKey, "waiting") };
 
     if (status === "idle") {
         let base: Behavior;
         if (idleRoutine === "coffee") base = { kind: "coffee", caption: "Coffee break", variant: activityVariant(memberKey, "coffee") };
         else if (idleRoutine === "nap") base = { kind: "nap", caption: "Napping", variant: activityVariant(memberKey, "nap") };
         else if (idleRoutine === "stretch") base = { kind: "stretch", caption: "Stretching", variant: activityVariant(memberKey, "stretch") };
-        else base = { kind: "nap", caption: "Napping", variant: 0 };
+        else base = { kind: "available", caption: "Available", variant: 0 };
         // A queued-but-unclaimed task shows as an amber "hasn't started" note.
         if (attention?.kind === "not_started") return { ...base, caption: `Hasn't started ${attention.title}` };
         return base;
     }
+
+    if (input.liveActivity === false) return { kind: "working", caption: "Task in progress", variant: 0 };
 
     let base: Behavior;
     if (talking) {
@@ -544,13 +565,12 @@ export function deriveBehavior(input: BehaviorInput): Behavior {
         } else if (/research|analy|think|plan|investig|explor|scout|strateg/.test(text) || /research|analy|insight|strategy/.test(type)) {
             base = { kind: "thinking", caption: "Researching", variant: activityVariant(memberKey, "thinking") };
         } else {
-            base = { kind: "typing", caption: "Coding", variant: activityVariant(memberKey, "typing") };
+            base = { kind: "typing", caption: /cod|engineer|develop|debug|build|fix|software/.test(`${text} ${type}`) ? "Coding" : "Working", variant: activityVariant(memberKey, "typing") };
         }
     }
     // Still working, but past its SLA: keep the working animation, flag the clock.
     if (attention?.kind === "late") return { ...base, caption: `Running late on ${attention.title}` };
-    // Health attention without a blocking reason is a nudge, not "stuck".
-    if (checkIn) return { ...base, caption: checkInReason ? sentence(checkInReason) : "Needs a check-in" };
+    // Health observations stay alongside work; they never replace its caption.
     return base;
 }
 
@@ -744,6 +764,8 @@ export interface SceneAgent {
     behavior: Behavior;
     /** True when the agent was created in the last 24h (plays a one-shot wave). */
     isNew: boolean;
+    /** Separate issues preserve the primary work state and agent identity. */
+    notices?: AttentionEntry[];
 }
 
 export interface DeskSlot {
@@ -1214,15 +1236,16 @@ export function buildFeed(activity: ActivityEvent[], pairs: PairThreadActivity[]
 /* ── View derivation ────────────────────────────────────────────────── */
 
 /** Agents only — the live office doesn't seat people. */
-export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attention" | "activity" | "generatedAt">): SceneAgent[] {
-    const now = new Date(data.generatedAt);
+export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attention" | "activity" | "generatedAt">, playfulIdle = false, at?: Date): SceneAgent[] {
+    const now = at ?? new Date(data.generatedAt);
     const justDone = recentlyDoneKeys(data.activity, now);
     const agents = data.members.filter((m) => m.kind === "agent");
     const idleRoutines = assignIdleRoutines(agents.filter((m) => sceneStatus(m) === "idle").map((m) => m.key));
     return agents.map((member) => {
         const { blocking, overlay } = memberAttention(data.attention, member.key);
-        const status = sceneStatus(member, blocking);
-        const attention = blocking ?? overlay;
+        const pendingDecision = data.attention.find((entry) => entry.memberKey === member.key && entry.kind === "approval");
+        const status = sceneStatus(member, blocking ?? pendingDecision ?? overlay);
+        const attention = blocking ?? pendingDecision ?? overlay;
         const taskType = member.working[0]?.taskType ?? member.waiting[0]?.taskType ?? member.next[0]?.taskType ?? null;
         const behavior = deriveBehavior({
             status,
@@ -1231,11 +1254,12 @@ export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attenti
             attention,
             justDone: justDone.has(member.key),
             taskType,
-            idleRoutine: status === "idle" ? idleRoutines.get(member.key) ?? null : null,
+            idleRoutine: playfulIdle && status === "idle" ? idleRoutines.get(member.key) ?? null : null,
+            liveActivity: Boolean(member.activity),
             checkIn: member.health === "attention" && !blocking,
             checkInReason: member.healthReasons[0] ?? null,
         });
-        return { member, status, activity: activityText(member, status, attention), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now) };
+        return { member, status, activity: activityText(member, status, attention), zone: zoneFor(member, status), behavior, isNew: isNewAgent(member.createdAt, now), notices: attentionForMember(data.attention, member.key) };
     });
 }
 
@@ -1244,7 +1268,7 @@ export function kpiCounts(agents: SceneAgent[], data: Pick<DashboardData, "board
         working: agents.filter((a) => a.status === "working").length,
         waiting: agents.filter((a) => a.status === "waiting").length,
         done: agents.filter((a) => a.member.doneToday > 0).length,
-        attention: data.attention.length,
+        attention: data.attention.filter(requiresHumanAction).length,
     };
 }
 
@@ -1269,4 +1293,32 @@ export function defaultSelection(agents: SceneAgent[]): string | null {
         if (!best || activityScore(a.member, a.status) > activityScore(best.member, best.status)) best = a;
     }
     return best?.member.key ?? null;
+}
+
+/** Snapshot freshness is visible even when a router refresh fails silently. */
+export function snapshotFreshness(generatedAt: string, now: Date, online = true): "current" | "stale" | "offline" {
+    if (!online) return "offline";
+    const age = now.getTime() - Date.parse(generatedAt);
+    return Number.isFinite(age) && age >= -15_000 && age <= 45_000 ? "current" : "stale";
+}
+
+/** Board filters select task states, never all tasks owned by a matching agent. */
+export function filterDashboardBoard(board: DashboardData["board"], filters: { kpi: KpiFilter | null; query: string; zoneFilter: ZoneId | null; members: DashboardMember[] }): DashboardData["board"] {
+    const members = new Map(filters.members.map((member) => [member.key, member]));
+    const keep = (task: DashboardTask) => {
+        const member = task.assigneeKey ? members.get(task.assigneeKey) : undefined;
+        if (!taskMatchesQuery(task, member?.name ?? null, filters.query)) return false;
+        if (filters.zoneFilter && (!member || zoneFor(member, sceneStatus(member)) !== filters.zoneFilter)) return false;
+        return true;
+    };
+    return {
+        inProgress: !filters.kpi || filters.kpi === "working" ? board.inProgress.filter(keep) : [],
+        review: !filters.kpi || filters.kpi === "waiting" ? board.review.filter(keep) : [],
+        done: !filters.kpi || filters.kpi === "done" ? board.done.filter(keep) : [],
+    };
+}
+
+/** Company-wide dashboards never expose private chat activity descriptions. */
+export function dashboardActivity(activity: string | null, threadType: string): string {
+    return threadType === "team" || threadType === "group" ? activity?.trim() || "Working…" : "Working in a private chat";
 }

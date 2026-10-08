@@ -12,7 +12,7 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import {
-    attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
+    dashboardActivity, attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
     type ActivityEvent, type AttentionEntry, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type PausedNotice, type ThroughputSummary,
 } from "@/lib/team-scene";
 
@@ -42,7 +42,7 @@ function shortReason(reasonCode: string): string {
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
     const session = await getValidatedServerSession();
     const params = await searchParams;
-    const view: "list" | "scene" = params.view === "list" ? "list" : "scene";
+    const view: "list" | "pulse" | "scene" | undefined = params.view === "list" ? "list" : params.view === "pulse" ? "pulse" : params.view === "scene" ? "scene" : undefined;
     const companyId = await getCompanyId();
     if (!companyId) {
         // A fresh self-hosted install has no company yet. Send the operator to
@@ -69,7 +69,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: companyMembers.id, userId: users.id, displayName: users.displayName, email: users.email, roleTitle: users.roleTitle })
             .from(companyMembers).innerJoin(users, eq(users.id, companyMembers.userId))
             .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
-        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents })
+        db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents })
             .from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
         db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
@@ -83,7 +83,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: incidents.id, summary: incidents.summary, severity: incidents.severity, projectId: incidents.projectId, taskId: incidents.taskId, reasonCode: incidents.reasonCode, createdAt: incidents.createdAt, taskState: tasks.state, taskDeletedAt: tasks.deletedAt, taskType: tasks.taskType, inputJson: tasks.inputJson, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(incidents).leftJoin(tasks, and(eq(tasks.id, incidents.taskId), eq(tasks.companyId, companyId)))
             .where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(50),
-        db.select({ agentId: threadParticipants.participantId, activity: threadParticipants.currentActivity }).from(threadParticipants)
+        db.select({ agentId: threadParticipants.participantId, activity: threadParticipants.currentActivity, threadType: messageThreads.type }).from(threadParticipants)
+            .innerJoin(messageThreads, eq(messageThreads.id, threadParticipants.threadId))
             .where(and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), gte(threadParticipants.typingUntil, now))),
         computeCompanyHealth(companyId, { now }),
         db.select({ id: projects.id, goal: projects.goal }).from(projects).where(eq(projects.companyId, companyId)),
@@ -129,7 +130,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
-    const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, t.activity || "working…"]));
+    const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, dashboardActivity(t.activity, t.threadType)]));
     const memberKeyByUser = new Map(members.map((m) => [m.userId, `human:${m.id}`]));
     const nameByKey = new Map<string, string>([
         ...agentRows.map((a) => [`agent:${a.id}`, a.name] as const),
@@ -235,7 +236,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
             monthlyCostCents: Number(a.monthlyCostCents) || 0,
             monthlyBudgetCents: a.monthlyBudgetCents,
-            lastActivityAt: h?.lastSeenAt ?? null,
+            lastActivityAt: h?.lastSeenAt ?? null, runtimeOnline: h?.online ?? false, canRestartRuntime: a.provider === "hermes" && a.deploymentMode === "local",
             ...workFor(`agent:${a.id}`),
         });
     }
@@ -280,15 +281,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         } else {
             attention.push({
                 id: `incident:${i.id}`, kind: "not_started", title, memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null,
-                area: projectName.get(i.projectId) ?? null, at, actionLabel: "Assign", href, taskId: i.taskId,
+                area: projectName.get(i.projectId) ?? null, at, actionLabel: "Open task", href, taskId: i.taskId, actionRequired: !key,
             });
         }
     }
-    for (const a of health.agents.filter((h) => h.status === "down")) {
+    for (const a of health.agents.filter((h) => h.status === "down" && !activityByAgent.has(h.id))) {
         attention.push({
-            id: `agent:${a.id}`, kind: "agent", title: `${a.name} is offline with work waiting`, memberKey: `agent:${a.id}`, memberName: a.name,
-            area: a.role, at: a.lastSeenAt ?? now.toISOString(), actionLabel: "Restart", href: "/agents/health",
-            agentId: a.id,
+            id: `agent:${a.id}`, kind: "agent", title: `${a.name} has no recent connection with work waiting`, memberKey: `agent:${a.id}`, memberName: a.name,
+            area: a.role, at: a.lastSeenAt ?? now.toISOString(), actionLabel: "Inspect connection", href: `/agents?agent=${a.id}`,
+            agentId: a.id, canRestartRuntime: agentRows.some((agent) => agent.id === a.id && agent.provider === "hermes" && agent.deploymentMode === "local"),
         });
     }
     const seenApprovals = new Set<string>();
@@ -304,12 +305,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             approvalId: a.id,
         });
     }
-    for (const item of health.attention.slice(0, 6)) {
+    for (const item of health.attention) {
         attention.push({
             id: `message:${item.messageId}`, kind: "message",
-            title: item.kind === "failed" ? `Message failed: “${excerpt(item.text, 40)}”` : `Waiting on a reply: “${excerpt(item.text, 36)}”`,
+            title: item.kind === "failed" ? `Message failed: “${excerpt(item.text, 40)}”` : `Awaiting agent response: “${excerpt(item.text, 36)}”`,
             memberKey: `agent:${item.agentId}`, memberName: item.agentName, area: "Messages", at: item.since,
-            actionLabel: "Open chat", href: item.link,
+            actionLabel: item.kind === "failed" ? "Inspect delivery" : "Open chat", href: item.link,
+            actionRequired: item.kind === "failed",
         });
     }
     for (const n of pausedNotices) {

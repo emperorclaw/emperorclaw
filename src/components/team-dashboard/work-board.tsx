@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import {
     IconArrowRight, IconFileText, IconBug, IconChartBar, IconCheck, IconChevronRight, IconCode, IconCoffee, IconListDetails, IconPencil, IconPlus, IconSettings,
@@ -25,10 +28,12 @@ const ROWS_PER_COLUMN = 4;
 
 export interface BoardAssignee { member: DashboardMember; zone: ZoneId }
 
-export function WorkBoard({ columns, assignees }: {
+export function WorkBoard({ columns, assignees, canAct }: {
     columns: Record<(typeof COLUMNS)[number]["id"], DashboardTask[]>;
     assignees: Map<string, BoardAssignee>;
+    canAct: boolean;
 }) {
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     return (
         <section aria-labelledby="work-in-motion-title" className="emperor-panel rounded-2xl p-4">
             <header className="flex items-start justify-between gap-3">
@@ -36,12 +41,12 @@ export function WorkBoard({ columns, assignees }: {
                     <IconListDetails className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                     <div>
                         <h2 id="work-in-motion-title" className="text-base font-semibold text-foreground">Work in motion</h2>
-                        <p className="text-xs text-muted-foreground">Tasks across your team, grouped by current status.</p>
+                        <p className="text-xs text-muted-foreground">Latest tasks by status. Up to 100 per column; Projects has the full board.</p>
                     </div>
                 </div>
-                <Link href="/projects" className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                {canAct && <Link href="/projects" className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                     <IconPlus className="h-4 w-4" />New task
-                </Link>
+                </Link>}
             </header>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -57,13 +62,13 @@ export function WorkBoard({ columns, assignees }: {
                                 <p className="px-2 py-4 text-xs text-muted-foreground">Nothing here right now.</p>
                             ) : (
                                 <ul className="mt-1 space-y-1.5">
-                                    {tasks.slice(0, ROWS_PER_COLUMN).map((task) => <TaskRow key={task.id} task={task} assignee={task.assigneeKey ? assignees.get(task.assigneeKey) ?? null : null} />)}
+                                    {tasks.slice(0, expanded[col.id] ? tasks.length : ROWS_PER_COLUMN).map((task) => <TaskRow key={task.id} task={task} assignee={task.assigneeKey ? assignees.get(task.assigneeKey) ?? null : null} />)}
                                 </ul>
                             )}
                             {tasks.length > ROWS_PER_COLUMN && (
-                                <Link href="/projects" className="mt-1.5 flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-                                    {tasks.length - ROWS_PER_COLUMN} more<IconChevronRight className="h-3.5 w-3.5" />
-                                </Link>
+                                <button type="button" aria-expanded={Boolean(expanded[col.id])} onClick={() => setExpanded((current) => ({ ...current, [col.id]: !current[col.id] }))} className="mt-1.5 flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-cyan-400">
+                                    {expanded[col.id] ? "Show fewer" : `Show all ${tasks.length} tasks`}<IconChevronRight className="h-3.5 w-3.5" />
+                                </button>
                             )}
                         </div>
                     );
@@ -71,7 +76,7 @@ export function WorkBoard({ columns, assignees }: {
             </div>
 
             <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs">
-                <span className="text-muted-foreground">{`${columns.inProgress.length + columns.review.length + columns.done.length} tasks shown across the board.`}</span>
+                <span className="text-muted-foreground">{`${columns.inProgress.length + columns.review.length + columns.done.length} tasks loaded in this snapshot.`}</span>
                 <Link href="/projects" className="inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground">View all activity<IconArrowRight className="h-3.5 w-3.5" /></Link>
             </footer>
         </section>

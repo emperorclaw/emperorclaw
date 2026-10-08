@@ -29,9 +29,9 @@ const agentsInZone = (count: number, zoneRole: string, status: "working" | "idle
         return { member: m, status: s, activity: activityText(m, s), zone: s === "idle" ? "lounge" : workZoneFor(m), behavior: { kind: s === "idle" ? "nap" : "typing", caption: s === "idle" ? "Napping" : "Coding", variant: 0 }, isNew: false };
     });
 
-test("status mapping prefers offline, then needs-you, then work", () => {
+test("status mapping preserves ongoing work alongside pending decisions", () => {
     assert.equal(sceneStatus(member({ health: "down", working: [task("in_progress")] })), "offline");
-    assert.equal(sceneStatus(member({ working: [task("in_progress")] }), approval("agent:a1")), "blocked");
+    assert.equal(sceneStatus(member({ working: [task("in_progress")] }), approval("agent:a1")), "working");
     assert.equal(sceneStatus(member({ health: "attention" })), "idle", "health attention alone is a check-in hint, not stuck");
     assert.equal(sceneStatus(member({ health: "attention", working: [task("in_progress")] })), "working");
     assert.equal(sceneStatus(member({ working: [task("in_progress")] })), "working");
@@ -165,8 +165,8 @@ test("kpis, filters and default selection follow real status", () => {
     };
     const agents = deriveSceneAgents(data);
     assert.equal(agents.length, 4, "people never sit in the office, even with open work");
-    assert.deepEqual(kpiCounts(agents, data), { working: 1, waiting: 1, done: 1, attention: 1 });
-    assert.equal(agents.find((a) => a.member.key === "agent:b")?.status, "blocked");
+    assert.deepEqual(kpiCounts(agents, data), { working: 1, waiting: 2, done: 1, attention: 1 });
+    assert.equal(agents.find((a) => a.member.key === "agent:b")?.status, "waiting");
     assert.equal(agents.find((a) => a.member.key === "agent:i")?.zone, "lounge");
     assert.equal(defaultSelection(agents), "agent:w");
     assert.equal(defaultSelection([]), null);

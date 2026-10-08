@@ -56,8 +56,8 @@ test("SLA late but still working is not stuck — it keeps the working status", 
     };
     const agents = deriveSceneAgents(data);
     assert.equal(agents[0].status, "working");
-    assert.equal(agents[0].behavior.caption, "Running late on Fix login");
-    assert.equal(agents[0].behavior.kind, "typing", "keeps the working animation");
+    assert.equal(agents[0].behavior.caption, "Task in progress");
+    assert.equal(agents[0].behavior.kind, "working", "no runtime evidence means quiet task indication");
 });
 
 test("a queued-but-unclaimed task shows as an amber has-not-started note", () => {
@@ -84,7 +84,7 @@ test("a real problem is the only stuck state", () => {
     assert.equal(agents[0].behavior.caption, "Stuck: Max retries exceeded");
 });
 
-test("health attention alone surfaces a check-in hint, not stuck", () => {
+test("health observations do not replace the task caption", () => {
     const data = {
         members: [member({ health: "attention", healthReasons: ["2 unanswered messages"], working: [task("in_progress")] })],
         attention: [],
@@ -93,7 +93,7 @@ test("health attention alone surfaces a check-in hint, not stuck", () => {
     };
     const agents = deriveSceneAgents(data);
     assert.equal(agents[0].status, "working");
-    assert.equal(agents[0].behavior.caption, "2 unanswered messages");
+    assert.equal(agents[0].behavior.caption, "Task in progress");
 });
 
 test("reassignment clears late/not_started but never a problem", () => {
@@ -107,8 +107,8 @@ test("reassignment clears late/not_started but never a problem", () => {
     assert.equal(isIncidentStale({ classification: "problem", taskState: "failed", incidentCreatedAt: "2026-10-07T09:00:00.000Z", currentAssignmentAt: null, taskDeleted: true }), true);
 });
 
-test("activity copy carries the truthful late / not-started captions", () => {
-    assert.equal(activityText(member(), "working", attn("late")), "Running late on Fix login");
+test("work captions stay distinct from timing observations", () => {
+    assert.equal(activityText(member(), "working", attn("late")), "Working");
     assert.equal(activityText(member(), "idle", attn("not_started")), "Hasn't started Fix login");
     assert.equal(activityText(member(), "blocked", attn("incident", { reason: "tool failure" })), "Stuck: Tool failure");
     const kb = (attention: AttentionEntry | null) => deriveBehavior({ status: "working", activity: "x", memberKey: "agent:a1", attention, taskType: null, idleRoutine: null }).kind;

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { IconAlertTriangle, IconActivity, IconCircleCheck, IconClockHour4, IconCurrencyDollar, IconFlame } from "@tabler/icons-react";
 import { budgetFraction, formatCents, isOverBudgetWarning, type CostSummary, type KpiFilter, type ThroughputSummary } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
@@ -49,7 +50,7 @@ export function MetricsRow({ cost, throughput, onFilter }: {
                     </h2>
                     <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
                         <span className="text-2xl font-semibold leading-7 tabular-nums text-foreground">{formatCents(cost.spendTodayCents) ?? "—"}</span>
-                        <span className="text-sm text-muted-foreground">today</span>
+                        <span className="text-sm text-muted-foreground">last 24h</span>
                         <span className="text-sm tabular-nums text-foreground/80">{formatCents(cost.spendMonthCents) ?? "—"} <span className="text-muted-foreground">this month</span></span>
                     </div>
                     {budgetPct !== null && (
@@ -82,7 +83,7 @@ export function MetricsRow({ cost, throughput, onFilter }: {
                     </h2>
                     <div className="mt-2 grid grid-cols-3 gap-3">
                         <button type="button" onClick={() => onFilter("done")} className="group rounded-xl border border-border/70 bg-muted/30 p-2.5 text-left transition hover:border-border hover:bg-muted/60 dark:bg-white/[0.02]">
-                            <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><IconCircleCheck className="h-3.5 w-3.5 text-emerald-500" />done</div>
+                            <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><IconCircleCheck className="h-3.5 w-3.5 text-emerald-500" />done · 24h</div>
                             <div className="mt-1 flex items-baseline gap-2">
                                 <span className="text-xl font-semibold leading-6 tabular-nums text-foreground">{throughput.doneToday}</span>
                                 <span className="text-xs text-muted-foreground">{throughput.doneThisWeek} this week</span>
@@ -94,11 +95,11 @@ export function MetricsRow({ cost, throughput, onFilter }: {
                             <div className="mt-1 text-xl font-semibold leading-6 tabular-nums text-foreground">{cycleTimeLabel(throughput.medianCycleMs)}</div>
                             <div className="mt-1 text-[11px] text-muted-foreground">assigned → done, 7d</div>
                         </div>
-                        <button type="button" onClick={() => onFilter("attention")} className="group rounded-xl border border-border/70 bg-muted/30 p-2.5 text-left transition hover:border-border hover:bg-muted/60 dark:bg-white/[0.02]">
+                        <Link href="/projects?attention=1" className="group rounded-xl border border-border/70 bg-muted/30 p-2.5 text-left transition hover:border-border hover:bg-muted/60 dark:bg-white/[0.02]">
                             <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><IconFlame className="h-3.5 w-3.5 text-rose-500" />blocked</div>
                             <div className="mt-1 text-xl font-semibold leading-6 tabular-nums text-foreground">{throughput.blocked}</div>
-                            <div className="mt-1 text-[11px] text-muted-foreground">failed tasks</div>
-                        </button>
+                            <div className="mt-1 text-[11px] text-muted-foreground">failed tasks · open board</div>
+                        </Link>
                     </div>
                 </div>
             </div>
