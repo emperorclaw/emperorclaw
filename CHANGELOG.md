@@ -9,6 +9,26 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.75] — 2026-10-09
+
+### Added
+- Agent action menu and modal chat on the dashboard, using the shared Messages renderer.
+- Editable team organization with shared agents, optional coordinators, and touch-friendly membership controls.
+- Bounded native Hermes objectives with start, pause, resume and clear controls, persisted progress, and restart recovery.
+
+### Changed
+- Cleaner dashboard details, folded usage metrics, and restored lateral workstation consoles.
+- Compact, folded message queues with readable prompt previews.
+- Compact team context for Hermes without adding the full company structure to each prompt.
+
+### Fixed
+- Usage pricing resolution and clearer distinctions between missing reports, unpriced usage and estimates.
+- Objective control isolation, private objective visibility, cancellation, and legacy message synchronization.
+
+### Compatibility
+- No database migration required. Existing groups retain their memberships and optional coordination.
+- Update both the app and Hermes runtime to use native objectives. Other providers continue normal messaging.
+
 ## [0.8.74] — 2026-10-08
 
 ### Added
