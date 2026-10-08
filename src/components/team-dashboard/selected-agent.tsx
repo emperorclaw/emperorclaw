@@ -1,40 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { IconMessage, IconRefresh, IconUserSquareRounded } from "@tabler/icons-react";
-import { requiresHumanAction, STATUS_LABEL, timeAgo, type SceneAgent } from "@/lib/team-scene";
-import { cn } from "@/lib/utils";
+import { IconArrowUpRight, IconMessage, IconRefresh } from "@tabler/icons-react";
+import { queuePromptPreview } from "@/lib/queue-prompt-preview";
+import { requiresHumanAction, STATUS_LABEL, timeAgo, type DashboardTeam, type SceneAgent, type SceneCommunication } from "@/lib/team-scene";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 
-const PILL: Record<SceneAgent["status"], string> = {
-    working: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/30 dark:text-emerald-300",
-    waiting: "bg-amber-500/12 text-amber-600 ring-amber-500/30 dark:text-amber-300",
-    blocked: "bg-amber-500/12 text-amber-600 ring-amber-500/30 dark:text-amber-300",
-    idle: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/30 dark:text-emerald-300",
-    offline: "bg-zinc-500/12 text-zinc-500 ring-zinc-500/30 dark:text-zinc-400",
-};
+const LINK = "flex min-h-11 items-center gap-3 rounded-xl border border-border bg-white/[0.025] px-3 py-3 transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400";
 
-export function SelectedAgent({ agent, canAct, now, onMessage }: { agent: SceneAgent | null; canAct: boolean; now: Date; onMessage?: () => void }) {
+/** A work briefing: evidence first, one primary action, settings on the profile. */
+export function SelectedAgent({ agent, canAct, now, onMessage, teams = [], communications = [] }: {
+    agent: SceneAgent | null;
+    canAct: boolean;
+    now: Date;
+    onMessage?: () => void;
+    teams?: DashboardTeam[];
+    communications?: SceneCommunication[];
+}) {
     const router = useRouter();
     const [restarting, setRestarting] = useState(false);
-    if (!agent) {
-        return (
-            <section className="emperor-panel rounded-2xl p-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Agent actions</h2>
-                <p className="mt-3 text-sm text-muted-foreground">Pick someone on the floor to see what they are doing.</p>
-            </section>
-        );
-    }
-    const { member, status, behavior } = agent;
-    const task = member.working[0] ?? member.waiting[0] ?? member.next[0] ?? null;
-    const connection = member.activity || member.runtimeOnline ? "Connected" : member.lastActivityAt ? "No recent connection" : "Connection unconfirmed";
-
+    if (!agent) return null;
+    const { member, status } = agent;
+    const decisions = (agent.notices ?? []).filter(requiresHumanAction);
+    const observations = (agent.notices ?? []).filter((entry) => !requiresHumanAction(entry));
+    const work = [...member.working, ...member.waiting, ...member.next]
+        .filter((task, index, all) => all.findIndex((other) => other.id === task.id) === index);
+    const memberships = teams.filter((team) => team.memberKeys.includes(member.key));
+    // Only communications already authorized by the dashboard server are passed in.
+    const latest = communications.filter((entry) => entry.actorKey === member.key || entry.targetKey === member.key)
+        .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+    const disconnected = member.kind === "agent" && member.health === "down" && !member.activity && !member.runtimeOnline;
     const restart = async () => {
-        if (!member.kind || member.kind !== "agent") return;
         setRestarting(true);
         try {
             const res = await fetch(`/api/agents/${member.id}/recreate-runtime`, { method: "POST" });
@@ -42,77 +41,50 @@ export function SelectedAgent({ agent, canAct, now, onMessage }: { agent: SceneA
             if (!res.ok || data.success === false) throw new Error(data.error || data.message || "Couldn't restart the runtime");
             toast.success("Restarting runtime…");
             router.refresh();
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Something went wrong");
-        } finally {
-            setRestarting(false);
-        }
+        } catch (error) { toast.error(error instanceof Error ? error.message : "Something went wrong"); }
+        finally { setRestarting(false); }
     };
 
     return (
-        <section aria-labelledby="selected-agent-title" className="min-w-0 w-full rounded-2xl p-1">
-            <header className="flex items-center justify-between">
-                <h2 id="selected-agent-title" className="flex items-center gap-2 text-base font-semibold text-foreground"><IconUserSquareRounded className="h-5 w-5 text-muted-foreground" stroke={1.8} />Agent actions</h2>
-
+        <section className="flex min-h-0 flex-1 flex-col">
+            <header className="relative shrink-0 border-b border-border px-5 pb-5 pt-6 sm:px-6">
+                <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-transparent" />
+                <div className="relative flex items-center gap-4 pr-8">
+                    <AgentAvatar id={member.id} kind={member.kind} name={member.name} avatarUrl={member.avatarUrl} avatarAppearance={member.avatarAppearance} status={status} size={64} />
+                    <div className="min-w-0">
+                        <h2 className="break-words text-xl font-semibold tracking-tight text-foreground">{member.name}</h2>
+                        <p className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground">{member.role || (member.kind === "human" ? "Teammate" : "Agent")}</p>
+                        <p className="mt-2 flex items-center gap-2 text-xs font-medium text-foreground/80"><span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[status] }} />{STATUS_LABEL[status]}</p>
+                    </div>
+                </div>
             </header>
 
-            <div className="mt-3 flex gap-3">
-                <AgentAvatar id={member.id} kind={member.kind} name={member.name} avatarUrl={member.avatarUrl} avatarAppearance={member.avatarAppearance} status={status} size={56} />
-                <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[status] }} />
-                        <span className="truncate text-base font-semibold text-foreground">{member.name}</span>
-                        <span title="Work status" className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset", PILL[status])}>{STATUS_LABEL[status]}</span>
-                    </div>
-                    <div className="mt-0.5 truncate text-sm text-foreground/80">{member.role || (member.kind === "human" ? "Teammate" : "Agent")}</div>
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+                {decisions.length > 0 && <section aria-label="Your decisions" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                    <h3 className="mb-2 text-xs font-semibold text-amber-200">Needs your decision · {decisions.length}</h3>
+                    <div className="space-y-2">{decisions.slice(0, 3).map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><div className="min-w-0 flex-1"><p className="line-clamp-2 break-words text-sm font-medium">{entry.title}</p><p className="mt-1 text-xs text-amber-200">{entry.actionLabel || "Review"}</p></div><IconArrowUpRight className="h-4 w-4 shrink-0" /></Link>)}</div>
+                    {decisions.length > 3 && <details className="mt-2"><summary className="min-h-11 cursor-pointer py-3 text-xs text-amber-200">{decisions.length - 3} more decisions</summary><div className="space-y-2">{decisions.slice(3).map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><span className="min-w-0 flex-1 break-words text-sm">{entry.title}</span><IconArrowUpRight className="h-4 w-4 shrink-0" /></Link>)}</div></details>}
+                </section>}
 
-                </div>
+                <section aria-label="Current work">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{member.activity ? "Live activity" : "Work"}</h3>
+                    {member.activity && <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-foreground">{queuePromptPreview(member.activity)}</p>}
+                    {work.length > 0 ? <div className="mt-3 space-y-2">{work.slice(0, 3).map((task) => <Link key={task.id} href={`/projects?project=${task.projectId}&task=${task.id}`} className={LINK}><div className="min-w-0 flex-1"><p className="line-clamp-2 break-words text-sm font-medium">{task.title}</p><p className="mt-1 truncate text-xs text-muted-foreground">{task.state.replaceAll("_", " ")}{task.projectName && ` · ${task.projectName}`}</p></div><IconArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /></Link>)}{work.length > 3 && <Link href={member.href} className="inline-flex min-h-11 items-center text-sm text-cyan-200">View all {work.length} tasks <IconArrowUpRight className="ml-1 h-4 w-4" /></Link>}</div> : !member.activity && <p className="mt-2 text-sm leading-6 text-muted-foreground">No tracked task in progress.{canAct && member.kind === "agent" && " Send a message to give direction or check in."}</p>}
+                    {member.doneToday > 0 && <p className="mt-3 text-xs text-emerald-300">{member.doneToday} {member.doneToday === 1 ? "task" : "tasks"} completed today</p>}
+                </section>
+
+                {latest && <section aria-label="Latest exchange"><h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Latest exchange</h3><Link href={latest.href} className={LINK}><div className="min-w-0 flex-1"><p className="line-clamp-3 break-words text-sm leading-6">{queuePromptPreview(latest.text)}</p><p className="mt-1 text-xs text-muted-foreground">{latest.actorKey === member.key ? "Sent" : "Received"} · {timeAgo(latest.at, now)} · Open conversation</p></div><IconArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /></Link></section>}
+
+                {memberships.length > 0 && <section aria-label="Teams"><h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Teams</h3><div className="flex flex-wrap gap-2">{memberships.map((team) => <Link key={team.id} href={`/messages?group=${team.id}`} className="inline-flex min-h-11 max-w-full items-center rounded-lg border border-border px-3 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><span className="truncate">{team.name}{team.coordinator?.key === member.key ? " · Coordinator" : ""}</span></Link>)}</div></section>}
+
+                {disconnected && <section className="rounded-xl border border-border p-3"><p className="text-sm font-medium">Runtime connection unavailable</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Messages can be queued until the runtime reconnects.</p>{canAct && member.canRestartRuntime && <button type="button" disabled={restarting} onClick={restart} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm hover:bg-muted disabled:opacity-50"><IconRefresh className="h-4 w-4" />{restarting ? "Restarting…" : "Restart runtime"}</button>}</section>}
+                {(observations.length > 0 || member.lastActivityAt) && <details className="border-t border-border"><summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">Connection & observations</summary><div className="space-y-2 pb-1">{member.lastActivityAt && <p className="text-xs text-muted-foreground">Last seen {timeAgo(member.lastActivityAt, now)}</p>}{observations.map((entry) => <Link key={entry.id} href={entry.href} className={LINK}><span className="break-words text-sm text-muted-foreground">{entry.title}</span></Link>)}</div></details>}
             </div>
 
-            <div className="mt-4">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-cyan-500/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/30 dark:text-cyan-200">
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLOR[status] }} />
-                    {behavior.caption}
-                </span>
-                <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 line-clamp-3 font-medium text-foreground [overflow-wrap:anywhere]">{task ? task.title : agent.activity}</span>
-                </div>
-                {task && <Link href={`/projects?project=${task.projectId}&task=${task.id}`} className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Open task · {task.state.replaceAll("_", " ")}</Link>}
-                <p className="mt-2 text-xs text-muted-foreground">{connection}{member.lastActivityAt && ` · last seen ${timeAgo(member.lastActivityAt, now)}`}</p>
-            </div>
-
-            {(agent.notices?.length ?? 0) > 0 && <details className="mt-3 rounded-lg border border-border"><summary className="min-h-11 cursor-pointer px-3 py-3 text-sm text-muted-foreground">Actions & observations ({agent.notices?.length})</summary><ul className="space-y-2 px-2 pb-2" aria-label="Issues alongside this agent’s work">
-                {agent.notices?.map((entry) => <li key={entry.id}><Link href={entry.href} className="flex min-h-11 items-start gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                    <span className="shrink-0 font-semibold text-muted-foreground">{requiresHumanAction(entry) ? "Action" : "Watch"}</span><span className="min-w-0 break-words">{entry.title}</span>
-                </Link></li>)}
-            </ul></details>}
-
-            {/* Health + fix action */}
-            {member.kind === "agent" && member.health === "down" && !member.activity && (
-                <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs">
-                    <span className="min-w-0 truncate font-medium text-rose-600 dark:text-rose-300">No recent runtime connection</span>
-                    {canAct && member.canRestartRuntime && (
-                        <button type="button" disabled={restarting} onClick={restart} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 font-semibold text-rose-700 ring-1 ring-inset ring-rose-500/40 transition hover:bg-rose-500/25 disabled:opacity-50 dark:text-rose-200">
-                            <IconRefresh className="h-3.5 w-3.5" />{restarting ? "Restarting…" : "Restart"}
-                        </button>
-                    )}
-                </div>
-            )}
-            {member.kind === "agent" && member.health === "attention" && member.healthReasons.length > 0 && (
-                <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                    Observation: {member.healthReasons[0]}
-                </div>
-            )}
-
-            {canAct && <AgentGoalControls agentId={member.id} />}
-            <div className="mt-3 flex items-center gap-2">
-                <button type="button" onClick={onMessage} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/50 transition hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 dark:text-cyan-200">
-                    <IconMessage className="h-4 w-4" />{canAct ? "Send message" : "Read conversation"}
-                </button>
-                <Link href={member.href} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                    View agent
-                </Link>
-            </div>
+            <footer className="shrink-0 border-t border-border bg-background/90 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+                {member.kind === "agent" && <button type="button" onClick={onMessage} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-background"><IconMessage className="h-4 w-4 shrink-0" /><span className="min-w-0 break-words">{canAct ? `Talk to ${member.name}` : "Read conversation"}</span></button>}
+                <Link href={member.href} className="mt-1 flex min-h-11 items-center justify-center gap-1 text-sm text-muted-foreground transition hover:text-foreground">{member.kind === "agent" ? "Agent profile & settings" : "View teammate"}<IconArrowUpRight className="h-4 w-4" /></Link>
+            </footer>
         </section>
     );
 }
