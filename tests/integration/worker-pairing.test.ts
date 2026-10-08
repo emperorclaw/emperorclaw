@@ -39,7 +39,8 @@ maybe("worker pairing claims an agent exactly once and delivers the token exactl
         const firstBody = await first.json();
         assert.equal(firstBody.assigned, true);
         assert.equal(firstBody.agentId, agent.id);
-        assert.equal(firstBody.agentName, "Viktor");
+        assert.equal(firstBody.agentName, "viktor");
+        assert.equal(firstBody.displayName, "Viktor");
         assert.ok(firstBody.apiToken, "the agent-bound token is delivered once");
 
         // Restart re-delivery: same assignment, no new token.
@@ -49,11 +50,11 @@ maybe("worker pairing claims an agent exactly once and delivers the token exactl
         assert.equal(secondBody.agentId, agent.id);
         assert.equal(secondBody.apiToken, undefined, "no token is re-issued on restart");
 
-        // Two workers can never claim the same agent: the claim is already taken.
+        // Two workers can never hold the same agent: the unique index on
+        // paired_workers.agent_id rejects the second bind, so the claim fails.
         await heartbeatWorker("test-worker-2");
-        const { claimWorkerForAgent } = await import("@/lib/worker-pairing");
-        const doubleClaim = await claimWorkerForAgent({ workerId: "test-worker-2", companyId, agentId: agent.id, rawToken: "ec_shouldnotmatter" });
-        assert.equal(doubleClaim, false, "a second worker cannot claim an already-assigned agent");
+        const doubleClaim = await assignAgentToIdleWorker(companyId, agent);
+        assert.equal(doubleClaim, null, "a second worker cannot claim an already-assigned agent");
 
         // Disabled when the secret is unset.
         delete process.env.EMPEROR_WORKER_PAIRING_SECRET;

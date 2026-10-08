@@ -356,6 +356,9 @@ export const pairedWorkers = pgTable("paired_workers", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
     workerIdUnique: uniqueIndex("paired_workers_worker_id_unique").on(table.workerId),
+    // At most one worker per agent, enforced by the database (NULLs — idle
+    // workers — are distinct, so any number of workers can be unassigned).
+    agentIdUnique: uniqueIndex("paired_workers_agent_id_unique").on(table.agentId),
 }));
 
 export const agentSessions = pgTable("agent_sessions", {

@@ -55,7 +55,9 @@ test("buildPairResponse delivers secrets only on first delivery", () => {
     assert.equal(first.assigned, true);
     assert.equal(first.apiToken, "ec_token");
     assert.equal(first.llmApiKey, "sk-key");
-    assert.equal(first.agentName, "Viktor");
+    // agentName is the Docker-safe profile name; displayName keeps the raw name.
+    assert.equal(first.agentName, "viktor");
+    assert.equal(first.displayName, "Viktor");
 
     // Restart re-delivery: no secrets, same assignment.
     const restart = buildPairResponse({ assigned: true, agent, apiToken: null, llmApiKey: null });
@@ -63,6 +65,13 @@ test("buildPairResponse delivers secrets only on first delivery", () => {
     assert.equal(restart.apiToken, undefined);
     assert.equal(restart.llmApiKey, undefined);
     assert.equal(restart.agentId, "a1");
+});
+
+test("buildPairResponse never sends the LLM key without a fresh token", () => {
+    // A restart re-delivery provides no token, so the key must not travel either.
+    const restart = buildPairResponse({ assigned: true, agent, apiToken: null, llmApiKey: "sk-key" });
+    assert.equal(restart.apiToken, undefined);
+    assert.equal(restart.llmApiKey, undefined, "the LLM key travels only with a fresh token");
 });
 
 test("buildPairResponse is unassigned without an agent", () => {
@@ -78,7 +87,7 @@ test("POST /api/runtime/pair checks pairingEnabled before any DB access", () => 
     assert.ok(handler.length > 0, "POST handler exists");
     const disabled = handler.indexOf("pairingEnabled()");
     assert.ok(disabled > 0, "disabled when the secret is unset");
-    const compare = handler.indexOf("constantTimeEqual(provided, expected)");
+    const compare = handler.indexOf("constantTimeEqual(provided.trim(), expected)");
     assert.ok(compare > 0, "authenticated by constant-time comparison");
     const firstDbUse = handler.search(/\b(heartbeatWorker|deliverWorkerAssignment)\(/);
     assert.ok(disabled < compare && compare < firstDbUse, "disabled check → secret check → DB use");

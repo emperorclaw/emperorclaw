@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "paired_workers_agent_id_unique" ON "paired_workers" USING btree ("agent_id");
