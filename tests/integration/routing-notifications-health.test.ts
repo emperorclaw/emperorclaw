@@ -55,6 +55,9 @@ maybe("sync carries the server's routing verdict, and the loop guard pauses agen
     for (let i = 0; i < agentLoopHardCap(); i++) {
         await appendThreadMessage({ companyId, threadId: team.id, senderType: "agent", senderId: qa.id, text: `noise ${i}` });
     }
+    const { currentAgentStreak } = await import("@/lib/control-plane");
+    const observedStreak = await currentAgentStreak(companyId, team.id);
+    assert.ok(observedStreak >= agentLoopHardCap(), `streak ${observedStreak} must reach cap ${agentLoopHardCap()}`);
     await assert.rejects(sendThreadMessageFromMcp({ companyId, threadId: team.id, agentId: qa.id, text: "more", threadType: "team" }), /Loop guard/);
     // A person writing resets everything.
     await appendThreadMessage({ companyId, threadId: team.id, senderType: "human", senderId: userId, text: "ok stop" });
@@ -164,4 +167,24 @@ maybe("agent health flags unanswered requests but not ones answered later", asyn
     assert.equal(health.attention.length, 1);
     assert.equal(health.attention[0].text, "Private message", "company health must not expose a private DM preview");
     assert.equal(health.attention[0].link, `/messages?agent=${agent.id}`, "the private request remains reachable through its permission-checked conversation");
+});
+
+
+maybe("database-generated and explicit message timestamps use the same UTC timeline", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const { ensureTeamThread } = await import("@/lib/control-plane");
+    const team = await ensureTeamThread(companyId);
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const { sql } = await import("drizzle-orm");
+    const timezone = await db.execute(sql`show timezone`);
+    assert.equal(Object.values(timezone.rows[0])[0], "UTC");
+    const instant = new Date();
+    const rows = await db.insert(threadMessages).values([
+        { companyId, threadId: team.id, senderType: "system", text: "SQL default" },
+        { companyId, threadId: team.id, senderType: "system", text: "Explicit date", createdAt: instant },
+    ]).returning();
+    assert.ok(Math.abs(rows[0].createdAt.getTime() - rows[1].createdAt.getTime()) < 1000,
+        "SQL now() must agree with JavaScript dates on hosts with a local timezone");
 });

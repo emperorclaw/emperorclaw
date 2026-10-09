@@ -217,7 +217,7 @@ maybe("dm carries only the token creator's own exchanges with each agent", async
     const adaDirect = await ensureDirectThread(companyId, ada.id);
     const bobDirect = await ensureDirectThread(companyId, bob.id);
     // A newer duplicate direct thread for Ada is not her chat (the app uses the oldest).
-    const [dupe] = await db.insert(messageThreads).values({ companyId, type: "direct", title: "Dupe", createdAt: new Date(now + 1000) }).returning();
+    const [dupe] = await db.insert(messageThreads).values({ companyId, type: "direct", title: "Dupe", createdAt: new Date(adaDirect.createdAt.getTime() + 1000) }).returning();
     await db.insert(threadParticipants).values({ companyId, threadId: dupe.id, participantType: "agent", participantId: ada.id });
     // A "direct" thread between two humans (no agent) never matches.
     const [humans] = await db.insert(messageThreads).values({ companyId, type: "direct", title: "Humans" }).returning();
