@@ -45,6 +45,17 @@ export function validateOrganizationTree(value: unknown): OrganizationNode[] {
         while (count !== below.size) { count = below.size; for (const child of nodes) if (child.parentId && below.has(child.parentId)) below.add(child.id); }
         if (!nodes.some(child => below.has(child.id) && child.id !== node.id && (child.kind === 'team' || (child.kind === 'person' && child.person.kind === 'agent')))) throw Error('Add an AI leader beneath each human executive');
     }
+    const rootAgent = roots[0]?.kind === 'person' && roots[0].person.kind === 'agent' ? roots[0].person.id : null;
+    const teamLeaders = new Map<string,string>();
+    for (const node of nodes) if (node.kind === 'team') {
+        if (node.leaderAgentId === rootAgent) throw Error('The company AI leader cannot also lead a team. Choose a dedicated team leader');
+        if (teamLeaders.has(node.leaderAgentId)) throw Error('Each AI team leader belongs to one team. Choose another leader');
+        teamLeaders.set(node.leaderAgentId,node.teamId);
+    }
+    for (const node of nodes) if (node.kind === 'person' && node.person.kind === 'agent') {
+        const team = organizationTeamAncestor(nodes,node.id);
+        if (team && (node.person.id === rootAgent || teamLeaders.has(node.person.id))) throw Error('AI leaders cannot be shared as teammates. Choose a specialist instead');
+    }
     return nodes.map(n => n.kind === 'person' ? {id:n.id,parentId:n.parentId,kind:n.kind,person:{kind:n.person.kind,id:n.person.id}} : {id:n.id,parentId:n.parentId,kind:n.kind,teamId:n.teamId,leaderAgentId:n.leaderAgentId});
 }
 export function removeOrganizationBranch(nodes: OrganizationNode[], id: string) {

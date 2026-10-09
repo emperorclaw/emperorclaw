@@ -714,10 +714,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const archiveTask = async (task: any) => {
         if (confirmingArchive !== task.id) {
             setConfirmingArchive(task.id);
-            setTimeout(() => setConfirmingArchive(null), 4000);
             return;
         }
-        setConfirmingArchive(null);
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -725,6 +723,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Task archive failed");
             setTasks((prev) => prev.filter((item) => item.id !== task.id));
+            setConfirmingArchive(null);
             setSelectedTask(null);
             toast.success("Task archived.");
             router.refresh();
@@ -935,7 +934,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                 {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={IconCircleCheck}>
-                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} done onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} done onArchive={() => { setSelectedTask(task); setMutationError(null); setConfirmingArchive(task.id); }} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
                             <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={IconCircleX}>
                                 {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
@@ -998,9 +997,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                                     {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                                 </select>
                             </label>
-                            <div className="flex items-end gap-2">
+                            <div className="flex flex-col justify-end gap-2">
+                                <p className="text-xs text-muted-foreground">Finished? Archive this task to remove it from the board. Its history and files stay saved.</p>
                                 <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><IconPencil className="h-4 w-4" />Edit</button>
-                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><IconTrash className="h-4 w-4" />{confirmingArchive === selectedTask?.id ? "Click again to confirm" : "Archive"}</button>
+                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><IconTrash className="h-4 w-4" />Archive task</button>
                             </div>
                         </div>
                         {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}
@@ -1175,6 +1175,17 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </div>
                 </DialogContent>
             </Dialog>
+            <Dialog open={!!selectedTask && confirmingArchive === selectedTask.id} onOpenChange={(open) => { if (!open && !isMutating) setConfirmingArchive(null); }}>
+                <DialogContent className="bg-background text-foreground sm:max-w-md" showCloseButton={!isMutating}>
+                    <DialogHeader><DialogTitle>Archive task?</DialogTitle></DialogHeader>
+                    <p className="text-sm text-muted-foreground">“{selectedTask ? getTaskTitle(selectedTask) : "Task"}” will disappear from the board. Its history and files stay saved.</p>
+                    {mutationError && <p role="alert" className="text-sm text-destructive">{mutationError}</p>}
+                    <div className="flex justify-end gap-2">
+                        <button disabled={isMutating} onClick={() => setConfirmingArchive(null)} className="min-h-11 rounded-md border px-4 text-sm">Cancel</button>
+                        <button disabled={isMutating} onClick={() => selectedTask && void archiveTask(selectedTask)} className="min-h-11 rounded-md bg-destructive px-4 text-sm text-white disabled:opacity-50">{isMutating ? "Archiving…" : "Archive task"}</button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -1204,7 +1215,7 @@ function BoardColumn({ title, count, tone, icon: Icon, children, droppableId }: 
     );
 }
 
-function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, onSetPriority, onSetState, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; onSetPriority?: (priority: number) => void; onSetState?: (state: string) => void; overlay?: boolean }) {
+function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, onArchive, onSetPriority, onSetState, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; onArchive?: () => void; onSetPriority?: (priority: number) => void; onSetState?: (state: string) => void; overlay?: boolean }) {
     const draggable = useDraggable({ id: task.id, disabled: overlay });
     const priorityInfo = getPriorityInfo(task.priority || 0);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1243,6 +1254,7 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
             <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>
             {(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}
             
+            {done && onArchive && <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onArchive(); }} className="mt-3 min-h-11 w-full rounded-md border border-zinc-700 px-3 text-sm text-zinc-300 hover:bg-zinc-800">Archive task</button>}
             {/* Right-click context menu */}
             {contextMenu && (
                 <div

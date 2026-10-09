@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companies, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
+import { removeOrganizationBranch } from "@/lib/organization-tree";
 import { resolveAgentId } from "@/lib/mcp";
 import { coordinationRole, isCoordinatorRole, teamCoordinator, type CoordinatorRef } from "@/lib/team-coordination";
 
@@ -388,7 +389,16 @@ export async function removeGroupMember(companyId: string, groupId: string, memb
 export async function archiveGroup(companyId: string, groupId: string): Promise<void> {
     const thread = await getGroupThread(companyId, groupId);
     if (isAgentPairThread(thread)) throw new GroupError("A pair thread cannot be archived", 403);
-    await db.update(messageThreads).set({ archivedAt: new Date() }).where(eq(messageThreads.id, thread.id));
+    await db.transaction(async tx => {
+        const [company] = await tx.select({ config: companies.organizationJson }).from(companies).where(eq(companies.id, companyId)).for("update");
+        const config = company?.config;
+        if (config) {
+            let nodes = config.nodes;
+            for (const node of nodes ?? []) if (node.kind === "team" && node.teamId === groupId) nodes = removeOrganizationBranch(nodes!, node.id);
+            await tx.update(companies).set({ organizationJson: { ...config, teamIds: config.teamIds.filter(id => id !== groupId), ...(nodes ? { nodes } : {}) } }).where(eq(companies.id, companyId));
+        }
+        await tx.update(messageThreads).set({ archivedAt: new Date() }).where(eq(messageThreads.id, thread.id));
+    });
 }
 
 export async function isAgentGroupMember(companyId: string, groupId: string, agentId: string): Promise<boolean> {

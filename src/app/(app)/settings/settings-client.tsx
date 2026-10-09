@@ -253,13 +253,13 @@ export default function SettingsClient({
     };
 
     return (
-        <div className="mx-auto min-w-0 max-w-[1440px] space-y-6 animate-in fade-in duration-500">
+        <div className="mx-auto min-w-0 max-w-[1440px] @container space-y-6 animate-in fade-in duration-500">
             <PageHeader eyebrow="Workspace" title="Settings" description="Manage your profile, workspace, and connections." />
-            <div className="grid min-w-0 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="grid min-w-0 gap-6 @min-[900px]:grid-cols-[200px_minmax(0,1fr)]">
                 <aside className="min-w-0">
-                    <label className="block space-y-2 lg:hidden"><span className="text-sm font-medium">Settings section</span><select aria-label="Settings section" value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.label} label={section.label}>{section.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}</select></label>
-                    <nav aria-label="Settings sections" className="hidden space-y-5 lg:block">
-                        {sections.map(section => <div key={section.label}><p className="mb-2 px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.label}</p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{item.label}</Link>)}</div></div>)}
+                    <label className="block space-y-2 @min-[900px]:hidden"><span className="text-sm font-medium">Settings section</span><select aria-label="Settings section" value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.label} label={section.label}>{section.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}</select></label>
+                    <nav aria-label="Settings sections" className="hidden space-y-5 @min-[900px]:block">
+                        {sections.map(section => <div key={section.label}><p className="mb-3 flex items-center gap-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground"><span>{section.label}</span><span aria-hidden="true" className="h-px flex-1 bg-border" /></p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{item.label}</Link>)}</div></div>)}
                         {isPlatformAdmin && <Link href="/ops" className="flex min-h-11 items-center rounded-xl border-t border-border px-3 text-sm text-muted-foreground hover:text-foreground">Platform operations ↗</Link>}
                     </nav>
                 </aside>

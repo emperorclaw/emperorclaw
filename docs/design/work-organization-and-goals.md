@@ -37,3 +37,11 @@ Supported commands: `/goal <objective>`, `/goal status`, `/goal show`, `/goal pa
 Verification covers real PostgreSQL command isolation/cancellation/privacy, scheduler unit tests, mobile UI controls, and the current upstream GoalManager with a test database and mocked judge. A deployed Hermes container with live model credentials has not been exercised in this workspace. Reported usage remains an estimate for the execution model; auxiliary judge/provider billing is not a complete invoice measure.
 
 Goal requests carry a reserved `runtimeControl: { action: "goal" }` marker as well as their goal payload. Older message-sync implementations already exclude runtime controls, and older kill/replace handlers ignore this unknown action, so a pending goal is not accidentally treated as a model prompt during a server/runtime downgrade.
+
+## Organization management
+
+The chart has one company leader, human or AI. Each team has its own dedicated AI leader; leaders cannot be shared as teammates on other chart branches. Ordinary specialists can belong to several teams. Existing group chats keep their participants and history; a company leader can observe a team chat without reporting to its team leader. The chart determines reporting, not chat membership. Legacy configurations remain readable.
+
+Click a team to edit its name and purpose, change its AI leader, add teammates, or open its chat. Removing a branch only removes the chart relationship. Archiving a team removes its chart branch and hides its chat from active lists in one transaction; agents, participants, and past messages are retained.
+
+Settings switches to a grouped section selector when its available content width is below 900px. Desktop section headings use uppercase labels and dividers. Organization dialogs follow the selected color theme. Completed task cards expose Archive task with a confirmation dialog; archived tasks leave the board while retaining history and files.

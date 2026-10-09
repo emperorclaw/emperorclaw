@@ -260,7 +260,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                     made.push({ title: group.title, icon: group.icon, ok: false, members: members.map(member => member.name) });
                     continue;
                 }
-                const coordinatorId = members.find(member => member.templateId === "boss")?.agentId ?? members[0]?.agentId;
+                const coordinatorId = members.find(member => member.templateId !== "boss")?.agentId;
                 if (!coordinatorId) continue;
                 if (!groupRequestIds.current.has(group.teamId)) groupRequestIds.current.set(group.teamId, createClientRequestId());
                 const response = await fetch("/api/groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
