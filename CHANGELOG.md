@@ -9,6 +9,30 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.77] — 2026-10-09
+
+### Added
+- Visual organization editing through reporting nodes and avatar pickers, with dedicated AI team leaders and shared specialists.
+- Edit team names and purposes or archive teams and chats directly from the organization chart.
+- Visible task archiving on completed cards, with confirmation and retained history and files.
+
+### Changed
+- Responsive Settings navigation with clearly separated categories and a grouped selector on smaller screens.
+- Theme-aware onboarding, organization pickers, and standardized member dialogs.
+- Compact team reporting guidance distinguishes chat collaboration from management relationships.
+- Starter teams and workspace knowledge include clearer filing and operating guidance.
+
+### Fixed
+- Team hiring and onboarding retries preserve existing workers and reuse complete group chats.
+- Archiving a team removes its chart branch atomically while preserving agents and conversation records.
+- Access-scope editing avoids stale data, and starter knowledge upgrades preserve private and edited content.
+- Database defaults and message timestamps use the same UTC timeline.
+
+### Compatibility
+- Existing group conversations, memberships, and legacy organization configurations remain readable.
+- New chart edits require dedicated AI team leaders; ordinary specialists can still work in multiple teams.
+- Organization roles do not change permissions or automatically send messages.
+
 ## [0.8.76] — 2026-10-09
 
 ### Added
