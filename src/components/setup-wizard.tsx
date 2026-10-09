@@ -361,19 +361,19 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const stepsShown = hasAgents ? STEPS.filter((s) => s.id === "welcome" || s.id === "company") : STEPS;
 
     return (
-        <div role="dialog" aria-modal="true" aria-labelledby="setup-title" className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/80 p-0 backdrop-blur-md sm:p-6">
-            <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-border bg-zinc-950 shadow-2xl sm:h-[min(760px,100%)] sm:flex-row sm:rounded-3xl sm:border">
+        <div role="dialog" aria-modal="true" aria-labelledby="setup-title" className="fixed inset-0 z-[200] flex items-center justify-center bg-background/80 p-0 backdrop-blur-md sm:p-6">
+            <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-border bg-background shadow-2xl sm:h-[min(760px,100%)] sm:flex-row sm:rounded-3xl sm:border">
                 {/* Step rail */}
-                <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-white/[0.02] p-6 sm:flex">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Emperor setup</p>
+                <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-muted/20 p-6 sm:flex">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">Emperor setup</p>
                     <ol className="mt-8 space-y-1">
                         {stepsShown.map((s, i) => {
                             const done = i < stepIndex;
                             const current = s.id === step;
                             const Icon = s.icon;
                             return (
-                                <li key={s.id} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm", current ? "bg-cyan-400/10 text-zinc-50" : done ? "text-zinc-300" : "text-zinc-500")}>
-                                    <span className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-1", current ? "bg-cyan-400/20 text-cyan-200 ring-cyan-400/40" : done ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30" : "ring-white/10")}>
+                                <li key={s.id} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm", current ? "bg-cyan-400/10 text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground")}>
+                                    <span className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-1", current ? "bg-cyan-400/20 text-cyan-800 dark:text-cyan-200 ring-cyan-400/40" : done ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30" : "ring-border")}>
                                         {done ? <IconCheck className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
                                     </span>
                                     {s.label}
@@ -381,7 +381,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                             );
                         })}
                     </ol>
-                    <button type="button" onClick={() => void setUpLater()} className="mt-auto text-left text-xs text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline">
+                    <button type="button" onClick={() => void setUpLater()} className="mt-auto min-h-11 text-left text-xs text-muted-foreground underline-offset-2 hover:text-muted-foreground hover:underline">
                         Set up later
                     </button>
                 </aside>
@@ -389,19 +389,19 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                 <main className="flex min-h-0 flex-1 flex-col">
                     {/* Mobile progress */}
                     <div className="flex items-center justify-between border-b border-border px-5 py-3 sm:hidden">
-                        <span className="text-xs text-zinc-400">Step {stepIndex + 1} of {stepsShown.length} · {STEPS[stepIndex].label}</span>
-                        <button type="button" onClick={() => void setUpLater()} className="text-xs text-zinc-500 underline">Later</button>
+                        <span className="text-xs text-muted-foreground">Step {stepIndex + 1} of {stepsShown.length} · {STEPS[stepIndex].label}</span>
+                        <button type="button" onClick={() => void setUpLater()} className="text-xs text-muted-foreground underline">Later</button>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8 sm:px-12 sm:py-12">
-                        {error && <p role="alert" className="mb-6 flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
+                        {error && <p role="alert" className="mb-6 flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-200"><IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
 
                         {step === "welcome" && (
                             <section className="mx-auto flex max-w-xl flex-col items-center pt-6 text-center">
-                                <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-cyan-400/25 to-violet-500/20 ring-1 ring-white/10">
-                                    <IconSparkles className="h-10 w-10 text-cyan-200" />
+                                <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-cyan-400/25 to-violet-500/20 ring-1 ring-border">
+                                    <IconSparkles className="h-10 w-10 text-cyan-800 dark:text-cyan-200" />
                                 </div>
-                                <h1 id="setup-title" className="mt-8 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">Let&apos;s set up your AI team</h1>
-                                <p className="mt-4 text-base leading-7 text-zinc-400">
+                                <h1 id="setup-title" className="mt-8 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Let&apos;s set up your AI team</h1>
+                                <p className="mt-4 text-base leading-7 text-muted-foreground">
                                     {hasAgents || profileComplete
                                         ? hasAgents ? "Tell your agents about the company so they work from the same facts. It takes a minute." : "Your company is on file. Connect an AI model and choose your team; your agents start working in about two minutes."
                                         : "Four short steps: your company, an AI model key, the team you want, and then your agents start working. About three minutes."}
@@ -412,10 +412,10 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         { icon: IconUsersGroup, title: "Your teams", body: "Ready-made teams with their own group chats" },
                                         { icon: IconBook2, title: "Documented", body: "Your lead writes the company handbook" },
                                     ].map(({ icon: Icon, title, body }) => (
-                                        <li key={title} className="rounded-2xl border border-border bg-white/[0.03] p-4">
-                                            <Icon className="h-5 w-5 text-cyan-300" />
-                                            <p className="mt-3 font-medium text-zinc-100">{title}</p>
-                                            <p className="mt-1 text-xs leading-5 text-zinc-500">{body}</p>
+                                        <li key={title} className="rounded-2xl border border-border bg-muted/30 p-4">
+                                            <Icon className="h-5 w-5 text-cyan-700 dark:text-cyan-300" />
+                                            <p className="mt-3 font-medium text-foreground">{title}</p>
+                                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
                                         </li>
                                     ))}
                                 </ul>
@@ -425,47 +425,47 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "company" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-zinc-50">Tell us about your company</h1>
-                                    <p className="mt-2 text-sm leading-6 text-zinc-400">Every agent reads this before it works. You can change it any time in Knowledge &amp; Rules.</p>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Tell us about your company</h1>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Every agent reads this before it works. You can change it any time in Knowledge &amp; Rules.</p>
                                 </header>
                                 <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-zinc-200">Company name</span>
+                                    <span className="text-sm font-medium text-foreground">Company name</span>
                                     <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Robotics" autoFocus />
                                 </label>
                                 <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-zinc-200">What does it do, and for whom?</span>
+                                    <span className="text-sm font-medium text-foreground">What does it do, and for whom?</span>
                                     <textarea value={whatYouDo} onChange={(e) => setWhatYouDo(e.target.value)} rows={3} placeholder="We build warehouse robots for mid-size logistics companies in Europe."
-                                        className="w-full resize-y rounded-xl border border-border bg-white/[0.035] px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
+                                        className="w-full resize-y rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                 </label>
                                 <fieldset className="space-y-2">
-                                    <legend className="text-sm font-medium text-zinc-200">What kind of company is it?</legend>
+                                    <legend className="text-sm font-medium text-foreground">What kind of company is it?</legend>
                                     <div className="grid gap-2 sm:grid-cols-3">
                                         {BUSINESS_TYPES.map((t) => (
                                             <button key={t.id} type="button" aria-pressed={businessType === t.id} onClick={() => setBusinessType(t.id)}
-                                                className={cn("rounded-xl border p-3 text-left transition-colors", businessType === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-white/[0.02] hover:border-zinc-600")}>
-                                                <span className="block text-sm font-medium text-zinc-100">{t.label}</span>
-                                                <span className="mt-0.5 block text-xs text-zinc-500">{t.hint}</span>
+                                                className={cn("rounded-xl border p-3 text-left transition-colors", businessType === t.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
+                                                <span className="block text-sm font-medium text-foreground">{t.label}</span>
+                                                <span className="mt-0.5 block text-xs text-muted-foreground">{t.hint}</span>
                                             </button>
                                         ))}
                                     </div>
                                 </fieldset>
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <label className="block space-y-2">
-                                        <span className="text-sm font-medium text-zinc-200">Website <span className="font-normal text-zinc-500">(optional)</span></span>
+                                        <span className="text-sm font-medium text-foreground">Website <span className="font-normal text-muted-foreground">(optional)</span></span>
                                         <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://acme.example" type="url" />
                                     </label>
                                     <label className="block space-y-2">
-                                        <span className="text-sm font-medium text-zinc-200">House rules <span className="font-normal text-zinc-500">(optional, one per line)</span></span>
+                                        <span className="text-sm font-medium text-foreground">House rules <span className="font-normal text-muted-foreground">(optional, one per line)</span></span>
                                         <textarea value={houseRules} onChange={(e) => setHouseRules(e.target.value)} rows={2} placeholder={"Never quote prices without approval\nReply to customers in Spanish"}
-                                            className="w-full resize-y rounded-xl border border-border bg-white/[0.035] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
+                                            className="w-full resize-y rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20" />
                                     </label>
                                 </div>
                                 {!hasAgents && (
                                     <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.05] p-4">
                                         <input type="checkbox" checked={documentIt} onChange={(e) => setDocumentIt(e.target.checked)} className="mt-1 h-4 w-4 accent-cyan-400" />
                                         <span>
-                                            <span className="flex items-center gap-2 text-sm font-medium text-zinc-100"><IconBook2 className="h-4 w-4 text-cyan-300" />Have my lead agent document the company</span>
-                                            <span className="mt-1 block text-xs leading-5 text-zinc-400">Once it&apos;s online, it turns this profile{website ? " and your website" : ""} into Knowledge &amp; Rules notes (overview, products, customers, brand voice) and asks you what it couldn&apos;t find. You&apos;ll watch it happen.</span>
+                                            <span className="flex items-center gap-2 text-sm font-medium text-foreground"><IconBook2 className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />Have my lead agent document the company</span>
+                                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">Once it&apos;s online, it turns this profile{website ? " and your website" : ""} into Knowledge &amp; Rules notes (overview, products, customers, brand voice) and asks you what it couldn&apos;t find. You&apos;ll watch it happen.</span>
                                         </span>
                                     </label>
                                 )}
@@ -475,17 +475,17 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "model" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-zinc-50">Connect an AI model</h1>
-                                    <p className="mt-2 text-sm leading-6 text-zinc-400">Your agents think with a language model, so they need an API key. It&apos;s stored encrypted and only your agents use it.</p>
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Connect an AI model</h1>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Your agents think with a language model, so they need an API key. It&apos;s stored encrypted and only your agents use it.</p>
                                 </header>
                                 {available === false ? (
-                                    <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-sm text-amber-100">
+                                    <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-sm text-amber-900 dark:text-amber-100">
                                         <p className="font-medium">This installation can&apos;t start agents by itself.</p>
-                                        <p className="mt-1 text-amber-100/80">{unavailableReason}</p>
-                                        <p className="mt-3 text-amber-100/80">Run Hermes on another machine and connect it, or reinstall with Docker so Emperor can start agents for you. You set the model key in Hermes in that case.</p>
+                                        <p className="mt-1 text-amber-900 dark:text-amber-100/80">{unavailableReason}</p>
+                                        <p className="mt-3 text-amber-900 dark:text-amber-100/80">Run Hermes on another machine and connect it, or reinstall with Docker so Emperor can start agents for you. You set the model key in Hermes in that case.</p>
                                         <div className="mt-4 flex flex-wrap gap-3">
-                                            <Link href="/docs/v1.1/hermes-runtime" className="inline-flex items-center gap-1 text-cyan-300 underline">Connect a Hermes agent <IconExternalLink className="h-3.5 w-3.5" /></Link>
-                                            <Link href="/docs/v1.1/installation" className="inline-flex items-center gap-1 text-cyan-300 underline">Docker install guide <IconExternalLink className="h-3.5 w-3.5" /></Link>
+                                            <Link href="/docs/v1.1/hermes-runtime" className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 underline">Connect a Hermes agent <IconExternalLink className="h-3.5 w-3.5" /></Link>
+                                            <Link href="/docs/v1.1/installation" className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 underline">Docker install guide <IconExternalLink className="h-3.5 w-3.5" /></Link>
                                         </div>
                                     </div>
                                 ) : (
@@ -494,29 +494,29 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                             {PROVIDERS.map((p) => (
                                                 <button key={p.id} type="button" aria-pressed={provider === p.id}
                                                     onClick={() => { setProvider(p.id); setModel(p.defaultModel); setKeyState({ status: "idle", message: "" }); }}
-                                                    className={cn("rounded-2xl border p-4 text-left transition-colors", provider === p.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-white/[0.02] hover:border-zinc-600")}>
-                                                    <span className="flex items-center justify-between text-sm font-medium text-zinc-100">{p.label}{p.id === "openrouter" && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">Recommended</span>}</span>
-                                                    <span className="mt-1 block text-xs leading-5 text-zinc-500">{p.hint}</span>
+                                                    className={cn("rounded-2xl border p-4 text-left transition-colors", provider === p.id ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
+                                                    <span className="flex items-center justify-between text-sm font-medium text-foreground">{p.label}{p.id === "openrouter" && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Recommended</span>}</span>
+                                                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{p.hint}</span>
                                                 </button>
                                             ))}
                                         </div>
                                         <label className="block space-y-2">
-                                            <span className="flex items-center justify-between text-sm font-medium text-zinc-200">
-                                                <span className="flex items-center gap-2"><IconKey className="h-4 w-4 text-cyan-300" />{providerInfo.label} API key</span>
-                                                <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-normal text-cyan-300 hover:underline">Get a key <IconExternalLink className="h-3 w-3" /></a>
+                                            <span className="flex items-center justify-between text-sm font-medium text-foreground">
+                                                <span className="flex items-center gap-2"><IconKey className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />{providerInfo.label} API key</span>
+                                                <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-normal text-cyan-700 dark:text-cyan-300 hover:underline">Get a key <IconExternalLink className="h-3 w-3" /></a>
                                             </span>
                                             <Input type="password" autoComplete="off" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyState({ status: "idle", message: "" }); }} placeholder={provider === "openrouter" ? "sk-or-v1-…" : "sk-…"} aria-invalid={keyState.status === "bad"} />
-                                            {keyState.status === "ok" && <p className="flex items-center gap-1.5 text-xs text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />{keyState.message}</p>}
-                                            {keyState.status === "bad" && <p role="alert" className="text-xs text-rose-300">{keyState.message}</p>}
-                                            {keyState.status === "unknown" && <p className="text-xs text-amber-200">{keyState.message} Click Continue again to go on.</p>}
+                                            {keyState.status === "ok" && <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />{keyState.message}</p>}
+                                            {keyState.status === "bad" && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{keyState.message}</p>}
+                                            {keyState.status === "unknown" && <p className="text-xs text-amber-800 dark:text-amber-200">{keyState.message} Click Continue again to go on.</p>}
                                         </label>
                                         {provider === "openrouter" && (
-                                            <p className="rounded-xl border border-border bg-white/[0.02] p-3 text-xs leading-5 text-zinc-400">
-                                                Starts on a <strong className="text-zinc-200">free model</strong>, so you can try everything at no cost. Switch to a stronger model per agent later.
+                                            <p className="rounded-xl border border-border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
+                                                Starts on a <strong className="text-foreground">free model</strong>, so you can try everything at no cost. Switch to a stronger model per agent later.
                                             </p>
                                         )}
                                         <div>
-                                            <button type="button" onClick={() => setShowModel((v) => !v)} className="text-xs text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline">{showModel ? "Hide" : "Choose a specific"} model</button>
+                                            <button type="button" onClick={() => setShowModel((v) => !v)} className="text-xs text-muted-foreground underline-offset-2 hover:text-muted-foreground hover:underline">{showModel ? "Hide" : "Choose a specific"} model</button>
                                             {showModel && (
                                                 <Input className="mt-2" value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === "openrouter" ? "e.g. anthropic/claude-sonnet-5-5" : "e.g. deepseek-chat"} aria-label="Model" />
                                             )}
@@ -529,8 +529,8 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "team" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-zinc-50">Choose your teams</h1>
-                                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">Choose your teams</h1>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
                                         {businessType && businessType !== "other" ? "Suggested for your kind of company. " : ""}Pick any mix. Each team gets its specialists and its own group chat; the Boss leads them all.
                                     </p>
                                 </header>
@@ -539,15 +539,15 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         const on = teams.includes(t.id);
                                         return (
                                             <button key={t.id} type="button" aria-pressed={on} onClick={() => toggleTeam(t.id)}
-                                                className={cn("flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors", on ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-white/[0.02] hover:border-zinc-600")}>
+                                                className={cn("flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors", on ? "border-cyan-400/50 bg-cyan-400/10" : "border-border bg-muted/20 hover:border-input")}>
                                                 <span className="text-xl leading-none" aria-hidden>{t.icon}</span>
                                                 <span className="min-w-0 flex-1">
-                                                    <span className="flex items-center justify-between gap-2 text-sm font-medium text-zinc-100">
+                                                    <span className="flex items-center justify-between gap-2 text-sm font-medium text-foreground">
                                                         {t.label}
-                                                        <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-cyan-400 bg-cyan-400 text-zinc-950" : "border-zinc-600")}>{on && <IconCheck className="h-3 w-3" />}</span>
+                                                        <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-cyan-400 bg-cyan-400 text-primary-foreground" : "border-input")}>{on && <IconCheck className="h-3 w-3" />}</span>
                                                     </span>
-                                                    <span className="mt-0.5 block text-xs text-zinc-500">{t.hint}</span>
-                                                    <span className="mt-1 block text-[11px] text-zinc-500">{t.roles.map((r) => getAgentTemplate(r)?.title ?? r).join(" · ")}</span>
+                                                    <span className="mt-0.5 block text-xs text-muted-foreground">{t.hint}</span>
+                                                    <span className="mt-1 block text-xs text-muted-foreground">{t.roles.map((r) => getAgentTemplate(r)?.title ?? r).join(" · ")}</span>
                                                 </span>
                                             </button>
                                         );
@@ -556,9 +556,9 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
                                 <div>
                                     <div className="mb-2 flex items-center justify-between">
-                                        <h2 className="text-sm font-medium text-zinc-200">Your agents <span className="font-normal text-zinc-500">({team.length})</span></h2>
+                                        <h2 className="text-sm font-medium text-foreground">Your agents <span className="font-normal text-muted-foreground">({team.length})</span></h2>
                                         <select aria-label="Add a specialist" value="" onChange={(e) => addRole(e.target.value)}
-                                            className="h-8 rounded-lg border border-border bg-zinc-950 px-2 text-xs text-zinc-300 outline-none focus:border-cyan-300/60">
+                                            className="h-11 rounded-lg border border-border bg-background px-2 text-xs text-muted-foreground outline-none focus:border-cyan-300/60">
                                             <option value="">+ Add an agent</option>
                                             {addable.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
                                         </select>
@@ -568,14 +568,14 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                             const t = getAgentTemplate(m.templateId);
                                             const inGroups = plan.groups.filter((g) => g.roles.includes(m.templateId)).map((g) => g.title);
                                             return (
-                                                <li key={m.templateId} className="flex items-center gap-3 rounded-xl border border-border bg-white/[0.02] p-2.5">
+                                                <li key={m.templateId} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-muted/20 p-2.5 sm:flex">
                                                     <span className="text-lg" aria-hidden>{t?.emoji ?? "🤖"}</span>
-                                                    <Input value={names[m.templateId] ?? m.name} onChange={(e) => renameMember(m.templateId, e.target.value)} aria-label={`${t?.title ?? m.templateId} name`} maxLength={40} className="h-8 w-32 shrink-0 text-sm" />
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="truncate text-xs text-zinc-300">{t?.title ?? m.templateId}{m.templateId === "boss" && <span className="ml-1.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-200">Lead</span>}</p>
-                                                        <p className="truncate text-[11px] text-zinc-500">{inGroups.length ? inGroups.join(" · ") : m.templateId === "boss" ? "Leads every team" : "No group"}</p>
+                                                    <Input value={names[m.templateId] ?? m.name} onChange={(e) => renameMember(m.templateId, e.target.value)} aria-label={`${t?.title ?? m.templateId} name`} maxLength={40} className="col-span-3 h-11 w-full min-w-0 text-sm sm:w-32" />
+                                                    <div className="col-start-2 row-start-1 min-w-0 flex-1">
+                                                        <p className="truncate text-xs text-muted-foreground">{t?.title ?? m.templateId}{m.templateId === "boss" && <span className="ml-1.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-200">Lead</span>}</p>
+                                                        <p className="truncate text-xs text-muted-foreground">{inGroups.length ? inGroups.join(" · ") : m.templateId === "boss" ? "Leads every team" : "No group"}</p>
                                                     </div>
-                                                    <button type="button" onClick={() => removeRole(m.templateId)} aria-label={`Remove ${m.name || t?.title}`} className="rounded-lg p-1.5 text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200">
+                                                    <button type="button" onClick={() => removeRole(m.templateId)} aria-label={`Remove ${m.name || t?.title}`} className="col-start-3 row-start-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground">
                                                         <IconX className="h-4 w-4" />
                                                     </button>
                                                 </li>
@@ -586,23 +586,23 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
                                 {plan.groups.length > 0 && (
                                     <div>
-                                        <h2 className="mb-2 text-sm font-medium text-zinc-200">Group chats</h2>
+                                        <h2 className="mb-2 text-sm font-medium text-foreground">Group chats</h2>
                                         <ul className="flex flex-wrap gap-2">
                                             {plan.groups.map((g) => (
-                                                <li key={g.teamId} className="rounded-full border border-border px-3 py-1 text-xs text-zinc-300">
-                                                    <span aria-hidden>{g.icon}</span> {g.title} <span className="text-zinc-500">· {g.roles.map((r) => (names[r] ?? DEFAULT_AGENT_NAMES[r] ?? r).trim()).join(", ")}, you</span>
+                                                <li key={g.teamId} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                                                    <span aria-hidden>{g.icon}</span> {g.title} <span className="text-muted-foreground">· {g.roles.map((r) => (names[r] ?? DEFAULT_AGENT_NAMES[r] ?? r).trim()).join(", ")}, you</span>
                                                 </li>
                                             ))}
                                         </ul>
                                     </div>
                                 )}
 
-                                {planProblem && team.length > 0 && <p role="alert" className="text-xs text-rose-300">{planProblem}</p>}
+                                {planProblem && team.length > 0 && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{planProblem}</p>}
                                 {!planProblem && team.length > COMFORTABLE_AGENT_COUNT && (
-                                    <p className="text-xs text-amber-200">Each agent runs its own runtime. On a small machine (a Raspberry Pi, a laptop), start with {COMFORTABLE_AGENT_COUNT} or fewer and add more later.</p>
+                                    <p className="text-xs text-amber-800 dark:text-amber-200">Each agent runs its own runtime. On a small machine (a Raspberry Pi, a laptop), start with {COMFORTABLE_AGENT_COUNT} or fewer and add more later.</p>
                                 )}
                                 {!team.some((m) => m.templateId === "boss") && team.length > 1 && (
-                                    <p className="text-xs text-amber-200">Without a Boss, assign work to each specialist yourself.</p>
+                                    <p className="text-xs text-amber-800 dark:text-amber-200">Without a Boss, assign work to each specialist yourself.</p>
                                 )}
                             </section>
                         )}
@@ -610,28 +610,28 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                         {step === "launch" && (
                             <section className="mx-auto max-w-2xl space-y-6">
                                 <header>
-                                    <h1 id="setup-title" className="text-2xl font-semibold text-zinc-50">{online ? "Your team is ready" : "Starting your team"}</h1>
-                                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                                    <h1 id="setup-title" className="text-2xl font-semibold text-foreground">{online ? "Your team is ready" : "Starting your team"}</h1>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
                                         {launching ? "Creating your agents…" : online ? "Talk to your lead in its private chat, or give it a project." : "The first start downloads and connects each agent. This can take a minute or two."}
                                     </p>
                                 </header>
-                                {launching && <p className="flex items-center gap-2 text-sm text-zinc-300"><IconLoader2 className="h-4 w-4 animate-spin" />Creating {team.length} agent{team.length === 1 ? "" : "s"}…</p>}
+                                {launching && <p className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="h-4 w-4 animate-spin" />Creating {team.length} agent{team.length === 1 ? "" : "s"}…</p>}
                                 {created && (
                                     <ul className="space-y-2">
                                         {created.map((r) => {
                                             const t = getAgentTemplate(r.templateId);
                                             const up = isOnline(r.agentId);
                                             return (
-                                                <li key={r.name} className="flex items-center gap-3 rounded-2xl border border-border bg-white/[0.02] p-3">
+                                                <li key={r.name} className="flex items-center gap-3 rounded-2xl border border-border bg-muted/20 p-3">
                                                     <span className="text-xl" aria-hidden>{t?.emoji ?? "🤖"}</span>
                                                     <div className="min-w-0 flex-1">
-                                                        <p className="text-sm font-medium text-zinc-100">{r.name}</p>
-                                                        <p className="text-xs text-zinc-500">{!r.success && !up ? r.message : up ? `${r.name} is created and online` : `${r.name} is created and starting up…`}</p>
+                                                        <p className="text-sm font-medium text-foreground">{r.name}</p>
+                                                        <p className="text-xs text-muted-foreground">{!r.success && !up ? r.message : up ? `${r.name} is created and online` : `${r.name} is created and starting up…`}</p>
                                                     </div>
-                                                    {!r.success && !r.agentId ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-200">Failed</span>
-                                                        : up ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />Online</span>
+                                                    {!r.success && !r.agentId ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-700 dark:text-rose-200">Failed</span>
+                                                        : up ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />Online</span>
                                                             : (!r.success || offlineTooLong) && r.agentId ? <Button size="sm" variant="outline" onClick={() => void retryRuntime(r.agentId!)} disabled={retrying === r.agentId}>{retrying === r.agentId ? "Restarting…" : "Retry"}</Button>
-                                                                : <IconLoader2 className="h-4 w-4 animate-spin text-zinc-400" aria-label="Starting" />}
+                                                                : <IconLoader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Starting" />}
                                                 </li>
                                             );
                                         })}
@@ -640,10 +640,10 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                 {groupsMade.length > 0 && (
                                     <ul className="space-y-1.5" aria-label="Group chats created">
                                         {groupsMade.map((g) => (
-                                            <li key={g.title} className="flex items-center gap-2 text-xs text-zinc-400">
-                                                {g.ok ? <IconCircleCheck className="h-3.5 w-3.5 text-emerald-300" /> : <IconAlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
+                                            <li key={g.title} className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                {g.ok ? <IconCircleCheck className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" /> : <IconAlertTriangle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />}
                                                 <span aria-hidden>{g.icon}</span>
-                                                <span className="text-zinc-200">{g.title}</span>
+                                                <span className="text-foreground">{g.title}</span>
                                                 <span className="truncate">{g.ok ? `group chat with ${g.members.join(", ")} and you` : "not ready yet; create missing profiles or retry the chat"}</span>
                                             </li>
                                         ))}
@@ -655,16 +655,16 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     <div aria-live="polite" className="rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.05] p-5">
                                         <div className="flex items-start gap-3">
                                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/15">
-                                                {doc?.state === "done" ? <IconCircleCheck className="h-5 w-5 text-emerald-300" /> : <IconBook2 className="h-5 w-5 text-cyan-200" />}
+                                                {doc?.state === "done" ? <IconCircleCheck className="h-5 w-5 text-emerald-700 dark:text-emerald-300" /> : <IconBook2 className="h-5 w-5 text-cyan-800 dark:text-cyan-200" />}
                                             </span>
                                             <div className="min-w-0">
-                                                <p className="text-sm font-medium text-zinc-100">{lead.name} is documenting {companyName.trim() || "your company"} in Knowledge &amp; Rules</p>
-                                                <p className="mt-1 text-xs leading-5 text-zinc-400">{docLabel}</p>
+                                                <p className="text-sm font-medium text-foreground">{lead.name} is documenting {companyName.trim() || "your company"} in Knowledge &amp; Rules</p>
+                                                <p className="mt-1 text-xs leading-5 text-muted-foreground">{docLabel}</p>
                                                 {doc && (
                                                     <div className="mt-3 flex flex-wrap gap-3 text-xs">
-                                                        <Link href={`/messages?agent=${lead.agentId}`} className="text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Watch in chat</Link>
-                                                        <Link href={doc.taskUrl} className="text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Open the task</Link>
-                                                        <Link href="/resources" className="text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Knowledge &amp; Rules ({doc.totalNotes})</Link>
+                                                        <Link href={`/messages?agent=${lead.agentId}`} className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Watch in chat</Link>
+                                                        <Link href={doc.taskUrl} className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Open the task</Link>
+                                                        <Link href="/resources" className="text-cyan-700 dark:text-cyan-300 hover:underline" onClick={() => void finish("completed")}>Knowledge &amp; Rules ({doc.totalNotes})</Link>
                                                     </div>
                                                 )}
                                             </div>
@@ -672,7 +672,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                     </div>
                                 )}
                                 {online && (
-                                    <p className="text-xs leading-5 text-zinc-500">Its direct chat is private, so no @mention is needed. For work that should be tracked, create a task and assign it; every morning each agent reviews its open tasks.</p>
+                                    <p className="text-xs leading-5 text-muted-foreground">Its direct chat is private, so no @mention is needed. For work that should be tracked, create a task and assign it; every morning each agent reviews its open tasks.</p>
                                 )}
                             </section>
                         )}

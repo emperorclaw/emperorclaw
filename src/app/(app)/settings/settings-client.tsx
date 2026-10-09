@@ -513,7 +513,7 @@ Walk me through step by step.`}</pre>
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <h3 className="font-medium text-foreground">{token.name}</h3>
-                                                <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
+                                                <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-cyan-700 dark:text-cyan-200">
                                                     {tokenScopeLabel(token.scope)}
                                                 </span>
                                                 {token.scope === "read_only" && token.includePrivateChats && (
@@ -527,7 +527,7 @@ Walk me through step by step.`}</pre>
                                             {token.scope === "requests" && (
                                                 editingCallbackId === token.id ? (
                                                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                        <Input type="url" className="h-8 max-w-xs text-xs" placeholder="https://…/callback" value={callbackDraft} onChange={(event) => setCallbackDraft(event.target.value)} aria-label="Callback URL" />
+                                                        <Input type="url" className="h-11 max-w-xs text-sm" placeholder="https://…/callback" value={callbackDraft} onChange={(event) => setCallbackDraft(event.target.value)} aria-label="Callback URL" />
                                                         <Button size="sm" onClick={() => saveCallback(token.id, callbackDraft.trim())} disabled={!callbackDraft.trim()}>Save</Button>
                                                         <Button size="sm" variant="ghost" onClick={() => setEditingCallbackId(null)}>Cancel</Button>
                                                     </div>

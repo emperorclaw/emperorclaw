@@ -442,7 +442,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
             {/* ── Role Change Dialog ────────────────────────────────────── */}
             {changingRoleFor && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
                     <div className="bg-muted border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                         <h3 className="text-lg font-semibold text-foreground mb-4">Change Role</h3>
                         <select
@@ -470,7 +470,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
             {/* ── Remove Member Confirmation ───────────────────────────── */}
             {removingMember && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
                     <div className="bg-muted border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                         <div className="flex items-start gap-3 mb-4">
                             <IconAlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
@@ -498,8 +498,8 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
             {/* ── Scope Dialog ─────────────────────────────────────────── */}
             {scopeFor && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="emperor-panel w-full max-w-lg rounded-2xl border border-border bg-zinc-950 p-6 shadow-2xl">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                    <div className="emperor-panel max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-2xl">
                         <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                             <IconShield className="w-5 h-5 text-cyan-400" />
                             Access Scope

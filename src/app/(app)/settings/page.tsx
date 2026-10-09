@@ -22,7 +22,7 @@ export default async function SettingsPage() {
         .limit(1);
 
     if (!membership) {
-        return <div className="p-8 text-zinc-400">Company not found.</div>;
+        return <div className="p-8 text-muted-foreground">Company not found.</div>;
     }
 
     // Get instance role
