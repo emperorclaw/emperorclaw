@@ -79,7 +79,17 @@ New workspaces get these starter notes:
 | Team template — content | No | Brief → Writer → Editor → Publisher |
 | Team template — research | No | Question → Researcher → Reviewer → synthesis |
 
+The unshared **Workspace Filing Guide** in **Agents/Playbooks** explains where to put knowledge, deliverables, and evidence. Agents find it with the `workspace-playbook` tag when needed; it is not added to every prompt.
+
 Edit names and steps to match your roster.
+
+### Keep the workspace organized
+
+The starter KB uses **Company**, **Agents**, **Projects**, and **Customers**. Put lasting facts and reusable rules there. Use actual project/customer scope for access and context; a folder name alone does not restrict visibility. Progress, blockers, and handoffs belong on tasks.
+
+Put reports and deliverables in **Storage**. Browse the existing folders first. For customer work, a useful convention is **Customer / Project / YYYY-MM**; create only the folders needed, preserving project and customer scope. Link the verified file to its task and share a short outcome in chat.
+
+Existing workspaces keep their customized notes. Doctrine upgrades update untouched starter notes and add missing guides; edited notes are preserved, with a review suggestion for administrators.
 
 ## Several teams at once
 
