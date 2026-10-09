@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconMail, IconTrash, IconUserCog, IconUsers, IconShield, IconClock, IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type Member = {
@@ -73,6 +74,9 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
     const [removingMember, setRemovingMember] = useState<string | null>(null);
 
     // Scope state
+    const scopeRequest = useRef(0);
+    const dialogOpener = useRef<HTMLButtonElement | null>(null);
+    const restoreDialogFocus = (event: Event) => { event.preventDefault(); dialogOpener.current?.focus(); };
     const [scopeFor, setScopeFor] = useState<string | null>(null);
     const [scopeMode, setScopeMode] = useState<"all" | "restricted">("all");
     const [scopeAgentIds, setScopeAgentIds] = useState<string[]>([]);
@@ -205,17 +209,20 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
     };
 
     const openScope = async (userId: string) => {
+        const request = ++scopeRequest.current;
         try {
             const res = await fetch(`/api/instance/members/${userId}/scope`);
-            if (res.ok) {
-                const data = await res.json();
-                const scope = data.scope || {};
-                setScopeMode(scope.mode || "all");
-                setScopeAgentIds(scope.agentIds || []);
-                setScopeCustomerIds(scope.customerIds || []);
-            }
-        } catch { /* use defaults */ }
-        setScopeFor(userId);
+            if (!res.ok) throw new Error("Could not load this member's access scope. Try again.");
+            const data = await res.json();
+            if (request !== scopeRequest.current) return;
+            if (!data.scope || typeof data.scope !== "object" || Array.isArray(data.scope) || !["all", "restricted"].includes(data.scope.mode ?? "all")) throw new Error("Could not read this member's access scope. Try again.");
+            setScopeMode(data.scope.mode ?? "all");
+            setScopeAgentIds(data.scope.agentIds || []);
+            setScopeCustomerIds(data.scope.customerIds || []);
+            setScopeFor(userId);
+        } catch {
+            if (request === scopeRequest.current) toast.error("Could not load this member's access scope. Try again.");
+        }
     };
 
     const saveScope = async () => {
@@ -329,7 +336,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         {member.id !== currentUserId && (
                                             <div className="flex gap-1 justify-end">
                                                 <button
-                                                    onClick={() => openScope(member.id)}
+                                                    onClick={(event) => { dialogOpener.current = event.currentTarget; void openScope(member.id); }}
                                                     className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-cyan-400 transition-colors"
                                                     title="Access scope"
                                                 >
@@ -337,7 +344,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                 </button>
                                                 {canChangeRoles && (
                                                     <button
-                                                        onClick={() => { setChangingRoleFor(member.id); setNewRole(member.companyRole); }}
+                                                        onClick={(event) => { dialogOpener.current = event.currentTarget; setChangingRoleFor(member.id); setNewRole(member.companyRole); }}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                                                         title="Change role"
                                                     >
@@ -346,7 +353,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                 )}
                                                 {canInvite && (
                                                     <button
-                                                        onClick={() => setRemovingMember(member.id)}
+                                                        onClick={(event) => { dialogOpener.current = event.currentTarget; setRemovingMember(member.id); }}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                                                         title="Remove member"
                                                     >
@@ -442,13 +449,15 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
             {/* ── Role Change Dialog ────────────────────────────────────── */}
             {changingRoleFor && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                    <div className="bg-muted border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-                        <h3 className="text-lg font-semibold text-foreground mb-4">Change Role</h3>
+                <Dialog open={Boolean(changingRoleFor)} onOpenChange={(open) => { if (!open) setChangingRoleFor(null); }}>
+                    <DialogContent onCloseAutoFocus={restoreDialogFocus} className="max-h-[90dvh] overflow-y-auto bg-background text-foreground sm:max-w-sm">
+                        <DialogTitle>Change Role</DialogTitle>
+                        <DialogDescription>Select the workspace role for this member.</DialogDescription>
                         <select
                             value={newRole}
                             onChange={(e) => setNewRole(e.target.value)}
-                            className="w-full bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-4"
+                            aria-label="Workspace role"
+                            className="min-h-11 w-full bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-4"
                         >
                             {ROLE_OPTIONS.map((r) => (
                                 <option key={r} value={r} className="bg-muted">
@@ -464,21 +473,21 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                 Save
                             </Button>
                         </div>
-                    </div>
-                </div>
+                    </DialogContent>
+                </Dialog>
             )}
 
             {/* ── Remove Member Confirmation ───────────────────────────── */}
             {removingMember && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                    <div className="bg-muted border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                <Dialog open={Boolean(removingMember)} onOpenChange={(open) => { if (!open) setRemovingMember(null); }}>
+                    <DialogContent onCloseAutoFocus={restoreDialogFocus} className="max-h-[90dvh] overflow-y-auto bg-background text-foreground sm:max-w-sm">
                         <div className="flex items-start gap-3 mb-4">
                             <IconAlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="text-lg font-semibold text-foreground">Remove Member</h3>
-                                <p className="text-sm text-muted-foreground mt-1">
+                                <DialogTitle>Remove Member</DialogTitle>
+                                <DialogDescription className="mt-1">
                                     Are you sure you want to remove this member from the workspace? This action can be undone by re-inviting them.
-                                </p>
+                                </DialogDescription>
                             </div>
                         </div>
                         <div className="flex gap-3 justify-end">
@@ -492,24 +501,24 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                 Remove
                             </Button>
                         </div>
-                    </div>
-                </div>
+                    </DialogContent>
+                </Dialog>
             )}
 
             {/* ── Scope Dialog ─────────────────────────────────────────── */}
             {scopeFor && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                    <div className="emperor-panel max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-2xl">
-                        <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                <Dialog open={Boolean(scopeFor)} onOpenChange={(open) => { if (!open && !savingScope) setScopeFor(null); }}>
+                    <DialogContent onCloseAutoFocus={restoreDialogFocus} showCloseButton={!savingScope} className="max-h-[90dvh] overflow-y-auto bg-background text-foreground sm:max-w-lg">
+                        <DialogTitle className="flex items-center gap-2">
                             <IconShield className="w-5 h-5 text-cyan-400" />
                             Access Scope
-                        </h3>
-                        <p className="text-sm text-muted-foreground mb-4">
+                        </DialogTitle>
+                        <DialogDescription>
                             {members.find(m => m.id === scopeFor)?.email}
-                        </p>
+                        </DialogDescription>
 
                         <div className="space-y-4">
-                            <label className="flex items-center gap-3 cursor-pointer">
+                            <label className="flex items-center min-h-11 gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={scopeMode === "restricted"}
@@ -527,7 +536,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">
                                             {agents.length === 0 && <p className="text-xs text-muted-foreground p-2">No agents</p>}
                                             {agents.map((a) => (
-                                                <label key={a.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
+                                                <label key={a.id} className="flex items-center gap-2 min-h-11 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
                                                     <input
                                                         type="checkbox"
                                                         checked={scopeAgentIds.includes(a.id)}
@@ -544,7 +553,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">
                                             {customersData.length === 0 && <p className="text-xs text-muted-foreground p-2">No customers</p>}
                                             {customersData.map((c) => (
-                                                <label key={c.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
+                                                <label key={c.id} className="flex items-center gap-2 min-h-11 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
                                                     <input
                                                         type="checkbox"
                                                         checked={scopeCustomerIds.includes(c.id)}
@@ -561,14 +570,14 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                         </div>
 
                         <div className="flex gap-3 justify-end mt-6">
-                            <Button variant="ghost" onClick={() => setScopeFor(null)}>Cancel</Button>
+                            <Button variant="ghost" onClick={() => setScopeFor(null)} disabled={savingScope}>Cancel</Button>
                             <Button onClick={saveScope} disabled={savingScope}>
                                 {savingScope ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
                                 Save Scope
                             </Button>
                         </div>
-                    </div>
-                </div>
+                    </DialogContent>
+                </Dialog>
             )}
         </div>
     );
