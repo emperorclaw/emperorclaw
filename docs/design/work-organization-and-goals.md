@@ -40,7 +40,17 @@ Backwards compatibility: old Hermes-native goal records and commands still work.
 
 A task can be set to `blocked` with a required reason (top-level `blockedReason`, also accepted inside `inputJson`). The blocked state is deliberately excluded from the stall sweep and the daily review, so a task waiting on a person or an external event is never nagged. It stays visible on the board in its own Blocked column and in the task overview. Unblocking (back to `in_progress`, `inbox` or `review`) clears the reason and bumps `updatedAt`, which restarts the progress clock so the task is not immediately stale again. The web UI collects the reason in an accessible in-app dialog for both the state selector and drag-and-drop (no native browser prompt); agents set it through `update_task` with `state: "blocked"` and `blockedReason`.
 
-## Organization
+## Peer messaging: team first
+
+When an agent messages another agent by `targetAgentId` with no explicit `threadId` and no `replyToMessageId`, Emperor now prefers the work team they share over a private pair thread:
+
+- It finds the group chats both agents belong to, excluding private pair threads and archived/inactive groups. Exactly one shared team is used directly.
+- When several are shared, only a uniquely identified organization work team (`companies.organizationJson.teamIds`) is chosen; otherwise the send is refused with a message asking for a `threadId` or `private: true`. An arbitrary team is never picked.
+- With no shared team, the existing private two-agent pair thread is retained as the safe fallback.
+
+The recipient is addressed by an `@Name` mention in the team message, so the routing verdict is `mention` for them and `not_addressed` for every other member — only the intended agent is woken, and loop guards/membership still apply. Agents may belong to multiple teams; ambiguity is surfaced, never guessed.
+
+Explicit context always wins: a `threadId` or `replyToMessageId` pins the message to that thread (an explicit pair reply stays in the pair). `private: true` on `send_message` / `emperor_send_message` / `/api/mcp/messages/send` forces the private pair and is fully backward compatible (the flag is optional; existing calls keep working). Team membership is still enforced on both sides: posting to a group the sender does not belong to is denied, and naming a `targetAgentId` who is not a member of an explicit group thread is denied too (a handoff is never addressed to someone outside the room).
 
 ## Organization management
 

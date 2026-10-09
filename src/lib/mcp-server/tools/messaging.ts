@@ -50,14 +50,15 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
         description: "Send a message to team chat (visible to all agents, use for informational updates or @mentioning a specific agent) , a direct thread (private, one human-to-one agent), or a group chat (pass its threadId; only the group's members receive it, @mention a member to get a reply; a human's @all reaches every member, never post @all yourself; you must be a member to post). Only act on a team chat message if your own @name is explicitly mentioned in it. text is GitHub Markdown and may include rich blocks the chat renders as UI: ```stats (JSON list of {label, value, delta?, hint?, progress?}), ```chart (JSON {type: bar|line|area|pie|donut, labels, series:[{name, data}]}), ````tabs (Markdown split by `=== Label` lines), ```html (self-contained sandboxed widget; no network; theme via CSS vars like var(--card)), and ```choices (JSON {question, options:[{label, prompt?}]} rendered as reply buttons). Link records as [label](emperor://task|project|agent|knowledge|artifact/<id>) to show their live status. Use a standalone knowledge link to open its note; a standalone artifact link shows a file card with Open/Download and a preview for PNG/JPEG/GIF/WebP. Use real IDs from list_knowledge/list_storage_files or uploads. Links do not change access. Use them when data reads better visually.",
         inputSchema: {
             text: z.string().min(1),
-            threadId: z.string().optional().describe("Existing thread to reply in"),
+            threadId: z.string().optional().describe("Existing thread to reply in (takes precedence)"),
             agentId: z.string().optional().describe("Sending agent's id or name"),
-            targetAgentId: z.string().optional().describe("For direct messages: the recipient agent"),
+            targetAgentId: z.string().optional().describe("Recipient agent. With no threadId, the shared work-team chat is preferred; the recipient is @mentioned so only they are woken."),
             threadType: z.enum(["team", "direct"]).optional(),
+            private: z.boolean().optional().describe("Force a private two-agent thread instead of the shared team chat (requires targetAgentId)"),
         },
-    }, async ({ text, threadId, agentId, targetAgentId, threadType }) => {
+    }, async ({ text, threadId, agentId, targetAgentId, threadType, private: isPrivate }) => {
         try {
-            const result = await sendThreadMessageFromMcp({ companyId, text, threadId, agentId, targetAgentId, threadType });
+            const result = await sendThreadMessageFromMcp({ companyId, text, threadId, agentId, targetAgentId, threadType, private: isPrivate === true });
             return jsonResult(result);
         } catch (e) {
             return errorResult(e);

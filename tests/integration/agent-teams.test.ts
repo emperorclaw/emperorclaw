@@ -196,6 +196,119 @@ maybe("an agent direct reply with no thread or target is refused, not defaulted 
     );
 });
 
+maybe("team-first peer send: a shared team is used, only the recipient is woken", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const c = await seedAgent(companyId, { name: "Gamma", provider: "hermes" });
+    const { createGroup } = await import("@/lib/groups");
+    const group = await createGroup(companyId, { type: "agent", id: a.id }, { title: "Dev team", agentIds: [a.id, b.id, c.id] });
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+
+    const sent = await sendThreadMessageFromMcp({ companyId, agentId: a.id, targetAgentId: b.id, text: "Please review the spec" });
+    assert.equal(sent.threadId, group.id, "the shared team chat is used, not a private pair");
+
+    const bMessages = await syncFor(companyId, rawToken, b.id);
+    const forB = bMessages.find((m) => m.id === sent.messageId);
+    assert.ok(forB, "Beta receives the team message");
+    assert.equal(forB.addressedToYou, true);
+    assert.equal(forB.routeReason, "mention", "the recipient is addressed by mention");
+    assert.match(forB.text, /@Beta/, "the recipient is named in the team message");
+
+    // The extra team member sees the message but is not addressed (not woken).
+    const cMessages = await syncFor(companyId, rawToken, c.id);
+    const forC = cMessages.find((m) => m.id === sent.messageId);
+    assert.ok(forC, "Gamma receives the team message");
+    assert.equal(forC.addressedToYou, false);
+    assert.equal(forC.routeReason, "not_addressed");
+});
+
+maybe("team-first peer send: no shared team falls back to a private pair", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+    const { isAgentPairThread } = await import("@/lib/groups");
+    const db = await getDb();
+    const { messageThreads } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+
+    const sent = await sendThreadMessageFromMcp({ companyId, agentId: a.id, targetAgentId: b.id, text: "hi" });
+    const [thread] = await db.select().from(messageThreads).where(eq(messageThreads.id, sent.threadId));
+    assert.ok(isAgentPairThread(thread), "with no shared team it stays a private pair");
+});
+
+maybe("team-first peer send: ambiguous teams require a choice or explicit private", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { createGroup } = await import("@/lib/groups");
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+    await createGroup(companyId, { type: "agent", id: a.id }, { title: "Team One", agentIds: [a.id, b.id] });
+    await createGroup(companyId, { type: "agent", id: a.id }, { title: "Team Two", agentIds: [a.id, b.id] });
+
+    await assert.rejects(
+        sendThreadMessageFromMcp({ companyId, agentId: a.id, targetAgentId: b.id, text: "quick q" }),
+        /more than one team chat/,
+        "an arbitrary team is never picked",
+    );
+    // Explicit private is always safe.
+    const priv = await sendThreadMessageFromMcp({ companyId, agentId: a.id, targetAgentId: b.id, text: "quick q", private: true });
+    const { isAgentPairThread } = await import("@/lib/groups");
+    const db = await getDb();
+    const { messageThreads } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    const [thread] = await db.select().from(messageThreads).where(eq(messageThreads.id, priv.threadId));
+    assert.ok(isAgentPairThread(thread), "private: true forces the pair thread");
+});
+
+maybe("team-first peer send: explicit private and explicit pair replies stay private", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { createGroup, isAgentPairThread } = await import("@/lib/groups");
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+    const db = await getDb();
+    const { messageThreads } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    const group = await createGroup(companyId, { type: "agent", id: a.id }, { title: "Dev team", agentIds: [a.id, b.id] });
+
+    const priv = await sendThreadMessageFromMcp({ companyId, agentId: a.id, targetAgentId: b.id, text: "private note", private: true });
+    assert.notEqual(priv.threadId, group.id);
+    const [pairThread] = await db.select().from(messageThreads).where(eq(messageThreads.id, priv.threadId));
+    assert.ok(isAgentPairThread(pairThread), "explicit private uses the pair thread");
+
+    // A reply with the pair thread id stays in the pair thread.
+    const reply = await sendThreadMessageFromMcp({ companyId, agentId: b.id, threadId: priv.threadId, text: "acknowledged" });
+    assert.equal(reply.threadId, priv.threadId, "an explicit pair reply stays pair");
+});
+
+maybe("team-first peer send: posting to a team you are not a member of is denied", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const c = await seedAgent(companyId, { name: "Gamma", provider: "hermes" });
+    const { createGroup } = await import("@/lib/groups");
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+    const group = await createGroup(companyId, { type: "agent", id: b.id }, { title: "Others", agentIds: [b.id, c.id] });
+
+    await assert.rejects(
+        sendThreadMessageFromMcp({ companyId, agentId: a.id, threadId: group.id, text: "let me in" }),
+        /not a member/,
+    );
+    // A member sender still cannot address a recipient who is not in the group.
+    const shared = await createGroup(companyId, { type: "agent", id: a.id }, { title: "Shared", agentIds: [a.id, c.id] });
+    await assert.rejects(
+        sendThreadMessageFromMcp({ companyId, agentId: a.id, threadId: shared.id, targetAgentId: b.id, text: "hey B" }),
+        /recipient is not a member/,
+    );
+});
+
 maybe("loop guard trips on agent ping-pong in a pair thread", async () => {
     await resetDb();
     const { companyId, rawToken } = await seedCompanyWithToken();

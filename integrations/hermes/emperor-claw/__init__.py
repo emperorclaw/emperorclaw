@@ -407,6 +407,7 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
         "thread_type": args.get("threadType") or args.get("thread_type") or "team",
         "chat_id": args.get("chatId") or args.get("chat_id"),
         "targetAgentId": args.get("targetAgentId") or args.get("target_agent_id"),
+        "private": args.get("private"),
     }
     body = {k: v for k, v in body.items() if v not in (None, "")}
     return _json(_request("POST", "/messages/send", body=body))
@@ -461,6 +462,7 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
             "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it — if your name is absent, the message is for someone else. "
             "(2) To ask a sibling to do something: emperor_send_message(text='@SiblingName <request>', threadType='team'). Discover sibling names first with emperor_request GET /agents. "
+            "To reach one sibling directly: emperor_send_message(targetAgentId='<id or name>', text='<request>') — Emperor posts in your shared work-team chat and mentions them so only they wake; add threadId if you share several teams, or private=true only when the team must not see it. "
             "(3) When responding to a sibling's request, @mention them once in your reply so the message routes back: '@Viktor here are the results...'. "
             "(4) A closing answer ends the exchange: do not send thanks or another acknowledgment; mention only for a new actionable request. "
             "(5) Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention. "
@@ -779,14 +781,15 @@ def register(ctx: Any) -> None:
         "emperor_send_message",
         TOOLSET,
         _schema(
-            "Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. Use it for a sibling handoff in team chat (@Name) or to message a different agent privately.",
+            "Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. To message a sibling: pass targetAgentId; Emperor posts in the work-team chat you both share and @mentions them (only they are woken). If you share several team chats you must pass threadId (or private=true). Set private=true only when the message must not be seen by the team. If you share no team, it falls back to a private two-agent thread.",
             {
                 "text": {"type": "string"},
                 "agentId": {"type": "string", "description": "Optional sender Emperor agent id/name. Defaults to this Hermes profile's configured agent."},
-                "threadId": {"type": "string"},
+                "threadId": {"type": "string", "description": "Explicit thread to post in; takes precedence over team selection."},
                 "threadType": {"type": "string", "enum": ["direct", "team", "group"]},
                 "chatId": {"type": "string"},
-                "targetAgentId": {"type": "string", "description": "Target Emperor agent id for direct private messages."},
+                "targetAgentId": {"type": "string", "description": "Recipient Emperor agent id/name. With no threadId, the shared team chat is preferred."},
+                "private": {"type": "boolean", "description": "Force a private two-agent thread instead of the shared team chat."},
             },
             ["text"],
         ),

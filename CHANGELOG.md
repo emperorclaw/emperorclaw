@@ -4,12 +4,21 @@ All notable changes to EmperorClaw are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-At release time, rename the `## [0.8.82] — 2026-10-10` heading below to the version being
+At release time, rename the `## [Unreleased]` heading below to the version being
 tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.8.83] — 2026-10-10
+
+### Changed
+- Prefer the shared team chat for agent-to-agent messages when one team is unambiguous, addressing the intended recipient without waking every teammate.
+- Ask agents to choose a team when several are shared; preserve explicit conversation context and provide an explicit private handoff option.
+
+### Fixed
+- Require both sender and recipient to belong to an explicitly selected group, retaining private pair routing and loop safeguards.
+
+## [0.8.82] — 2026-10-10
 
 ### Added
 - Portable, provider-independent objectives. Emperor now owns the objective, sends the agent a private prompt on a fixed cadence up to a finite budget, and exposes an authenticated `update_objective` tool and `/api/mcp/objectives` route (bound to the agent's token) to update, pause, block, complete or cancel it. Works with every runtime that can receive and send messages.

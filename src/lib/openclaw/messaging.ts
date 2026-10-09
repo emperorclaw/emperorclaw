@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { messageThreads, threadMessages } from "@/db/schema";
+import { agents, companies, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { ensureAgentPairThread, GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
-import { agentLoopHardCap, agentPairLoopHardCap } from "@/lib/message-routing";
+import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds } from "@/lib/message-routing";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -21,6 +21,62 @@ async function sourceThreadId(companyId: string, messageId: string): Promise<str
   return source?.threadId ?? null;
 }
 
+/**
+ * Shared group chats (work teams) that BOTH agents belong to, excluding private
+ * pair threads and archived groups. Used for team-first peer messaging.
+ */
+async function commonTeamThreads(companyId: string, agentA: string, agentB: string) {
+  const rows = await db.select({
+    id: messageThreads.id,
+    description: messageThreads.description,
+    createdByType: messageThreads.createdByType,
+  }).from(messageThreads)
+    .innerJoin(threadParticipants, and(
+      eq(threadParticipants.threadId, messageThreads.id),
+      eq(threadParticipants.companyId, companyId),
+      eq(threadParticipants.participantType, "agent"),
+      inArray(threadParticipants.participantId, [agentA, agentB]),
+    ))
+    .where(and(
+      eq(messageThreads.companyId, companyId),
+      eq(messageThreads.type, GROUP_THREAD_TYPE),
+      isNull(messageThreads.archivedAt),
+    ))
+    .groupBy(messageThreads.id, messageThreads.description, messageThreads.createdByType)
+    // Exactly the two agents (both deduped) belong to the thread.
+    .having(sql`count(distinct ${threadParticipants.participantId}) = 2`);
+  return rows.filter((row) => !isAgentPairThread(row));
+}
+
+/**
+ * Pick the shared work-team chat for an agent→agent send that named a recipient
+ * but no thread. Prefers the unique common team; when several are shared, only a
+ * uniquely identified organization work team is used, otherwise the caller must
+ * choose (or go private) — an arbitrary team is never picked.
+ */
+async function pickSharedTeamThread(companyId: string, agentA: string, agentB: string): Promise<string | null> {
+  const common = await commonTeamThreads(companyId, agentA, agentB);
+  if (common.length === 0) return null;
+  if (common.length === 1) return common[0].id;
+  const [company] = await db.select({ organizationJson: companies.organizationJson })
+    .from(companies).where(eq(companies.id, companyId)).limit(1);
+  const orgTeamIds = new Set<string>(company?.organizationJson?.teamIds ?? []);
+  const orgCommon = common.filter((thread) => orgTeamIds.has(thread.id));
+  if (orgCommon.length === 1) return orgCommon[0].id;
+  throw new Error("This agent shares more than one team chat with the recipient; pass threadId to choose one, or private: true");
+}
+
+/** Ensure the recipient is @mentioned so only they are woken in a shared room. */
+async function ensureTargetMention(companyId: string, text: string, targetAgentId: string): Promise<string> {
+  const [agent] = await db.select({ id: agents.id, name: agents.name }).from(agents).where(and(
+    eq(agents.id, targetAgentId),
+    eq(agents.companyId, companyId),
+  )).limit(1);
+  if (!agent?.name) return text;
+  if (mentionedAgentIds(text, [{ id: agent.id, name: agent.name }]).has(agent.id)) return text;
+  return `@${agent.name} ${text}`;
+}
+
 export async function sendThreadMessageFromMcp(input: {
   companyId: string;
   chatId?: string | null;
@@ -32,6 +88,8 @@ export async function sendThreadMessageFromMcp(input: {
   threadType?: string | null;
   // The message this one answers (runtimes send it); lets a request find its reply.
   replyToMessageId?: string | null;
+  // Explicit opt-out of team-first peer messaging: force the private pair thread.
+  private?: boolean;
 }) {
   const senderId = input.fromUserId || input.agentId || null;
   const resolvedSenderId = senderId
@@ -82,8 +140,30 @@ export async function sendThreadMessageFromMcp(input: {
       if (resolvedSenderId && !(await isAgentGroupMember(input.companyId, existingThread.id, resolvedSenderId))) {
         throw new Error("Access denied: this agent is not a member of that group");
       }
+      // A peer message names a recipient who must also belong to the group,
+      // otherwise the handoff would be invisible to them (or leak to a
+      // non-member). Never address someone who is not in the room.
+      if (resolvedTargetAgentId && !(await isAgentGroupMember(input.companyId, existingThread.id, resolvedTargetAgentId))) {
+        throw new Error("Access denied: the recipient is not a member of that group");
+      }
+    }
+  } else if (isAgentToAgent && !input.private) {
+    // Team-first: an agent messaging a peer it shares a work team with posts in
+    // the team chat (mentioning the recipient) instead of opening a private pair.
+    // With no uniquely safe team, it retains the private pair fallback.
+    const teamId = await pickSharedTeamThread(input.companyId, resolvedSenderId!, resolvedTargetAgentId!);
+    if (teamId) {
+      const [team] = await db.select().from(messageThreads).where(and(
+        eq(messageThreads.id, teamId),
+        eq(messageThreads.companyId, input.companyId),
+      )).limit(1);
+      if (!team) throw new Error("Thread not found");
+      responseThread = team;
+    } else {
+      responseThread = await ensureAgentPairThread(input.companyId, resolvedSenderId!, resolvedTargetAgentId!);
     }
   } else if (isAgentToAgent) {
+    // Explicit private request (or team-first unavailable): the two-agent pair.
     responseThread = await ensureAgentPairThread(input.companyId, resolvedSenderId!, resolvedTargetAgentId!);
   } else if (resolvedTargetAgentId) {
     responseThread = await ensureDirectThread(input.companyId, resolvedTargetAgentId);
@@ -99,6 +179,13 @@ export async function sendThreadMessageFromMcp(input: {
   const targetThreadId = responseThread.id;
   const isGroup = responseThread.type === GROUP_THREAD_TYPE;
   const isAgentPair = isGroup && isAgentPairThread(responseThread);
+
+  // In a shared team, address the recipient by name so the routing verdict is
+  // "mention" for them and "not_addressed" for everyone else in the room.
+  let outboundText = input.text;
+  if (isGroup && !isAgentPair && isAgentToAgent && resolvedTargetAgentId) {
+    outboundText = await ensureTargetMention(input.companyId, outboundText, resolvedTargetAgentId);
+  }
 
   // In a pair thread the counterpart is addressed without a targetAgentId, but
   // old runtimes only understand `targeted`. Infer the other agent so they
@@ -124,7 +211,7 @@ export async function sendThreadMessageFromMcp(input: {
     // pair thread, which is a two-agent handoff: keep targetAgentId set there so
     // runtimes that only understand `targeted` still route it to the counterpart.
     targetAgentId: isGroup && !isAgentPair ? null : effectiveTargetAgentId,
-    text: input.text,
+    text: outboundText,
     metadataJson: {
       chatId: input.chatId || null,
       threadType: isGroup ? GROUP_THREAD_TYPE : input.threadType || null,

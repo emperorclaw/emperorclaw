@@ -19,6 +19,8 @@ const sendMessageSchema = z.object({
     targetAgentId: optionalString,
     target_agent_id: optionalString,
     thread_type: optionalString,
+    // Backward compatible opt-out of team-first peer messaging.
+    private: z.boolean().optional(),
 }).loose();
 
 // Dedup cache: hash(agentId + threadId + text) → timestamp
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId } = parsed.data;
+        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId, private: isPrivate } = parsed.data;
 
         // A token bound to an agent may only send as that agent.
         const effectiveAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, agentId || null);
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
             targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
             replyToMessageId: replyToMessageId || null,
+            private: isPrivate === true,
         });
 
         // Serialize a reply with /kill and /replace on the same agent row.
