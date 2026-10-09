@@ -13,7 +13,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     return groupRoute(async ({ companyId, userId }) => {
-        const group = await createGroup(companyId, { type: "human", id: userId }, body);
+        const group = await createGroup(companyId, { type: "human", id: userId }, body, { requestId: body.requestId });
         announceGroup(companyId, group.id, "created");
         return { group };
     }, 201);

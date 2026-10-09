@@ -196,3 +196,58 @@ maybe("coordinators are optional, member-scoped, isolated across overlapping tea
     assert.equal((await getGroup(companyId, a.id)).coordinator, null);
     assert.ok((await getGroup(companyId, b.id)).members.some((m) => m.id === shared.id));
 });
+
+maybe("group creation is atomic and concurrent retries reuse one complete team", async () => {
+    await resetDb();
+    const { companyId, userId } = await seedCompanyWithToken();
+    const dev = await seedAgent(companyId, { name: "Builder" });
+    const qa = await seedAgent(companyId, { name: "Tester" });
+    const { createGroup } = await import("@/lib/groups");
+    const { randomUUID } = await import("node:crypto");
+    const requestId = randomUUID();
+    const actor = { type: "human" as const, id: userId };
+    const input = { title: "Development", agentIds: [dev.id, qa.id], coordinator: { kind: "agent", id: dev.id } };
+    const [first, retry] = await Promise.all([
+        createGroup(companyId, actor, input, { requestId }),
+        createGroup(companyId, actor, input, { requestId }),
+    ]);
+    assert.equal(first.id, requestId);
+    assert.equal(retry.id, first.id);
+    assert.equal(first.members.length, 3);
+    assert.equal(first.coordinator?.id, dev.id);
+    assert.equal(first.members.find(member => member.id === userId)?.role, "owner");
+    await assert.rejects(createGroup(companyId, actor, { ...input, agentIds: [dev.id] }, { requestId }), /changed/);
+    const other = await seedCompanyWithToken();
+    await assert.rejects(createGroup(other.companyId, { type: "human", id: other.userId }, { title: input.title }, { requestId }), /different work/);
+    await assert.rejects(createGroup(companyId, actor, input, { requestId: "" }), /Invalid group request/);
+    const db = await getDb(); const { messageThreads } = await getSchema(); const { eq } = await import("drizzle-orm");
+    assert.equal((await db.select().from(messageThreads).where(eq(messageThreads.companyId, companyId))).length, 1);
+    await assert.rejects(createGroup(companyId, actor, { ...input, coordinator: { kind: "agent", id: "missing" } }), /must be a member/);
+    assert.equal((await db.select().from(messageThreads).where(eq(messageThreads.companyId, companyId))).length, 1);
+});
+
+maybe("an interrupted hiring request retains one profile and its original credentials and scope", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const { reserveHermesHiringProfile } = await import("@/lib/hermes-hiring-profile");
+    const { randomUUID } = await import("node:crypto");
+    const requestId = randomUUID();
+    const values = { companyId, name: "Builder", role: "Developer", provider: "hermes", deploymentMode: "local", llmApiKeyEncrypted: "original-encrypted-key", scopeJson: { mode: "restricted", projectIds: [] } };
+    const [first, retry] = await Promise.all([
+        reserveHermesHiringProfile(values, requestId),
+        reserveHermesHiringProfile({ ...values, llmApiKeyEncrypted: "replacement-key", scopeJson: { mode: "all" } }, requestId),
+    ]);
+    assert.equal(first.agent.id, retry.agent.id);
+    assert.equal([first, retry].filter(result => result.created).length, 1);
+    // Whichever request wins, later retries cannot replace its configuration.
+    const repeated = await reserveHermesHiringProfile({ ...values, llmApiKeyEncrypted: "never-write-this" }, requestId);
+    assert.equal(repeated.created, false);
+    const winner = first.created ? first : retry;
+    assert.equal(repeated.agent.llmApiKeyEncrypted, winner.agent.llmApiKeyEncrypted);
+    assert.deepEqual(repeated.agent.scopeJson, winner.agent.scopeJson);
+    await assert.rejects(reserveHermesHiringProfile({ ...values, name: "Different worker" }, requestId), /different agent/);
+    const foreign = await seedCompanyWithToken();
+    await assert.rejects(reserveHermesHiringProfile({ ...values, companyId: foreign.companyId }, requestId), /different agent/);
+    const db = await getDb(); const { agents } = await getSchema(); const { eq } = await import("drizzle-orm");
+    assert.equal((await db.select().from(agents).where(eq(agents.companyId, companyId))).length, 1);
+});

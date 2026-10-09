@@ -1285,3 +1285,9 @@ Here are the sources and the result.
 Open on a Knowledge card selects the exact note. Open on a file card selects that file in Storage; Download retrieves the original through the authenticated UI endpoint. Image previews use that same permission-checked endpoint. SVG and HTML files are never embedded as image previews. Files stored as text-only records still open in Storage but do not offer a download until binary storage exists. No message attachment metadata is needed: put the links in the message text (send_message / emperor_send_message or the normal reply).
 
 Native MCP tool `list_storage_files({search?, limit?})` returns `{files: [{id, title, name, contentType, sizeBytes, shareUrl}]}` (default 30, maximum 100), newest updated first. It excludes private human uploads. `list_knowledge` includes `shareUrl` for Knowledge notes. Both tools are read-only.
+
+### Retrying guided agent and team setup
+
+`POST /api/agents/easy-setup` accepts an optional UUID `requestId` on each item in `agents`. Reuse it when retrying the same profile after a lost response. An existing matching Hermes profile is returned with `reused: true`; credentials, scope, doctrine, and the runtime are retained. Changing the requested company, name, or role under the same ID is rejected. Use the existing agent's runtime repair action when needed. Clients that omit these fields keep the existing create behavior.
+
+`POST /api/groups` accepts an optional UUID `requestId` for guided team creation. Repeating the same creator, members, coordinator, and group details returns the same complete group. Reusing the identifier for different work, an archived group, or a group whose membership has changed is rejected. The thread, memberships, creator role, and coordinator are committed together.

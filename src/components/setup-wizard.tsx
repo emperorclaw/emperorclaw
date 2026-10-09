@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createClientRequestId } from "@/lib/client-request-id";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 type Step = "welcome" | "company" | "model" | "team" | "launch";
 type KeyState = { status: "idle" | "checking" | "ok" | "bad" | "unknown"; message: string };
 type Member = { templateId: string; name: string };
-type Created = { name: string; agentId: string | null; success: boolean; message: string; templateId: string };
+type Created = { name: string; agentId: string | null; success: boolean; message: string; templateId: string; reused?: boolean };
 type AgentRow = { id: string; name: string; status: string; lastSeenAt: string | null };
 type DocProgress = { taskId: string; state: string; agentId: string | null; taskUrl: string; notesTouched: string[]; totalNotes: number };
 
@@ -76,6 +77,9 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     const teamTouched = useRef(false);
     const plan = useMemo(() => planTeam({ teams, includeBoss, extraRoles, removedRoles, names }), [teams, includeBoss, extraRoles, removedRoles, names]);
     const team: Member[] = plan.agents;
+    const hiringRequestIds = useRef(new Map<string, string>());
+    const groupRequestIds = useRef(new Map<string, string>());
+    const [groupBusy, setGroupBusy] = useState(false);
     const [groupsMade, setGroupsMade] = useState<{ title: string; icon: string; ok: boolean; members: string[] }[]>([]);
 
     // Launch
@@ -194,32 +198,41 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
     // ── Launch ───────────────────────────────────────────────────────────────
     const launch = async () => {
+        if (launching) return;
         setStep("launch");
         setLaunching(true);
         setError("");
         try {
             // The lead goes first: it gets the documentation job.
             const ordered = [...team].sort((a, b) => (a.templateId === "boss" ? -1 : b.templateId === "boss" ? 1 : 0));
-            const res = await fetch("/api/agents/easy-setup", {
+            const previousByRole = new Map((created ?? []).filter(result => result.agentId).map(result => [result.templateId, result]));
+            const requested = ordered.filter(member => !previousByRole.has(member.templateId));
+            const res = requested.length ? await fetch("/api/agents/easy-setup", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    sourceAgentId: created?.find(result => result.agentId)?.agentId || undefined,
                     llmProvider: provider,
                     llmApiKey: apiKey,
                     llmModel: model.trim() || undefined,
-                    agents: ordered.map((m) => {
+                    agents: requested.map((m) => {
                         const t = getAgentTemplate(m.templateId);
+                        if (!hiringRequestIds.current.has(m.templateId)) hiringRequestIds.current.set(m.templateId, createClientRequestId());
                         return {
+                            requestId: hiringRequestIds.current.get(m.templateId),
                             name: m.name.trim(),
                             role: t?.title ?? m.templateId,
                             doctrineJson: t ? { "SOUL.md": t.soul, "AGENTS.md": t.agents, "BOOTSTRAP.md": t.bootstrap, "IDENTITY.md": t.identity } : {},
                         };
                     }),
                 }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Could not create your agents.");
-            const results: Created[] = (data.results || []).map((r: Omit<Created, "templateId">, i: number) => ({ ...r, templateId: ordered[i]?.templateId ?? "" }));
+            }) : null;
+            const data = res ? await res.json().catch(() => ({})) : { results: [] };
+            if (res && !res.ok) throw new Error(data.error || "Could not create your agents.");
+            const returnedByRole = new Map<string, Created>(requested.map((member, index) => [member.templateId, {
+                ...(data.results?.[index] ?? { name: member.name, agentId: null, success: false, message: "Setup returned no result for this profile." }), templateId: member.templateId,
+            }]));
+            const results = ordered.map(member => previousByRole.get(member.templateId) ?? returnedByRole.get(member.templateId)!);
             setCreated(results);
             setLaunchedAt(Date.now());
             if (results.some((r) => r.success && r.agentId)) setApiKey("");
@@ -235,24 +248,38 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
     // One group chat per chosen team, with its agents and the Boss; you are
     // added as its creator. A failed group never blocks the agents.
     const createGroups = async (groups: PlannedGroup[], results: Created[]) => {
-        const byRole = new Map(results.filter((r) => r.success && r.agentId).map((r) => [r.templateId, r]));
-        const teamIds: string[] = [];
-        const made: { title: string; icon: string; ok: boolean; members: string[] }[] = [];
-        for (const g of groups) {
-            const members = g.roles.map((role) => byRole.get(role)).filter((r): r is Created => Boolean(r));
-            if (!members.some((m) => m.templateId !== "boss")) continue;
-            const coordinatorId = members.find((m) => m.templateId === "boss")?.agentId;
-            const res = await fetch("/api/groups", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title: g.title, description: g.description, icon: g.icon, agentIds: members.map((m) => m.agentId), coordinator: coordinatorId ? { kind: "agent", id: coordinatorId } : null }),
-            }).catch(() => null);
-            if (res?.ok) { const group = await res.json().catch(() => null); if (group?.group?.id) teamIds.push(group.group.id); }
-            made.push({ title: g.title, icon: g.icon, ok: Boolean(res?.ok), members: members.map((m) => m.name) });
+        if (groupBusy) return;
+        setGroupBusy(true);
+        try {
+            const byRole = new Map(results.filter(result => result.agentId).map(result => [result.templateId, result]));
+            const teamIds: string[] = [];
+            const made: { title: string; icon: string; ok: boolean; members: string[] }[] = [];
+            for (const group of groups) {
+                const members = group.roles.map(role => byRole.get(role)).filter((member): member is Created => Boolean(member));
+                if (members.length !== group.roles.length) {
+                    made.push({ title: group.title, icon: group.icon, ok: false, members: members.map(member => member.name) });
+                    continue;
+                }
+                const coordinatorId = members.find(member => member.templateId === "boss")?.agentId ?? members[0]?.agentId;
+                if (!coordinatorId) continue;
+                if (!groupRequestIds.current.has(group.teamId)) groupRequestIds.current.set(group.teamId, createClientRequestId());
+                const response = await fetch("/api/groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+                    requestId: groupRequestIds.current.get(group.teamId), title: group.title, description: group.description, icon: group.icon,
+                    agentIds: members.map(member => member.agentId), coordinator: { kind: "agent", id: coordinatorId },
+                }) }).catch(() => null);
+                const data = response?.ok ? await response.json().catch(() => null) : null;
+                if (data?.group?.id) teamIds.push(data.group.id);
+                made.push({ title: group.title, icon: group.icon, ok: Boolean(data?.group?.id), members: members.map(member => member.name) });
+            }
+            if (teamIds.length && teamIds.length === groups.length) {
+                const leaderId = byRole.get("boss")?.agentId ?? results.find(result => result.agentId)?.agentId;
+                const response = await fetch("/api/organization", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initialize: true, leader: leaderId ? { kind: "agent", id: leaderId } : null, teamIds }) }).catch(() => null);
+                if (!response?.ok && response?.status !== 409) setError("Team chats are ready, but the reporting setup needs a retry. Review it in Agents → Organization.");
+            }
+            setGroupsMade(made);
+        } finally {
+            setGroupBusy(false);
         }
-        // Initialize only once; never overwrite a company structure during retries.
-        if (teamIds.length) await fetch("/api/organization", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initialize: true, leader: byRole.get("boss")?.agentId ? {kind: "agent", id: byRole.get("boss")!.agentId} : null, teamIds }) }).catch(() => null);
-        setGroupsMade(made);
     };
 
     // Watch the new agents come online, and the documentation job.
@@ -280,7 +307,7 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
         const row = roster.find((a) => a.id === agentId);
         return row?.status === "online" && Boolean(row.lastSeenAt);
     };
-    const lead = created?.find((r) => r.success && r.agentId) ?? null;
+    const lead = created?.find((r) => r.agentId) ?? null;
     const online = Boolean(lead && isOnline(lead.agentId));
     const offlineTooLong = Boolean(launchedAt && Date.now() - launchedAt > STARTUP_GRACE_MS);
 
@@ -297,9 +324,17 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
 
     const retryRuntime = async (agentId: string) => {
         setRetrying(agentId);
-        await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" }).catch(() => null);
-        setLaunchedAt(Date.now());
-        setRetrying(null);
+        try {
+            const response = await fetch(`/api/agents/${agentId}/recreate-runtime`, { method: "POST" });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw new Error(data.error || data.message || "Could not restart this runtime");
+            setCreated(previous => previous?.map(result => result.agentId === agentId ? { ...result, success: true, message: data.message } : result) ?? null);
+            setLaunchedAt(Date.now());
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Could not restart this runtime");
+        } finally {
+            setRetrying(null);
+        }
     };
 
     const openDirectChat = async () => {
@@ -591,11 +626,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                     <span className="text-xl" aria-hidden>{t?.emoji ?? "🤖"}</span>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-sm font-medium text-zinc-100">{r.name}</p>
-                                                        <p className="text-xs text-zinc-500">{!r.success ? r.message : up ? `${r.name} is created and online` : `${r.name} is created and starting up…`}</p>
+                                                        <p className="text-xs text-zinc-500">{!r.success && !up ? r.message : up ? `${r.name} is created and online` : `${r.name} is created and starting up…`}</p>
                                                     </div>
-                                                    {!r.success ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-200">Failed</span>
+                                                    {!r.success && !r.agentId ? <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs text-rose-200">Failed</span>
                                                         : up ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300"><IconCircleCheck className="h-3.5 w-3.5" />Online</span>
-                                                            : offlineTooLong && r.agentId ? <Button size="sm" variant="outline" onClick={() => void retryRuntime(r.agentId!)} disabled={retrying === r.agentId}>{retrying === r.agentId ? "Restarting…" : "Retry"}</Button>
+                                                            : (!r.success || offlineTooLong) && r.agentId ? <Button size="sm" variant="outline" onClick={() => void retryRuntime(r.agentId!)} disabled={retrying === r.agentId}>{retrying === r.agentId ? "Restarting…" : "Retry"}</Button>
                                                                 : <IconLoader2 className="h-4 w-4 animate-spin text-zinc-400" aria-label="Starting" />}
                                                 </li>
                                             );
@@ -609,14 +644,13 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                                 {g.ok ? <IconCircleCheck className="h-3.5 w-3.5 text-emerald-300" /> : <IconAlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
                                                 <span aria-hidden>{g.icon}</span>
                                                 <span className="text-zinc-200">{g.title}</span>
-                                                <span className="truncate">{g.ok ? `group chat with ${g.members.join(", ")} and you` : "couldn't create this group; make it in Messages"}</span>
+                                                <span className="truncate">{g.ok ? `group chat with ${g.members.join(", ")} and you` : "not ready yet; create missing profiles or retry the chat"}</span>
                                             </li>
                                         ))}
                                     </ul>
                                 )}
-                                {created && !created.some((r) => r.success) && (
-                                    <Button variant="outline" onClick={() => setStep("team")}>Retry provisioning</Button>
-                                )}
+                                {created?.some(result => !result.agentId) && <Button variant="outline" onClick={() => void launch()} disabled={launching}>Retry provisioning</Button>}
+                                {created && groupsMade.some(group => !group.ok) && <Button variant="outline" onClick={() => void createGroups(plan.groups, created)} disabled={groupBusy || launching || created.some(result => !result.agentId)}>{groupBusy ? "Creating team chats…" : "Retry team chats"}</Button>}
                                 {lead && documentIt && (
                                     <div aria-live="polite" className="rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.05] p-5">
                                         <div className="flex items-start gap-3">

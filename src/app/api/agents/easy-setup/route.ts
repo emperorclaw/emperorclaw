@@ -1,9 +1,9 @@
 import { z } from "zod";
+import { reserveHermesHiringProfile, retainedHermesHiringResult, HermesHiringError } from "@/lib/hermes-hiring-profile";
 import { hireHermesAgent } from "@/lib/hire-hermes-agent";
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import { getCompanyId } from "@/lib/auth";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
@@ -23,7 +23,13 @@ const VALID_LLM_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "gro
 // point: only meaningful when the app itself is running in Docker with the
 // socket mounted (sibling-container provisioning requires it).
 export async function GET() {
-    const companyId = await getCompanyId();
+    let companyId: string;
+    try {
+        companyId = (await requireRole("owner", "admin")()).companyId;
+    } catch (error) {
+        if (error instanceof AuthError) return NextResponse.json({ available: false, configurations: [], reason: error.statusCode === 401 ? "Sign in to create a worker." : "Ask a workspace owner or administrator to hire local agents." });
+        throw error;
+    }
     let available = false;
     let reason = "Sign in to create a worker.";
     if (companyId) {
@@ -43,6 +49,7 @@ export async function GET() {
 }
 
 type AgentSpec = {
+    requestId?: string;
     role: string;
     name: string;
     doctrineJson?: Record<string, string>;
@@ -86,6 +93,7 @@ export async function POST(req: NextRequest) {
     const parsedModel = z.string().trim().max(200).optional().safeParse(body.llmModel);
     if (!parsedModel.success) return NextResponse.json({ error: "Model must be a name of at most 200 characters" }, { status: 400 });
     const parsedSpecs = z.array(z.object({
+        requestId: z.string().uuid().optional(),
         name: z.string().trim().min(1).max(200),
         role: z.string().trim().max(200),
         doctrineJson: z.record(z.string(), z.string()).optional(),
@@ -97,9 +105,9 @@ export async function POST(req: NextRequest) {
         const results: AgentBatchResult[] = [];
         for (const spec of specs) {
             try {
-                results.push(await hireHermesAgent({ companyId, name: spec.name, role: spec.role, sourceAgentId: body.sourceAgentId, doctrineJson: spec.doctrineJson }));
+                results.push(await hireHermesAgent({ companyId, name: spec.name, role: spec.role, sourceAgentId: body.sourceAgentId, doctrineJson: spec.doctrineJson, requestId: spec.requestId }));
             } catch (err) {
-                results.push({ name: spec.name, agentId: null, success: false, message: err instanceof Error ? err.message : "Hiring failed", outputs: [] });
+                results.push({ name: spec.name, agentId: null, success: false, message: err instanceof HermesHiringError ? err.message : "Could not create this agent profile. Retry provisioning.", outputs: [] });
             }
         }
         return NextResponse.json({ results });
@@ -144,7 +152,7 @@ export async function POST(req: NextRequest) {
 
         let agentId: string | null = null;
         try {
-            const [agent] = await db.insert(agents).values({
+            const reserved = await reserveHermesHiringProfile({
                 companyId,
                 name,
                 role,
@@ -156,8 +164,10 @@ export async function POST(req: NextRequest) {
                 llmApiKeyEncrypted,
                 llmApiKeyVersion,
                 status: "offline",
-            }).returning();
+            }, spec.requestId);
+            const { agent } = reserved;
             agentId = agent.id;
+            if (!reserved.created) { results.push(retainedHermesHiringResult(agent)); continue; }
 
             const safeName = hermesSafeName(name);
             const { rawToken } = await mintAgentSetupToken(companyId, safeName, agentId);
@@ -178,8 +188,8 @@ export async function POST(req: NextRequest) {
                 outputs: provisionResult.outputs,
             });
         } catch (err) {
-            const msg = err instanceof Error ? err.message : "Unknown error";
-            results.push({ name, agentId, success: false, message: `Failed to create/provision agent: ${msg}`, outputs: [] });
+            const message = err instanceof HermesHiringError ? err.message : agentId ? "Profile created, but runtime setup could not finish. Retry this runtime from Agents." : "Could not create this agent profile. Retry provisioning.";
+            results.push({ name, agentId, success: false, message, outputs: [] });
         }
     }
 

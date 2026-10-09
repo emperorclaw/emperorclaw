@@ -92,7 +92,7 @@ Emoji: 👑
 Expertise: Work decomposition, task assignment, delegation, blocker escalation, closure verification`,
         setupPromptSuffix: `Configure this agent as the Boss / Team Lead — the coordinator of the other agents.
 - Enable the emperor-claw toolset so it can list the roster, create projects and tasks, assign owners, and message agents
-- Enable web and terminal only for light research; this role coordinates rather than executes
+- Enable web and terminal for research and bounded work when no suitable specialist is available; otherwise delegate
 - Configure a daily heartbeat to review unowned or stale tasks and reassign them`,
     },
     {

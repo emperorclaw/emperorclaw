@@ -1,4 +1,5 @@
 import fs from "fs";
+import { reserveHermesHiringProfile, retainedHermesHiringResult, HermesHiringError } from "@/lib/hermes-hiring-profile";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
@@ -14,23 +15,26 @@ export async function hireHermesAgent(input: {
     role?: string;
     sourceAgentId: string;
     doctrineJson?: Record<string, string>;
+    requestId?: string;
 }) {
-    if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) throw new Error("Local Hermes hiring requires Docker with its socket mounted");
+    if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) throw new HermesHiringError("Local Hermes hiring requires Docker with its socket mounted");
     const name = input.name.trim();
-    if (!name || name.length > 200) throw new Error("Agent name must contain 1–200 characters");
+    if (!name || name.length > 200) throw new HermesHiringError("Agent name must contain 1–200 characters");
     const [source] = await db.select().from(agents).where(and(
         eq(agents.id, input.sourceAgentId), eq(agents.companyId, input.companyId),
         eq(agents.provider, "hermes"), isNull(agents.deletedAt),
     )).limit(1);
-    if (!source?.llmApiKeyEncrypted || !source.llmProvider) throw new Error("Choose a Hermes agent with a stored LLM key and provider");
+    if (!source?.llmApiKeyEncrypted || !source.llmProvider) throw new HermesHiringError("Choose a Hermes agent with a stored LLM key and provider");
     const role = input.role?.trim() || "operator";
-    const [agent] = await db.insert(agents).values({
+    const reserved = await reserveHermesHiringProfile({
         companyId: input.companyId, name, role, provider: "hermes", deploymentMode: "local",
         llmProvider: source.llmProvider, llmModel: source.llmModel,
         llmApiKeyEncrypted: source.llmApiKeyEncrypted, llmApiKeyVersion: source.llmApiKeyVersion,
         scopeJson: source.scopeJson,
         doctrineJson: input.doctrineJson ?? {}, status: "offline",
-    }).returning();
+    }, input.requestId);
+    const { agent } = reserved;
+    if (!reserved.created) return retainedHermesHiringResult(agent);
     const safeName = hermesSafeName(name);
     try {
         const { rawToken } = await mintAgentSetupToken(input.companyId, safeName, agent.id);
@@ -41,6 +45,6 @@ export async function hireHermesAgent(input: {
         await logAudit(input.companyId, "agent", source.id, "hire_hermes_agent", "agent", agent.id, { success: result.success });
         return { agentId: agent.id, name, success: result.success, message: result.message, outputs: result.outputs };
     } catch (error) {
-        return { agentId: agent.id, name, success: false, message: error instanceof Error ? error.message : "Hermes provisioning failed", outputs: [] };
+        return { agentId: agent.id, name, success: false, message: error instanceof HermesHiringError ? error.message : "Profile created, but runtime setup could not finish. Retry this runtime from Agents.", outputs: [] };
     }
 }

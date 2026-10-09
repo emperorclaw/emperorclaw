@@ -38,10 +38,10 @@ interface Props {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-    instance_admin: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-    owner: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    admin: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    member: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    instance_admin: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20",
+    owner: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
+    admin: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
+    member: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     viewer: "bg-zinc-500/10 text-muted-foreground border-zinc-500/20",
 };
 
@@ -265,16 +265,18 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                     <form onSubmit={handleInvite} className="flex gap-3 flex-wrap">
                         <Input
                             type="email"
+                            aria-label="Invitation email"
                             value={inviteEmail}
                             onChange={(e) => setInviteEmail(e.target.value)}
                             placeholder="colleague@company.com"
-                            className="flex-1 min-w-[200px]"
+                            className="min-h-11 flex-1 min-w-[200px]"
                             required
                         />
                         <select
+                            aria-label="Invitation role"
                             value={inviteRole}
                             onChange={(e) => setInviteRole(e.target.value)}
-                            className="bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                            className="min-h-11 bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                         >
                             {ROLE_OPTIONS.map((r) => (
                                 <option key={r} value={r} className="bg-muted">
@@ -282,7 +284,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                 </option>
                             ))}
                         </select>
-                        <Button type="submit" disabled={sending}>
+                        <Button type="submit" className="min-h-11" disabled={sending}>
                             {sending ? <IconLoader2 className="w-4 h-4 animate-spin mr-1" /> : null}
                             Send Invitation
                         </Button>
@@ -297,8 +299,9 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                     Team Members ({members.length})
                 </h3>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                {members.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No members found.</p> : <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-sm [&_th]:whitespace-nowrap [&_th]:pr-4 [&_td]:pr-4 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
+                        <caption className="sr-only">Team members and access</caption>
                         <thead>
                             <tr className="border-b border-border text-muted-foreground text-left">
                                 <th className="pb-3 font-medium">Email</th>
@@ -315,7 +318,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                         {member.displayName && <span className="font-medium">{member.displayName}</span>}
                                         {member.displayName && <br />}
                                         <span className={member.displayName ? "text-xs text-muted-foreground" : ""}>{member.email}</span>
-                                        {member.roleTitle && <span className="block text-[10px] text-cyan-400/70 mt-0.5">{member.roleTitle}</span>}
+                                        {member.roleTitle && <span className="block text-xs text-cyan-400/70 mt-0.5">{member.roleTitle}</span>}
                                     </td>
                                     <td className="py-3">{roleBadge(member.companyRole)}</td>
                                     <td className="py-3">{roleBadge(member.instanceRole)}</td>
@@ -327,7 +330,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                             <div className="flex gap-1 justify-end">
                                                 <button
                                                     onClick={() => openScope(member.id)}
-                                                    className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-cyan-400 transition-colors"
+                                                    className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-cyan-400 transition-colors"
                                                     title="Access scope"
                                                 >
                                                     <IconShield className="w-4 h-4" />
@@ -335,7 +338,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                 {canChangeRoles && (
                                                     <button
                                                         onClick={() => { setChangingRoleFor(member.id); setNewRole(member.companyRole); }}
-                                                        className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+                                                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                                                         title="Change role"
                                                     >
                                                         <IconUserCog className="w-4 h-4" />
@@ -344,7 +347,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                 {canInvite && (
                                                     <button
                                                         onClick={() => setRemovingMember(member.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                                                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                                                         title="Remove member"
                                                     >
                                                         <IconTrash className="w-4 h-4" />
@@ -364,7 +367,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                             )}
                         </tbody>
                     </table>
-                </div>
+                </div>}
             </div>
 
             {/* ── Pending Invitations ──────────────────────────────────── */}
@@ -375,7 +378,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                         Pending Invitations ({invitations.length})
                     </h3>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table className="w-full min-w-[640px] text-sm [&_th]:whitespace-nowrap [&_th]:pr-4 [&_td]:pr-4 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
                             <thead>
                                 <tr className="border-b border-border text-muted-foreground text-left">
                                     <th className="pb-3 font-medium">Email</th>
@@ -401,9 +404,9 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                             <span className={cn(
                                                 "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border",
                                                 inv.status === "pending"
-                                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
                                                     : inv.status === "expired"
-                                                        ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                                        ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
                                                         : "bg-zinc-500/10 text-muted-foreground border-zinc-500/20"
                                             )}>
                                                 {inv.status}
@@ -414,14 +417,14 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                 <div className="flex items-center gap-1 justify-end">
                                                     <button
                                                         onClick={() => handleResendInvitation(inv.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-400 transition-colors"
+                                                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-400 transition-colors"
                                                         title="Resend"
                                                     >
                                                         <IconMail className="w-4 h-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleRevokeInvitation(inv.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                                                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                                                         title="Revoke"
                                                     >
                                                         <IconTrash className="w-4 h-4" />

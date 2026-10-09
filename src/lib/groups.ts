@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
+import { agents, companies, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
 import { resolveAgentId } from "@/lib/mcp";
 import { coordinationRole, isCoordinatorRole, teamCoordinator, type CoordinatorRef } from "@/lib/team-coordination";
 
@@ -232,17 +232,19 @@ async function memberCount(groupId: string): Promise<number> {
     return Number(row?.value) || 0;
 }
 
-async function insertMembers(companyId: string, groupId: string, agentIds: string[], userIds: string[], role = "member") {
+type GroupTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function insertMembers(companyId: string, groupId: string, agentIds: string[], userIds: string[], role = "member", executor: typeof db | GroupTransaction = db) {
     const rows = [
         ...agentIds.map((id) => ({ threadId: groupId, companyId, participantType: "agent", participantId: id, role })),
         ...userIds.map((id) => ({ threadId: groupId, companyId, participantType: "human", participantRef: id, role, lastReadAt: sql`now()` })),
     ];
     if (rows.length === 0) return;
     // Migration 0032's unique participant indexes make re-adding a member a no-op.
-    await db.insert(threadParticipants).values(rows).onConflictDoNothing();
+    await executor.insert(threadParticipants).values(rows).onConflictDoNothing();
     // A human who only had a reader row becomes a real member.
     if (userIds.length) {
-        await db.update(threadParticipants).set({ role })
+        await executor.update(threadParticipants).set({ role })
             .where(and(
                 eq(threadParticipants.threadId, groupId),
                 eq(threadParticipants.participantType, "human"),
@@ -281,7 +283,7 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
     agentIds?: unknown;
     humanUserIds?: unknown;
     coordinator?: unknown;
-}): Promise<GroupSummary> {
+}, options: { requestId?: string } = {}): Promise<GroupSummary> {
     const title = cleanTitle(input.title);
     const description = cleanDescription(input.description);
     const icon = cleanIcon(input.icon);
@@ -295,35 +297,39 @@ export async function createGroup(companyId: string, actor: GroupActor, input: {
     if (coordinator && !(coordinator.kind === "agent" ? agentIds : userIds).includes(coordinator.id)) throw new GroupError("The coordinator must be a member of this group", 400);
     if (agentIds.length + userIds.length > MAX_GROUP_MEMBERS) throw new GroupError(`Groups are limited to ${MAX_GROUP_MEMBERS} members`, 400);
 
-    const [existing] = await db.select({ value: count() }).from(messageThreads).where(and(
-        eq(messageThreads.companyId, companyId),
-        eq(messageThreads.type, GROUP_THREAD_TYPE),
-        isNull(messageThreads.archivedAt),
-    ));
-    if ((Number(existing?.value) || 0) >= MAX_GROUPS_PER_COMPANY) throw new GroupError(`A company can have at most ${MAX_GROUPS_PER_COMPANY} active groups`, 400);
-
-    const [thread] = await db.insert(messageThreads).values({
-        companyId,
-        type: GROUP_THREAD_TYPE,
-        title,
-        description,
-        icon,
-        createdByType: actor.type,
-        createdById: actor.id && /^[0-9a-f-]{36}$/i.test(actor.id) ? actor.id : null,
-    }).returning();
-
-    await insertMembers(companyId, thread.id, agentIds, userIds);
-    // The creator owns the group (only display today; no extra powers).
-    const creator = actor.type === "agent" ? { col: threadParticipants.participantId, type: "agent" } : actor.type === "human" ? { col: threadParticipants.participantRef, type: "human" } : null;
-    if (creator && actor.id) {
-        await db.update(threadParticipants).set({ role: "owner" }).where(and(
-            eq(threadParticipants.threadId, thread.id),
-            eq(threadParticipants.participantType, creator.type),
-            eq(creator.col, actor.id),
-        ));
-    }
-    if (coordinator) await db.transaction((tx) => applyCoordinator(tx, companyId, thread.id, coordinator));
-    return getGroup(companyId, thread.id);
+    if (options.requestId !== undefined && (typeof options.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(options.requestId))) throw new GroupError("Invalid group request ID", 400);
+    const threadId = await db.transaction(async (tx) => {
+        // Serialize company group creation, including the active-group limit.
+        await tx.select({ id: companies.id }).from(companies).where(eq(companies.id, companyId)).for("update");
+        if (options.requestId) {
+            const [previous] = await tx.select().from(messageThreads).where(eq(messageThreads.id, options.requestId));
+            if (previous) {
+                if (previous.companyId !== companyId || previous.type !== GROUP_THREAD_TYPE || previous.archivedAt || previous.createdByType !== actor.type || previous.createdById !== actor.id || previous.title !== title || previous.description !== description || previous.icon !== icon) throw new GroupError("This group request was already used for different work", 409);
+                const members = await tx.select().from(threadParticipants).where(and(eq(threadParticipants.threadId, previous.id), ne(threadParticipants.role, READER_ROLE)));
+                const sameIds = (actual: string[], expected: string[]) => actual.length === expected.length && actual.every(id => expected.includes(id));
+                const actualAgents = members.filter(m => m.participantType === "agent").map(m => m.participantId!);
+                const actualHumans = members.filter(m => m.participantType === "human").map(m => m.participantRef!);
+                const lead = members.find(m => isCoordinatorRole(m.role));
+                const sameLead = coordinator ? lead?.participantType === coordinator.kind && (coordinator.kind === "agent" ? lead.participantId : lead.participantRef) === coordinator.id : !lead;
+                if (!sameIds(actualAgents, agentIds) || !sameIds(actualHumans, userIds) || !sameLead) throw new GroupError("This group's members or leader have changed. Open the existing group instead", 409);
+                return previous.id;
+            }
+        }
+        const [existing] = await tx.select({ value: count() }).from(messageThreads).where(and(eq(messageThreads.companyId, companyId), eq(messageThreads.type, GROUP_THREAD_TYPE), isNull(messageThreads.archivedAt)));
+        if ((Number(existing?.value) || 0) >= MAX_GROUPS_PER_COMPANY) throw new GroupError(`A company can have at most ${MAX_GROUPS_PER_COMPANY} active groups`, 400);
+        const [thread] = await tx.insert(messageThreads).values({
+            ...(options.requestId ? { id: options.requestId } : {}),
+            companyId, type: GROUP_THREAD_TYPE, title, description, icon,
+            createdByType: actor.type,
+            createdById: actor.id && /^[0-9a-f-]{36}$/i.test(actor.id) ? actor.id : null,
+        }).returning();
+        await insertMembers(companyId, thread.id, agentIds, userIds, "member", tx);
+        const creator = actor.type === "agent" ? { col: threadParticipants.participantId, type: "agent" } : actor.type === "human" ? { col: threadParticipants.participantRef, type: "human" } : null;
+        if (creator && actor.id) await tx.update(threadParticipants).set({ role: "owner" }).where(and(eq(threadParticipants.threadId, thread.id), eq(threadParticipants.participantType, creator.type), eq(creator.col, actor.id)));
+        if (coordinator) await applyCoordinator(tx, companyId, thread.id, coordinator);
+        return thread.id;
+    });
+    return getGroup(companyId, threadId);
 }
 
 export async function updateGroup(companyId: string, groupId: string, input: { title?: unknown; description?: unknown; icon?: unknown; coordinator?: unknown }): Promise<GroupSummary> {

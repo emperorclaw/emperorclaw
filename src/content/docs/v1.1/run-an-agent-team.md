@@ -105,3 +105,11 @@ Edit names and steps to match your roster.
 - [Notifications, Health & Daily Review](/docs/v1.1/notifications-health)
 - [Company Brain](/docs/v1.1/company-brain)
 - [Doctrine Reference](/docs/v1.1/doctrine-reference)
+
+## Add a ready-made team later
+
+On **Agents**, select **Hire agent or team → A team**. Development, marketing, outreach, support, and finance use the same role templates as onboarding. Names and roles are prepared for you; choose the team's name and one AI leader, then use a saved LLM connection or enter a provider key.
+
+Setup creates the agent profiles and one shared group chat with you as a member. A specialist can also lead a small team; a second company leader is not created. Open **Team chat** to give the team work. Use **Review reporting** to add the existing team to the organization chart and choose whom it reports to. Setup preserves any existing company structure.
+
+If a runtime fails, its profile is retained and **Retry runtime** repairs that worker. Retrying provisioning creates only profiles that are still missing. A failed team-chat step can be retried independently; its request identifier reuses the same complete group rather than duplicating the chat. The agent results and the chat result are shown separately.
