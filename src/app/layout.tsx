@@ -30,7 +30,8 @@ export const metadata: Metadata = {
   title: "EmperorClaw",
   description: "Self-hosted operations platform for companies run with AI agents — customers, projects, knowledge, artifacts, approvals, and incidents in one system of record.",
   icons: {
-    icon: "/crown.png",
+    icon: "/crown.png?v=0.8.80",
+    shortcut: "/favicon.ico?v=0.8.80",
     apple: "/crown.png",
   },
 };

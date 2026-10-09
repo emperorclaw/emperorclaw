@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.80] — 2026-10-09
+
+### Fixed
+- Provide the exact collapsed-navigation crown at the conventional favicon.ico URL, in 16, 32, and 48 pixel sizes.
+- Version favicon references so browsers refresh previously cached icons.
+
 ## [0.8.79] — 2026-10-09
 
 ### Fixed
