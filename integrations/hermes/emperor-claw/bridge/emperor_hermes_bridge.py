@@ -695,13 +695,19 @@ def format_main_chat_context(message: Dict[str, Any]) -> str:
     )
 
 
+def clean_mention_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or ""))
+    normalized = "".join(char for char in normalized if unicodedata.category(char) != "Cf")
+    return re.sub(r"[^\S\r\n\u2028\u2029]+", " ", normalized)
+
+
 def normalize_mention(value: str) -> str:
     ascii_value = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", "", ascii_value.lower())
 
 
 def agent_name_aliases(name: str) -> set[str]:
-    clean = re.sub(r"\([^)]*\)", "", str(name or "")).strip()
+    clean = re.sub(r"\([^)]*\)", "", clean_mention_text(name)).strip()
     clean = re.split(r"\s+-\s+|\s+—\s+|\s+\|\s+", clean, maxsplit=1)[0].strip()
     parts = [part for part in re.split(r"\s+", clean) if part]
     candidates = {name, clean}
@@ -714,11 +720,10 @@ def agent_name_aliases(name: str) -> set[str]:
 
 def mentioned_agent_refs(text: str) -> set[str]:
     refs = set()
-    for match in re.finditer(r"@([^\s,.;:!?]+(?:\s+[^\s,.;:!?]+)?)", str(text or "")):
-        raw = match.group(1).strip()
-        if raw:
-            refs.add(raw)
-            refs.add(raw.split()[0])
+    for match in re.finditer(r"(?<![\w@])@([^\s,.;:!?@()<>]+(?:[ \t]+[^\s,.;:!?@()<>]+){0,31})", clean_mention_text(text)):
+        words = match.group(1).split()
+        for length in range(1, len(words) + 1):
+            refs.add(" ".join(words[:length]))
     return refs
 
 
@@ -733,7 +738,7 @@ _EVERYONE_MENTION_RE = re.compile(r"(?<![\w@])@(all|everyone)(?![\w-])", re.IGNO
 
 
 def mentions_everyone(text: str) -> bool:
-    return bool(_EVERYONE_MENTION_RE.search(str(text or "")))
+    return bool(_EVERYONE_MENTION_RE.search(clean_mention_text(text)))
 
 
 def server_routed(message: Dict[str, Any]) -> bool:

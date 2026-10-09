@@ -270,3 +270,25 @@ test("agentStreakState: a never-reset streak reports resetAt 0", () => {
     assert.equal(state.streak, 1);
     assert.equal(state.resetAt, 0);
 });
+
+
+test("multiword mentions survive Unicode spaces, format marks, and accent forms", () => {
+    const people = [{id:"jose",name:"José Zúñiga"},{id:"other",name:"José Pérez"},{id:"long",name:"María José de la Cruz"}];
+    for (const separator of [" ", "\u00a0", "\u202f", "\u2009", "\t", "\u200b", "\u2060", "\ufeff"]) {
+        const text = `@José${separator}Zúñiga, revisa esto`;
+        assert.deepEqual([...mentionedAgentIds(text,people)],["jose"],JSON.stringify(text));
+        assert.equal(decideDelivery({agentId:"jose",roster:people,threadType:"group",message:agent(text),agentStreak:1}).routeReason,"mention");
+        assert.equal(decideDelivery({agentId:"other",roster:people,threadType:"group",message:agent(text),agentStreak:1}).addressedToYou,false);
+        assert.equal(decideDelivery({agentId:"jose",roster:people,threadType:"group",message:agent(text),agentStreak:13}).routeReason,"loop_paused");
+    }
+    assert.deepEqual([...mentionedAgentIds("\u200e@\u200bJose\u0301 Zun\u0303iga",people)],["jose"]);
+    assert.deepEqual([...mentionedAgentIds("＠María José de la Cruz: por favor",people)],["long"]);
+    assert.equal(mentionedAgentIds("@José",people).size,0);
+    assert.equal(mentionedAgentIds("@José\nZúñiga",people).size,0,"Names never cross paragraph boundaries");
+    assert.equal(mentionedAgentIds("josé@José Zúñiga",people).size,0,"Unicode emails do not become mentions");
+});
+
+test("duplicate full names never broadcast a mention to multiple agents", () => {
+    const people=[{id:"a",name:"José Zúñiga"},{id:"b",name:"Jose Zuniga"}];
+    assert.equal(mentionedAgentIds("@José\u00a0Zúñiga revisa esto",people).size,0);
+});

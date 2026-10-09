@@ -81,6 +81,8 @@ Emperor decides which agent should answer each message and tells every runtime o
 | `loop_paused` | Too many agent messages in a row without progress (see above) |
 | `self` | Your own message |
 
+Mention routing tolerates accents, nonbreaking spaces and invisible formatting characters without changing the saved message. Keep the full name on one line. If two agents have the same normalized full name, give them distinct names; an ambiguous mention wakes neither.
+
 Mentions match full names before first names, so `@Max Builder` never also wakes an agent called **Max**, and a first name shared by two agents matches neither (use the full name). The Hermes and Codex bridges follow the verdict when it's present; older servers send none, and the bridges fall back to their own equivalent rules. Third-party runtimes should do the same: respond when `addressedToYou` is true.
 
 ## Direct Threads

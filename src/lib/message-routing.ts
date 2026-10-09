@@ -103,6 +103,14 @@ export function agentPairLoopHardCap(env: Record<string, string | undefined> = p
     return agentPairLoopMaxTurns(env) * 3;
 }
 
+/** Normalize only the routing copy; preserve the original message for display/history.
+ * Chat clients and LLMs can insert NBSP, narrow spaces and invisible format marks.
+ * Keep line breaks: a mention must not consume words from the next paragraph.
+ */
+export function cleanMentionText(value: string): string {
+    return value.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/[^\S\r\n\u2028\u2029]+/gu, " ");
+}
+
 /** Same normalization as the Hermes bridge: ASCII-fold, lowercase, alphanumerics only. */
 export function normalizeMention(value: string): string {
     return value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -110,7 +118,7 @@ export function normalizeMention(value: string): string {
 
 /** Full-name style aliases (mirrors the bridge's agent_name_aliases, minus the first word). */
 function fullAliases(name: string): string[] {
-    const clean = name.replace(/\([^)]*\)/g, "").trim().split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0].trim();
+    const clean = cleanMentionText(name).replace(/\([^)]*\)/g, "").trim().split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0].trim();
     const parts = clean.split(/\s+/).filter(Boolean);
     return [name, clean, parts.join("-"), parts.join("_")].map(normalizeMention).filter(Boolean);
 }
@@ -128,7 +136,7 @@ export function mentionedAgentIds(text: string, roster: RosterAgent[]): Set<stri
             if (!full.has(alias)) full.set(alias, new Set());
             full.get(alias)!.add(agent.id);
         }
-        const firstWord = normalizeMention(agent.name.replace(/\([^)]*\)/g, "").trim().split(/\s+/)[0] || "");
+        const firstWord = normalizeMention(cleanMentionText(agent.name).replace(/\([^)]*\)/g, "").trim().split(/\s+/)[0] || "");
         if (firstWord) {
             if (!first.has(firstWord)) first.set(firstWord, new Set());
             first.get(firstWord)!.add(agent.id);
@@ -136,15 +144,15 @@ export function mentionedAgentIds(text: string, roster: RosterAgent[]): Set<stri
     }
 
     const found = new Set<string>();
-    // An @ that isn't part of a word or an email address, then up to three words.
-    const re = /(?<![\w@])@([^\s,.;:!?@()<>]+(?:[ \t]+[^\s,.;:!?@()<>]+){0,2})/g;
-    for (const match of text.matchAll(re)) {
+    // Full names can contain more than three words. Bound scanning to 32 words.
+    const re = /(?<![\p{L}\p{N}_@])@([^\s,.;:!?@()<>]+(?:[ \t]+[^\s,.;:!?@()<>]+){0,31})/gu;
+    for (const match of cleanMentionText(text).matchAll(re)) {
         const words = match[1].split(/[ \t]+/);
         let matched = false;
         for (let n = words.length; n >= 1 && !matched; n--) {
             const ids = full.get(normalizeMention(words.slice(0, n).join(" ")));
             if (ids && ids.size > 0) {
-                ids.forEach((id) => found.add(id));
+                if (ids.size === 1) ids.forEach((id) => found.add(id));
                 matched = true;
             }
         }
@@ -159,7 +167,7 @@ export function mentionedAgentIds(text: string, roster: RosterAgent[]): Set<stri
 const EVERYONE_RE = /(?<![\w@])@(all|everyone)(?![\w-])/i;
 
 export function mentionsEveryone(text: string): boolean {
-    return EVERYONE_RE.test(text);
+    return EVERYONE_RE.test(cleanMentionText(text));
 }
 
 /**

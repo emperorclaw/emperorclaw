@@ -297,6 +297,15 @@ class TestLoopGuard(unittest.TestCase):
 class TestMentionsAgent(unittest.TestCase):
     """Tests for @mention detection."""
 
+    def test_unicode_multiword_mentions(self):
+        for separator in [" ", "\u00a0", "\u202f", "\u2009", "\t", "\u200b", "\u2060", "\ufeff"]:
+            with self.subTest(separator=repr(separator)):
+                text = "@José" + separator + "Zúñiga, revisa esto"
+                self.assertTrue(bridge.mentions_agent(text, "José Zúñiga"))
+        self.assertTrue(bridge.mentions_agent("＠María José de la Cruz: revisa", "María José de la Cruz"))
+        self.assertFalse(bridge.mentions_agent("qa@TestAgent.example", "TestAgent"))
+        self.assertNotIn("María José", bridge.mentioned_agent_refs("@María\nJosé"))
+
     def test_exact_mention(self):
         """Direct @TestAgent should be detected."""
         text = "@TestAgent can you check this?"

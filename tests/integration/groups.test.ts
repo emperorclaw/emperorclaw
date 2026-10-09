@@ -251,3 +251,31 @@ maybe("an interrupted hiring request retains one profile and its original creden
     const db = await getDb(); const { agents } = await getSchema(); const { eq } = await import("drizzle-orm");
     assert.equal((await db.select().from(agents).where(eq(agents.companyId, companyId))).length, 1);
 });
+
+maybe("agent mentions with invisible separators wake the exact group member through sync", async () => {
+    await resetDb();
+    const {companyId,userId,rawToken}=await seedCompanyWithToken();
+    const sender=await seedAgent(companyId,{name:"Builder"});
+    const jose=await seedAgent(companyId,{name:"José Zúñiga"});
+    const other=await seedAgent(companyId,{name:"José Pérez"});
+    const {createGroup}=await import("@/lib/groups");
+    const {appendThreadMessage}=await import("@/lib/control-plane");
+    const group=await createGroup(companyId,{type:"human",id:userId},{title:"Mention regression",agentIds:[sender.id,jose.id,other.id]});
+    const posted=[];
+    for(const separator of ["\u00a0","\u202f","\u2009","\u200b","\u2060","\ufeff"]){
+        const text=`@José${separator}Zúñiga, revisa esto`;
+        posted.push(await appendThreadMessage({companyId,threadId:group.id,senderType:"agent",senderId:sender.id,text}));
+    }
+    const sync=await import("@/app/api/mcp/messages/sync/route");
+    const headers={authorization:`Bearer ${rawToken}`};
+    for(const recipient of [jose,other]){
+        const response=await sync.GET(makeRequest(`http://localhost/api/mcp/messages/sync?mode=all&agentId=${recipient.id}`,{headers}));assert.equal(response.status,200);
+        const payload=await response.json();
+        for(const original of posted){
+            const delivered=payload.messages.find((message:{id:string})=>message.id===original.id);
+            assert.ok(delivered);assert.equal(delivered.text,original.text,"Original message is retained verbatim");
+            assert.equal(delivered.addressedToYou,recipient.id===jose.id);
+            assert.equal(delivered.routeReason,recipient.id===jose.id?"mention":"not_addressed");
+        }
+    }
+});

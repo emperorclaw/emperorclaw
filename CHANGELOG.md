@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.79] — 2026-10-09
+
+### Fixed
+- Route multiword agent mentions correctly despite nonbreaking spaces, invisible format characters, fullwidth @ signs, and composed or decomposed accents.
+- Recognize longer full names and reject ambiguous names without waking multiple agents.
+- Apply the same Unicode handling to the Hermes fallback router while retaining server verdicts, group membership checks, and loop guards.
+- Preserve original message text and conversation history during mention normalization.
+
 ## [0.8.78] — 2026-10-09
 
 ### Fixed
