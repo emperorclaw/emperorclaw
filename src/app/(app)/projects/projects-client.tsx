@@ -75,7 +75,11 @@ const emptyTaskForm = {
     proofRequired: false,
     humanApprovalRequired: false,
 };
-const taskStates = ["inbox", "in_progress", "review", "done", "failed", "dead_letter"];
+const taskStates = ["inbox", "in_progress", "review", "blocked", "done", "failed", "dead_letter"];
+const getBlockedReason = (task: any) => {
+    const input = taskInput(task);
+    return typeof input.blockedReason === "string" ? input.blockedReason : "";
+};
 
 const PRIORITY_OPTIONS = [
     { value: 0, label: "No priority", cls: "text-zinc-400 border-zinc-600" },
@@ -89,6 +93,7 @@ const COLUMN_DROP_STATE: Record<string, string> = {
     inbox: "inbox",
     in_progress: "in_progress",
     review: "review",
+    blocked: "blocked",
     done: "done",
     exceptions: "failed",
 };
@@ -158,6 +163,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [isMutating, setIsMutating] = useState(false);
     const [mutationError, setMutationError] = useState<string | null>(null);
     const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
+    const [blockDialog, setBlockDialog] = useState<{ task: any; fromState: string } | null>(null);
+    const [blockReason, setBlockReason] = useState("");
     const [hideCompletedProjects, setHideCompletedProjects] = useState(true); // default: hide completed; localStorage overrides in useEffect
     const [completingProject, setCompletingProject] = useState<string | null>(null);
     const [draggingTask, setDraggingTask] = useState<any | null>(null);
@@ -276,6 +283,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         inbox: workflowTasks.filter((task) => task.state === "queued" || task.state === "inbox"),
         inProgress: workflowTasks.filter((task) => task.state === "in_progress"),
         review: workflowTasks.filter((task) => task.state === "review"),
+        blocked: workflowTasks.filter((task) => task.state === "blocked"),
         done: workflowTasks.filter((task) => task.state === "done"),
     };
     
@@ -403,7 +411,19 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         } catch { toast.error("Failed to update priority"); }
     };
 
+    const openBlockDialog = (task: any, fromState: string) => {
+        setBlockReason(getBlockedReason(task));
+        setMutationError(null);
+        setBlockDialog({ task, fromState });
+    };
+
     const handleSetState = async (task: any, state: string) => {
+        // Blocking needs a reason, collected in an in-app modal (never a native
+        // prompt). The task keeps its current state until the modal is submitted.
+        if (state === "blocked") {
+            openBlockDialog(task, task.state);
+            return;
+        }
         try {
             const res = await fetch(`/api/tasks/${task.id}`, {
                 method: "PATCH",
@@ -415,8 +435,41 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                 setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
                 if (selectedTask?.id === task.id) setSelectedTask(data.task);
                 toast.success(`Moved to ${humanizeKey(state)}`);
+            } else {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || "Failed to update state");
             }
         } catch { toast.error("Failed to update state"); }
+    };
+
+    const submitBlockTask = async () => {
+        if (!blockDialog) return;
+        const reason = blockReason.trim();
+        if (!reason) {
+            setMutationError("Give a short reason so the blocker is clear.");
+            return;
+        }
+        const { task } = blockDialog;
+        setIsMutating(true);
+        setMutationError(null);
+        try {
+            const res = await fetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state: "blocked", blockedReason: reason }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Could not block task");
+            setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
+            if (selectedTask?.id === data.task.id) setSelectedTask(data.task);
+            toast.success("Task blocked");
+            setBlockDialog(null);
+            setBlockReason("");
+        } catch (error) {
+            setMutationError(error instanceof Error ? error.message : "Could not block task");
+        } finally {
+            setIsMutating(false);
+        }
     };
 
     const selectedProject = projectFilter === "All Projects" ? null : projectItems.find((project) => project.id === projectFilter) || null;
@@ -677,6 +730,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
 
     const moveTaskToState = async (task: any, newState: string) => {
         if (task.state === newState) return;
+        // Dropping onto the Blocked column opens the same reason modal; the card
+        // stays where it is until the modal is submitted.
+        if (newState === "blocked") {
+            openBlockDialog(task, task.state);
+            return;
+        }
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -924,6 +983,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             <BoardColumn droppableId="in_progress" title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
                                 {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
                             </BoardColumn>
+                            <BoardColumn droppableId="blocked" title="Blocked" count={byState.blocked.length} tone="rose" icon={IconAlertTriangle}>
+                                {byState.blocked.length === 0 ? <EmptyColumnHint>No blocked tasks.</EmptyColumnHint> : byState.blocked.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
+                            </BoardColumn>
                             <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={IconCircleCheck}>
                                 <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
                                     <BucketBadge label="Approval needed" count={reviewCounts.approval_needed} />
@@ -969,13 +1031,16 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                         <div className="flex flex-wrap gap-2 text-sm">
                             <span className="rounded bg-zinc-800 px-2.5 py-1 font-medium text-zinc-300">{humanizeKey(selectedTask.state)}</span>
                             <span className="rounded bg-zinc-800 px-2.5 py-1 text-zinc-400">Assigned: {getAssigneeLabel(selectedTask)}</span>
-                            {isBlocked(selectedTask, filteredTasks) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
+                            {(selectedTask.state === "blocked" || isBlocked(selectedTask, filteredTasks)) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
                             {isRecurring(selectedTask) && <span className="rounded bg-cyan-500/20 px-2.5 py-1 text-cyan-300">Recurring</span>}
                         </div>
+                        {selectedTask.state === "blocked" && getBlockedReason(selectedTask) && (
+                            <p className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-sm text-rose-200"><span className="font-medium">Blocker:</span> {getBlockedReason(selectedTask)}</p>
+                        )}
                         <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-2">
                             <label className="space-y-1 text-xs text-zinc-500">
                                 <span>State</span>
-                                <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { state: event.target.value })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
+                                <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void handleSetState(selectedTask, event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
                                     {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
                                 </select>
                             </label>
@@ -1186,6 +1251,28 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                     </div>
                 </DialogContent>
             </Dialog>
+            <Dialog open={Boolean(blockDialog)} onOpenChange={(open) => { if (!open && !isMutating) { setBlockDialog(null); setBlockReason(""); setMutationError(null); } }}>
+                <DialogContent className="bg-background text-foreground sm:max-w-md" showCloseButton={!isMutating}>
+                    <DialogHeader><DialogTitle>Block task</DialogTitle></DialogHeader>
+                    <p className="text-sm text-muted-foreground">“{blockDialog ? getTaskTitle(blockDialog.task) : "Task"}” will be held out of automatic stalled reminders until it is unblocked.</p>
+                    <label className="space-y-1 text-sm text-zinc-400">
+                        <span>Why is it blocked?</span>
+                        <textarea
+                            autoFocus
+                            value={blockReason}
+                            onChange={(event) => setBlockReason(event.target.value)}
+                            placeholder="Name the person or dependency you are waiting on"
+                            rows={3}
+                            className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                        />
+                    </label>
+                    {mutationError && <p role="alert" className="text-sm text-destructive">{mutationError}</p>}
+                    <div className="flex justify-end gap-2">
+                        <button disabled={isMutating} onClick={() => { setBlockDialog(null); setBlockReason(""); setMutationError(null); }} className="min-h-11 rounded-md border px-4 text-sm">Cancel</button>
+                        <button disabled={isMutating || !blockReason.trim()} onClick={() => void submitBlockTask()} className="min-h-11 rounded-md bg-rose-500/90 px-4 text-sm font-medium text-white hover:bg-rose-500 disabled:opacity-50">{isMutating ? "Blocking…" : "Block task"}</button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -1276,7 +1363,7 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
                     ))}
                     <div className="my-1 border-t border-zinc-800" />
                     <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Move to</div>
-                    {["inbox", "in_progress", "review", "done"].filter(s => s !== task.state).map((state) => (
+                    {["inbox", "in_progress", "review", "blocked", "done"].filter(s => s !== task.state).map((state) => (
                         <div
                             key={state}
                             role="menuitem"

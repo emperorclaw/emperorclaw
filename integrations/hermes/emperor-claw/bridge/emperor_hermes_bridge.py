@@ -597,7 +597,12 @@ def is_direct_thread(message: Dict[str, Any], state: Dict[str, Any]) -> bool:
     thread_type = str(message.get("threadType") or message.get("thread_type") or "")
     if thread_type == "direct":
         return True
-    if thread_type == "team":
+    # A group thread (including the machine-managed two-agent pair thread) is a
+    # shared room, never a private DM: its targetAgentId exists only so old
+    # runtimes still know the counterpart, and its session/caps must stay in the
+    # shared-room bucket. Treating it as a DM is what let a pair handoff drift
+    # into the operator's direct chat.
+    if thread_type in SHARED_THREAD_TYPES:
         return False
     thread_id = str(message.get("threadId") or message.get("thread_id") or "")
     target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
@@ -2223,14 +2228,21 @@ def send_reply(message: Dict[str, Any], text: str) -> str | None:
     """
     if not text:
         return None
-    response = api("POST", "/messages/send", body={
+    body: Dict[str, Any] = {
         "thread_id": message.get("threadId") or message.get("thread_id"),
-        "thread_type": message.get("threadType") or message.get("thread_type") or "direct",
         "agentId": AGENT_ID,
         "text": text,
         "targetAgentId": None,
         "replyToMessageId": message.get("id"),
-    })
+    }
+    # Carry the thread kind only when the server told us one. Never invent
+    # "direct": an omitted/unknown kind that gets forced to direct is how an
+    # agent-to-agent reply lands in the sender's own operator DM. With
+    # replyToMessageId set, the server derives the real thread from the source.
+    thread_type = message.get("threadType") or message.get("thread_type")
+    if thread_type:
+        body["thread_type"] = thread_type
+    response = api("POST", "/messages/send", body=body)
     message_id = response.get("message_id") if isinstance(response, dict) else None
     return str(message_id) if message_id else None
 
@@ -2352,7 +2364,11 @@ def main() -> int:
                 # not mistakenly claimed by @mention detection in other agents' bridges.
                 m_target = str(message.get("targetAgentId") or message.get("target_agent_id") or "")
                 m_thread = str(message.get("threadId") or message.get("thread_id") or "")
-                if m_target and m_thread:
+                m_kind = str(message.get("threadType") or message.get("thread_type") or "")
+                # Only learn DM ownership for a genuine direct thread. A shared
+                # thread (team/group/pair) carries targetAgentId too, but must
+                # never be remembered as a DM.
+                if m_target and m_thread and m_kind not in SHARED_THREAD_TYPES:
                     state.setdefault("direct_threads", {})[m_thread] = m_target
                 ts = message.get("createdAt")
                 # ── Cold-start guard: skip the agent-authored BACKLOG of shared

@@ -26,6 +26,7 @@ import { truncateReasoningForStorage } from "./reasoning-history";
 import { agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, noteProgressResets, type AgentStreakState } from "./message-routing";
 import { notifyAgentMessage, notify, companyAdminIds } from "./notifications";
 import { isAgentPairThread } from "./groups";
+import { parseObjectiveStatusMarker, OBJECTIVE_STATUS_METADATA_KEY } from "./objective-status-marker";
 
 type SenderType = "human" | "agent" | "system";
 
@@ -627,6 +628,40 @@ async function notifyLoopPaused(
     });
 }
 
+/**
+ * Authorize a parsed objective-status marker: the reply must be an agent's
+ * answer to its OWN objective prompt — same company and thread, source is the
+ * system followup addressed to this agent, and the marker's objective id matches
+ * the prompt's. Anything else returns null (the marker is still stripped from
+ * the visible text, just not applied). No caller metadata is trusted here.
+ */
+async function authorizeObjectiveMarker(input: {
+    companyId: string;
+    threadId: string;
+    senderId: string | null;
+    metadata: Record<string, unknown>;
+    marker: import("./objective-status-marker").ObjectiveStatusMarker;
+}): Promise<import("./objective-status-marker").ObjectiveStatusMarker | null> {
+    const replyTo = typeof input.metadata.replyToMessageId === "string" ? input.metadata.replyToMessageId : null;
+    if (!replyTo || !input.senderId) return null;
+    const [source] = await db.select().from(threadMessages).where(and(
+        eq(threadMessages.id, replyTo),
+        eq(threadMessages.companyId, input.companyId),
+    )).limit(1);
+    if (!source) return null;
+    const sourceMeta = (source.metadataJson && typeof source.metadataJson === "object" && !Array.isArray(source.metadataJson))
+        ? source.metadataJson as Record<string, unknown>
+        : {};
+    const matches = source.senderType === "system"
+        && sourceMeta.objectiveFollowup === true
+        && typeof sourceMeta.objectiveId === "string"
+        && source.targetAgentId === input.senderId
+        && source.threadId === input.threadId
+        && (!sourceMeta.companyId || sourceMeta.companyId === input.companyId)
+        && input.marker.objectiveId === sourceMeta.objectiveId;
+    return matches ? input.marker : null;
+}
+
 export async function appendThreadMessage(input: {
     companyId: string;
     threadId: string;
@@ -644,15 +679,40 @@ export async function appendThreadMessage(input: {
     const senderIdentity = input.senderType === "human" && input.senderId
         ? await resolveHumanSender(input.companyId, input.senderId)
         : null;
+
+    // Tool-less objective fallback: an agent reply may carry an isolated
+    // EMPEROR_OBJECTIVE_STATUS marker. Sanitize it BEFORE persisting, mirroring
+    // or broadcasting, so the control line is never visible chat text. An
+    // authorized marker (a reply to this agent's own objective prompt) is kept
+    // in server-only metadata and applied after the send. A caller-supplied key
+    // is always discarded — only this server-side derivation is trusted.
+    const metadata: Record<string, unknown> = { ...(input.metadataJson || {}) };
+    let text = input.text;
+    if (input.senderType === "agent") {
+        delete metadata[OBJECTIVE_STATUS_METADATA_KEY];
+        const { marker, strippedText } = parseObjectiveStatusMarker(text);
+        if (marker) {
+            text = strippedText;
+            const marker_ = await authorizeObjectiveMarker({
+                companyId: input.companyId,
+                threadId: input.threadId,
+                senderId: input.senderId || null,
+                metadata,
+                marker,
+            });
+            if (marker_) metadata[OBJECTIVE_STATUS_METADATA_KEY] = marker_;
+        }
+    }
+
     const [threadMessage] = await db.insert(threadMessages).values({
         threadId: input.threadId,
         companyId: input.companyId,
         senderType: input.senderType,
         senderId: input.senderId || null,
         targetAgentId: input.targetAgentId || null,
-        text: input.text,
+        text,
         metadataJson: {
-            ...(input.metadataJson || {}),
+            ...metadata,
             ...(senderIdentity || {}),
             ...(input.attachments && input.attachments.length > 0
                 ? { attachments: input.attachments }
@@ -675,7 +735,7 @@ export async function appendThreadMessage(input: {
             threadId: input.threadId,
             senderType: input.senderType,
             fromUserId: input.senderId || null,
-            text: input.text,
+            text,
             platformMessageId: input.platformMessageId || null,
             createdAt: input.createdAt || new Date(),
         });

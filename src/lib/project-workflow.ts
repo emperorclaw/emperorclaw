@@ -85,6 +85,7 @@ export function validateTaskStateTransition(input: {
   actorAgentId: string | null;
   hasPendingApproval?: boolean;
   comment?: string | null;
+  blockedReason?: string | null;
 }) {
   const { project, task, requestedState, actorAgentId } = input;
   const isLead = isLeadForProject(project, actorAgentId);
@@ -104,13 +105,24 @@ export function validateTaskStateTransition(input: {
 
   // Self-start: the assignee starts only from a queued/assigned state and hands
   // to review only from in_progress. The lead is exempt (it routes and decides).
+  // Unblocking a task is explicitly allowed to restart it from `blocked`.
   if (isAssignee && !isLead) {
-    if (requestedState === TASK_STATES.inProgress && task.state !== TASK_STATES.inbox) {
-      return "A task can only move to in_progress from a queued or assigned state.";
+    if (
+      requestedState === TASK_STATES.inProgress &&
+      task.state !== TASK_STATES.inbox &&
+      task.state !== TASK_STATES.blocked
+    ) {
+      return "A task can only move to in_progress from a queued, assigned, or blocked state.";
     }
     if (requestedState === TASK_STATES.review && task.state !== TASK_STATES.inProgress) {
       return "A task can only move to review from in_progress.";
     }
+  }
+
+  // A task is only "blocked" with a stated reason, so the board never shows an
+  // unexplained hold. Unblocking clears it (handled in updateTaskForCompany).
+  if (requestedState === TASK_STATES.blocked && !trimmedComment && !input.blockedReason?.trim()) {
+    return "A blocker reason is required to mark a task blocked.";
   }
 
   if (
@@ -146,6 +158,7 @@ export function validateTaskStateTransition(input: {
     !isLead &&
     requestedState !== TASK_STATES.review &&
     requestedState !== TASK_STATES.failed &&
+    requestedState !== TASK_STATES.blocked &&
     // The assignee still starts its own work: "accept, then set in_progress".
     !(requestedState === TASK_STATES.inProgress && isAssignee)
   ) {

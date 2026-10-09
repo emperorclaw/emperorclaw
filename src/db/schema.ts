@@ -1082,3 +1082,45 @@ export const companyNotificationWebhooks = pgTable("company_notification_webhook
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// ─── Persistent objectives (Emperor-owned scheduled followups) ──────────────
+// One agent, one objective. A background sweep posts a normal private prompt to
+// the owning agent's direct thread on a fixed cadence, up to a finite budget.
+// The agent reports status back through an authenticated tool/API bound to its
+// own token; ownership is enforced by the (company, agent) pair. This replaces
+// the Hermes-native goal engine as the default so every provider can run
+// objectives with ordinary messages. Old runtime goal records (threadMessages
+// carrying `runtimeGoalRequest`) remain readable by the legacy bridge routes.
+export const agentObjectives = pgTable("agent_objectives", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    // The human who started it (null once that user is deleted).
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: 'set null' }),
+    // The direct conversation the objective was started in. Followup prompts and
+    // status replies stay here, so the human never loses the thread.
+    threadId: uuid("thread_id").references(() => messageThreads.id, { onDelete: 'set null' }),
+    objective: text("objective").notNull(),
+    // Minutes between followup prompts. Bounded by the service.
+    cadenceMinutes: integer("cadence_minutes").notNull().default(60),
+    // Lifetime followup budget. Bounded by the service.
+    maxFollowups: integer("max_followups").notNull().default(20),
+    followupCount: integer("followup_count").notNull().default(0),
+    // active | paused | blocked | completed | cancelled
+    status: text("status").notNull().default('active'),
+    blockerReason: text("blocker_reason"),
+    completionSummary: text("completion_summary"),
+    lastPromptAt: timestamp("last_prompt_at"),
+    lastReportedAt: timestamp("last_reported_at"),
+    nextRunAt: timestamp("next_run_at"),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+}, (table) => ({
+    // The sweep is "active objectives whose nextRunAt has passed".
+    dueIdx: index("agent_objectives_due_idx").on(table.companyId, table.status, table.nextRunAt),
+    // The UI/runtime read is "this agent's live objective".
+    agentIdx: index("agent_objectives_agent_idx").on(table.agentId, table.status),
+}));

@@ -130,6 +130,34 @@ test("W8: the lead is exempt from the self-start source-state rules", () => {
     assert.equal(error, null);
 });
 
+test("blocked: a blocker reason is required to hold a task", () => {
+    const missing = validateTaskStateTransition({
+        project: project(),
+        task: task({ assignedAgentId: "worker", state: TASK_STATES.inProgress }),
+        requestedState: TASK_STATES.blocked,
+        actorAgentId: "worker",
+    });
+    assert.ok(missing);
+    const provided = validateTaskStateTransition({
+        project: project(),
+        task: task({ assignedAgentId: "worker", state: TASK_STATES.inProgress }),
+        requestedState: TASK_STATES.blocked,
+        actorAgentId: "worker",
+        blockedReason: "Waiting on legal sign-off",
+    });
+    assert.equal(provided, null);
+});
+
+test("blocked: a blocked task may restart into in_progress", () => {
+    const error = validateTaskStateTransition({
+        project: project(),
+        task: task({ assignedAgentId: "worker", state: TASK_STATES.blocked }),
+        requestedState: TASK_STATES.inProgress,
+        actorAgentId: "worker",
+    });
+    assert.equal(error, null);
+});
+
 test("requesting the state the task is already in is a no-op success", () => {
     // An assignee re-saving in_progress must not trip the source-state rules.
     const sameInProgress = validateTaskStateTransition({

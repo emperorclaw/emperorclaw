@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
+import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
 import { db } from "@/db";
@@ -109,6 +110,14 @@ export async function POST(req: NextRequest) {
             return send();
         }) : await send();
         if (!result) return NextResponse.json({ ok: true, message_id: null, thread_id, cancelled: true });
+
+        // Tool-less runtime fallback: a normal agent reply may carry an
+        // objective-status marker. Apply it after the send transaction so this
+        // never deadlocks the agent row lock, and never fail the send over it.
+        if (result.messageId) {
+            await applyStoredObjectiveStatus(companyId, result.messageId)
+                .catch((error) => console.error("Objective status marker failed:", error));
+        }
 
         // Record only after the send succeeded so a failed send does not poison
         // the key and make the bridge's retry look like a duplicate.

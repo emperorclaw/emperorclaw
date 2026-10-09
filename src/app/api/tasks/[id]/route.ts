@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             assignedAgentId: body.assignedAgentId !== undefined ? body.assignedAgentId : undefined,
             state: body.state,
             inputJson,
+            blockedReason: body.blockedReason !== undefined ? body.blockedReason : undefined,
             actorType: "human",
             actorId: ctx.userId,
         });

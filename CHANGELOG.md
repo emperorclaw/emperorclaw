@@ -4,10 +4,29 @@ All notable changes to EmperorClaw are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-At release time, rename the `## [Unreleased]` heading below to the version being
+At release time, rename the `## [0.8.82] — 2026-10-10` heading below to the version being
 tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
+
+## [Unreleased]
+
+### Added
+- Portable, provider-independent objectives. Emperor now owns the objective, sends the agent a private prompt on a fixed cadence up to a finite budget, and exposes an authenticated `update_objective` tool and `/api/mcp/objectives` route (bound to the agent's token) to update, pause, block, complete or cancel it. Works with every runtime that can receive and send messages.
+- Tool-less fallback: an objective prompt also teaches one optional isolated `EMPEROR_OBJECTIVE_STATUS {…}` reply line, which the server acts on only for an authenticated agent reply to its own objective prompt (matching company, thread and objective id) and then strips from the visible transcript. This lets runtimes without Emperor tools — such as the Codex bridge — still complete or block an objective with a normal reply.
+- A user-requested **Blocked** task state with a required reason. Blocked tasks stay visible but receive no automatic stalled-task reminders; unblocking clears the reason and restarts the progress clock.
+- An accessible in-app "Block task" dialog (reason required) for both the task state selector and drag-and-drop.
+
+### Changed
+- Objectives started in the web UI or with `/goal` are anchored to the originating private conversation and are private to their creator and company owners/admins; other members see a redacted status.
+- The Objective control shows objective, cadence and Start/Pause/Resume/Stop, without misleading native-turn configuration.
+
+### Fixed
+- Route agent-to-agent pair replies through their pair thread on every turn. A reply now carries its source message, and the server derives the thread from it instead of silently defaulting an agent's reply to its own operator DM.
+- Blocked tasks are excluded from the stall sweep and daily review, while remaining visible and countable.
+
+### Compatibility
+- Old Hermes-native goal records and `/goal` commands remain readable and cancellable; new objectives never depend on a runtime goal manager.
 
 ## [0.8.81] — 2026-10-09
 

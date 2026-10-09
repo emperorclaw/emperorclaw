@@ -412,6 +412,29 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("POST", "/messages/send", body=body))
 
 
+def emperor_list_objectives(args: Dict[str, Any], **_: Any) -> str:
+    # The bound runtime token fixes the acting agent, so this never accepts an
+    # agentId: an agent can only ever see its own objectives.
+    return _json(_request("GET", "/objectives"))
+
+
+def emperor_update_objective(args: Dict[str, Any], **_: Any) -> str:
+    objective_id = str(args.get("objectiveId") or args.get("objective_id") or "").strip()
+    action = str(args.get("action") or "").strip().lower()
+    allowed = {"update", "pause", "resume", "block", "complete", "cancel"}
+    if not objective_id or action not in allowed:
+        return _json({"error": "objectiveId and an action (update/pause/resume/block/complete/cancel) are required"})
+    body: Dict[str, Any] = {"objectiveId": objective_id, "action": action}
+    for key in ("summary", "blockerReason", "completionSummary", "objective"):
+        value = args.get(key)
+        if value not in (None, ""):
+            body[key] = value
+    if args.get("cadenceMinutes") not in (None, ""):
+        body["cadenceMinutes"] = args.get("cadenceMinutes")
+    # No agentId is ever sent: the token binding decides whose objective this is.
+    return _json(_request("POST", "/objectives", body=body))
+
+
 def emperor_context_hook(**_: Any) -> Dict[str, str]:
     if os.environ.get("EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE") == "1":
         return {"context": "Emperor Claw tools are available for durable state and exact company data."}
@@ -422,6 +445,7 @@ def emperor_context_hook(**_: Any) -> Dict[str, str]:
             "Lookup map: past chat/history -> emperor_list_threads then emperor_get_thread_messages; team roster -> GET /agents; "
             "projects -> emperor_list_projects or GET /projects/{id}; task status -> emperor_get_task_overview first; selected task -> GET /tasks/{id}; "
             "task progress/history -> GET /tasks/{id}/notes; project memory -> GET /projects/{id}/memory; "
+            "objective check-in -> reply with emperor_update_objective(objectiveId, action='update'|'block'|'complete'): a short status, blockerReason when stuck, completionSummary when done; "
             "When proposing Knowledge & Rules, use Obsidian-style markdown: frontmatter scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], Evidence, and Related sections. "
             "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope. "
             "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
@@ -770,6 +794,36 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Send Emperor message",
+    )
+    ctx.register_tool(
+        "emperor_list_objectives",
+        TOOLSET,
+        _schema("List your persistent objectives (most recent first). An objective is the durable outcome you were asked to pursue; Emperor sends you a private check-in on a fixed cadence until you complete, block, pause or cancel it.", {}),
+        emperor_list_objectives,
+        check_fn=_available,
+        requires_env=requires,
+        description="List Emperor objectives",
+    )
+    ctx.register_tool(
+        "emperor_update_objective",
+        TOOLSET,
+        _schema(
+            "Report on or change YOUR OWN objective (you cannot touch another agent's). Actions: 'update' with a short summary of progress; 'block' with a blockerReason when you are stuck on a person or event (pauses check-ins); 'resume'; 'pause'; 'complete' with a completionSummary when finished; 'cancel' to drop it.",
+            {
+                "objectiveId": {"type": "string"},
+                "action": {"type": "string", "enum": ["update", "pause", "resume", "block", "complete", "cancel"]},
+                "summary": {"type": "string", "description": "One-line progress note for action 'update'"},
+                "blockerReason": {"type": "string", "description": "What you are waiting on (required for action 'block')"},
+                "completionSummary": {"type": "string", "description": "What was delivered (for action 'complete')"},
+                "objective": {"type": "string", "description": "Replace the objective text (action 'update')"},
+                "cadenceMinutes": {"type": "integer", "description": "Change the check-in cadence in minutes (action 'update')"},
+            },
+            ["objectiveId", "action"],
+        ),
+        emperor_update_objective,
+        check_fn=_available,
+        requires_env=requires,
+        description="Update Emperor objective",
     )
     ctx.register_tool(
         "emperor_request_approval",

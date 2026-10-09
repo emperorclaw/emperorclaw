@@ -79,6 +79,35 @@ class HermesHiringTests(unittest.TestCase):
         self.assertIn("emperor_get_task_overview", ctx.tools)
         self.assertIn("emperor_upload_artifacts", ctx.tools)
         self.assertIn("emperor_replace_artifact", ctx.tools)
+        self.assertIn("emperor_list_objectives", ctx.tools)
+        self.assertIn("emperor_update_objective", ctx.tools)
+
+    def test_list_objectives_never_sends_an_agent_id(self):
+        with patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_list_objectives({"agentId": "someone-else"})
+        self.assertEqual(request.call_args.args[:2], ("GET", "/objectives"))
+        # The bound token decides whose objectives these are; no agent override.
+        self.assertNotIn("agentId", request.call_args.kwargs.get("query") or {})
+        self.assertIsNone(request.call_args.kwargs.get("body"))
+
+    def test_update_objective_shape_and_no_agent_override(self):
+        with patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_update_objective({
+                "objectiveId": "obj-1", "action": "block",
+                "blockerReason": "Waiting on legal", "agentId": "someone-else",
+            })
+        self.assertEqual(request.call_args.args[:2], ("POST", "/objectives"))
+        body = request.call_args.kwargs["body"]
+        self.assertEqual(body["objectiveId"], "obj-1")
+        self.assertEqual(body["action"], "block")
+        self.assertEqual(body["blockerReason"], "Waiting on legal")
+        self.assertNotIn("agentId", body, "an agent can never act on another agent's objective")
+
+    def test_update_objective_rejects_unknown_action(self):
+        with patch.object(plugin, "_request") as request:
+            result = json.loads(plugin.emperor_update_objective({"objectiveId": "obj-1", "action": "delete"}))
+        self.assertIn("error", result)
+        request.assert_not_called()
 
 
 if __name__ == "__main__":

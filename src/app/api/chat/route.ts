@@ -7,7 +7,7 @@ import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMes
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
-import { parseGoalCommand, replyAgentGoalStatus, requestAgentGoal } from "@/lib/agent-goal";
+import { parseObjectiveCommand, replyObjectiveStatus, requestAgentObjective } from "@/lib/agent-objective";
 import { requireRole, AuthError } from "@/lib/roles";
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
 import { requestAgentControl } from "@/lib/agent-control";
@@ -95,14 +95,14 @@ export async function POST(req: NextRequest) {
         const { text, targetAgentId, attachments, threadId: groupId } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
-        const goalCommand = typeof text === "string" ? parseGoalCommand(text) : null;
+        const goalCommand = typeof text === "string" ? parseObjectiveCommand(text) : null;
         if (goalCommand) {
             await requireRole("member")();
             if (Array.isArray(attachments) && attachments.length) return NextResponse.json({error:"Send attachments as a normal message before setting an objective"},{status:400});
-            if (goalCommand.action === "unsupported") return NextResponse.json({error:"Supported commands: /goal <objective>, status, pause, resume, clear. Add verification criteria with verify: in the objective."},{status:400});
+            if (goalCommand.action === "unsupported") return NextResponse.json({error:"Supported commands: /goal <objective>, status, pause, resume, stop. Describe the outcome and how to verify it in the objective."},{status:400});
             if (!targetAgentId || groupId) return NextResponse.json({error:"Use /goal in an agent's direct chat"},{status:400});
             const id = await resolveAgentId(companyId,targetAgentId);
-            try { return NextResponse.json(goalCommand.action === "status" ? await replyAgentGoalStatus(companyId,userId,id) : await requestAgentGoal(companyId,userId,id,goalCommand)); }
+            try { return NextResponse.json(goalCommand.action === "status" ? await replyObjectiveStatus(companyId,userId,id) : await requestAgentObjective(companyId,userId,id,goalCommand as { action: "start" | "pause" | "resume" | "stop" | "update" | "block" | "complete"; objective?: string })); }
             catch(e) { return NextResponse.json({error:e instanceof Error?e.message:"Objective request failed"},{status:400}); }
         }
         const command = typeof text === "string" ? parseAgentControlCommand(text) : null;

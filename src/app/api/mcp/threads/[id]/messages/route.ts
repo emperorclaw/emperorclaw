@@ -7,6 +7,7 @@ import { appendThreadMessage, currentAgentStreak, getThreadMessages } from "@/li
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
 import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata } from "@/lib/message-routing";
+import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -124,6 +125,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             metadataJson: stripReservedMetadata(metadataJson),
             mirrorToLegacyChat: shouldMirrorToLegacyChat,
         });
+
+        // The marker was already sanitized inside appendThreadMessage, so the
+        // stored/streamed text never shows it. Apply the authorized action after
+        // persistence (outside any lock the append held).
+        if (senderType === "agent" && resolvedSenderId) {
+            await applyStoredObjectiveStatus(companyId, message.id)
+                .catch((error) => console.error("Objective status marker failed:", error));
+        }
 
         await broadcastMcpEvent(companyId, { type: "thread_message", thread, message });
 

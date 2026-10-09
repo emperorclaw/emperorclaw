@@ -14,7 +14,7 @@ import { createApprovalRequest, getLatestPendingApproval, taskHasPendingApproval
 import { resolveAgentId } from "@/lib/mcp";
 import { validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { normalizeTaskState, TASK_STATES, type TaskState } from "@/lib/task-state";
+import { isTerminalTaskState, normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
 import { getAgentScope, getAllowedProjectIds, isProjectAllowed } from "@/lib/agent-scope";
@@ -83,6 +83,8 @@ type UpdateTaskInput = {
   assignedAgentId?: string | null;
   state?: unknown;
   inputJson?: Record<string, unknown> | null;
+  /** Required when moving a task into `blocked`; cleared when it leaves. */
+  blockedReason?: string | null;
   actorType?: "agent" | "human" | "system";
   actorId?: string | null;
 };
@@ -299,8 +301,34 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     return { status: 400 as const, error: "Invalid state" };
   }
 
+  // A done/failed/dead-letter task is terminal on this path too: only the
+  // dedicated finalize/approval flows may close work, never a reopen edit.
+  if (normalizedState && normalizedState !== existingTask.state && isTerminalTaskState(existingTask.state as PersistedTaskState)) {
+    return { status: 409 as const, error: "A done or failed task cannot be reopened." };
+  }
+
   const currentInput = (existingTask.inputJson && typeof existingTask.inputJson === "object") ? existingTask.inputJson as Record<string, unknown> : {};
-  const mergedInputJson = input.inputJson ? { ...currentInput, ...input.inputJson } : currentInput;
+  const mergedInputJson: Record<string, unknown> = { ...currentInput, ...(input.inputJson && typeof input.inputJson === "object" ? input.inputJson : {}) };
+
+  // "Blocked" is only meaningful with a stated reason. The reason may arrive as
+  // a top-level field or inside inputJson; leaving blocked clears it. Bumping
+  // updatedAt (below) is what restarts the stall/review progress clock.
+  if (normalizedState === TASK_STATES.blocked) {
+    const incomingReason = typeof input.blockedReason === "string" && input.blockedReason.trim()
+      ? input.blockedReason.trim()
+      : typeof mergedInputJson.blockedReason === "string" && mergedInputJson.blockedReason.trim()
+        ? (mergedInputJson.blockedReason as string).trim()
+        : typeof currentInput.blockedReason === "string" && currentInput.blockedReason.trim()
+          ? (currentInput.blockedReason as string).trim()
+          : "";
+    if (!incomingReason) {
+      return { status: 400 as const, error: "A blocker reason is required to mark a task blocked." };
+    }
+    mergedInputJson.blockedReason = incomingReason;
+  } else if (existingTask.state === TASK_STATES.blocked && "blockedReason" in mergedInputJson) {
+    delete mergedInputJson.blockedReason;
+  }
+
   const normalizedSpec = normalizeTaskSpec({
     taskType: existingTask.taskType,
     title: input.title,

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { messageThreads } from "@/db/schema";
+import { messageThreads, threadMessages } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
@@ -9,6 +9,16 @@ import { agentLoopHardCap, agentPairLoopHardCap } from "@/lib/message-routing";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** The thread a message belongs to, company-scoped. Null when unknown. */
+async function sourceThreadId(companyId: string, messageId: string): Promise<string | null> {
+  if (!isUuid(messageId)) return null;
+  const [source] = await db.select({ threadId: threadMessages.threadId }).from(threadMessages).where(and(
+    eq(threadMessages.id, messageId),
+    eq(threadMessages.companyId, companyId),
+  )).limit(1);
+  return source?.threadId ?? null;
 }
 
 export async function sendThreadMessageFromMcp(input: {
@@ -41,18 +51,21 @@ export async function sendThreadMessageFromMcp(input: {
   // handoff would pollute a human DM session.
   const isAgentToAgent = Boolean(resolvedSenderId && resolvedTargetAgentId && resolvedSenderId !== resolvedTargetAgentId && !input.fromUserId);
 
-  const defaultThread = isAgentToAgent
-    ? await ensureAgentPairThread(input.companyId, resolvedSenderId!, resolvedTargetAgentId!)
-    : resolvedTargetAgentId || input.threadType === "direct"
-      ? await ensureDirectThread(input.companyId, resolvedTargetAgentId || resolvedSenderId!)
-      : await ensureTeamThread(input.companyId);
+  // Carry explicit thread context: a reply is anchored to the thread of the
+  // message it answers. Without this, a runtime that omits (or loses) the
+  // thread id falls through to a default thread — which for an agent is its
+  // own operator DM. Deriving the thread from `replyToMessageId` keeps a
+  // two-agent handoff inside its pair thread across every subsequent turn.
+  const explicitThreadId = input.threadId && isUuid(input.threadId)
+    ? input.threadId
+    : input.replyToMessageId
+      ? await sourceThreadId(input.companyId, input.replyToMessageId)
+      : null;
 
-  let targetThreadId = defaultThread.id;
-  let responseThread = defaultThread;
-
-  if (input.threadId && isUuid(input.threadId)) {
+  let responseThread: typeof messageThreads.$inferSelect;
+  if (explicitThreadId) {
     const [existingThread] = await db.select().from(messageThreads).where(and(
-      eq(messageThreads.id, input.threadId),
+      eq(messageThreads.id, explicitThreadId),
       eq(messageThreads.companyId, input.companyId),
     )).limit(1);
 
@@ -60,7 +73,6 @@ export async function sendThreadMessageFromMcp(input: {
       throw new Error("Thread not found");
     }
 
-    targetThreadId = existingThread.id;
     responseThread = existingThread;
 
     // Only members talk in a group: an outside agent would never see the
@@ -71,7 +83,20 @@ export async function sendThreadMessageFromMcp(input: {
         throw new Error("Access denied: this agent is not a member of that group");
       }
     }
+  } else if (isAgentToAgent) {
+    responseThread = await ensureAgentPairThread(input.companyId, resolvedSenderId!, resolvedTargetAgentId!);
+  } else if (resolvedTargetAgentId) {
+    responseThread = await ensureDirectThread(input.companyId, resolvedTargetAgentId);
+  } else if (input.threadType === "direct") {
+    // Refuse to guess: silently defaulting an agent's direct reply to its own
+    // thread is exactly the operator-DM leak. Callers must name the thread or
+    // the peer, or answer a specific message (replyToMessageId).
+    throw new Error("A direct message needs a targetAgentId or threadId");
+  } else {
+    responseThread = await ensureTeamThread(input.companyId);
   }
+
+  const targetThreadId = responseThread.id;
   const isGroup = responseThread.type === GROUP_THREAD_TYPE;
   const isAgentPair = isGroup && isAgentPairThread(responseThread);
 

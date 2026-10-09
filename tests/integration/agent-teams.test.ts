@@ -142,6 +142,60 @@ maybe("agent↔agent targeted messages land in a pair thread and replies reach t
     assert.equal(reply.routeReason, "agent_pair");
 });
 
+maybe("multi-turn pair conversation stays in the pair thread and never leaks to an operator DM", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+
+    const first = await sendThreadMessageFromMcp({ companyId, text: "Alpha asks", agentId: a.id, targetAgentId: b.id });
+    const pairThreadId = first.threadId;
+
+    // Simulate a runtime that only echoes the message it is answering
+    // (replyToMessageId) and does not repeat threadId/threadType/target. This is
+    // the path that used to default an agent's reply to its own operator DM.
+    const second = await sendThreadMessageFromMcp({ companyId, agentId: b.id, text: "Beta answers", replyToMessageId: first.messageId });
+    assert.equal(second.threadId, pairThreadId, "the first reply is anchored to the pair thread");
+
+    const third = await sendThreadMessageFromMcp({ companyId, agentId: a.id, text: "Alpha follows up", replyToMessageId: second.messageId });
+    assert.equal(third.threadId, pairThreadId, "the second reply stays in the pair thread");
+
+    const fourth = await sendThreadMessageFromMcp({ companyId, agentId: b.id, text: "Beta confirms", replyToMessageId: third.messageId });
+    assert.equal(fourth.threadId, pairThreadId, "every subsequent turn stays in the pair thread");
+
+    // Beta sees Alpha's follow-up in the pair thread with the pair verdict.
+    const bMessages = await syncFor(companyId, rawToken, b.id);
+    const followUp = bMessages.find((m) => m.id === third.messageId);
+    assert.ok(followUp, "Beta receives Alpha's follow-up in the pair thread");
+    assert.equal(followUp.routeReason, "agent_pair");
+    assert.equal(followUp.addressedToYou, true);
+
+    // Neither agent's private/operator DM received any agent-authored message.
+    const aDm = await ensureDirectThread(companyId, a.id, null);
+    const bDm = await ensureDirectThread(companyId, b.id, null);
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const { and, eq, inArray } = await import("drizzle-orm");
+    const leaked = await db.select().from(threadMessages).where(and(
+        inArray(threadMessages.threadId, [aDm.id, bDm.id]),
+        eq(threadMessages.senderType, "agent"),
+    ));
+    assert.equal(leaked.length, 0, "no agent replies leaked into an operator DM");
+});
+
+maybe("an agent direct reply with no thread or target is refused, not defaulted to its own DM", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
+    await assert.rejects(
+        sendThreadMessageFromMcp({ companyId, agentId: a.id, text: "into the void", threadType: "direct" }),
+        /targetAgentId or threadId/,
+    );
+});
+
 maybe("loop guard trips on agent ping-pong in a pair thread", async () => {
     await resetDb();
     const { companyId, rawToken } = await seedCompanyWithToken();
@@ -298,6 +352,55 @@ maybe("stall sweep coalesces many stale tasks and ignores abandoned backlog", as
     const meta = nudges[0].metadataJson as Record<string, unknown>;
     assert.equal(meta.stallNudge, true);
     assert.equal((meta.taskIds as string[]).length, 2, "the abandoned backlog task is never nudged");
+});
+
+maybe("blocked tasks keep their reason, are not nudged, and unblocking restarts the clock", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const dev = await seedAgent(companyId, { name: "Dev", provider: "hermes" });
+    const project = await seedProject(companyId, null);
+    const db = await getDb();
+    const { tasks, threadMessages } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    const { updateTaskForCompany } = await import("@/lib/openclaw/tasks");
+    const { runStallSweep } = await import("@/lib/stall-sweep");
+
+    const old = new Date(Date.now() - 10 * 3600_000);
+    const [task] = await db.insert(tasks).values({
+        companyId, projectId: project.id, taskType: "work", state: "in_progress",
+        assignedAgentId: dev.id, inputJson: { title: "Held work" }, updatedAt: old,
+    }).returning();
+
+    // Blocking without a reason is rejected.
+    const missing = await updateTaskForCompany({ companyId, taskId: task.id, state: "blocked" });
+    assert.equal(missing.status, 400);
+
+    const blocked = await updateTaskForCompany({
+        companyId, taskId: task.id, state: "blocked", blockedReason: "Waiting on legal sign-off",
+        actorType: "human",
+    });
+    assert.equal(blocked.status, 200);
+    const blockedTask = (blocked as { task: { state: string; inputJson: Record<string, unknown> } }).task;
+    assert.equal(blockedTask.state, "blocked");
+    assert.equal(blockedTask.inputJson.blockedReason, "Waiting on legal sign-off");
+
+    // A blocked task is not treated as stalled work.
+    assert.equal(await runStallSweep(), 0, "blocked tasks receive no stall nudge");
+    const nudges = await db.select().from(threadMessages).where(eq(threadMessages.targetAgentId, dev.id));
+    assert.equal(nudges.length, 0);
+
+    // Unblocking clears the reason and restarts the progress clock (updatedAt=now),
+    // so the stale-10h task is not immediately eligible for a nudge again.
+    const unblockedAt = Date.now();
+    const unblocked = await updateTaskForCompany({
+        companyId, taskId: task.id, state: "in_progress", actorType: "human",
+    });
+    assert.equal(unblocked.status, 200);
+    const unblockedTask = (unblocked as { task: { state: string; inputJson: Record<string, unknown>; updatedAt: Date | string } }).task;
+    assert.equal(unblockedTask.state, "in_progress");
+    assert.equal(unblockedTask.inputJson.blockedReason, undefined, "the blocker reason is cleared on unblock");
+    assert.ok(new Date(unblockedTask.updatedAt).getTime() >= unblockedAt - 1000, "unblocking restarts updatedAt");
+    assert.equal(await runStallSweep(), 0, "a freshly unblocked task is not stale");
 });
 
 maybe("PM→Dev→QA: the full handoff closes with both tasks done", async () => {

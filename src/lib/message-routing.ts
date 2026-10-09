@@ -52,7 +52,7 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * message-post route) so a runtime cannot forge a task wake, a stall nudge, or
  * otherwise bypass the loop guard.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus"] as const;
 
 /**
  * A "Resume" marker resets the loop streak. It is a system message with this

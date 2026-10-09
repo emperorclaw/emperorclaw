@@ -5,6 +5,7 @@ import { agentSessions, agents, tasks, threadMessages } from "@/db/schema";
 import { notifyAgentDown } from "./notifications";
 import { runDailyRoutines } from "./agent-routines";
 import { runStallSweep } from "./stall-sweep";
+import { runObjectiveFollowups } from "./agent-objective";
 import { flushPendingAgentWakes } from "./task-wake";
 import { deliverRequestCallbacks } from "./agent-requests";
 import { runStarterDoctrineUpgrades } from "./starter-knowledge";
@@ -28,6 +29,7 @@ export function stallSweepIntervalMs(env: Record<string, string | undefined> = p
 let isLifecycleMonitorRunning = false;
 let lastRoutineCheck = 0;
 let lastStallSweepCheck = 0;
+let lastObjectiveCheck = 0;
 let lastCallbackCheck = 0;
 
 const pool = new Pool({
@@ -75,6 +77,13 @@ async function runLifecycleMonitor() {
       // The starter-doctrine rollout shares the slow cadence: it is idempotent
       // per company and cheap when every company is already up to date.
       await runStarterDoctrineUpgrades().catch((error) => console.error("Starter doctrine upgrade failed:", error));
+    }
+    // Persistent objectives: post the next scheduled private prompt when due.
+    // The sweep itself is advisory-locked and overlap-checked, so a 60s tick is
+    // safe across instances and never stacks prompts on a busy agent.
+    if (now.getTime() - lastObjectiveCheck >= 60_000) {
+      lastObjectiveCheck = now.getTime();
+      await runObjectiveFollowups(now).catch((error) => console.error("Objective followups failed:", error));
     }
     // Requests from other platforms: post status callbacks (cheap when none).
     if (now.getTime() - lastCallbackCheck >= 15_000) {

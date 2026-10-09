@@ -102,7 +102,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("update_task", {
         title: "Update Task",
-        description: "Update a task's title, goal, priority, assignee, state, or input. Provide only the fields you want to change. Reassign explicitly with `assignee`; the assignee closes the task.",
+        description: "Update a task's title, goal, priority, assignee, state, or input. Provide only the fields you want to change. Reassign explicitly with `assignee`; the assignee closes the task. To hold work you cannot progress, set state 'blocked' with a blockedReason naming what you are waiting on; this stops automatic stalled reminders. Unblock by setting state back to 'in_progress' (the reason is cleared and the progress clock restarts).",
         inputSchema: {
             taskId: z.string(),
             title: z.string().optional(),
@@ -113,12 +113,13 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
                 id: z.string().describe("Agent id, or a company membership/user id for a human"),
             }).nullable().optional().describe("The single owner responsible for closing this task; null unassigns"),
             assignedAgentId: z.string().optional(),
-            state: z.string().optional().describe("New task state, e.g. 'in_progress', 'done'"),
+            state: z.string().optional().describe("New task state: 'inbox', 'in_progress', 'review', 'blocked', 'done', or 'failed'. Setting 'blocked' requires blockedReason."),
+            blockedReason: z.string().optional().describe("Why the task is blocked (required for state 'blocked'; ignored otherwise). Use a short, specific reason naming the person or dependency you are waiting on."),
             inputJson: z.record(z.string(), z.unknown()).optional(),
         },
-    }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson }) => {
+    }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson }) => {
         try {
-            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, inputJson, actorType: "agent", actorId: callerAgentId ?? null });
+            const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, actorType: "agent", actorId: callerAgentId ?? null });
             return jsonResult({ message: "Task updated", task });
         } catch (e) {
             return errorResult(e);

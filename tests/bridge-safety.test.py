@@ -506,6 +506,12 @@ class TestIsDirectThread(unittest.TestCase):
         msg = {"threadId": "dm-1", "targetAgentId": bridge.AGENT_ID}
         self.assertTrue(bridge.is_direct_thread(msg, {}))
 
+    def test_group_pair_thread_is_not_direct(self):
+        # A two-agent pair thread is a group carrying targetAgentId for old
+        # runtimes; it must never be classified as a private DM.
+        msg = {"threadType": "group", "threadId": "pair-1", "targetAgentId": bridge.AGENT_ID}
+        self.assertFalse(bridge.is_direct_thread(msg, {}))
+
     def test_recorded_direct_thread_ownership(self):
         msg = {"threadId": "dm-1"}
         state = {"direct_threads": {"dm-1": bridge.AGENT_ID}}
@@ -1103,6 +1109,16 @@ class TestSendReply(unittest.TestCase):
     def test_empty_text_sends_nothing(self):
         self.assertIsNone(bridge.send_reply({"threadId": "t1"}, ""))
         self.api.assert_not_called()
+
+    def test_reply_carries_source_and_never_invents_direct(self):
+        # A reply with no known thread type must not force "direct" (the path
+        # into the sender's operator DM); it anchors on the message it answers.
+        self.api.return_value = {"ok": True, "message_id": "stored-2"}
+        bridge.send_reply({"id": "source-1", "threadId": "pair-1"}, "hi")
+        body = self.api.call_args.kwargs.get("body") or {}
+        self.assertEqual(body.get("replyToMessageId"), "source-1")
+        self.assertEqual(body.get("thread_id"), "pair-1")
+        self.assertNotIn("thread_type", body)
 
 
 class TestCleanHermesOutput(unittest.TestCase):

@@ -8,35 +8,39 @@ The dashboard uses team branches with their coordinator and members. Arrange tea
 
 Group turns receive current-room purpose, bounded member names, coordinator and concise delegation rules. Direct turns receive a summary of at most four of the agent’s own teams and its role, under 900 characters, with complete membership available through existing tools. The complete membership is available through existing group tools. Do not inject the entire organization into every turn. Runtime access and message routing continue to enforce actual membership, not the text prompt.
 
-## Persistent objectives
+## Portable objectives (default)
 
-Hermes' native persistent goal engine is appropriate for one agent working on one objective. It is not a global company mission and does not automatically create work assignments. Do not forward `/goal` as ordinary language to an LLM: the current bridge invokes a quiet one-shot query with a contextual prefix, so a slash command embedded there is not a native goal invocation.
+Objectives are Emperor-owned and provider-independent. Emperor keeps the objective, sends the agent an ordinary private prompt on a fixed cadence, and the agent reports status with an authenticated tool. This replaced the Hermes-native goal engine as the default so every runtime that can receive and send messages can run an objective — no runtime-side goal manager, no provider-specific adapter.
 
-The bridge adapter uses Hermes' native GoalManager in the Hermes dependency environment and attaches decisions to the actual persisted session. Emperor intercepts the supported slash commands before constructing the model prompt. Feature-detect installed runtime support; older images must keep normal messaging working and explicitly report goals unavailable. Other runtimes require their own adapters and declared capabilities. Hermes ACP currently does not implement goals.
+How it works:
 
-The UI is one optional Objective control in the agent dialog: objective text, optional completion criterion, a bounded turn limit, Start. An active objective exposes status, turns used, Pause, Resume and Clear in the same dialog. Do not add a second chat parser or a global mission panel. Full details live in the conversation.
+- Start in the agent's private conversation: `/goal <objective>` or the Objective control in the agent dialog. The row stores the agent, the creating person, and the originating direct thread; every followup is posted back into that same thread.
+- A background sweep (the lifecycle monitor) posts one normal queued prompt per cadence, then advances `nextRunAt`. It is guarded by a transaction-scoped advisory lock (concurrent servers skip), so a multi-instance or multi-tick deployment never double-posts.
+- No overlap: while a prompt for the objective is queued, seen or acting, the sweep pushes the next run out instead of stacking prompts on a busy agent.
+- Finite budget: `maxFollowups` (default 20, capped at 100) caps a runaway objective; at the limit the objective pauses with a "followup budget reached" reason and stops sending.
+- Serialized mutations: start, pause, resume, block, complete and cancel run under the agent row lock, so two concurrent starts leave exactly one live objective and a pause/stop racing the sweep can never be followed by a stale prompt.
+- Stopping cancels queued prompts: pause, block, complete and cancel mark any still-queued objective prompt as cancelled, so a stopped objective cannot wake the agent later.
 
-Implemented safeguards:
+Agent reporting (authenticated, ownership enforced):
 
-- Persist objective state across bridge/container restart, scoped to company, agent and conversation/session.
-- Use native done/continue/blocked decisions, not an unconditional repeat loop. Default at most 20 turns; account for ordinary user turns as well.
-- Preserve native waiting/backoff behavior without repeatedly burning turns on a pending external process.
-- Check company/agent budgets before each new turn; report usage for each turn, including continuation and judging where available.
-- Stop/replace must interrupt the current process and pause continuation; a stopped goal must not silently restart after a container restart.
-- Human pause/clear must take effect between tool calls using the existing runtime control channel. Status must not require another model call.
-- A coordinator may delegate a task, but it does not automatically start goals in every member or gain permission to reset their budgets.
-- Do not allow goals to bypass existing agent-to-agent loop guards, routing, project approvals or member access.
-- Test completion, exhaustion, blocked/waiting states, judge failure, session migration/compression, restart recovery, unsupported runtime, concurrent pause and stop, and usage accounting with the actual supported Hermes build.
+- MCP tool `update_objective` and `list_objectives`, or `POST /api/mcp/objectives` (GET lists). The token is bound to one agent, so an agent can only read or change its own objective; the service re-checks company + agent ownership. `update` reports progress, `block` requires a `blockerReason` and pauses check-ins, `resume` restarts them, `complete` records a `completionSummary`, `pause`/`cancel` stop them.
+- Tool-less fallback for runtimes that expose no Emperor tools (for example the Codex bridge, which only sends chat text). The objective prompt also teaches one optional isolated line: `EMPEROR_OBJECTIVE_STATUS {"objectiveId":"…","action":"complete", …}`. The server strips the marker line from any agent reply **before** it is persisted, mirrored to the legacy chat, or broadcast, so it is never visible text in the transcript or on the live stream. An authorized marker — an authenticated agent reply that answers that agent's own objective prompt in the same company and thread, with a matching `objectiveId` — is kept in server-only message metadata and applied after the send. Unauthorized or malformed markers are stripped but never applied; a caller-supplied control key is discarded and only the server's own derivation is trusted. Because sanitizing lives in the shared `appendThreadMessage` path, both MCP reply entrypoints (`/messages/send` and `/threads/:id/messages`) behave identically and every provider's normal replies can drive an objective.
 
-Native quality gates execute commands; retain the runtime's permissions and do not expose a general-purpose shell-command field in the initial web UI.
+Privacy:
 
-Reference: https://hermes-agent.nousresearch.com/docs/user-guide/features/goals
+- The objective belongs to the person who started it and to the agent. Only that person (and company owners/admins) can read its text or manage it; other members see a redacted status ("Managed in another private conversation."). This preserves the privacy the native goal UI had.
 
-Supported commands: `/goal <objective>`, `/goal status`, `/goal show`, `/goal pause`, `/goal resume`, `/goal clear`, and `/goal -- <literal objective>`. Completion criteria use `verify:` and other native contract fields. Draft, gate and manual wait commands are explicitly rejected by the web command parser; the native judge can still park an objective. Other runtime adapters are not enabled until they support equivalent persistence and interruption.
+UI: one optional Objective control in the agent dialog — objective text, a check-in cadence (15 min / 1 h / 4 h / daily), Start, and Pause / Resume / Stop for a live objective. No turn-limit or other runtime-specific configuration.
 
-Verification covers real PostgreSQL command isolation/cancellation/privacy, scheduler unit tests, mobile UI controls, and the current upstream GoalManager with a test database and mocked judge. A deployed Hermes container with live model credentials has not been exercised in this workspace. Reported usage remains an estimate for the execution model; auxiliary judge/provider billing is not a complete invoice measure.
+Safe cadence: bounded to 5 minutes – 7 days, default 60 minutes, so an objective cannot be made to hot-loop the agent.
 
-Goal requests carry a reserved `runtimeControl: { action: "goal" }` marker as well as their goal payload. Older message-sync implementations already exclude runtime controls, and older kill/replace handlers ignore this unknown action, so a pending goal is not accidentally treated as a model prompt during a server/runtime downgrade.
+Backwards compatibility: old Hermes-native goal records and commands still work. `threadMessages` rows carrying `runtimeGoalRequest` remain readable by `/api/mcp/agents/goals`, and `/kill` / `/replace` still cancel them. New objectives never write those records.
+
+## Blocked tasks
+
+A task can be set to `blocked` with a required reason (top-level `blockedReason`, also accepted inside `inputJson`). The blocked state is deliberately excluded from the stall sweep and the daily review, so a task waiting on a person or an external event is never nagged. It stays visible on the board in its own Blocked column and in the task overview. Unblocking (back to `in_progress`, `inbox` or `review`) clears the reason and bumps `updatedAt`, which restarts the progress clock so the task is not immediately stale again. The web UI collects the reason in an accessible in-app dialog for both the state selector and drag-and-drop (no native browser prompt); agents set it through `update_task` with `state: "blocked"` and `blockedReason`.
+
+## Organization
 
 ## Organization management
 

@@ -111,13 +111,19 @@ async function syncMessages() {
 
 async function sendReply(message, text) {
     if (!text) return;
-    await api("POST", "/messages/send", {
+    const body = {
         thread_id: message.threadId || message.thread_id,
-        thread_type: message.threadType || message.thread_type || "direct",
         agentId: AGENT_ID,
         text,
         targetAgentId: null,
-    });
+        replyToMessageId: message.id,
+    };
+    // Only send thread_type when the server supplied one; forcing "direct"
+    // would let a reply land in the sender's own operator DM. replyToMessageId
+    // lets the server derive the real thread from the message being answered.
+    const threadType = message.threadType || message.thread_type;
+    if (threadType) body.thread_type = threadType;
+    await api("POST", "/messages/send", body);
 }
 
 async function updateStatus(message, opts = {}) {
