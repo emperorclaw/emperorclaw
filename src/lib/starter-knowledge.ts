@@ -94,7 +94,7 @@ const STARTER_NOTES: StarterNote[] = [
             `- Rooms (group chats, team channel) are for kickoffs, milestones, and final reports. A post there wakes nobody unless it @mentions someone. Agents never use @all.\n` +
             `- One request, one answer. No acks or thanks. Make progress visible on the task (state, notes, artifacts), not in chat.\n\n` +
             `## Roles\n\n` +
-            `- Lead: plans, assigns, unblocks, decides, and reports to the human; does not implement. A room or project lead owns unaddressed human messages there.\n` +
+            `- Lead: plans, assigns, unblocks, decides, and reports to the human; delegates when a suitable specialist exists. With no suitable specialist, may own bounded work within its capabilities. A room or project lead owns unaddressed human messages there.\n` +
             `- Member: does its tasks and stays in role. Reviewer: sends work back; does not fix it.\n\n` +
             `## Escalation and decisions\n\n` +
             `- Escalate in order: yourself → the owner of your input → the lead → a human. Record the blocker on the task.\n` +
@@ -111,7 +111,7 @@ const STARTER_NOTES: StarterNote[] = [
         content: () =>
             frontmatter("company", "playbook", ["team-playbook", "lead", "team"]) +
             `# Team playbook — lead\n\n` +
-            `For the agent leading a goal: a project's lead, a room's lead, or the agent the human addressed. Leads route and decide; they do not implement.\n\n` +
+            `For the agent leading a goal: a project's lead, a room's lead, or the agent the human addressed. Leads route and decide. Delegate to a suitable specialist when available; otherwise own bounded work within your capabilities.\n\n` +
             `## Steps\n\n` +
             `1. Receive the goal. Restate it in one line. Ask the human only if a missing answer blocks planning; otherwise record assumptions.\n` +
             `2. Write the brief in project memory: outcome, success criteria, constraints, owners, checkpoints (see [[Project Brief Template]]).\n` +
@@ -119,7 +119,7 @@ const STARTER_NOTES: StarterNote[] = [
             `4. Checkpoint: for large, costly, or irreversible work, request approval of the plan before assigning. Small work proceeds.\n` +
             `5. Decompose into tasks, one owner each: title, description with input IDs, acceptance criteria, deliverables, reviewer, due date, dependencies.\n` +
             `6. Kick off in the room once: goal, plan, owners, cadence, definition of done.\n` +
-            `7. Monitor: work your daily review and stall escalations. Unblock, reassign, or cut scope — don't do the work yourself.\n` +
+            `7. Monitor: work your daily review and stall escalations. Unblock or reassign; do not silently take over another owner's work.\n` +
             `8. Integrate: check the pieces against the brief; send gaps back as tasks.\n` +
             `9. Release checkpoint: anything that ships, publishes, spends, or contacts customers goes through request_approval.\n` +
             `10. Report to the human in the status format, then close out.\n\n` +
@@ -277,6 +277,35 @@ const STARTER_NOTES: StarterNote[] = [
             `- Who they are and who our contact is\n` +
             `- Preferences and constraints that change how we work with them\n` +
             `- Open commitments and their owners\n`,
+    },
+    {
+        name: "workspace-filing-guide",
+        displayName: "Workspace Filing Guide",
+        path: "Agents/Playbooks",
+        isShared: false,
+        content: () => frontmatter("company", "sop", ["workspace-playbook", "storage", "knowledge", "organization"]) + `# Workspace filing guide
+
+## Start with the existing workspace
+Read the current organization via GET /organization. A person can belong to several teams; use the task or conversation's team to identify the responsible lead. Each task still has one owner. Reuse the team's group chat. An organization relationship does not grant permissions or override approvals.
+
+## Knowledge & Rules: lasting knowledge
+Search before writing and update the canonical note. The starter vault has Company, Agents, Projects, and Customers:
+- Company: identity, policies, brand, reusable business facts.
+- Agents: operating rules and on-demand playbooks, including this guide.
+- Projects: reusable project conventions and decisions, scoped to the project.
+- Customers: preferences and durable facts, scoped to the customer.
+Use meaningful note titles, tags, and links. A visual folder path does not replace project/customer scope or access controls. Keep references unshared; only compact rules needed every turn belong in shared context. Store established knowledge as active and uncertain proposals as draft using the resource status field, not frontmatter alone.
+
+## Storage: deliverables and evidence
+Use Emperor's Storage tools; do not request backing storage credentials. Browse existing folders before creating any. For customer work prefer Customer / Project / YYYY-MM, with deliverables, evidence, exports, source-documents, or working-files only as needed. For internal work use the project name. Follow the company's existing convention instead of creating a competing tree.
+Create each level separately with parentFolderId and preserve projectId/customerId scope. Upload with folderId, verify the stored file, and attach its real artifact ID to the task. Never imply a folder name enforces access. Do not create empty folder trees in advance.
+
+## Tasks and conversations
+Keep progress, blockers, acceptance criteria, and handoffs on the task. Keep project execution context in project memory. Put the short outcome and links in chat; upload long reports instead of copying them into every message. Use [File](emperor://artifact/<artifact-id>) and [Guide](emperor://knowledge/<resource-id>) with actual returned IDs.
+
+## Completion
+Verify the deliverable, record evidence and remaining risks, and close only work you own whose acceptance criteria are met. If independent review is needed, set review and reassign it to the reviewer. Respect existing approval policies. Preserve record IDs after failures so retries can reuse work.
+`,
     },
 ];
 
@@ -448,7 +477,7 @@ export async function seedStarterKnowledge(input: SeedStarterKnowledgeInput): Pr
  * missing notes). The version plus a hash of every seeded note's text is
  * stored on the company (companies.starterDoctrineJson).
  */
-export const STARTER_DOCTRINE_VERSION = 1;
+export const STARTER_DOCTRINE_VERSION = 2;
 
 /** Hash of every starter note's rendered text (with a name placeholder), keyed by name. */
 export function starterNoteHashes(): Record<string, string> {

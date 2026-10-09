@@ -509,7 +509,7 @@ Instead of configuring everything manually, you can let your own LLM do the work
 I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
 
 Repository & docs: https://github.com/emperorclaw/emperorclaw
-Bridge installer: https://emperorclaw.malecu.eu/install.sh (Linux/Mac) or https://emperorclaw.malecu.eu/install.ps1 (Windows)
+Bridge installer: https://emperorclaw.malecu.eu/install-bridge.sh (Linux/Mac) or https://emperorclaw.malecu.eu/install-bridge.ps1 (Windows)
 Hermes runtime docs: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/hermes-runtime.md
 
 My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]

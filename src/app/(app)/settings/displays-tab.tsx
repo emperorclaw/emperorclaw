@@ -434,11 +434,11 @@ export function DisplaysTab({
 
     return (
         <section className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)]">
-            <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                    <IconDeviceDesktop className="mr-2 h-5 w-5 text-cyan-300" /> Set up a display
+            <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
+                <h2 className="flex items-center text-lg font-semibold text-foreground">
+                    <IconDeviceDesktop className="mr-2 h-5 w-5 text-primary" /> Set up a display
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     The Throne Display is a small round desk screen (ESP32-C3, 240x240) that shows your agents working around the Emperor&apos;s throne, their health and the latest messages, live. Plug it into this computer with a USB cable and this page installs the firmware, connects it to Wi-Fi and gives it its own read-only key. You never copy a token.
                 </p>
 
@@ -463,7 +463,7 @@ export function DisplaysTab({
                             aria-current={s.id === step ? "step" : undefined}
                             className={cn(
                                 "rounded-full border px-3 py-1 text-xs font-medium",
-                                s.id === step ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : i < stepIndex ? "border-emerald-500/25 text-emerald-700 dark:text-emerald-200/80" : "border-border text-zinc-500",
+                                s.id === step ? "border-cyan-400/40 bg-cyan-400/10 text-primary" : i < stepIndex ? "border-emerald-500/25 text-emerald-700 dark:text-emerald-200/80" : "border-border text-muted-foreground",
                             )}
                         >
                             {i + 1}. {s.label}
@@ -474,7 +474,7 @@ export function DisplaysTab({
                 <div className="mt-5 space-y-4">
                     {step === "connect" && (
                         <div className="space-y-3">
-                            <p className="text-sm text-zinc-400">Plug the display into this computer, then pick it in the browser&apos;s list (it shows up as a USB JTAG/serial device).</p>
+                            <p className="text-sm text-muted-foreground">Plug the display into this computer, then pick it in the browser&apos;s list (it shows up as a USB JTAG/serial device).</p>
                             <Button onClick={connect} disabled={!supported || !!serverProblem || !!busy}>
                                 {busy ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconUsb className="h-4 w-4" />} {busy ?? "Connect display"}
                             </Button>
@@ -483,11 +483,11 @@ export function DisplaysTab({
 
                     {step === "firmware" && (
                         <div className="space-y-3">
-                            <div className="rounded-xl border border-border bg-zinc-950/60 p-4 text-sm">
-                                <div className="flex items-center gap-2 text-zinc-200"><IconCpu className="h-4 w-4 text-cyan-300" /> Display firmware</div>
-                                <p className="mt-2 text-zinc-400">
-                                    On the display: <span className="font-mono text-zinc-200">{boardVersion === "unknown" ? "an older version" : boardVersion ?? "not detected"}</span>
-                                    {" · "}Latest: <span className="font-mono text-zinc-200">{manifest?.version ?? "unavailable"}</span>
+                            <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                                <div className="flex items-center gap-2 text-foreground"><IconCpu className="h-4 w-4 text-primary" /> Display firmware</div>
+                                <p className="mt-2 text-muted-foreground">
+                                    On the display: <span className="font-mono text-foreground">{boardVersion === "unknown" ? "an older version" : boardVersion ?? "not detected"}</span>
+                                    {" · "}Latest: <span className="font-mono text-foreground">{manifest?.version ?? "unavailable"}</span>
                                 </p>
                             </div>
                             {flash && (
@@ -495,7 +495,7 @@ export function DisplaysTab({
                                     <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-valuenow={flash.percent} aria-valuemin={0} aria-valuemax={100}>
                                         <div className="h-full rounded-full bg-cyan-400 transition-[width] duration-300" style={{ width: `${flash.percent}%` }} />
                                     </div>
-                                    <p className="mt-2 text-xs text-zinc-500">{flash.label} · {flash.percent}%</p>
+                                    <p className="mt-2 text-xs text-muted-foreground">{flash.label} · {flash.percent}%</p>
                                 </div>
                             )}
                             <div className="flex flex-wrap gap-2">
@@ -511,45 +511,45 @@ export function DisplaysTab({
                                 )}
                                 {!connected && !busy && <Button variant="outline" onClick={reconnect}><IconUsb className="h-4 w-4" /> Reconnect</Button>}
                             </div>
-                            <p className="text-xs leading-5 text-zinc-500">Installing keeps the display&apos;s saved settings. It takes about a minute; don&apos;t unplug the cable.</p>
+                            <p className="text-xs leading-5 text-muted-foreground">Installing keeps the display&apos;s saved settings. It takes about a minute; don&apos;t unplug the cable.</p>
                         </div>
                     )}
 
                     {step === "wifi" && (
                         <div className="space-y-3">
                             <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-medium text-zinc-300">Wi-Fi network</span>
+                                <span className="text-sm font-medium text-foreground">Wi-Fi network</span>
                                 <Button size="sm" variant="ghost" onClick={() => void scan()} disabled={scanning}>
                                     <IconRefresh className={cn("h-4 w-4", scanning && "animate-spin")} /> {scanning ? "Scanning" : "Scan again"}
                                 </Button>
                             </div>
                             <div className="max-h-72 divide-y divide-white/10 overflow-y-auto rounded-xl border border-border" role="radiogroup" aria-label="Wi-Fi networks">
                                 {networks.length === 0 && (
-                                    <div className="p-4 text-sm text-zinc-500">{scanning ? "The display is looking for networks..." : "No networks found."}</div>
+                                    <div className="p-4 text-sm text-muted-foreground">{scanning ? "The display is looking for networks..." : "No networks found."}</div>
                                 )}
                                 {networks.map((n) => (
                                     <label key={n.ssid} className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === n.ssid ? "bg-cyan-400/[0.07]" : "hover:bg-white/[0.03]")}>
                                         <input type="radio" name="display-ssid" className="accent-cyan-400" checked={ssidChoice === n.ssid} onChange={() => setSsidChoice(n.ssid)} />
-                                        <span className="min-w-0 flex-1 truncate text-zinc-100">{n.ssid}</span>
-                                        {n.secure && <IconLock className="h-3.5 w-3.5 text-zinc-500" aria-label="Password protected" />}
+                                        <span className="min-w-0 flex-1 truncate text-foreground">{n.ssid}</span>
+                                        {n.secure && <IconLock className="h-3.5 w-3.5 text-muted-foreground" aria-label="Password protected" />}
                                         <SignalBars rssi={n.rssi} />
                                     </label>
                                 ))}
                                 <label className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm", ssidChoice === OTHER ? "bg-cyan-400/[0.07]" : "hover:bg-white/[0.03]")}>
                                     <input type="radio" name="display-ssid" className="accent-cyan-400" checked={ssidChoice === OTHER} onChange={() => setSsidChoice(OTHER)} />
-                                    <span className="text-zinc-300">Other network (hidden, or not listed)</span>
+                                    <span className="text-foreground">Other network (hidden, or not listed)</span>
                                 </label>
                             </div>
                             {ssidChoice === OTHER && (
                                 <Input placeholder="Network name" value={otherSsid} onChange={(e) => setOtherSsid(e.target.value)} aria-label="Network name" autoComplete="off" />
                             )}
-                            <p className="text-xs leading-5 text-zinc-500">
+                            <p className="text-xs leading-5 text-muted-foreground">
                                 <IconWifi className="mr-1 inline h-3.5 w-3.5" />
                                 The list comes from the display itself, so it only shows 2.4 GHz networks. The display can&apos;t use 5 GHz Wi-Fi; if your router has separate 2.4 and 5 GHz names, pick the 2.4 GHz one.
                             </p>
                             {(ssidChoice === OTHER || selectedNetwork?.secure !== false) && (
                                 <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-zinc-300">Wi-Fi password</span>
+                                    <span className="text-sm font-medium text-foreground">Wi-Fi password</span>
                                     <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" placeholder={ssidChoice === OTHER ? "Leave empty for an open network" : ""} />
                                 </label>
                             )}
@@ -575,15 +575,15 @@ export function DisplaysTab({
                     {step === "options" && (
                         <div className="space-y-4">
                             <label className="block space-y-2">
-                                <span className="text-sm font-medium text-zinc-300">Display name</span>
+                                <span className="text-sm font-medium text-foreground">Display name</span>
                                 <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={80} />
-                                <span className="block text-xs text-zinc-500">Shown in the list of displays below, so you can revoke the right one later.</span>
+                                <span className="block text-xs text-muted-foreground">Shown in the list of displays below, so you can revoke the right one later.</span>
                             </label>
                             <label className="flex items-start gap-3 rounded-xl border border-border bg-white/[0.02] p-3">
                                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-400" checked={privateChats} onChange={(e) => setPrivateChats(e.target.checked)} />
                                 <span className="space-y-1">
-                                    <span className="block text-sm font-medium text-zinc-300">Include my private chats</span>
-                                    <span className="block text-xs leading-5 text-zinc-500">{PRIVATE_CHATS_HELP}</span>
+                                    <span className="block text-sm font-medium text-foreground">Include my private chats</span>
+                                    <span className="block text-xs leading-5 text-muted-foreground">{PRIVATE_CHATS_HELP}</span>
                                 </span>
                             </label>
                             <div className="flex flex-wrap gap-2">
@@ -612,8 +612,8 @@ export function DisplaysTab({
                                     </p>
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-3 rounded-xl border border-border bg-zinc-950/60 p-4 text-sm text-zinc-300">
-                                    <IconLoader2 className="h-4 w-4 animate-spin text-cyan-300" /> {phaseText(progress, usbLost)}...
+                                <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
+                                    <IconLoader2 className="h-4 w-4 animate-spin text-primary" /> {phaseText(progress, usbLost)}...
                                 </div>
                             )}
                             {!live && (failed || error || timedOut) && (
@@ -637,23 +637,23 @@ export function DisplaysTab({
                 </div>
             </div>
 
-            <div className="overflow-hidden rounded-2xl sm:rounded-3xl border border-border bg-zinc-950/70 self-start">
+            <div className="overflow-hidden rounded-2xl sm:rounded-2xl border border-border bg-background/70 self-start">
                 <div className="border-b border-border p-4 sm:p-5">
-                    <h2 className="text-lg font-semibold text-zinc-100">Your displays</h2>
-                    <p className="mt-1 text-sm text-zinc-500">Each display has its own read-only key. Revoke it when a display leaves your desk.</p>
+                    <h2 className="text-lg font-semibold text-foreground">Your displays</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Each display has its own read-only key. Revoke it when a display leaves your desk.</p>
                 </div>
                 <div className="divide-y divide-white/10">
                     {displayTokens.length === 0 ? (
-                        <div className="p-8 text-center text-sm text-zinc-500">No displays yet.</div>
+                        <div className="p-8 text-center text-sm text-muted-foreground">No displays yet.</div>
                     ) : (
                         displayTokens.map((token) => (
                             <div key={token.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="min-w-0">
-                                    <h3 className="font-medium text-zinc-100">{token.name}</h3>
-                                    <p className="mt-1 text-xs text-zinc-500">
+                                    <h3 className="font-medium text-foreground">{token.name}</h3>
+                                    <p className="mt-1 text-xs text-muted-foreground">
                                         Created {new Date(token.createdAt).toLocaleDateString()} · Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "never"}
                                     </p>
-                                    <p className="mt-1 text-xs text-zinc-500">Private chats: {token.includePrivateChats ? "on" : "off"}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">Private chats: {token.includePrivateChats ? "on" : "off"}</p>
                                 </div>
                                 <Button variant="destructive" size="sm" onClick={() => onRevoke(token.id)} disabled={revokingTokenId === token.id}>
                                     <IconTrash className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}

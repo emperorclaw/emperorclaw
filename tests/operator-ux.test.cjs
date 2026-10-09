@@ -20,8 +20,9 @@ function assertNotContains(source, needle, message) {
 
 test("Settings is runtime-neutral for operators and hides dangerous details behind Advanced", () => {
   const source = read("src/app/(app)/settings/settings-client.tsx");
-  ["Workspace & Access", "Agent Connections", "Access Tokens", "Advanced", "Hermes agents", "OpenClaw agents"].forEach((needle) => {
-    assertContains(source, needle, `settings should include ${needle}`);
+  const navigation = read("src/lib/settings-navigation.ts");
+  ["Settings", "Agent connections", "Access tokens", "Advanced", "Hermes agents", "OpenClaw agents"].forEach((needle) => {
+    assertContains(source + navigation, needle, `settings should include ${needle}`);
   });
   assertNotContains(source, "authenticate your OpenClaw workforce", "settings should not frame the whole workspace as OpenClaw-only");
   assertNotContains(source, "OpenClaw Manager CLI", "token placeholder should be runtime-neutral");
@@ -132,10 +133,12 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
   assertContains(resources, "Move back to draft", "published KB notes should be reversible without hunting in metadata");
   assertContains(resources, "Shared is separate", "KB copy should clarify published versus agent injection");
 
-  [approvals, settings, storage].forEach((source) => {
+  [approvals, storage].forEach((source) => {
     assertContains(source, "max-w-[1800px]", "operator pages should use the standard wide workspace container");
   });
 
+  assertContains(settings, "max-w-[1440px]", "settings should constrain form width while retaining its grouped navigation");
+  assertContains(settings, "Settings section", "mobile settings should provide a labeled section selector");
   assertContains(approvals, "Decision Queue", "approvals should be framed as a useful operator queue");
   assertNotContains(agents, "What belongs here", "agent cards should not repeat generic instructional copy");
   assertNotContains(agents, "Open detail", "the agent panel is the profile; there is no duplicate detail page");

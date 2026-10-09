@@ -41,7 +41,7 @@ export function UpdateSettingsTab() {
     if (loading && !data) {
         return (
             <section className="space-y-4">
-                <div className="emperor-panel rounded-2xl sm:rounded-3xl p-8 text-center">
+                <div className="emperor-panel rounded-2xl sm:rounded-2xl p-8 text-center">
                     <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
                     <p className="mt-4 text-sm text-muted-foreground">Checking for updates...</p>
                 </div>
@@ -62,13 +62,13 @@ export function UpdateSettingsTab() {
     return (
         <section className="space-y-4">
             {/* Current version card */}
-            <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
+            <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className="flex items-center text-lg font-semibold text-foreground">
                             <IconServer className="mr-2 h-5 w-5 text-cyan-300" /> Instance version
                         </h2>
-                        <p className="mt-1 text-sm text-zinc-400">
+                        <p className="mt-1 text-sm text-muted-foreground">
                             EmperorClaw is self-hosted — updates are applied by the instance administrator.
                         </p>
                     </div>
@@ -106,7 +106,7 @@ export function UpdateSettingsTab() {
 
             {/* Update available banner */}
             {data.isUpdateAvailable && (
-                <div className="rounded-2xl sm:rounded-3xl border border-cyan-400/20 bg-cyan-400/8 p-4 sm:p-6">
+                <div className="rounded-2xl sm:rounded-2xl border border-cyan-400/20 bg-cyan-400/8 p-4 sm:p-6">
                     <div className="flex items-start gap-3">
                         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-400/15">
                             <IconArrowUp className="h-5 w-5 text-cyan-300" />
@@ -135,25 +135,25 @@ export function UpdateSettingsTab() {
             )}
 
             {/* Upgrade instructions */}
-            <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                <h2 className="flex items-center text-lg font-semibold text-zinc-100">
+            <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
+                <h2 className="flex items-center text-lg font-semibold text-foreground">
                     <IconTerminal2 className="mr-2 h-5 w-5 text-cyan-300" /> How to upgrade
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     EmperorClaw uses additive-only database migrations — upgrades are safe and reversible.
                     Always back up your database before upgrading.
                 </p>
 
                 <div className="mt-5 space-y-4">
                     {/* Docker upgrade */}
-                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
-                        <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                             <IconDownload className="h-4 w-4 text-cyan-300" />
                             Docker (recommended)
                         </h3>
                         <div className="mt-3 space-y-2">
-                            <div className="rounded-lg bg-zinc-950 p-3">
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">
+                            <div className="rounded-lg bg-background p-3">
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">
                                     {"# 1. Back up your database\n"}
                                     {"pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql\n\n"}
                                     {"# 2. Pull latest and rebuild\n"}
@@ -168,14 +168,14 @@ export function UpdateSettingsTab() {
                     </div>
 
                     {/* Manual upgrade */}
-                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
-                        <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-                            <IconTerminal2 className="h-4 w-4 text-zinc-400" />
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                            <IconTerminal2 className="h-4 w-4 text-muted-foreground" />
                             Manual (without Docker)
                         </h3>
                         <div className="mt-3 space-y-2">
-                            <div className="rounded-lg bg-zinc-950 p-3">
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">
+                            <div className="rounded-lg bg-background p-3">
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">
                                     {"# 1. Back up your database\n"}
                                     {"pg_dump $POSTGRES_CONNECTION_STRING > backup-$(date +%Y%m%d).sql\n\n"}
                                     {"# 2. Pull latest\n"}
@@ -194,14 +194,14 @@ export function UpdateSettingsTab() {
                     </div>
 
                     {/* Backup scripts */}
-                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
-                        <h3 className="text-sm font-semibold text-zinc-200">Backup scripts</h3>
-                        <p className="mt-1 text-sm text-zinc-400">
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                        <h3 className="text-sm font-semibold text-foreground">Backup scripts</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
                             Convenience scripts to back up your database before upgrading.
                         </p>
                         <div className="mt-3 space-y-2">
-                            <div className="rounded-lg bg-zinc-950 p-3">
-                                <code className="block font-mono text-xs text-zinc-500">
+                            <div className="rounded-lg bg-background p-3">
+                                <code className="block font-mono text-xs text-muted-foreground">
                                     Linux/macOS: scripts/backup-db.sh{"\n"}
                                     Windows:     scripts/backup-db.ps1
                                 </code>
@@ -218,8 +218,8 @@ export function UpdateSettingsTab() {
                             If something goes wrong, migrations are additive-only and never drop data.
                             You can safely roll back to the previous version:
                         </p>
-                        <div className="mt-3 rounded-lg bg-zinc-950 p-3">
-                            <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">
+                        <div className="mt-3 rounded-lg bg-background p-3">
+                            <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">
                                 {"git checkout v"}
                                 {data.currentVersion}
                                 {"\ndocker compose up -d --build"}
@@ -231,12 +231,12 @@ export function UpdateSettingsTab() {
 
             {/* Changelog */}
             {data.changelog && (
-                <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                    <h2 className="flex items-center text-lg font-semibold text-zinc-100">
+                <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
+                    <h2 className="flex items-center text-lg font-semibold text-foreground">
                         <IconDownload className="mr-2 h-5 w-5 text-cyan-300" /> Changelog — v{data.latestVersion}
                     </h2>
-                    <div className="mt-4 max-h-[600px] overflow-y-auto rounded-xl border border-border bg-zinc-950/60 p-4 sm:p-6">
-                        <div className="prose prose-invert prose-sm max-w-none [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-cyan-200 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-zinc-200 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:text-zinc-400 [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_strong]:text-zinc-200">
+                    <div className="mt-4 max-h-[600px] overflow-y-auto rounded-xl border border-border bg-muted/30 p-4 sm:p-6">
+                        <div className="prose prose-invert prose-sm max-w-none [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-cyan-200 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_ul]:list-disc [&_ul]:pl-4 [&_li]:text-muted-foreground [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_strong]:text-foreground">
                             {/* Render the markdown changelog safely */}
                             <ChangelogContent body={data.changelog} />
                         </div>
@@ -271,7 +271,7 @@ function ChangelogContent({ body }: { body: string }) {
 
     return (
         <div
-            className="[&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-cyan-200 [&_h2]:mt-6 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-zinc-200 [&_h3]:mt-4 [&_h3]:mb-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_li]:text-zinc-400 [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_strong]:text-zinc-200"
+            className="[&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-cyan-200 [&_h2]:mt-6 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-4 [&_h3]:mb-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_strong]:text-foreground"
             dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }}
         />
     );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconMail, IconTrash, IconUserCog, IconUsers, IconShield, IconClock, IconLoader2, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
+import { IconMail, IconTrash, IconUserCog, IconUsers, IconShield, IconClock, IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ type InvitationRow = {
 };
 
 interface Props {
+    embedded?: boolean;
     currentUserId: string;
     currentUserRole: string;
     companyId: string;
@@ -41,7 +42,7 @@ const ROLE_COLORS: Record<string, string> = {
     owner: "bg-amber-500/10 text-amber-400 border-amber-500/20",
     admin: "bg-blue-500/10 text-blue-400 border-blue-500/20",
     member: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    viewer: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+    viewer: "bg-zinc-500/10 text-muted-foreground border-zinc-500/20",
 };
 
 const ROLE_OPTIONS = ["admin", "member", "viewer"] as const;
@@ -57,7 +58,7 @@ function roleBadge(role: string) {
     );
 }
 
-export default function MembersClient({ currentUserId, currentUserRole, companyId, initialMembers, agents, customersData }: Props) {
+export default function MembersClient({ currentUserId, currentUserRole, initialMembers, agents, customersData, embedded = false }: Props) {
     const [members, setMembers] = useState<Member[]>(initialMembers);
     const [invitations, setInvitations] = useState<InvitationRow[]>([]);
 
@@ -247,17 +248,17 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
     };
 
     return (
-        <div className="space-y-8 max-w-4xl">
-            <PageHeader
+        <div className="min-w-0 space-y-6 max-w-4xl">
+            {!embedded && <PageHeader
                 eyebrow="Team"
                 title="Members"
                 description="Manage team members, roles, and invitations."
-            />
+            />}
 
             {/* ── Invite Form ─────────────────────────────────────────── */}
             {canInvite && (
-                <div className="emperor-panel rounded-2xl border border-border bg-zinc-950/70 p-6">
-                    <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+                <div className="emperor-panel rounded-2xl border border-border bg-card p-6">
+                    <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                         <IconMail className="w-5 h-5 text-indigo-400" />
                         Invite Member
                     </h3>
@@ -273,10 +274,10 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                         <select
                             value={inviteRole}
                             onChange={(e) => setInviteRole(e.target.value)}
-                            className="bg-zinc-950/50 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                            className="bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                         >
                             {ROLE_OPTIONS.map((r) => (
-                                <option key={r} value={r} className="bg-zinc-900">
+                                <option key={r} value={r} className="bg-muted">
                                     {r.charAt(0).toUpperCase() + r.slice(1)}
                                 </option>
                             ))}
@@ -290,8 +291,8 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             )}
 
             {/* ── Members List ─────────────────────────────────────────── */}
-            <div className="emperor-panel rounded-2xl border border-border bg-zinc-950/70 p-6">
-                <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+            <div className="emperor-panel rounded-2xl border border-border bg-card p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                     <IconUsers className="w-5 h-5 text-indigo-400" />
                     Team Members ({members.length})
                 </h3>
@@ -299,7 +300,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border text-zinc-500 text-left">
+                            <tr className="border-b border-border text-muted-foreground text-left">
                                 <th className="pb-3 font-medium">Email</th>
                                 <th className="pb-3 font-medium">Company Role</th>
                                 <th className="pb-3 font-medium">Instance Role</th>
@@ -310,15 +311,15 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                         <tbody>
                             {members.map((member) => (
                                 <tr key={member.id} className="border-b border-border">
-                                    <td className="py-3 text-zinc-200">
+                                    <td className="py-3 text-foreground">
                                         {member.displayName && <span className="font-medium">{member.displayName}</span>}
                                         {member.displayName && <br />}
-                                        <span className={member.displayName ? "text-xs text-zinc-500" : ""}>{member.email}</span>
+                                        <span className={member.displayName ? "text-xs text-muted-foreground" : ""}>{member.email}</span>
                                         {member.roleTitle && <span className="block text-[10px] text-cyan-400/70 mt-0.5">{member.roleTitle}</span>}
                                     </td>
                                     <td className="py-3">{roleBadge(member.companyRole)}</td>
                                     <td className="py-3">{roleBadge(member.instanceRole)}</td>
-                                    <td className="py-3 text-zinc-500">
+                                    <td className="py-3 text-muted-foreground">
                                         {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "—"}
                                     </td>
                                     <td className="py-3 text-right">
@@ -326,7 +327,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                             <div className="flex gap-1 justify-end">
                                                 <button
                                                     onClick={() => openScope(member.id)}
-                                                    className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-cyan-400 transition-colors"
+                                                    className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-cyan-400 transition-colors"
                                                     title="Access scope"
                                                 >
                                                     <IconShield className="w-4 h-4" />
@@ -334,7 +335,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                 {canChangeRoles && (
                                                     <button
                                                         onClick={() => { setChangingRoleFor(member.id); setNewRole(member.companyRole); }}
-                                                        className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200 transition-colors"
+                                                        className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
                                                         title="Change role"
                                                     >
                                                         <IconUserCog className="w-4 h-4" />
@@ -343,7 +344,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                 {canInvite && (
                                                     <button
                                                         onClick={() => setRemovingMember(member.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-colors"
+                                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                                                         title="Remove member"
                                                     >
                                                         <IconTrash className="w-4 h-4" />
@@ -356,7 +357,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                             ))}
                             {members.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="py-8 text-center text-zinc-500">
+                                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
                                         No members found.
                                     </td>
                                 </tr>
@@ -368,15 +369,15 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
 
             {/* ── Pending Invitations ──────────────────────────────────── */}
             {canInvite && invitations.length > 0 && (
-                <div className="emperor-panel rounded-2xl border border-border bg-zinc-950/70 p-6">
-                    <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+                <div className="emperor-panel rounded-2xl border border-border bg-card p-6">
+                    <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                         <IconClock className="w-5 h-5 text-indigo-400" />
                         Pending Invitations ({invitations.length})
                     </h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b border-border text-zinc-500 text-left">
+                                <tr className="border-b border-border text-muted-foreground text-left">
                                     <th className="pb-3 font-medium">Email</th>
                                     <th className="pb-3 font-medium">Role</th>
                                     <th className="pb-3 font-medium">Created</th>
@@ -388,12 +389,12 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                             <tbody>
                                 {invitations.map((inv) => (
                                     <tr key={inv.id} className="border-b border-border">
-                                        <td className="py-3 text-zinc-200">{inv.email}</td>
+                                        <td className="py-3 text-foreground">{inv.email}</td>
                                         <td className="py-3">{roleBadge(inv.role)}</td>
-                                        <td className="py-3 text-zinc-500">
+                                        <td className="py-3 text-muted-foreground">
                                             {new Date(inv.createdAt).toLocaleDateString()}
                                         </td>
-                                        <td className="py-3 text-zinc-500">
+                                        <td className="py-3 text-muted-foreground">
                                             {new Date(inv.expiresAt).toLocaleDateString()}
                                         </td>
                                         <td className="py-3">
@@ -403,7 +404,7 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                     ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                                                     : inv.status === "expired"
                                                         ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                                                        : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                                        : "bg-zinc-500/10 text-muted-foreground border-zinc-500/20"
                                             )}>
                                                 {inv.status}
                                             </span>
@@ -413,14 +414,14 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                                 <div className="flex items-center gap-1 justify-end">
                                                     <button
                                                         onClick={() => handleResendInvitation(inv.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-blue-500/10 text-zinc-400 hover:text-blue-400 transition-colors"
+                                                        className="p-1.5 rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-400 transition-colors"
                                                         title="Resend"
                                                     >
                                                         <IconMail className="w-4 h-4" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleRevokeInvitation(inv.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-colors"
+                                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                                                         title="Revoke"
                                                     >
                                                         <IconTrash className="w-4 h-4" />
@@ -439,15 +440,15 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {/* ── Role Change Dialog ────────────────────────────────────── */}
             {changingRoleFor && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-                        <h3 className="text-lg font-semibold text-zinc-100 mb-4">Change Role</h3>
+                    <div className="bg-muted border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                        <h3 className="text-lg font-semibold text-foreground mb-4">Change Role</h3>
                         <select
                             value={newRole}
                             onChange={(e) => setNewRole(e.target.value)}
-                            className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-4"
+                            className="w-full bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-4"
                         >
                             {ROLE_OPTIONS.map((r) => (
-                                <option key={r} value={r} className="bg-zinc-900">
+                                <option key={r} value={r} className="bg-muted">
                                     {r.charAt(0).toUpperCase() + r.slice(1)}
                                 </option>
                             ))}
@@ -467,12 +468,12 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {/* ── Remove Member Confirmation ───────────────────────────── */}
             {removingMember && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                    <div className="bg-muted border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                         <div className="flex items-start gap-3 mb-4">
                             <IconAlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="text-lg font-semibold text-zinc-100">Remove Member</h3>
-                                <p className="text-sm text-zinc-400 mt-1">
+                                <h3 className="text-lg font-semibold text-foreground">Remove Member</h3>
+                                <p className="text-sm text-muted-foreground mt-1">
                                     Are you sure you want to remove this member from the workspace? This action can be undone by re-inviting them.
                                 </p>
                             </div>
@@ -496,11 +497,11 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
             {scopeFor && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="emperor-panel w-full max-w-lg rounded-2xl border border-border bg-zinc-950 p-6 shadow-2xl">
-                        <h3 className="text-lg font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                             <IconShield className="w-5 h-5 text-cyan-400" />
                             Access Scope
                         </h3>
-                        <p className="text-sm text-zinc-500 mb-4">
+                        <p className="text-sm text-muted-foreground mb-4">
                             {members.find(m => m.id === scopeFor)?.email}
                         </p>
 
@@ -510,44 +511,44 @@ export default function MembersClient({ currentUserId, currentUserRole, companyI
                                     type="checkbox"
                                     checked={scopeMode === "restricted"}
                                     onChange={(e) => setScopeMode(e.target.checked ? "restricted" : "all")}
-                                    className="rounded border-zinc-700 bg-zinc-900 text-cyan-400 focus:ring-cyan-400"
+                                    className="rounded border-border bg-muted text-cyan-400 focus:ring-cyan-400"
                                 />
-                                <span className="text-sm text-zinc-200">Restricted access</span>
-                                <span className="text-xs text-zinc-500">(unchecked = see everything)</span>
+                                <span className="text-sm text-foreground">Restricted access</span>
+                                <span className="text-xs text-muted-foreground">(unchecked = see everything)</span>
                             </label>
 
                             {scopeMode === "restricted" && (
                                 <>
                                     <div>
-                                        <h4 className="text-sm font-medium text-zinc-300 mb-2">Visible Agents</h4>
-                                        <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
-                                            {agents.length === 0 && <p className="text-xs text-zinc-600 p-2">No agents</p>}
+                                        <h4 className="text-sm font-medium text-foreground mb-2">Visible Agents</h4>
+                                        <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">
+                                            {agents.length === 0 && <p className="text-xs text-muted-foreground p-2">No agents</p>}
                                             {agents.map((a) => (
-                                                <label key={a.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800/50">
+                                                <label key={a.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
                                                     <input
                                                         type="checkbox"
                                                         checked={scopeAgentIds.includes(a.id)}
                                                         onChange={() => toggleScopeItem(a.id, scopeAgentIds, setScopeAgentIds)}
-                                                        className="rounded border-zinc-700 bg-zinc-900 text-cyan-400"
+                                                        className="rounded border-border bg-muted text-cyan-400"
                                                     />
-                                                    <span className="text-sm text-zinc-300">{a.name}</span>
+                                                    <span className="text-sm text-foreground">{a.name}</span>
                                                 </label>
                                             ))}
                                         </div>
                                     </div>
                                     <div>
-                                        <h4 className="text-sm font-medium text-zinc-300 mb-2">Visible Customers</h4>
-                                        <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
-                                            {customersData.length === 0 && <p className="text-xs text-zinc-600 p-2">No customers</p>}
+                                        <h4 className="text-sm font-medium text-foreground mb-2">Visible Customers</h4>
+                                        <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">
+                                            {customersData.length === 0 && <p className="text-xs text-muted-foreground p-2">No customers</p>}
                                             {customersData.map((c) => (
-                                                <label key={c.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800/50">
+                                                <label key={c.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-muted/50">
                                                     <input
                                                         type="checkbox"
                                                         checked={scopeCustomerIds.includes(c.id)}
                                                         onChange={() => toggleScopeItem(c.id, scopeCustomerIds, setScopeCustomerIds)}
-                                                        className="rounded border-zinc-700 bg-zinc-900 text-cyan-400"
+                                                        className="rounded border-border bg-muted text-cyan-400"
                                                     />
-                                                    <span className="text-sm text-zinc-300">{c.name}</span>
+                                                    <span className="text-sm text-foreground">{c.name}</span>
                                                 </label>
                                             ))}
                                         </div>

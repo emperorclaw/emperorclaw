@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers, IconArrowUp } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconPlugConnected, IconCircleCheck, IconCopy, IconKey, IconPlus, IconSettings, IconTrash, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ type SettingsToken = {
     includePrivateChats?: boolean;
 };
 
-type SettingsTab = "profile" | "notifications" | "routines" | "connections" | "tokens" | "displays" | "updates" | "advanced" | "instance" | "members";
+import { resolveSettingsTab, settingsSections, type SettingsTab } from "@/lib/settings-navigation";
 
 type Member = {
     id: string;
@@ -90,6 +90,8 @@ export default function SettingsClient({
     isPlatformAdmin?: boolean;
 }) {
     const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const [tokens, setTokens] = useState(initialTokens);
     const [newTokenName, setNewTokenName] = useState("");
     const [newTokenScope, setNewTokenScope] = useState<TokenScope>("mcp_full");
@@ -97,9 +99,7 @@ export default function SettingsClient({
     const [newTokenPrivateChats, setNewTokenPrivateChats] = useState(false);
     const [editingCallbackId, setEditingCallbackId] = useState<string | null>(null);
     const [callbackDraft, setCallbackDraft] = useState("");
-    const [activeTab, setActiveTab] = useState<SettingsTab>(
-        (searchParams.get("tab") as SettingsTab) || "connections"
-    );
+
     const [generating, setGenerating] = useState(false);
     const [activeSecret, setActiveSecret] = useState<{ id: string, name: string, secret: string } | null>(null);
     const [copied, setCopied] = useState(false);
@@ -109,19 +109,32 @@ export default function SettingsClient({
     const [profileRoleTitle, setProfileRoleTitle] = useState("");
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileLoaded, setProfileLoaded] = useState(false);
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [profileError, setProfileError] = useState(false);
     // Same guard as token creation (POST /api/settings/tokens requires admin).
     const isAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
 
-    const loadProfile = async () => {
-        if (profileLoaded) return;
+    const sections = settingsSections({isAdmin,instanceAdmin:instanceRole === 'instance_admin'});
+    const activeTab = resolveSettingsTab(searchParams.get('tab'),{isAdmin,instanceAdmin:instanceRole === 'instance_admin'});
+    const currentSection = sections.flatMap(section => section.items).find(item => item.id === activeTab)!;
+    const setActiveTab = (tab:SettingsTab) => {
+        const params = new URLSearchParams(searchParams.toString()); params.set('tab',tab);
+        router.push(`${pathname}?${params}`,{scroll:false});
+    };
+
+    const loadProfile = async (retry = false) => {
+        if (profileLoaded || profileLoading || (profileError && !retry)) return;
+        setProfileLoading(true); setProfileError(false);
         try {
             const res = await fetch("/api/user/profile");
+            if (!res.ok) throw new Error("Could not load your profile");
             if (res.ok) {
                 const data = await res.json();
                 setProfileDisplayName(data.displayName || "");
                 setProfileRoleTitle(data.roleTitle || "");
             }
-        } catch {}
+        } catch { setProfileError(true); return; }
+        finally { setProfileLoading(false); }
         setProfileLoaded(true);
     };
 
@@ -240,57 +253,18 @@ export default function SettingsClient({
     };
 
     return (
-        <div className="mx-auto max-w-[1800px] space-y-6 animate-in fade-in duration-500">
-            <PageHeader
-                eyebrow="Settings"
-                title="Workspace & Access"
-                description="Connect agent runtimes, manage access tokens, and keep dangerous setup details behind an advanced section."
-                actions={
-                    <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full sm:min-w-80">
-                        <div className="rounded-2xl border border-border bg-white/[0.035] p-3 sm:p-4">
-                            <div className="text-[10px] sm:text-xs uppercase tracking-wider text-zinc-500">Active tokens</div>
-                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-zinc-50">{tokens.length}</div>
-                        </div>
-                        <div className="rounded-2xl border border-border bg-white/[0.035] p-3 sm:p-4">
-                            <div className="text-[10px] sm:text-xs uppercase tracking-wider text-zinc-500">Runtimes</div>
-                            <div className="mt-1 text-xl sm:text-2xl font-semibold text-zinc-50">2</div>
-                        </div>
-                    </div>
-                }
-            />
-
-            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-border bg-zinc-950/60 p-1.5 sm:p-2">
-                {([
-                    ["profile", "Profile"],
-                    ["notifications", "Notifications"],
-                    ["routines", "Routines"],
-                    ["connections", "Agent Connections"],
-                    ["tokens", "Access Tokens"],
-                    ...(isAdmin ? [["displays", "Displays"] as const] : []),
-                    ["updates", "Updates"],
-                    ["advanced", "Advanced"],
-                    ...(instanceRole === "instance_admin" ? [["instance", "Instance"] as const] : []),
-                    ...(instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin" ? [["members", "Members"] as const] : []),
-                ] as const).map(([id, label]) => (
-                    <button
-                        key={id}
-                        type="button"
-                        onClick={() => setActiveTab(id)}
-                        className={cn(
-                            "cursor-pointer rounded-xl px-4 py-2 text-sm font-medium transition-colors",
-                            activeTab === id ? "bg-cyan-400/10 text-cyan-100 ring-1 ring-cyan-400/25" : "text-zinc-400 hover:bg-white/[0.045] hover:text-zinc-100"
-                        )}
-                    >
-                        {label}
-                    </button>
-                ))}
-                {isPlatformAdmin && (
-                    <Link href="/ops" className="rounded-xl px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-white/[0.045] hover:text-zinc-100">
-                        Ops ↗
-                    </Link>
-                )}
-            </div>
-
+        <div className="mx-auto min-w-0 max-w-[1440px] space-y-6 animate-in fade-in duration-500">
+            <PageHeader eyebrow="Workspace" title="Settings" description="Manage your profile, workspace, and connections." />
+            <div className="grid min-w-0 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <aside className="min-w-0">
+                    <label className="block space-y-2 lg:hidden"><span className="text-sm font-medium">Settings section</span><select aria-label="Settings section" value={activeTab} onChange={event => setActiveTab(event.target.value as SettingsTab)} className="min-h-11 w-full rounded-xl border border-border bg-card px-3 text-base">{sections.map(section => <optgroup key={section.label} label={section.label}>{section.items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>)}</select></label>
+                    <nav aria-label="Settings sections" className="hidden space-y-5 lg:block">
+                        {sections.map(section => <div key={section.label}><p className="mb-2 px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.label}</p><div className="space-y-1">{section.items.map(item => <Link key={item.id} href={`${pathname}?tab=${item.id}`} scroll={false} aria-current={activeTab === item.id ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',activeTab === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>{item.label}</Link>)}</div></div>)}
+                        {isPlatformAdmin && <Link href="/ops" className="flex min-h-11 items-center rounded-xl border-t border-border px-3 text-sm text-muted-foreground hover:text-foreground">Platform operations ↗</Link>}
+                    </nav>
+                </aside>
+                <div className="min-w-0 space-y-5" aria-label={currentSection.label}>
+                    <p className="text-sm leading-6 text-muted-foreground">{currentSection.description}</p>
             {activeTab === "profile" && (
                 <ProfileTab
                     displayName={profileDisplayName}
@@ -301,6 +275,8 @@ export default function SettingsClient({
                     saving={savingProfile}
                     onLoad={loadProfile}
                     loaded={profileLoaded}
+                    error={profileError}
+                    onRetry={() => void loadProfile(true)}
                 />
             )}
 
@@ -313,28 +289,29 @@ export default function SettingsClient({
             )}
 
             {activeTab === "connections" && (
-                <section className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+                <section className="grid gap-3 sm:gap-4 xl:grid-cols-2">
+                    <article className="rounded-2xl border border-border bg-card p-5 sm:p-6 xl:col-span-2"><h2 className="text-lg font-semibold">Start with an agent or a team</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Use the guided setup in Agents. Choose a role, or a ready-made team with a shared chat. Manual runtime guides are below if you already run your own agents.</p><Button asChild className="mt-4 min-h-11"><Link href="/agents">Open agents <IconArrowRight className="h-4 w-4" /></Link></Button></article>
                     {runtimeCards.map((runtime) => (
-                        <article key={runtime.title} className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
+                        <article key={runtime.title} className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
                             <div className="flex items-center gap-3">
                                 <div className="grid h-11 w-11 place-items-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10">
-                                    <IconPlugConnected className="h-5 w-5 text-cyan-300" />
+                                    <IconPlugConnected className="h-5 w-5 text-primary" />
                                 </div>
-                                <h2 className="text-xl font-semibold text-zinc-50">{runtime.title}</h2>
+                                <h2 className="text-xl font-semibold text-foreground">{runtime.title}</h2>
                             </div>
-                            <p className="mt-4 text-sm leading-6 text-zinc-400">{runtime.body}</p>
-                            <a href={runtime.href} className="mt-5 inline-flex text-sm font-semibold text-cyan-300 hover:text-cyan-200">
+                            <p className="mt-4 text-sm leading-6 text-muted-foreground">{runtime.body}</p>
+                            <a href={runtime.href} className="mt-5 inline-flex text-sm font-semibold text-primary hover:text-primary/80">
                                 {runtime.cta}
                             </a>
                         </article>
                     ))}
-                    <article className="rounded-2xl sm:rounded-3xl border border-amber-500/20 bg-amber-500/[0.06] p-4 sm:p-6 lg:col-span-2">
+                    <article className="rounded-2xl sm:rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-4 sm:p-6 xl:col-span-2">
                         <h2 className="text-sm font-semibold text-amber-800 dark:text-amber-100">Operator rule</h2>
                         <p className="mt-2 text-sm leading-6 text-amber-700 dark:text-amber-100/75">
                             Create the agent profile in Emperor first, then connect exactly one local runtime profile or workspace to that agent. The runtime can be Hermes or OpenClaw; Emperor should stay runtime-neutral.
                         </p>
                     </article>
-                    <article className="rounded-2xl sm:rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 sm:p-6 lg:col-span-2">
+                    <details className="rounded-2xl border border-border bg-card p-4 xl:col-span-2"><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">Manual setup with an assistant</summary>                    <article className="rounded-2xl sm:rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 sm:p-6 xl:col-span-2">
                         <div className="flex items-center gap-3">
                             <span className="text-2xl">🤖</span>
                             <h2 className="text-lg font-semibold text-emerald-800 dark:text-emerald-100">Quick Setup — Let your own LLM configure it</h2>
@@ -344,7 +321,7 @@ export default function SettingsClient({
                         </p>
                         <div className="mt-4 grid gap-4 sm:grid-cols-2">
                             {/* Hermes prompt */}
-                            <div className="rounded-xl border border-emerald-500/30 bg-zinc-950/60 overflow-hidden">
+                            <div className="rounded-xl border border-emerald-500/30 bg-muted/30 overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
                                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">Hermes agent</span>
                                     <CopyPromptButton text={`I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
@@ -383,7 +360,7 @@ Ask me for any info you need along the way.`}</pre>
                             </div>
 
                             {/* OpenClaw prompt */}
-                            <div className="rounded-xl border border-emerald-500/30 bg-zinc-950/60 overflow-hidden">
+                            <div className="rounded-xl border border-emerald-500/30 bg-muted/30 overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
                                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">OpenClaw agent</span>
                                     <CopyPromptButton text={`I need to configure an OpenClaw agent connected to Emperor Claw, an open-source AI workforce control plane.
@@ -438,19 +415,19 @@ Walk me through step by step.`}</pre>
                         <p className="mt-3 text-xs text-emerald-700/80 dark:text-emerald-100/60">
                             Replace <code className="bg-emerald-500/15 px-1 rounded text-emerald-800 dark:text-emerald-200">[DESCRIBE YOUR ROLE HERE]</code> with your agent&apos;s actual role — e.g. &quot;SEO Specialist&quot;, &quot;Lead Generation Agent&quot;, &quot;Technical Implementation Agent&quot;. The more specific you are, the better the result.
                         </p>
-                    </article>
+                    </article></details>
                 </section>
             )}
 
             {activeTab === "tokens" && (
                 <section className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.2fr)]">
-                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                        <h2 className="mb-4 flex items-center text-lg font-semibold text-zinc-100">
-                            <IconKey className="mr-2 h-5 w-5 text-cyan-300" /> Create access token
+                    <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
+                        <h2 className="mb-4 flex items-center text-lg font-semibold text-foreground">
+                            <IconKey className="mr-2 h-5 w-5 text-primary" /> Create access token
                         </h2>
                         <div className="space-y-4">
                             <label className="block space-y-2">
-                                <span className="text-sm font-medium text-zinc-300">Token name</span>
+                                <span className="text-sm font-medium text-foreground">Token name</span>
                                 <Input
                                     type="text"
                                     placeholder="e.g. Pi bridge, Growth agent, QA runtime"
@@ -459,29 +436,29 @@ Walk me through step by step.`}</pre>
                                 />
                             </label>
                             <label className="block space-y-2">
-                                <span className="text-sm font-medium text-zinc-300">Access level</span>
+                                <span className="text-sm font-medium text-foreground">Access level</span>
                                 <select
                                     value={newTokenScope}
                                     onChange={(event) => setNewTokenScope(event.target.value as TokenScope)}
-                                    className="h-10 w-full rounded-xl border border-border bg-white/[0.035] px-3 text-sm text-zinc-100 outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                                    className="h-10 w-full rounded-xl border border-border bg-muted/30 px-3 text-sm text-foreground outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
                                 >
                                     <option value="mcp_full">Agent access</option>
                                     <option value="mcp_danger">Secret leasing</option>
                                     <option value="requests">Requests only (another platform)</option>
                                     <option value="read_only">Read only (screens &amp; dashboards)</option>
                                 </select>
-                                <p className="text-xs leading-5 text-zinc-500">{tokenScopeHelp(newTokenScope)}</p>
+                                <p className="text-xs leading-5 text-muted-foreground">{tokenScopeHelp(newTokenScope)}</p>
                             </label>
                             {newTokenScope === "requests" && (
                                 <label className="block space-y-2">
-                                    <span className="text-sm font-medium text-zinc-300">Callback URL <span className="font-normal text-zinc-500">(optional)</span></span>
+                                    <span className="text-sm font-medium text-foreground">Callback URL <span className="font-normal text-muted-foreground">(optional)</span></span>
                                     <Input
                                         type="url"
                                         placeholder="https://your-platform.example/emperor/callback"
                                         value={newTokenCallback}
                                         onChange={(event) => setNewTokenCallback(event.target.value)}
                                     />
-                                    <p className="text-xs leading-5 text-zinc-500">Emperor posts a signed update here whenever a request changes status. Stored encrypted.</p>
+                                    <p className="text-xs leading-5 text-muted-foreground">Emperor posts a signed update here whenever a request changes status. Stored encrypted.</p>
                                 </label>
                             )}
                             {newTokenScope === "read_only" && (
@@ -493,8 +470,8 @@ Walk me through step by step.`}</pre>
                                         onChange={(event) => setNewTokenPrivateChats(event.target.checked)}
                                     />
                                     <span className="space-y-1">
-                                        <span className="block text-sm font-medium text-zinc-300">Include my private chats</span>
-                                        <span className="block text-xs leading-5 text-zinc-500">Shows your own direct conversations with each agent on the screen. Never includes other people&apos;s chats. Anyone who can see the screen can read them.</span>
+                                        <span className="block text-sm font-medium text-foreground">Include my private chats</span>
+                                        <span className="block text-xs leading-5 text-muted-foreground">Shows your own direct conversations with each agent on the screen. Never includes other people&apos;s chats. Anyone who can see the screen can read them.</span>
                                     </span>
                                 </label>
                             )}
@@ -512,9 +489,9 @@ Walk me through step by step.`}</pre>
                                         <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-100/75">Copy it now. Emperor will not show this secret again.</p>
                                     </div>
                                 </div>
-                                <div className="mt-4 flex overflow-hidden rounded-xl border border-border bg-zinc-950/60">
-                                    <code className="flex-1 overflow-x-auto px-4 py-3 font-mono text-sm text-zinc-300">{activeSecret.secret}</code>
-                                    <button onClick={copyToClipboard} className="cursor-pointer border-l border-border px-4 text-zinc-400 transition-colors hover:bg-white/[0.045] hover:text-zinc-50">
+                                <div className="mt-4 flex overflow-hidden rounded-xl border border-border bg-muted/30">
+                                    <code className="flex-1 overflow-x-auto px-4 py-3 font-mono text-sm text-foreground">{activeSecret.secret}</code>
+                                    <button onClick={copyToClipboard} className="cursor-pointer border-l border-border px-4 text-muted-foreground transition-colors hover:bg-white/[0.045] hover:text-foreground">
                                         {copied ? <IconCircleCheck className="h-4 w-4 text-emerald-300" /> : <IconCopy className="h-4 w-4" />}
                                     </button>
                                 </div>
@@ -522,31 +499,31 @@ Walk me through step by step.`}</pre>
                         )}
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl sm:rounded-3xl border border-border bg-zinc-950/70">
+                    <div className="overflow-hidden rounded-2xl sm:rounded-2xl border border-border bg-background/70">
                         <div className="border-b border-border p-4 sm:p-5">
-                            <h2 className="text-lg font-semibold text-zinc-100">Active tokens</h2>
-                            <p className="mt-1 text-sm text-zinc-500">Revoke anything that is no longer attached to a real runtime.</p>
+                            <h2 className="text-lg font-semibold text-foreground">Active tokens</h2>
+                            <p className="mt-1 text-sm text-muted-foreground">Revoke anything that is no longer attached to a real runtime.</p>
                         </div>
                         <div className="divide-y divide-white/10">
                             {tokens.length === 0 ? (
-                                <div className="p-8 text-center text-sm text-zinc-500">No access tokens active. Create one to connect an agent runtime.</div>
+                                <div className="p-8 text-center text-sm text-muted-foreground">No access tokens active. Create one to connect an agent runtime.</div>
                             ) : (
                                 tokens.map((token) => (
                                     <div key={token.id} className="flex flex-col gap-3 sm:gap-4 p-4 sm:p-5 transition-colors hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <h3 className="font-medium text-zinc-100">{token.name}</h3>
+                                                <h3 className="font-medium text-foreground">{token.name}</h3>
                                                 <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
                                                     {tokenScopeLabel(token.scope)}
                                                 </span>
                                                 {token.scope === "read_only" && token.includePrivateChats && (
-                                                    <span className="text-xs text-zinc-400">+ my private chats</span>
+                                                    <span className="text-xs text-muted-foreground">+ my private chats</span>
                                                 )}
                                             </div>
-                                            <p className="mt-1 font-mono text-xs text-zinc-500">
+                                            <p className="mt-1 font-mono text-xs text-muted-foreground">
                                                 ID: {token.id} · Created: {new Date(token.createdAt).toLocaleDateString()} · Expires: {new Date(token.expiresAt).toLocaleDateString()}
                                             </p>
-                                            <p className="mt-1 text-xs text-zinc-500">Last used: {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</p>
+                                            <p className="mt-1 text-xs text-muted-foreground">Last used: {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</p>
                                             {token.scope === "requests" && (
                                                 editingCallbackId === token.id ? (
                                                     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -555,10 +532,10 @@ Walk me through step by step.`}</pre>
                                                         <Button size="sm" variant="ghost" onClick={() => setEditingCallbackId(null)}>Cancel</Button>
                                                     </div>
                                                 ) : (
-                                                    <p className="mt-1 text-xs text-zinc-500">
+                                                    <p className="mt-1 text-xs text-muted-foreground">
                                                         Callback: {token.callbackUrlHint ? <span className="font-mono">{token.callbackUrlHint}</span> : "none"}{" · "}
-                                                        <button className="cursor-pointer text-cyan-300 hover:underline" onClick={() => { setEditingCallbackId(token.id); setCallbackDraft(""); }}>{token.callbackUrlHint ? "Change" : "Add"}</button>
-                                                        {token.callbackUrlHint && <>{" · "}<button className="cursor-pointer text-zinc-400 hover:underline" onClick={() => saveCallback(token.id, null)}>Remove</button></>}
+                                                        <button className="cursor-pointer text-primary hover:underline" onClick={() => { setEditingCallbackId(token.id); setCallbackDraft(""); }}>{token.callbackUrlHint ? "Change" : "Add"}</button>
+                                                        {token.callbackUrlHint && <>{" · "}<button className="cursor-pointer text-muted-foreground hover:underline" onClick={() => saveCallback(token.id, null)}>Remove</button></>}
                                                     </p>
                                                 )
                                             )}
@@ -572,22 +549,22 @@ Walk me through step by step.`}</pre>
                         </div>
                     </div>
 
-                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:col-span-2">
-                        <h2 className="mb-2 flex items-center text-lg font-semibold text-zinc-100">
-                            <IconPlugConnected className="mr-2 h-5 w-5 text-cyan-300" /> Connect Claude, Codex, or another MCP client
+                    <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6 xl:col-span-2">
+                        <h2 className="mb-2 flex items-center text-lg font-semibold text-foreground">
+                            <IconPlugConnected className="mr-2 h-5 w-5 text-primary" /> Connect Claude, Codex, or another MCP client
                         </h2>
-                        <p className="text-sm leading-6 text-zinc-400">
-                            Emperor exposes a real Model Context Protocol server at <code className="rounded bg-zinc-950/60 px-1 py-0.5 font-mono text-xs text-zinc-300">/mcp</code> — point any MCP-capable client at it with an <strong>Agent access</strong> token from above to get every agent/task/project/Knowledge &amp; Rules/messaging tool, plus your company&apos;s operating doctrine, automatically.
+                        <p className="text-sm leading-6 text-muted-foreground">
+                            Emperor exposes a real Model Context Protocol server at <code className="rounded bg-muted/30 px-1 py-0.5 font-mono text-xs text-foreground">/mcp</code> — point any MCP-capable client at it with an <strong>Agent access</strong> token from above to get every agent/task/project/Knowledge &amp; Rules/messaging tool, plus your company&apos;s operating doctrine, automatically.
                         </p>
-                        <div className="mt-4 space-y-2 rounded-xl border border-border bg-zinc-950 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">URL</p>
-                            <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">{`${typeof window !== "undefined" ? window.location.origin : ""}/mcp`}</code>
-                            <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">Header</p>
-                            <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">Authorization: Bearer &lt;your token&gt;</code>
+                        <div className="mt-4 space-y-2 rounded-xl border border-border bg-background p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">URL</p>
+                            <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">{`${typeof window !== "undefined" ? window.location.origin : ""}/mcp`}</code>
+                            <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Header</p>
+                            <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">Authorization: Bearer &lt;your token&gt;</code>
                         </div>
-                        <details className="mt-3 rounded-2xl border border-border bg-zinc-950/60 p-4">
-                            <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Claude Desktop config example</summary>
-                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-zinc-950 p-4 font-mono text-xs leading-6 text-zinc-300">{`{
+                        <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">Claude Desktop config example</summary>
+                            <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-background p-4 font-mono text-xs leading-6 text-foreground">{`{
   "mcpServers": {
     "emperorclaw": {
       "url": "${typeof window !== "undefined" ? window.location.origin : "https://your-emperorclaw-host"}/mcp",
@@ -597,13 +574,13 @@ Walk me through step by step.`}</pre>
     }
   }
 }`}</pre>
-                            <p className="mt-3 text-xs leading-5 text-zinc-500">
+                            <p className="mt-3 text-xs leading-5 text-muted-foreground">
                                 Edit this in Claude Desktop&apos;s config file directly.
                             </p>
                         </details>
-                        <details className="mt-3 rounded-2xl border border-border bg-zinc-950/60 p-4">
-                            <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Connect via claude.ai web (Connectors)</summary>
-                            <p className="mt-3 text-xs leading-5 text-zinc-500">
+                        <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">Connect via claude.ai web (Connectors)</summary>
+                            <p className="mt-3 text-xs leading-5 text-muted-foreground">
                                 Add a custom connector and paste just the URL above — no manual Client ID/Secret needed. Emperor registers Claude automatically and you&apos;ll be asked to approve the connection while logged in here; no separate token is required for this path.
                             </p>
                             <p className="mt-2 text-xs leading-5 text-amber-300/80">
@@ -629,25 +606,25 @@ Walk me through step by step.`}</pre>
 
             {activeTab === "advanced" && (
                 <section className="space-y-4">
-                    <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                        <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                            <IconPlugConnected className="mr-2 h-5 w-5 text-cyan-300" /> Advanced runtime setup
+                    <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
+                        <h2 className="flex items-center text-lg font-semibold text-foreground">
+                            <IconPlugConnected className="mr-2 h-5 w-5 text-primary" /> Advanced runtime setup
                         </h2>
-                        <p className="mt-2 text-sm leading-6 text-zinc-400">
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
                             Use this when manually validating a local companion, bridge, heartbeats, checkpoints, or token permissions. Most operators only need the runtime guides above.
                         </p>
-                        <details className="mt-5 rounded-2xl border border-border bg-zinc-950/60 p-4">
-                            <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Show OpenClaw plugin commands</summary>
-                            <div className="mt-4 space-y-3 rounded-xl border border-border bg-zinc-950 p-4">
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw plugins install clawhub:emperor-claw-os-plugin</code>
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">openclaw emperor add-agent --agent-name &quot;Operator One&quot; --local-brain-agent-id operator-one --token &quot;your_token_here&quot; --profile operator</code>
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor doctor</code>
-                                <code className="block whitespace-pre-wrap font-mono text-sm text-zinc-300">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor status</code>
+                        <details className="mt-5 rounded-2xl border border-border bg-muted/30 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">Show OpenClaw plugin commands</summary>
+                            <div className="mt-4 space-y-3 rounded-xl border border-border bg-background p-4">
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">openclaw plugins install clawhub:emperor-claw-os-plugin</code>
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">openclaw emperor add-agent --agent-name &quot;Operator One&quot; --local-brain-agent-id operator-one --token &quot;your_token_here&quot; --profile operator</code>
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor doctor</code>
+                                <code className="block whitespace-pre-wrap font-mono text-sm text-foreground">EMPEROR_CLAW_API_TOKEN=your_token_here openclaw emperor status</code>
                             </div>
                         </details>
-                        <details className="mt-3 rounded-2xl border border-border bg-zinc-950/60 p-4">
-                            <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Show token scope internals</summary>
-                            <p className="mt-3 text-sm leading-6 text-zinc-400">
+                        <details className="mt-3 rounded-2xl border border-border bg-muted/30 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-foreground">Show token scope internals</summary>
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">
                                 Agent access maps to the normal MCP access scope. Secret leasing maps to the privileged scope required for managed secret leases and should only be used on trusted runtimes.
                             </p>
                         </details>
@@ -661,6 +638,7 @@ Walk me through step by step.`}</pre>
 
             {activeTab === "members" && currentUserId && currentUserRole && companyId && initialMembers && agents && customersData && (
                 <MembersClient
+                    embedded
                     currentUserId={currentUserId}
                     currentUserRole={currentUserRole}
                     companyId={companyId}
@@ -669,29 +647,33 @@ Walk me through step by step.`}</pre>
                     customersData={customersData}
                 />
             )}
+                </div>
+            </div>
         </div>
     );
 }
 
-function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded }: { displayName: string; setDisplayName: (v: string) => void; roleTitle: string; setRoleTitle: (v: string) => void; onSave: () => void; saving: boolean; onLoad: () => void; loaded: boolean }) {
+function ProfileTab({ displayName, setDisplayName, roleTitle, setRoleTitle, onSave, saving, onLoad, loaded, error, onRetry }: { displayName: string; setDisplayName: (v: string) => void; roleTitle: string; setRoleTitle: (v: string) => void; onSave: () => void; saving: boolean; onLoad: () => void; loaded: boolean; error:boolean; onRetry:()=>void }) {
     useEffect(() => { if (!loaded) onLoad(); }, [loaded, onLoad]);
     return (
-        <section className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-lg">
-            <h2 className="flex items-center text-lg font-semibold text-zinc-100 mb-4">
-                <IconUsers className="mr-2 h-5 w-5 text-cyan-300" /> Your Profile
+        <section className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6 max-w-lg">
+            <h2 className="flex items-center text-lg font-semibold text-foreground mb-4">
+                <IconUsers className="mr-2 h-5 w-5 text-primary" /> Your Profile
             </h2>
-            <p className="text-sm text-zinc-500 mb-6">Agents can see this info to know who to contact for what.</p>
+            <p className="text-sm text-muted-foreground mb-6">Agents can see this info to know who to contact for what.</p>
+            {error && <p role="alert" className="mb-4 text-sm text-destructive">Could not load your profile. <button type="button" onClick={onRetry} className="min-h-11 underline">Retry</button></p>}
+            {!loaded && !error && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading your profile…</p>}
             <div className="space-y-4">
                 <label className="block">
-                    <span className="text-sm font-medium text-zinc-300">Display Name</span>
-                    <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your full name" className="mt-1 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
+                    <span className="text-sm font-medium text-foreground">Display Name</span>
+                    <input disabled={!loaded} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your full name" className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
                 </label>
                 <label className="block">
-                    <span className="text-sm font-medium text-zinc-300">Role / Title</span>
-                    <input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="e.g. SEO Lead, Project Manager, Client Contact" className="mt-1 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                    <p className="mt-1 text-xs text-zinc-600">Free text — helps agents know what you&apos;re responsible for.</p>
+                    <span className="text-sm font-medium text-foreground">Role / Title</span>
+                    <input disabled={!loaded} value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="e.g. SEO Lead, Project Manager, Client Contact" className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-cyan-400" />
+                    <p className="mt-1 text-xs text-muted-foreground">Free text — helps agents know what you&apos;re responsible for.</p>
                 </label>
-                <button onClick={onSave} disabled={saving} className="cursor-pointer rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                <button onClick={onSave} disabled={saving || !loaded} className="min-h-11 cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     {saving ? "Saving..." : "Save Profile"}
                 </button>
             </div>
@@ -765,19 +747,19 @@ function InstanceSettingsTab() {
 
     return (
         <section className="space-y-4">
-            <div className="emperor-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6">
-                <h2 className="flex items-center text-lg font-semibold text-zinc-100">
-                    <IconSettings className="mr-2 h-5 w-5 text-cyan-300" /> Instance configuration
+            <div className="emperor-panel rounded-2xl sm:rounded-2xl p-4 sm:p-6">
+                <h2 className="flex items-center text-lg font-semibold text-foreground">
+                    <IconSettings className="mr-2 h-5 w-5 text-primary" /> Instance configuration
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     These settings apply to the entire self-hosted instance. Only the instance administrator can change them.
                 </p>
 
                 <div className="mt-6 space-y-4">
-                    <div className="flex items-center justify-between rounded-xl border border-border bg-zinc-950/60 p-4">
+                    <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 p-4">
                         <div>
-                            <h3 className="font-medium text-zinc-100">Registration mode</h3>
-                            <p className="mt-1 text-sm text-zinc-400">
+                            <h3 className="font-medium text-foreground">Registration mode</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">
                                 {registrationMode === "open"
                                     ? "Anyone can sign up and join this instance as a member."
                                     : "Only invited users can create an account."}
@@ -797,9 +779,9 @@ function InstanceSettingsTab() {
                         </Button>
                     </div>
 
-                    <div className="rounded-xl border border-border bg-zinc-950/60 p-4">
-                        <h3 className="font-medium text-zinc-100">Instance name</h3>
-                        <p className="mt-1 text-sm text-zinc-400">Display name shown in emails and page titles.</p>
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                        <h3 className="font-medium text-foreground">Instance name</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Display name shown in emails and page titles.</p>
                         <div className="mt-3 flex gap-2">
                             <Input
                                 type="text"

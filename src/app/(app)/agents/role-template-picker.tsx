@@ -20,19 +20,20 @@ function RoleCard({
         <button
             type="button"
             onClick={onSelect}
+            aria-pressed={selected}
             className={cn(
                 "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-colors group",
                 selected
                     ? "border-cyan-400/40 bg-cyan-400/10"
-                    : "border-zinc-800 bg-zinc-900/70 hover:border-cyan-500/40 hover:bg-cyan-500/5"
+                    : "border-border bg-muted/40 hover:border-cyan-500/40 hover:bg-cyan-500/5"
             )}
         >
             <span className="text-2xl shrink-0">{template.emoji}</span>
             <div className="min-w-0">
-                <span className="block text-sm font-medium text-zinc-100 group-hover:text-cyan-200 transition-colors">
+                <span className="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">
                     {template.title}
                 </span>
-                <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5 line-clamp-2">
+                <span className="block text-xs leading-tight text-muted-foreground mt-0.5 line-clamp-2">
                     {template.description}
                 </span>
             </div>
@@ -69,7 +70,7 @@ export function RoleTemplatePicker({
         <div className="space-y-2">
             {pinned.length > 0 && (
                 <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                         Lead your team
                     </span>
                     <div className="grid grid-cols-1 gap-2">
@@ -84,7 +85,7 @@ export function RoleTemplatePicker({
                     </div>
                 </div>
             )}
-            <div className="grid grid-cols-2 gap-2 max-h-[240px] overflow-y-auto py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[240px] overflow-y-auto py-2">
                 {agentRoleTemplates.map((template) =>
                     template.pinned ? null : (
                         <RoleCard
@@ -100,17 +101,18 @@ export function RoleTemplatePicker({
                 <button
                     type="button"
                     onClick={() => onSelect(null)}
+                    aria-pressed={selectedId === null}
                     className={cn(
                         "flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed p-3 text-left transition-colors",
                         selectedId === null
-                            ? "border-zinc-500 bg-zinc-900/70"
-                            : "border-zinc-700 bg-zinc-900/40 hover:border-zinc-500 hover:bg-zinc-900/70"
+                            ? "border-zinc-500 bg-muted/40"
+                            : "border-border bg-muted/20 hover:border-zinc-500 hover:bg-muted/40"
                     )}
                 >
                     <span className="text-2xl shrink-0">✨</span>
                     <div className="min-w-0">
-                        <span className="block text-sm font-medium text-zinc-400">Custom Role</span>
-                        <span className="block text-[11px] leading-tight text-zinc-400 mt-0.5">
+                        <span className="block text-sm font-medium text-muted-foreground">Custom Role</span>
+                        <span className="block text-xs leading-tight text-muted-foreground mt-0.5">
                             Blank slate
                         </span>
                     </div>

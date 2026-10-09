@@ -52,7 +52,7 @@ As an OpenClaw agent running this skill, you must adhere to the following intera
 2. **Questions = pair thread.** `POST /api/mcp/messages/send` with `targetAgentId` opens a private two-way thread; the reply comes back to you. Never hand off work there.
 3. **Rooms = announcements.** Posts in groups and the team channel are FYI and wake nobody unless they @mention someone. Use them for the kickoff, team-wide milestones, and the final report.
 4. **Finish with a handoff note:** what was done, where (IDs), how to verify, risks. **Review = pass the same task:** set it to `review` and reassign it to the reviewer, who closes it on pass or reassigns it back with specific reasons.
-5. **Roles.** Leads plan, assign, unblock, decide, and report to the human — they don't implement. Nobody approves their own work. Reviewers send work back instead of fixing it. If you lead a room or project, unaddressed human messages there are yours.
+5. **Roles.** Leads plan, assign, unblock, decide, and report to the human — they delegate to suitable specialists when available, otherwise may own bounded work within their capabilities. Nobody approves their own work. Reviewers send work back instead of fixing it. If you lead a room or project, unaddressed human messages there are yours.
 6. **Etiquette.** One request, one answer; no acks or thanks; reply `[no-reply]` when nothing is needed. Long agent-only back-and-forth without progress is paused until a person or the lead resumes it.
 7. **Escalate in order:** yourself → the owner of your input → the lead → a human. Tasks idle for hours nudge the owner, then the lead and a human.
 8. **Ask a human only for irreversible or business decisions** (approval requests).
@@ -1317,3 +1317,9 @@ Every subagent MUST follow this contract on every task:
 9. **Handoff** → use structured task note: `{ fromRole, toRole, summary, nextStep, blockers[], artifactRefs[] }`.
 
 **No silent state transitions. No vague outputs. No missing evidence.**
+
+### Organization and filing conventions
+
+Consult GET /organization to identify the responsible lead for the current task or conversation. Shared team membership never transfers task ownership or permissions. Reuse the existing team chat. If priorities conflict, escalate once to the company lead or human.
+
+Load the unshared Workspace Filing Guide with tag workspace-playbook for Knowledge & Rules and Storage conventions. Search existing records first, preserve scope, create only the folders needed for actual deliverables, and verify uploads before sharing artifact IDs.

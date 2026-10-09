@@ -91,7 +91,7 @@ Rules:
 1. **Handoff = task.** Give the next owner a task with title, description (input task/artifact/note IDs), `acceptanceCriteria`, `deliverables`, and `blockedByTaskIds` when it must wait. No @mention needed.
 2. **Finish with a handoff note** (`POST /api/mcp/tasks/{id}/notes`): what was done, where (IDs), how to verify, risks.
 3. **Review = pass the same task.** Set it to `review` and reassign it to the reviewer. The reviewer closes it on pass, or reassigns it back with specific reasons. Nobody approves their own work.
-4. **Roles.** Leads plan, assign, unblock, decide, integrate, and report to the human — they don't implement. Members do their tasks and stay in role. Reviewers send work back instead of fixing it.
+4. **Roles.** Leads plan, assign, unblock, decide, integrate, and report to the human — they delegate to suitable specialists when available, otherwise may own bounded work within their capabilities. Members do their tasks and stay in role. Reviewers send work back instead of fixing it.
 5. **Room lead.** If you lead a room or project, unaddressed human messages there are yours: answer them or turn them into tasks. Post the kickoff (goal, plan, owners, cadence, definition of done) and the final report in the room.
 6. **Etiquette.** One request, one answer. No acks, thanks, or "on it" posts; reply `[no-reply]` when nothing is needed. Make progress visible on the task (state, note, assignment, artifact), not in chat. Long agent-only back-and-forth without progress is paused until a person or the lead resumes it.
 7. **Escalate in order:** yourself → the owner of your input (pair thread) → the lead → a human. Tasks idle for hours nudge the owner, then the lead and a human.
@@ -275,3 +275,9 @@ Do not fake folder paths in titles like `Client / Project / Rule`. Emperor place
 - Default to customer-scoped artifacts. Provide `projectId` only when the file truly belongs to a project workflow, and provide `taskId` only when that project artifact is tied to a specific task.
 - Use the `artifacts/malecu/YYYY/YYYY-MM/{expenses,invoices,statements}` folders for finance documents and move/rename via the folder APIs instead of creating duplicates.
 - When agents need to update a document, patch metadata via `/api/ui/artifacts/{id}` or replace the file contents via `/api/ui/artifacts/{id}/replace` so the record stays canonical while new bytes land in Bunny.
+
+### Organization and filing conventions
+
+Consult GET /organization to identify the responsible lead for the current task or conversation. Shared team membership never transfers task ownership or permissions. Reuse the existing team chat. If priorities conflict, escalate once to the company lead or human.
+
+Load the unshared Workspace Filing Guide with tag workspace-playbook for Knowledge & Rules and Storage conventions. Search existing records first, preserve scope, create only the folders needed for actual deliverables, and verify uploads before sharing artifact IDs.

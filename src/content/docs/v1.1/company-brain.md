@@ -269,3 +269,13 @@ characters. Keep full context and success criteria in memory and tasks. Human
 `@names` in chat are text, not a guaranteed notification mechanism. Agent routing
 uses mention aliases; the Hermes roster suggests distinct aliases when first
 names collide.
+
+## Starter workspace and filing
+
+New workspaces start with Company, Agents, Projects, and Customers in Knowledge & Rules. The **Workspace Filing Guide**, under Agents/Playbooks, explains how agents use these folders together with Storage and task notes. It is unshared and retrieved on demand with tag `workspace-playbook`, so the full guide does not consume every turn's context budget.
+
+Use Company for business facts and policy, Agents for operating playbooks, Projects for lasting project conventions, and Customers for durable customer facts. Select the actual project/customer scope as well as a readable folder location; folder names do not enforce access. Progress belongs on tasks and files belong in Storage.
+
+Storage folders are created as outputs are needed. Reuse the company's convention; for customer work the default is Customer / Project / YYYY-MM, followed by deliverables or evidence where useful. Create each folder level separately and upload with its returned folder ID. Verify the file before sharing an artifact link.
+
+Starter doctrine upgrades preserve operator-edited notes. Missing starter notes are added and unchanged defaults can be refreshed; customized notes remain intact. Role templates carry a short routing protocol, while detailed playbooks stay in the vault.

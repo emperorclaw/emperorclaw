@@ -88,3 +88,20 @@ test("an already-current note is kept without a suggestion", () => {
     assert.equal(rule?.action, "keep");
     assert.equal((rule as { edited?: boolean }).edited, false);
 });
+
+
+test("workspace filing guidance is added without replacing a company's customized note", () => {
+    const customized = "# Our storage policy\nKeep approved invoices in the existing finance folders.";
+    const decisions = planStarterDoctrineUpgrade({
+        companyName: "Acme",
+        existingNotes: [{ name: "workspace-filing-guide", contentText: customized }],
+        storedHashes: {},
+    });
+    assert.deepEqual(decisions.find((item) => item.name === "workspace-filing-guide"), {
+        action: "keep", name: "workspace-filing-guide", edited: true,
+    });
+    const missing = planStarterDoctrineUpgrade({ companyName: "Acme", existingNotes: [], storedHashes: {} });
+    assert.deepEqual(missing.find((item) => item.name === "workspace-filing-guide"), {
+        action: "create", name: "workspace-filing-guide",
+    });
+});
