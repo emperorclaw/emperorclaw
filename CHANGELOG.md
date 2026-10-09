@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.84] — 2026-10-10
+
+### Fixed
+- Interpret chat reply timestamps consistently in UTC so answered messages are not delivered again on servers with a different local timezone.
+- Preserve pending human followups during chat synchronization and validate multi-turn routing under UTC and Europe/Bratislava.
+
 ## [0.8.83] — 2026-10-10
 
 ### Changed

@@ -415,6 +415,43 @@ export function agentStreakState(
     return { streak: lastMessageStreak, resetAt: resetAtLastMessage };
 }
 
+export interface AnsweredFilterMessage {
+    threadId: string;
+    senderType: string;
+    targetAgentId: string | null;
+    deliveryState: string;
+    createdAt: Date | string;
+}
+
+/**
+ * The sync dedup predicate, kept pure (and timezone-safe) so it is unit-tested:
+ * drop a message when this agent already replied in its thread afterwards,
+ * EXCEPT an explicitly queued direct follow-up addressed to this agent (a newer
+ * reply must never discard work the server is still holding for it).
+ *
+ * It compares epoch milliseconds, so a `lastReply` decoded in the wrong host
+ * timezone would show up here as a failed suppression — the regression that
+ * motivated using the column decoder for the SQL `MAX(created_at)` aggregate.
+ */
+export function filterAnsweredMessages<T extends AnsweredFilterMessage>(
+    messages: T[],
+    lastReplyByThread: Map<string, Date | string>,
+    resolvedAgentId: string,
+): T[] {
+    return messages.filter((m) => {
+        const lastReply = lastReplyByThread.get(m.threadId);
+        if (lastReply === undefined) return true; // No reply from this agent yet
+        if (
+            m.targetAgentId === resolvedAgentId &&
+            (m.senderType === "human" || m.senderType === "system") &&
+            ["queued", "seen", "acting"].includes(m.deliveryState)
+        ) {
+            return true;
+        }
+        return new Date(m.createdAt).getTime() > new Date(lastReply).getTime();
+    });
+}
+
 /** A task note may reset the streak at most once every N agent messages. */
 export const NOTE_RESET_INTERVAL_MESSAGES = 5;
 

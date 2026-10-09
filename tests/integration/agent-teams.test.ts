@@ -162,15 +162,17 @@ maybe("multi-turn pair conversation stays in the pair thread and never leaks to 
     const third = await sendThreadMessageFromMcp({ companyId, agentId: a.id, text: "Alpha follows up", replyToMessageId: second.messageId });
     assert.equal(third.threadId, pairThreadId, "the second reply stays in the pair thread");
 
-    const fourth = await sendThreadMessageFromMcp({ companyId, agentId: b.id, text: "Beta confirms", replyToMessageId: third.messageId });
-    assert.equal(fourth.threadId, pairThreadId, "every subsequent turn stays in the pair thread");
-
-    // Beta sees Alpha's follow-up in the pair thread with the pair verdict.
+    // Check Beta's sync BEFORE Beta answers: once Beta has replied, the server
+    // correctly suppresses Alpha's follow-up as already answered, so asserting
+    // after the fourth reply would be checking the wrong thing.
     const bMessages = await syncFor(companyId, rawToken, b.id);
     const followUp = bMessages.find((m) => m.id === third.messageId);
     assert.ok(followUp, "Beta receives Alpha's follow-up in the pair thread");
     assert.equal(followUp.routeReason, "agent_pair");
     assert.equal(followUp.addressedToYou, true);
+
+    const fourth = await sendThreadMessageFromMcp({ companyId, agentId: b.id, text: "Beta confirms", replyToMessageId: third.messageId });
+    assert.equal(fourth.threadId, pairThreadId, "every subsequent turn stays in the pair thread");
 
     // Neither agent's private/operator DM received any agent-authored message.
     const aDm = await ensureDirectThread(companyId, a.id, null);
@@ -717,6 +719,39 @@ maybe("chat polling uses UTC column encoding for the since cursor", async () => 
     try {
         process.env.TZ = "Europe/Bratislava";
         assert.equal((await getThreadMessages(companyId, thread.id, 25, new Date(at.getTime() - 1000))).length, 1);
+    } finally {
+        if (oldTZ === undefined) delete process.env.TZ; else process.env.TZ = oldTZ;
+    }
+});
+
+maybe("answered-message suppression is timezone-safe and keeps a queued follow-up", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { ensureAgentPairThread } = await import("@/lib/groups");
+    const thread = await ensureAgentPairThread(companyId, a.id, b.id);
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const asked = new Date("2026-10-09T12:00:00Z");
+    const answered = new Date("2026-10-09T12:00:05Z");
+    await db.insert(threadMessages).values([
+        // Beta's question, already answered by Alpha below.
+        { companyId, threadId: thread.id, senderType: "agent", senderId: b.id, targetAgentId: a.id, text: "question", createdAt: asked },
+        { companyId, threadId: thread.id, senderType: "agent", senderId: a.id, text: "answer", createdAt: answered },
+        // A queued direct follow-up must survive suppression (and keeps the
+        // sync from long-polling, so the test is fast).
+        { companyId, threadId: thread.id, senderType: "system", targetAgentId: a.id, text: "followup", deliveryState: "queued", createdAt: asked },
+    ]);
+
+    const oldTZ = process.env.TZ;
+    try {
+        // A non-UTC host used to mis-decode the MAX(created_at) aggregate and
+        // re-deliver the answered message.
+        process.env.TZ = "Europe/Bratislava";
+        const messages = await syncFor(companyId, rawToken, a.id);
+        assert.equal(messages.find((m) => m.text === "question"), undefined, "answered message stays suppressed off-UTC");
+        assert.ok(messages.find((m) => m.text === "followup"), "a queued follow-up is still delivered");
     } finally {
         if (oldTZ === undefined) delete process.env.TZ; else process.env.TZ = oldTZ;
     }

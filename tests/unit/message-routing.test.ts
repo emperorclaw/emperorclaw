@@ -9,6 +9,7 @@ import {
     agentStreakState,
     agentStreaks,
     decideDelivery,
+    filterAnsweredMessages,
     mentionedAgentIds,
     mentionsEveryone,
     noteProgressResets,
@@ -291,4 +292,31 @@ test("multiword mentions survive Unicode spaces, format marks, and accent forms"
 test("duplicate full names never broadcast a mention to multiple agents", () => {
     const people=[{id:"a",name:"José Zúñiga"},{id:"b",name:"Jose Zuniga"}];
     assert.equal(mentionedAgentIds("@José\u00a0Zúñiga revisa esto",people).size,0);
+});
+
+test("filterAnsweredMessages suppresses answered messages by instant, TZ-safe", () => {
+    const replied = new Date("2026-10-09T12:00:05Z");
+    const asked = new Date("2026-10-09T12:00:00Z");
+    const messages = [
+        { threadId: "t1", senderType: "agent", targetAgentId: "me", deliveryState: "resolved", createdAt: asked, text: "question" },
+        { threadId: "t2", senderType: "agent", targetAgentId: "me", deliveryState: "resolved", createdAt: asked, text: "unanswered elsewhere" },
+    ];
+    const kept = filterAnsweredMessages(messages, new Map([["t1", replied]]), "me");
+    assert.deepEqual(kept.map((m) => m.text), ["unanswered elsewhere"], "the answered thread's older message is dropped");
+    // A reply older than the message keeps the message.
+    const earlierReply = new Date("2026-10-09T11:59:59Z");
+    assert.equal(filterAnsweredMessages(messages, new Map([["t1", earlierReply]]), "me").length, 2);
+});
+
+test("filterAnsweredMessages keeps a queued direct follow-up addressed to this agent", () => {
+    const replied = new Date("2026-10-09T12:00:05Z");
+    const asked = new Date("2026-10-09T12:00:00Z");
+    const messages = [
+        { threadId: "t1", senderType: "human", targetAgentId: "me", deliveryState: "queued", createdAt: asked, text: "human follow-up" },
+        { threadId: "t1", senderType: "system", targetAgentId: "me", deliveryState: "queued", createdAt: asked, text: "system follow-up" },
+        // A resolved item is not a held follow-up and stays suppressed.
+        { threadId: "t1", senderType: "human", targetAgentId: "me", deliveryState: "resolved", createdAt: asked, text: "old human" },
+    ];
+    const kept = filterAnsweredMessages(messages, new Map([["t1", replied]]), "me");
+    assert.deepEqual(kept.map((m) => m.text), ["human follow-up", "system follow-up"]);
 });

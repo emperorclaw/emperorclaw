@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
 import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpose } from "@/lib/groups";
-import { agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, decideDelivery, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
+import { agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
                 // Safety buffer: subtract 10ms to handle sub-millisecond precision drift between servers/DBs
                 const bufferDate = new Date(sinceDate.getTime() - 10);
                 const sinceCondition = scopeAgentId
-                    ? sql`(${threadMessages.createdAt} > ${bufferDate} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} IN ('human', 'system') AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
+                    ? sql`(${gt(threadMessages.createdAt, bufferDate)} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} IN ('human', 'system') AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
                     : gt(threadMessages.createdAt, bufferDate);
                 // A runtime retains failed message IDs in a durable retry ledger.
                 // Include only those exact messages after the normal cursor has
@@ -126,7 +126,13 @@ export async function GET(req: NextRequest) {
                         const agentReplies = await db
                             .select({
                                 threadId: threadMessages.threadId,
-                                maxCreatedAt: sql<string>`MAX(${threadMessages.createdAt})`.as('max_created_at'),
+                                // Decode through the column so the aggregate is read
+                                // as a UTC instant, exactly like every other row. A
+                                // raw `sql<string>` + `new Date(string)` reads a
+                                // timestamp-without-timezone in the host timezone,
+                                // which re-delivered already-answered messages on
+                                // non-UTC servers.
+                                maxCreatedAt: sql`MAX(${threadMessages.createdAt})`.mapWith(threadMessages.createdAt),
                             })
                             .from(threadMessages)
                             .where(and(
@@ -137,15 +143,9 @@ export async function GET(req: NextRequest) {
                                 sql`${threadMessages.threadId} = ANY(ARRAY[${sql.join(threadIds.map(id => sql`${id}::uuid`), sql`, `)}])`,
                             ))
                             .groupBy(threadMessages.threadId);
-                        
-                        const replyMap = new Map(agentReplies.map(r => [r.threadId, new Date(r.maxCreatedAt)]));
-                        filtered = messages.filter(m => {
-                            const lastReply = replyMap.get(m.threadId);
-                            if (!lastReply) return true; // No reply from this agent yet
-                            // A newer reply must not discard an explicitly queued direct follow-up.
-                            if (m.targetAgentId === resolvedAgentId && (m.senderType === 'human' || m.senderType === 'system') && ['queued', 'seen', 'acting'].includes(m.deliveryState)) return true;
-                            return m.createdAt > lastReply; // Only show messages AFTER our last reply
-                        });
+
+                        const replyMap = new Map(agentReplies.map(r => [r.threadId, r.maxCreatedAt]));
+                        filtered = filterAnsweredMessages(messages, replyMap, resolvedAgentId);
                     }
                 }
 
