@@ -411,6 +411,9 @@ export async function seedStarterKnowledge(input: SeedStarterKnowledgeInput): Pr
         .from(scopedResources)
         .where(and(
             eq(scopedResources.companyId, input.companyId),
+            eq(scopedResources.scopeType, "company"),
+            isNull(scopedResources.scopeId),
+            eq(scopedResources.resourceType, "knowledge_base"),
             inArray(scopedResources.name, names),
             isNull(scopedResources.deletedAt),
         ));
@@ -566,6 +569,9 @@ export async function upgradeStarterDoctrine(input: UpgradeStarterDoctrineInput)
         .from(scopedResources)
         .where(and(
             eq(scopedResources.companyId, input.companyId),
+            eq(scopedResources.scopeType, "company"),
+            isNull(scopedResources.scopeId),
+            eq(scopedResources.resourceType, "knowledge_base"),
             inArray(scopedResources.name, names),
             isNull(scopedResources.deletedAt),
         ));

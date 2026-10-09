@@ -46,3 +46,37 @@ maybe("a model key is checked before agents start; unknown providers never block
     assert.equal((await validateLlmKey("openrouter", "  ")).ok, false);
     assert.equal((await validateLlmKey("someprovider", "abc")).ok, null);
 });
+
+
+maybe("starter knowledge creates an unshared filing guide without touching same-name agent notes", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const agent = await seedAgent(companyId);
+    const { createScopedResource } = await import("@/lib/resources");
+    const custom = "# My private filing policy\nPreserve this agent-specific policy.";
+    const scoped = await createScopedResource({
+        companyId, scopeType: "agent", scopeId: agent.id, provider: "knowledge", resourceType: "knowledge_base",
+        name: "workspace-filing-guide", displayName: "Agent filing policy", path: "Agents/Playbooks", configText: custom,
+        status: "active", ownership: "managed", isShared: false, createdByType: "system", createdById: null,
+    } as Parameters<typeof createScopedResource>[0]);
+    const { seedStarterKnowledge, upgradeStarterDoctrine } = await import("@/lib/starter-knowledge");
+    const first = await seedStarterKnowledge({ companyId, companyName: "Acme" });
+    assert.ok(first.created > 0);
+    assert.equal((await seedStarterKnowledge({ companyId, companyName: "Acme" })).created, 0);
+    const db = await getDb();
+    const { scopedResources, companies } = await getSchema();
+    const { and, eq } = await import("drizzle-orm");
+    const rows = await db.select().from(scopedResources).where(and(eq(scopedResources.companyId, companyId), eq(scopedResources.name, "workspace-filing-guide")));
+    assert.equal(rows.length, 2);
+    const companyGuide = rows.find(row => row.scopeType === "company")!;
+    assert.equal(companyGuide.path, "Agents/Playbooks");
+    assert.equal(companyGuide.isShared, false, "references must not inflate every prompt");
+    assert.match(companyGuide.configText!, /Storage/);
+    // Force an old-version upgrade with only the agent-specific name present.
+    await db.delete(scopedResources).where(eq(scopedResources.id, companyGuide.id));
+    await db.update(companies).set({ starterDoctrineJson: { version: 1, hashes: {} } }).where(eq(companies.id, companyId));
+    assert.equal((await upgradeStarterDoctrine({ companyId, companyName: "Acme" })).created, 1);
+    const [preserved] = await db.select().from(scopedResources).where(eq(scopedResources.id, scoped.id));
+    assert.equal(preserved.configText, custom);
+    assert.equal(preserved.scopeId, agent.id);
+});
