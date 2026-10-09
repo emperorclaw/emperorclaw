@@ -471,3 +471,37 @@ maybe("W-threads: a bound agent token cannot list another agent's pair threads",
     const other = await route.GET(makeRequest(`http://localhost/api/mcp/threads?agentId=${b.id}`, { headers }));
     assert.equal(other.status, 403);
 });
+
+maybe("stall reminders respect workspace opt-out, concurrent monitors and recipient cooldown", async()=>{
+    await resetDb();const {companyId}=await seedCompanyWithToken();const owner=await seedAgent(companyId,{name:"Owner"});const project=await seedProject(companyId);
+    const db=await getDb();const {tasks,companies,threadMessages}=await getSchema();const {eq}=await import("drizzle-orm");
+    const stale=new Date(Date.now()-5*3600_000);
+    await db.insert(tasks).values({companyId,projectId:project.id,taskType:"work",state:"in_progress",assignedAgentId:owner.id,updatedAt:stale});
+    await db.update(companies).set({agentRoutineJson:{stallRemindersEnabled:false}}).where(eq(companies.id,companyId));
+    const {runStallSweep}=await import("@/lib/stall-sweep");assert.equal(await runStallSweep(),0,"Disabled workspace receives no reminders or escalations");
+    await db.update(companies).set({agentRoutineJson:{enabled:false,stallRemindersEnabled:true}}).where(eq(companies.id,companyId));
+    const counts=await Promise.all([runStallSweep(),runStallSweep()]);assert.equal(counts.reduce((a,b)=>a+b,0),1,"Only one concurrent monitor posts the batch");
+    await db.insert(tasks).values({companyId,projectId:project.id,taskType:"work",state:"in_progress",assignedAgentId:owner.id,updatedAt:stale});
+    assert.equal(await runStallSweep(),0,"New stale tasks wait for the recipient cooldown instead of another message");
+    const messages=await db.select().from(threadMessages).where(eq(threadMessages.targetAgentId,owner.id));assert.equal(messages.length,1);
+    assert.equal(messages[0].senderType,"system");
+});
+
+maybe("chat polling uses UTC column encoding for the since cursor", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const agent = await seedAgent(companyId, { name: "Reader", provider: "hermes" });
+    const { ensureTeamThread, getThreadMessages } = await import("@/lib/control-plane");
+    const thread = await ensureTeamThread(companyId);
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const at = new Date("2026-10-09T12:00:00Z");
+    await db.insert(threadMessages).values({ companyId, threadId: thread.id, senderType: "agent", senderId: agent.id, text: "UTC update", createdAt: at });
+    const oldTZ = process.env.TZ;
+    try {
+        process.env.TZ = "Europe/Bratislava";
+        assert.equal((await getThreadMessages(companyId, thread.id, 25, new Date(at.getTime() - 1000))).length, 1);
+    } finally {
+        if (oldTZ === undefined) delete process.env.TZ; else process.env.TZ = oldTZ;
+    }
+});

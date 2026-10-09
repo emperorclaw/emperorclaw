@@ -17,12 +17,13 @@ import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
 
 export interface RoutineSettings {
     enabled: boolean;
+    stallRemindersEnabled: boolean;
     time: string; // "HH:MM", 24h, in `timezone`
     timezone: string; // IANA, e.g. "Europe/Madrid"
     weekdaysOnly: boolean;
 }
 
-export const DEFAULT_ROUTINE: RoutineSettings = { enabled: true, time: "09:00", timezone: "UTC", weekdaysOnly: true };
+export const DEFAULT_ROUTINE: RoutineSettings = { enabled: true, stallRemindersEnabled: true, time: "09:00", timezone: "UTC", weekdaysOnly: true };
 
 const MAX_TASKS_IN_REVIEW = 15;
 
@@ -40,6 +41,7 @@ export function normalizeRoutine(raw: unknown): RoutineSettings {
     const input = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const time = typeof input.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(input.time) ? input.time : DEFAULT_ROUTINE.time;
     return {
+        stallRemindersEnabled: typeof input.stallRemindersEnabled === "boolean" ? input.stallRemindersEnabled : true,
         enabled: typeof input.enabled === "boolean" ? input.enabled : DEFAULT_ROUTINE.enabled,
         time,
         timezone: validTimezone(input.timezone) ? input.timezone : DEFAULT_ROUTINE.timezone,

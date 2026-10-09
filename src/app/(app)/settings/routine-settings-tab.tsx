@@ -5,7 +5,7 @@ import { IconBook, IconCheck, IconSend, IconSunrise } from "@tabler/icons-react"
 import { cn } from "@/lib/utils";
 import { SettingsSwitch as Toggle } from "@/components/ui/settings-switch";
 
-type Routine = { enabled: boolean; time: string; timezone: string; weekdaysOnly: boolean };
+type Routine = { enabled: boolean; stallRemindersEnabled: boolean; time: string; timezone: string; weekdaysOnly: boolean };
 
 
 /**
@@ -151,6 +151,11 @@ export function RoutineSettingsTab({ isAdmin }: { isAdmin: boolean }) {
                 </p>
             </article>
 
+            <article className="emperor-panel rounded-2xl p-4 sm:rounded-2xl sm:p-6">
+                <div className="flex items-center justify-between gap-4"><h2 className="text-base font-semibold text-foreground">Stalled task reminders</h2><Toggle label="Stalled task reminders" checked={routine.stallRemindersEnabled} onChange={(on) => void save({ stallRemindersEnabled: on })} disabled={disabled} /></div>
+                <p className="mt-3 text-sm text-muted-foreground">Send a private reminder to the task owner when work stops progressing, then escalate once if it stays stalled. Messages are grouped; the team chat receives no reminders.</p>
+                <p className="mt-3 text-xs text-muted-foreground">Turning this off stops stalled-task reminders and escalations for this workspace. New task assignments and the daily review keep their own behavior.</p>
+            </article>
             <article className="emperor-panel rounded-2xl p-4 sm:rounded-2xl sm:p-6">
                 <h2 className="text-base font-semibold text-foreground">What each agent gets</h2>
                 <p className="mt-1 text-xs text-muted-foreground">A message in its direct chat, with live cards for its tasks:</p>

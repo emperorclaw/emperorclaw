@@ -152,6 +152,11 @@ export function AgentDirectChat({
         overscan: 8,
         getItemKey: (index) => messages[index].id,
     });
+    // Let the virtualizer compensate for rows resizing ABOVE the reading point.
+    // Disable the browser's second anchoring mechanism on the scroll container.
+    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
+        !isAtBottomRef.current && item.start < (instance.scrollOffset ?? 0);
+
 
     const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
         const params = new URLSearchParams({ targetAgentId: agentId });
@@ -323,7 +328,7 @@ export function AgentDirectChat({
             const hasNewMessage = latestId !== lastScrolledMessageRef.current;
             lastScrolledMessageRef.current = latestId;
             if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && messages.length > 0) {
-                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: forceScrollToBottomRef.current ? "auto" : "smooth" });
+                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" });
                 forceScrollToBottomRef.current = false;
                 setUnreadCount(0);
             }
@@ -671,7 +676,7 @@ export function AgentDirectChat({
                 </div>
             )}
 
-            <div ref={scrollRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
+            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),_transparent_35%),linear-gradient(180deg,var(--chat-gradient-start),var(--chat-gradient-end))] p-3 sm:p-5">
                 {isLoading ? (
                     <div className="h-full flex items-center justify-center text-sm text-zinc-500 animate-pulse">
                         Loading direct thread...

@@ -162,6 +162,8 @@ export function AgentTeamChat({
     );
     const [isAtBottom, setIsAtBottom] = useState(true);
     const forceScrollToBottomRef = useRef(true);
+    const isAtBottomRef = useRef(true);
+    const lastScrolledMessageRef = useRef<string | undefined>(undefined);
 
     const rowVirtualizer = useVirtualizer({
         count: messages.length,
@@ -170,12 +172,11 @@ export function AgentTeamChat({
         overscan: 8,
         getItemKey: (index) => messages[index].id,
     });
+    // Let the virtualizer compensate for rows resizing ABOVE the reading point.
+    // Disable the browser's second anchoring mechanism on the scroll container.
+    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
+        !isAtBottomRef.current && item.start < (instance.scrollOffset ?? 0);
 
-    useEffect(() => {
-        setMessages(initialMessages);
-        setLastSeenAt(initialMessages.length > 0 ? messageCursor(initialMessages[initialMessages.length - 1].createdAt) : null);
-        setHasOlderMessages(initialHasMore);
-    }, [initialHasMore, initialMessages]);
 
     const loadOlderMessages = useCallback(async () => {
         if (isLoadingOlder || !hasOlderMessages || messages.length === 0) return;
@@ -224,7 +225,7 @@ export function AgentTeamChat({
                         const existingIds = new Set(prev.map((m) => m.id));
                         const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
                         if (newMessages.length === 0) return prev;
-                        if (!isAtBottom) {
+                        if (!isAtBottomRef.current) {
                             setUnreadCount((count) => count + newMessages.length);
                         }
                         return [...prev, ...newMessages];
@@ -257,8 +258,11 @@ export function AgentTeamChat({
                 scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight;
                 return;
             }
-            if ((isAtBottom || forceScrollToBottomRef.current) && messages.length > 0) {
-                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: forceScrollToBottomRef.current ? "auto" : "smooth" });
+            const latestId = messages[messages.length - 1]?.id;
+            const hasNewMessage = latestId !== lastScrolledMessageRef.current;
+            lastScrolledMessageRef.current = latestId;
+            if ((isAtBottomRef.current || forceScrollToBottomRef.current) && (hasNewMessage || forceScrollToBottomRef.current) && messages.length > 0) {
+                rowVirtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" });
                 forceScrollToBottomRef.current = false;
                 setUnreadCount(0);
             }
@@ -269,12 +273,14 @@ export function AgentTeamChat({
         if (!scrollRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
         const atBottom = scrollTop + clientHeight >= scrollHeight - 48;
+        isAtBottomRef.current = atBottom;
         setIsAtBottom(atBottom);
         if (atBottom) setUnreadCount(0);
     };
 
     const scrollToLatest = () => {
         forceScrollToBottomRef.current = true;
+        isAtBottomRef.current = true;
         setIsAtBottom(true);
         setUnreadCount(0);
         if (messages.length > 0) {
@@ -328,6 +334,7 @@ export function AgentTeamChat({
         setIsSending(true);
         setDraft("");
         forceScrollToBottomRef.current = true;
+        isAtBottomRef.current = true;
         setIsAtBottom(true);
         try {
             const res = await fetch("/api/chat", {
@@ -361,6 +368,7 @@ export function AgentTeamChat({
     // addressed to the widget's author exactly as the operator would type it.
     const sendTeamWidgetPrompt = useCallback(async (text: string) => {
         forceScrollToBottomRef.current = true;
+        isAtBottomRef.current = true;
         setIsAtBottom(true);
         try {
             const res = await fetch("/api/chat", {
@@ -456,7 +464,7 @@ export function AgentTeamChat({
                 </button>
             )}
 
-            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
+            <div ref={scrollRef} onScroll={handleScroll} style={{ overflowAnchor: "none" }} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-zinc-600">{groupId ? "No messages yet. @mention a member to get their reply." : "No communications yet."}</div>
                 ) : (

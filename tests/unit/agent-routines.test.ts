@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { localClock, normalizeRoutine, reviewMessage, routineDue } from "../../src/lib/agent-routines";
 
 test("normalizeRoutine falls back to safe defaults", () => {
-    assert.deepEqual(normalizeRoutine(null), { enabled: true, time: "09:00", timezone: "UTC", weekdaysOnly: true });
+    assert.deepEqual(normalizeRoutine(null), { enabled: true, stallRemindersEnabled: true, time: "09:00", timezone: "UTC", weekdaysOnly: true });
     assert.equal(normalizeRoutine({ time: "25:00" }).time, "09:00");
     assert.equal(normalizeRoutine({ timezone: "Mars/Olympus" }).timezone, "UTC");
-    assert.deepEqual(normalizeRoutine({ enabled: false, time: "07:30", timezone: "Europe/Madrid", weekdaysOnly: false }), { enabled: false, time: "07:30", timezone: "Europe/Madrid", weekdaysOnly: false });
+    assert.deepEqual(normalizeRoutine({ enabled: false, time: "07:30", timezone: "Europe/Madrid", weekdaysOnly: false }), { enabled: false, stallRemindersEnabled: true, time: "07:30", timezone: "Europe/Madrid", weekdaysOnly: false });
 });
 
 test("localClock reads the date and time in the company's timezone", () => {
@@ -41,3 +41,5 @@ test("reviewMessage lists tasks as live cards with due dates and approval state"
     assert.match(text, /reply here with a short summary/);
     assert.ok(!text.includes("\n\n\n"), "no stray blank lines");
 });
+
+test("stalled reminders can be disabled independently of daily review",()=>{const routine=normalizeRoutine({stallRemindersEnabled:false});assert.equal(routine.enabled,true);assert.equal(routine.stallRemindersEnabled,false);});

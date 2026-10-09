@@ -49,7 +49,7 @@ export const companies = pgTable("companies", {
     // Organization is opt-in; branches reuse existing group chats.
     organizationJson: jsonb("organization_json").$type<{ leader: { kind: "agent" | "human"; id: string } | null; teamIds: string[]; nodes?: import("@/lib/organization-tree").OrganizationNode[] }>(),
     // Daily agent review (lib/agent-routines.ts). NULL = defaults: on, 09:00 UTC, weekdays.
-    agentRoutineJson: jsonb("agent_routine_json").$type<{ enabled?: boolean; time?: string; timezone?: string; weekdaysOnly?: boolean }>(),
+    agentRoutineJson: jsonb("agent_routine_json").$type<{ enabled?: boolean; time?: string; timezone?: string; weekdaysOnly?: boolean; stallRemindersEnabled?: boolean }>(),
     // Local date (YYYY-MM-DD, in the routine's timezone) of the last daily review run.
     agentRoutineLastRunOn: text("agent_routine_last_run_on"),
     // Starter-doctrine rollout state: the seeded version plus a hash of each

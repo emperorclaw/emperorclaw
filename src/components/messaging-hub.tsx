@@ -613,6 +613,7 @@ export function MessagingHub({
                         <div className="relative min-h-0 flex-1 overflow-hidden">
                             <div className="h-full">
                                 <AgentTeamChat
+                                    key={teamThreadId ?? "team"}
                                     initialMessages={initialTeamMessages}
                                     initialHasMore={initialTeamHasMore}
                                     agents={agents}

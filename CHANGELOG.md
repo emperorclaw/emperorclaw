@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.81] — 2026-10-09
+
+### Added
+- Workspace setting to disable stalled task reminders independently of daily reviews and new task assignments.
+
+### Fixed
+- Preserve the reading position in group and direct messages during polling and incoming updates; stop automatic smooth scrolling while reading history.
+- Keep loaded group history when conversation previews refresh.
+- Encode group chat polling cursors consistently across server time zones.
+- Group private stalled task reminders, apply recipient and escalation cooldowns, and prevent duplicate sweeps across server instances.
+
 ## [0.8.80] — 2026-10-09
 
 ### Fixed

@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, projects, taskEvents, tasks } from "@/db/schema";
+import { agents, companies, projects, taskEvents, tasks, threadMessages } from "@/db/schema";
 import { appendThreadMessage, ensureDirectThread } from "@/lib/control-plane";
 import { companyAdminIds, notify } from "@/lib/notifications";
 import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
@@ -185,6 +185,15 @@ const lastStallEventAt = (eventType: string) =>
 
 /** Run the stall sweep once. Returns the number of coalesced messages posted. */
 export async function runStallSweep(now = new Date()): Promise<number> {
+    // All app instances share this lock. A concurrent monitor skips this run.
+    return db.transaction(async tx => {
+        const result = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(1937006962, 1) AS locked`);
+        if (!result.rows[0]?.locked) return 0;
+        return runLockedStallSweep(now);
+    });
+}
+
+async function runLockedStallSweep(now: Date): Promise<number> {
     const hours = stallSweepHours();
     const maxAgeDays = stallMaxAgeDays();
     const windowMs = hours * 3_600_000;
@@ -206,6 +215,7 @@ export async function runStallSweep(now = new Date()): Promise<number> {
         lastNudgeAt: lastNudge,
         lastEscalationAt: lastEscalation,
     }).from(tasks)
+        .innerJoin(companies, eq(companies.id, tasks.companyId))
         .innerJoin(agents, and(
             eq(agents.id, tasks.assignedAgentId),
             eq(agents.companyId, tasks.companyId),
@@ -213,6 +223,7 @@ export async function runStallSweep(now = new Date()): Promise<number> {
         ))
         .where(and(
             isNull(tasks.deletedAt),
+            sql`COALESCE(${companies.agentRoutineJson}->'stallRemindersEnabled', 'true'::jsonb) <> 'false'::jsonb`,
             inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]),
             lt(tasks.updatedAt, cutoff),
             // Abandoned backlog: never nudge/escalate a task older than the horizon.
@@ -222,6 +233,14 @@ export async function runStallSweep(now = new Date()): Promise<number> {
             sql`${lastEscalation} IS NULL`,
             sql`(${lastNudge} IS NULL OR ${lastNudge} < ${cutoff})`,
         ));
+
+    const recentReminders = await db.select({companyId:threadMessages.companyId,agentId:threadMessages.targetAgentId}).from(threadMessages).where(and(
+        gte(threadMessages.createdAt, cutoff), eq(threadMessages.senderType, "system"),
+        sql`(${threadMessages.metadataJson}->>'stallNudge' = 'true' OR ${threadMessages.metadataJson}->>'stallEscalation' = 'true')`,
+    ));
+    const coolingAgents = new Set(recentReminders.filter(row=>row.agentId).map(row=>`${row.companyId}\u0000${row.agentId}`));
+    const recentEscalations = await db.select({companyId:taskEvents.companyId}).from(taskEvents).where(and(eq(taskEvents.eventType,STALL_ESCALATION_EVENT),gte(taskEvents.createdAt,cutoff)));
+    const coolingCompanies = new Set(recentEscalations.map(row=>row.companyId));
 
     const nudgeItems: StallGroupItem[] = [];
     const escalateItems: StallGroupItem[] = [];
@@ -237,16 +256,19 @@ export async function runStallSweep(now = new Date()): Promise<number> {
 
         // Re-check the assignee/state right before posting: a task reassigned or
         // closed between the query and here must not be nudged or escalated.
-        const [stillOpen] = await db.select({ state: tasks.state, assignedAgentId: tasks.assignedAgentId }).from(tasks)
+        const [stillOpen] = await db.select({ state: tasks.state, assignedAgentId: tasks.assignedAgentId, updatedAt: tasks.updatedAt }).from(tasks)
             .where(and(eq(tasks.id, task.id), eq(tasks.companyId, task.companyId), isNull(tasks.deletedAt))).limit(1);
-        if (!stillOpen || stillOpen.assignedAgentId !== task.assignedAgentId || !(SLA_TRACKED_TASK_STATES as readonly string[]).includes(stillOpen.state)) {
+        if (!stillOpen || stillOpen.updatedAt.getTime() !== task.updatedAt.getTime() || stillOpen.assignedAgentId !== task.assignedAgentId || !(SLA_TRACKED_TASK_STATES as readonly string[]).includes(stillOpen.state)) {
             continue;
         }
 
         if (stage === "nudge") {
+            if (coolingAgents.has(`${task.companyId}\u0000${task.assignedAgentId}`)) continue;
             nudgeItems.push({ companyId: task.companyId, targetKey: task.assignedAgentId, id: task.id, title });
             continue;
         }
+
+        if (coolingCompanies.has(task.companyId)) continue;
 
         // Escalate: tell the project lead agent, else the task's creator agent,
         // and always raise a human notification.
@@ -259,6 +281,7 @@ export async function runStallSweep(now = new Date()): Promise<number> {
                 .orderBy(asc(taskEvents.createdAt)).limit(1);
             escalationTarget = creator?.actorId ?? null;
         }
+        if (escalationTarget && coolingAgents.has(`${task.companyId}\u0000${escalationTarget}`)) continue;
         escalateEvents.push({ companyId: task.companyId, taskId: task.id });
         escalatedByCompany.set(task.companyId, (escalatedByCompany.get(task.companyId) ?? 0) + 1);
         if (escalationTarget && escalationTarget !== task.assignedAgentId) {
