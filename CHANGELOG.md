@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.78] — 2026-10-09
+
+### Fixed
+- Replace the obsolete favicon with the crown used in the signed-in navigation.
+- Remove the legacy favicon assets and allow the crown to load before sign-in.
+
 ## [0.8.77] — 2026-10-09
 
 ### Added

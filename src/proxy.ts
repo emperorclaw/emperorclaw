@@ -47,5 +47,5 @@ export const config = {
     //                          trailing slash keeps e.g. /firmwareX protected)
     //   /api/avatars/*       — agent avatar drawings (no metadata) for external clients
     //   /_next/*, favicon    — Next.js internals
-    matcher: ["/((?!$|api/auth|api/mcp|api/oauth/register|api/oauth/token|\\.well-known|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|api/avatars/|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|firmware/|emperor-claw-os|icon\\.png|mcp$).*)"],
+    matcher: ["/((?!$|api/auth|api/mcp|api/oauth/register|api/oauth/token|\\.well-known|api/webhook|api/skills|api/docs|api/updates|api/health|api/version|api/avatars/|docs|_next/static|_next/image|favicon.ico|login|signup|setup|install\\.sh|install\\.ps1|downloads|firmware/|emperor-claw-os|crown\\.png|mcp$).*)"],
 };

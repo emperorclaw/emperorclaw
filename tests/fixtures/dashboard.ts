@@ -8,7 +8,7 @@ export function dashboardFixture(count = 8, generatedAt = new Date().toISOString
     const task = (i: number, state: string, title: string): DashboardTask => ({ id: `task-${i}-${state}`, projectId: "launch", projectName: "Autumn launch", title, state, taskType: roles[i % roles.length], assigneeKey: `agent:fixture-${i}`, updatedAt: generatedAt, dueAt: null });
     const members: DashboardMember[] = Array.from({ length: count }, (_, i) => ({
         key: `agent:fixture-${i}`, id: `fixture-${i}`, kind: "agent", name: `${names[i % names.length]}${i > 7 ? ` ${i + 1}` : ""}`, role: roles[i % roles.length],
-        avatarUrl: i === 1 ? "/icon.png" : null, avatarAppearance: deriveAppearance(`fixture-${i}`), skills: ["planning", "teamwork"],
+        avatarUrl: i === 1 ? "/crown.png" : null, avatarAppearance: deriveAppearance(`fixture-${i}`), skills: ["planning", "teamwork"],
         health: i === 3 ? "down" : i === 4 ? "attention" : "healthy", healthReasons: i === 3 ? ["offline with work waiting"] : i === 4 ? ["1 unanswered message"] : [],
         activity: i === 0 ? "Building the release checklist" : null, href: `/agents?agent=fixture-${i}`, createdAt: null,
         doneToday: i % 2 === 0 ? 2 : 0,
