@@ -871,6 +871,22 @@ def is_backlog(created_at: Any) -> bool:
 SHARED_THREAD_TYPES = {"team", "group"}
 
 
+def is_processed_delivery_state(message: Dict[str, Any]) -> bool:
+    """Did the server's delivery state already finish this message for us?
+
+    Only meaningful for direct threads. In a shared room (team or group) the
+    server stamps every agent post "resolved" as its default, so that state is
+    not an "already answered" marker and the message must still be routed by
+    the mention verdict. Skipping shared-room messages here silently dropped
+    every peer @mention, so agents never answered each other.
+    """
+    delivery_state = str(message.get("deliveryState") or message.get("delivery_state") or "").lower()
+    if delivery_state not in {"resolved", "cancelled"}:
+        return False
+    thread_type = str(message.get("threadType") or message.get("thread_type") or "").lower()
+    return thread_type not in SHARED_THREAD_TYPES
+
+
 def format_group_context(message: Dict[str, Any]) -> str:
     """Who and what a group chat is for, so the agent answers as a member."""
     thread_type = str(message.get("threadType") or message.get("thread_type") or "")
@@ -2336,7 +2352,7 @@ def main() -> int:
                 # Retry IDs are sent explicitly to the sync endpoint. A legacy
                 # state file can retain an ID after its reply was stored; never
                 # let a resolved/cancelled message consume another Hermes turn.
-                if delivery_state in {"resolved", "cancelled"}:
+                if is_processed_delivery_state(message):
                     clear_retry(state, message_id)
                     remember_seen(state, message_id)
                     continue
