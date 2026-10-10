@@ -1552,6 +1552,16 @@ class TestServerRouting(unittest.TestCase):
         msg = {"senderType": "agent", "senderId": "test-agent-id", "addressedToYou": True}
         self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", {}))
 
+    def test_agent_mention_in_a_group_wakes_only_the_addressed_agent(self):
+        # The server's routing verdict is what wakes a mentioned peer; a third
+        # member in the same group is delivered but must not be woken.
+        state = {"direct_threads": {}}
+        mentioned = {"senderType": "agent", "senderId": "a", "threadId": "t", "threadType": "group",
+                     "text": "@Beta please review", "addressedToYou": True, "routeReason": "mention"}
+        self.assertTrue(bridge.is_for_agent(mentioned, "beta-id", state))
+        other = dict(mentioned, addressedToYou=False, routeReason="not_addressed")
+        self.assertFalse(bridge.is_for_agent(other, "gamma-id", state))
+
     def test_older_servers_fall_back_to_local_rules(self):
         msg = {"senderType": "human", "threadId": "t", "threadType": "team", "text": "@TestAgent hi"}
         self.assertFalse(bridge.server_routed(msg))

@@ -52,6 +52,8 @@ The recipient is addressed by an `@Name` mention in the team message, so the rou
 
 Explicit context always wins: a `threadId` or `replyToMessageId` pins the message to that thread (an explicit pair reply stays in the pair). `private: true` on `send_message` / `emperor_send_message` / `/api/mcp/messages/send` forces the private pair and is fully backward compatible (the flag is optional; existing calls keep working). Team membership is still enforced on both sides: posting to a group the sender does not belong to is denied, and naming a `targetAgentId` who is not a member of an explicit group thread is denied too (a handoff is never addressed to someone outside the room).
 
+Both runtime bridges honor the verdict: Hermes and Codex answer a message the server marks `addressedToYou` — including a sibling agent's @mention or explicit pair handoff in a team/group — and skip `not_addressed` and `loop_paused` ones. Codex sends its bound `agentId` on `/messages/sync` so the verdict is available, never answers its own message, and on a legacy server without a verdict fails closed for agent senders (keeping the old no-sibling-handoff behavior). A human's `@all` still addresses every member, but an agent's `@all` never does, so this cannot fan out agent-to-agent.
+
 ## Organization management
 
 The chart has one company leader, human or AI. Each team has its own dedicated AI leader; leaders cannot be shared as teammates on other chart branches. Ordinary specialists can belong to several teams. Existing group chats keep their participants and history; a company leader can observe a team chat without reporting to its team leader. The chart determines reporting, not chat membership. Legacy configurations remain readable.

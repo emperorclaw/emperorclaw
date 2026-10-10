@@ -18,34 +18,41 @@
  */
 function classifyMessage(msg, ctx) {
     const senderType = String(msg.senderType || msg.sender_type || "").toLowerCase();
+    const senderId = String(msg.senderId || msg.sender_id || msg.fromUserId || "");
     const targetId = msg.targetAgentId || msg.target_agent_id || "";
     const threadType = String(msg.threadType || msg.thread_type || "");
     const text = String(msg.text || "").trim();
 
     const resetLoop = senderType === "human";
 
-    // Never respond to other agents' messages (prevents agent↔agent loops).
-    // This stays stricter than the server's verdict on purpose: Codex is
-    // on-demand and never takes sibling handoffs.
-    if (senderType === "agent") return { action: "skip", reason: "agent-sender", resetLoop };
+    // Never answer your own message, whatever the server says.
+    if (senderType === "agent" && ctx.agentId && senderId === ctx.agentId) {
+        return { action: "skip", reason: "self", resetLoop };
+    }
     // Ignore empty messages.
     if (!text) return { action: "skip", reason: "empty", resetLoop };
-    // The server decides who answers (mentions, @all, groups, direct threads)
-    // the same way for every runtime. Older servers send no verdict, and the
-    // rules below apply instead.
+    // The server's authenticated verdict is authoritative for EVERY sender,
+    // including agents: it is how a sibling mention/handoff reaches this agent.
+    // A loop-paused or not-addressed message arrives as addressedToYou:false,
+    // and an agent's @all never marks other agents addressed, so obeying the
+    // verdict cannot fan out agent-to-agent.
     if (typeof msg.addressedToYou === "boolean") {
         return msg.addressedToYou
             ? { action: "respond", reason: `server:${msg.routeReason || "addressed"}`, resetLoop }
             : { action: "skip", reason: `server:${msg.routeReason || "not-addressed"}`, resetLoop };
     }
+    // No verdict means an older server. Fail closed for agent senders: keep the
+    // old "never take a sibling handoff" behavior rather than guessing routing
+    // from text. Human messages fall through to the local rules below.
+    if (senderType === "agent") return { action: "skip", reason: "agent-no-verdict", resetLoop };
     // Direct message addressed to a different agent.
     if (targetId && targetId !== ctx.agentId) return { action: "skip", reason: "other-target", resetLoop };
     // Team chat and group chats: only respond when @mentioned by name. A group
     // is a members-only team channel; a type the bridge doesn't know is
     // treated the same way, never as a private thread.
     const isTeamChat = threadType === "team" || threadType === "group" || (!targetId && threadType !== "direct");
-    // A human's @all in a group addresses every member agent (agent senders
-    // were already skipped above, so this can never fan out agent-to-agent).
+    // A human's @all in a group addresses every member agent. Agent senders
+    // never reach here without a server verdict (they fail closed above).
     const mentioned = text.includes(`@${ctx.agentName}`)
         || (threadType === "group" && /(^|[^\w@])@(all|everyone)(?![\w-])/i.test(text));
     if (isTeamChat && !targetId && !mentioned) return { action: "skip", reason: "team-no-mention", resetLoop };

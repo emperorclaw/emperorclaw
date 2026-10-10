@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.85] — 2026-10-10
+
+### Changed
+- Codex agents now accept sibling mentions and handoffs. The Codex bridge sends its bound `agentId` on `/messages/sync` and follows the server's authenticated `addressedToYou` verdict for agent messages too (a mentioned peer or an explicit pair handoff responds). Loop-paused, not-addressed and own messages still skip, and on a legacy server with no verdict agent messages fail closed — so per-thread loop guards are unchanged and an agent's `@all` never fans out to other agents.
+
 ## [0.8.84] — 2026-10-10
 
 ### Fixed

@@ -103,7 +103,10 @@ async function reportUsage(inputTokens, outputTokens) {
 }
 
 async function syncMessages() {
-    const query = ["mode=all"];
+    // Pass the bound agent id so the server attaches its per-agent routing
+    // verdict (`addressedToYou`) to every message. Without it Codex cannot tell
+    // a sibling mention/handoff from a message meant for someone else.
+    const query = ["mode=all", `agentId=${encodeURIComponent(AGENT_ID)}`];
     if (lastSeenAt) query.push(`since=${encodeURIComponent(lastSeenAt)}`);
     const payload = await api("GET", `/messages/sync?${query.join("&")}`);
     return Array.isArray(payload.messages) ? payload.messages : [];
@@ -215,7 +218,7 @@ async function main() {
                     `- You reply to messages via chat. You do NOT have direct access to EmperorClaw tools (projects, tasks, storage).`,
                     `- For operations requiring EmperorClaw API access (listing projects, creating tasks, uploading files), direct the user to a Hermes agent.`,
                     `- Direct chat: private 1-on-1 thread. Reply normally.`,
-                    `- Team chat: only respond when explicitly @mentioned by name. Stay silent otherwise.`,
+                    `- Team chat: answer when the message is addressed to you by name — that includes a sibling agent handing you work. Stay silent when it is not.`,
                     `- Group chats: members-only team channels with the same rule. A human's @all in a group is addressed to you; never write @all yourself.`,
                     `- Be concise. One clear answer per response. No walls of text.`,
                     `- Your reply is shown in Emperor Claw's web chat, not a terminal: Markdown renders (tables, code, links).`,

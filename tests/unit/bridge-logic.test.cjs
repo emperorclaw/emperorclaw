@@ -17,10 +17,10 @@ test("classifyMessage: responds to a direct human message addressed to this agen
     assert.equal(d.resetLoop, true);
 });
 
-test("classifyMessage: never responds to another agent (loop prevention)", () => {
+test("classifyMessage: an agent message without a server verdict fails closed", () => {
     const d = classifyMessage({ senderType: "agent", targetAgentId: "agent-1", text: "hi" }, CTX);
     assert.equal(d.action, "skip");
-    assert.equal(d.reason, "agent-sender");
+    assert.equal(d.reason, "agent-no-verdict");
     assert.equal(d.resetLoop, false);
 });
 
@@ -119,9 +119,31 @@ test("classifyMessage: @all in a group addresses every member, only in groups", 
     assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@all standup" }, CTX).action, "skip");
 });
 
-test("classifyMessage: follows the server's routing verdict when present", () => {
+test("classifyMessage: obeys the server verdict for agents (mentions/handoffs) and humans", () => {
+    // A sibling @mention in a team, addressed to this agent, is answered.
+    assert.equal(classifyMessage({ senderType: "agent", senderId: "b", threadType: "team", text: "@Ada review", addressedToYou: true, routeReason: "mention" }, CTX).action, "respond");
+    // Same in a group.
+    assert.equal(classifyMessage({ senderType: "agent", senderId: "b", threadType: "group", text: "@Ada", addressedToYou: true, routeReason: "mention" }, CTX).action, "respond");
+    // An explicit two-agent pair handoff is answered.
+    assert.equal(classifyMessage({ senderType: "agent", senderId: "b", targetAgentId: "agent-1", threadType: "group", text: "handoff", addressedToYou: true, routeReason: "agent_pair" }, CTX).action, "respond");
+    // An unnamed third member in the same room is not addressed.
+    assert.equal(classifyMessage({ senderType: "agent", senderId: "b", threadType: "group", text: "@Other", addressedToYou: false, routeReason: "not_addressed" }, CTX).action, "skip");
+    // A loop-paused sibling message arrives as addressedToYou:false.
+    const paused = classifyMessage({ senderType: "agent", senderId: "b", threadType: "team", text: "@Ada again", addressedToYou: false, routeReason: "loop_paused" }, CTX);
+    assert.equal(paused.action, "skip");
+    assert.match(paused.reason, /loop_paused/);
+    // Human behavior is unchanged.
     assert.equal(classifyMessage({ senderType: "human", threadType: "team", text: "status?", addressedToYou: true, routeReason: "targeted" }, CTX).action, "respond");
     assert.equal(classifyMessage({ senderType: "human", threadType: "team", text: "@Ada hi", addressedToYou: false, routeReason: "not_addressed" }, CTX).action, "skip");
-    // Codex stays stricter: it never answers agents, whatever the verdict.
-    assert.equal(classifyMessage({ senderType: "agent", threadType: "team", text: "@Ada", addressedToYou: true }, CTX).action, "skip");
+});
+
+test("classifyMessage: an agent never answers its own message even if addressed", () => {
+    const d = classifyMessage({ senderType: "agent", senderId: "agent-1", threadType: "team", text: "note", addressedToYou: true }, CTX);
+    assert.equal(d.action, "skip");
+    assert.equal(d.reason, "self");
+});
+
+test("classifyMessage: a legacy server fails agent messages closed (no agent @all fan-out)", () => {
+    assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@all standup" }, CTX).action, "skip");
+    assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@Ada standup" }, CTX).action, "skip");
 });
