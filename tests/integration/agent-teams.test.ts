@@ -756,3 +756,35 @@ maybe("answered-message suppression is timezone-safe and keeps a queued follow-u
         if (oldTZ === undefined) delete process.env.TZ; else process.env.TZ = oldTZ;
     }
 });
+
+maybe("a peer message that arrives while the agent is busy is queued, not swallowed by the reply", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const a = await seedAgent(companyId, { name: "Alpha", provider: "hermes" });
+    const b = await seedAgent(companyId, { name: "Beta", provider: "hermes" });
+    const { ensureAgentPairThread } = await import("@/lib/groups");
+    const thread = await ensureAgentPairThread(companyId, a.id, b.id);
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const first = new Date("2026-10-10T18:48:17Z");
+    const during = new Date("2026-10-10T18:52:51Z");
+    const reply = new Date("2026-10-10T18:54:42Z");
+
+    // The runtime is serial: Beta asks at 18:48, Alpha answers it at 18:54, and
+    // Beta's 18:52 message lands between the answered message and the reply.
+    // Keying suppression on the reply instant dropped it; keying on the answered
+    // message keeps it queued so the next poll delivers it.
+    const [firstQuestion] = await db.insert(threadMessages).values({
+        companyId, threadId: thread.id, senderType: "agent", senderId: b.id, targetAgentId: a.id, text: "first", createdAt: first,
+    }).returning();
+    await db.insert(threadMessages).values([
+        { companyId, threadId: thread.id, senderType: "agent", senderId: a.id, text: "answer", createdAt: reply, metadataJson: { replyToMessageId: firstQuestion.id } },
+        { companyId, threadId: thread.id, senderType: "agent", senderId: b.id, targetAgentId: a.id, text: "while-busy", createdAt: during },
+        // A queued follow-up keeps sync from long-polling.
+        { companyId, threadId: thread.id, senderType: "system", targetAgentId: a.id, text: "followup", deliveryState: "queued", createdAt: reply },
+    ]);
+
+    const messages = await syncFor(companyId, rawToken, a.id);
+    assert.equal(messages.find((m) => m.text === "first"), undefined, "the answered message stays suppressed");
+    assert.ok(messages.find((m) => m.text === "while-busy"), "a message that arrived during the turn is queued, not dropped");
+});

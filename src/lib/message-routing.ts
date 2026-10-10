@@ -424,23 +424,56 @@ export interface AnsweredFilterMessage {
 }
 
 /**
- * The sync dedup predicate, kept pure (and timezone-safe) so it is unit-tested:
- * drop a message when this agent already replied in its thread afterwards,
- * EXCEPT an explicitly queued direct follow-up addressed to this agent (a newer
- * reply must never discard work the server is still holding for it).
+ * The "answered up to here" instant per thread: everything at or before it is
+ * done, everything after it is still to process.
  *
- * It compares epoch milliseconds, so a `lastReply` decoded in the wrong host
+ * Keyed on the instant of the message the agent last *answered* — resolved from
+ * the reply's `replyToMessageId` — not on the reply's own instant. The gap
+ * matters: a runtime is serial, so a message that arrives while it is busy
+ * answering an earlier one sits between that earlier message and the reply.
+ * Using the reply's instant marked that queued message "already answered" and
+ * dropped it (the agent never saw it); using the answered message's instant
+ * keeps it pending, so the next poll delivers it once the agent is free.
+ * Falls back to the reply's instant when a runtime does not report which
+ * message it answered.
+ */
+export function answeredCutoffByThread(
+    replies: { threadId: string; createdAt: Date | string; replyToId: string | null }[],
+    answeredAtById: Map<string, Date | string>,
+): Map<string, Date> {
+    const latest = new Map<string, { createdAt: Date; replyToId: string | null }>();
+    for (const reply of replies) {
+        const at = new Date(reply.createdAt);
+        const prev = latest.get(reply.threadId);
+        if (!prev || at > prev.createdAt) latest.set(reply.threadId, { createdAt: at, replyToId: reply.replyToId });
+    }
+    const cutoff = new Map<string, Date>();
+    for (const [threadId, info] of latest) {
+        const answered = info.replyToId ? answeredAtById.get(info.replyToId) : undefined;
+        cutoff.set(threadId, answered ? new Date(answered) : info.createdAt);
+    }
+    return cutoff;
+}
+
+/**
+ * The sync dedup predicate, kept pure (and timezone-safe) so it is unit-tested:
+ * drop a message when its thread is already answered up to `answeredCutoffByThread`
+ * (see {@link answeredCutoffByThread}), EXCEPT an explicitly queued direct
+ * follow-up addressed to this agent (a newer reply must never discard work the
+ * server is still holding for it).
+ *
+ * It compares epoch milliseconds, so a cutoff decoded in the wrong host
  * timezone would show up here as a failed suppression — the regression that
  * motivated using the column decoder for the SQL `MAX(created_at)` aggregate.
  */
 export function filterAnsweredMessages<T extends AnsweredFilterMessage>(
     messages: T[],
-    lastReplyByThread: Map<string, Date | string>,
+    answeredCutoffByThread: Map<string, Date | string>,
     resolvedAgentId: string,
 ): T[] {
     return messages.filter((m) => {
-        const lastReply = lastReplyByThread.get(m.threadId);
-        if (lastReply === undefined) return true; // No reply from this agent yet
+        const cutoff = answeredCutoffByThread.get(m.threadId);
+        if (cutoff === undefined) return true; // Nothing answered in this thread yet
         if (
             m.targetAgentId === resolvedAgentId &&
             (m.senderType === "human" || m.senderType === "system") &&
@@ -448,7 +481,7 @@ export function filterAnsweredMessages<T extends AnsweredFilterMessage>(
         ) {
             return true;
         }
-        return new Date(m.createdAt).getTime() > new Date(lastReply).getTime();
+        return new Date(m.createdAt).getTime() > new Date(cutoff).getTime();
     });
 }
 

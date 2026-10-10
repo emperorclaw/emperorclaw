@@ -8,6 +8,7 @@ import {
     agentPairLoopMaxTurns,
     agentStreakState,
     agentStreaks,
+    answeredCutoffByThread,
     decideDelivery,
     filterAnsweredMessages,
     mentionedAgentIds,
@@ -319,4 +320,36 @@ test("filterAnsweredMessages keeps a queued direct follow-up addressed to this a
     ];
     const kept = filterAnsweredMessages(messages, new Map([["t1", replied]]), "me");
     assert.deepEqual(kept.map((m) => m.text), ["human follow-up", "system follow-up"]);
+});
+
+test("answeredCutoffByThread keys on the answered message, not the reply instant", () => {
+    // A serial runtime answers the human @all (18:48) at 18:54; a peer mention
+    // that arrived at 18:52 while it was busy must stay pending.
+    const humanAtAll = new Date("2026-10-10T18:48:17Z");
+    const peerMention = new Date("2026-10-10T18:52:51Z");
+    const reply = new Date("2026-10-10T18:54:42Z");
+
+    const cutoff = answeredCutoffByThread(
+        [{ threadId: "g1", createdAt: reply, replyToId: "human-msg" }],
+        new Map([["human-msg", humanAtAll]]),
+    );
+    assert.equal(cutoff.get("g1")!.toISOString(), humanAtAll.toISOString(), "cutoff is the answered message's instant");
+
+    const messages = [
+        { threadId: "g1", senderType: "human", targetAgentId: null, deliveryState: "queued", createdAt: humanAtAll, text: "human @all" },
+        { threadId: "g1", senderType: "agent", targetAgentId: null, deliveryState: "resolved", createdAt: peerMention, text: "@me while busy" },
+    ];
+    // The answered human message is dropped; the peer mention that arrived during
+    // the turn is kept and queued instead of being swallowed.
+    const kept = filterAnsweredMessages(messages, cutoff, "me");
+    assert.deepEqual(kept.map((m) => m.text), ["@me while busy"]);
+});
+
+test("answeredCutoffByThread falls back to the reply instant without a reported source", () => {
+    const reply = new Date("2026-10-10T18:54:42Z");
+    const cutoff = answeredCutoffByThread(
+        [{ threadId: "g1", createdAt: reply, replyToId: null }],
+        new Map(),
+    );
+    assert.equal(cutoff.get("g1")!.toISOString(), reply.toISOString());
 });

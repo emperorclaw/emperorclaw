@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
 import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpose } from "@/lib/groups";
-import { agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
+import { agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 
@@ -122,30 +122,42 @@ export async function GET(req: NextRequest) {
                 if (resolvedAgentId) {
                     const threadIds = [...new Set(messages.map(m => m.threadId).filter(Boolean))];
                     if (threadIds.length > 0) {
-                        // Get the latest agent message in each of these threads
+                        // This agent's replies in these threads, each with the
+                        // message it answered (runtimes set `replyToMessageId`).
+                        // The replied-to message's own createdAt is the "answered
+                        // up to" cutoff — NOT the reply's createdAt. A runtime is
+                        // serial, so a message that arrived while it was busy
+                        // answering an earlier one falls between that earlier
+                        // message and the reply; keying on the reply's instant
+                        // wrongly marked it answered and dropped it.
                         const agentReplies = await db
                             .select({
                                 threadId: threadMessages.threadId,
-                                // Decode through the column so the aggregate is read
-                                // as a UTC instant, exactly like every other row. A
-                                // raw `sql<string>` + `new Date(string)` reads a
-                                // timestamp-without-timezone in the host timezone,
-                                // which re-delivered already-answered messages on
-                                // non-UTC servers.
-                                maxCreatedAt: sql`MAX(${threadMessages.createdAt})`.mapWith(threadMessages.createdAt),
+                                createdAt: threadMessages.createdAt,
+                                replyToId: sql<string | null>`${threadMessages.metadataJson}->>'replyToMessageId'`,
                             })
                             .from(threadMessages)
                             .where(and(
                                 eq(threadMessages.companyId, companyId),
                                 eq(threadMessages.senderType, 'agent'),
                                 eq(threadMessages.senderId, resolvedAgentId),
-                                // Only check threads we care about
-                                sql`${threadMessages.threadId} = ANY(ARRAY[${sql.join(threadIds.map(id => sql`${id}::uuid`), sql`, `)}])`,
-                            ))
-                            .groupBy(threadMessages.threadId);
+                                inArray(threadMessages.threadId, threadIds),
+                            ));
 
-                        const replyMap = new Map(agentReplies.map(r => [r.threadId, r.maxCreatedAt]));
-                        filtered = filterAnsweredMessages(messages, replyMap, resolvedAgentId);
+                        const answeredIds = [...new Set(
+                            agentReplies.map(r => r.replyToId).filter((id): id is string => !!id && UUID_RE.test(id)),
+                        )];
+                        const answeredAtById = new Map<string, Date>();
+                        if (answeredIds.length > 0) {
+                            const answers = await db
+                                .select({ id: threadMessages.id, createdAt: threadMessages.createdAt })
+                                .from(threadMessages)
+                                .where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.id, answeredIds)));
+                            for (const a of answers) answeredAtById.set(a.id, a.createdAt);
+                        }
+
+                        const cutoff = answeredCutoffByThread(agentReplies, answeredAtById);
+                        filtered = filterAnsweredMessages(messages, cutoff, resolvedAgentId);
                     }
                 }
 
