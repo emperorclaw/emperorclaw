@@ -1,9 +1,10 @@
 // FOCUS: one agent per page. Swipe up / down to cycle agents. Tap to open the
 // agent's private chat (the token creator's own direct messages, when the token
-// carries them); tap again, or swipe left / right, to close it.
+// carries them); tap again, or swipe left / right, to close it. When the agent has a
+// fresh thought (feed v2), it types out in a cloud under the character instead of
+// the activity line.
 #include "../app.h"
 #include "../palette.h"
-#include "../sprites.h"
 #include "../ui_common.h"
 
 using namespace ui;
@@ -46,8 +47,9 @@ static int chatHalf(int y0, int y1) {
 
 static void drawChat(const Agent& a, const AgentAnim& an) {
   // Header: padlock + whose chat this is.
-  char title[40];
-  snprintf(title, sizeof(title), "Private: %s", a.shortName);
+  char title[40], label[16];
+  app_label(a, label, sizeof(label), true);
+  snprintf(title, sizeof(title), "Private: %s", label);
   int tw = textWidth(title, F_SMALL);
   drawLock(CX - tw / 2 - 9, 31, c(pal::GOLD, 13));
   text(title, CX + 6, 31, c(an.ramp, 13), F_SMALL);
@@ -63,6 +65,7 @@ static void drawChat(const Agent& a, const AgentAnim& an) {
   }
 
   const DmMsg* msgs = &app.model.dm[a.dmStart];
+  bool safe = app_camSafe();
   int32_t snapAge = app_snapshotAgeSec();
   int y = CHAT_BOTTOM;
   int first = app.chatScroll < a.dmCount ? app.chatScroll : 0;
@@ -105,7 +108,7 @@ static void drawChat(const Agent& a, const AgentAnim& an) {
       int n = ln[l] < sizeof(buf) - 1 ? ln[l] : sizeof(buf) - 1;
       memcpy(buf, msg.text + st[l], n);
       buf[n] = 0;
-      text(buf, bx + BUBBLE_PAD + 1, top + BUBBLE_PAD + l * LINE_H + 3, ink, F_TINY, lgfx::middle_left);
+      textS(buf, bx + BUBBLE_PAD + 1, top + BUBBLE_PAD + l * LINE_H + 3, ink, F_TINY, lgfx::middle_left, safe);
     }
     char ago[24];
     fmtAgo(ago, sizeof(ago), msg.ageSec + snapAge);
@@ -159,16 +162,17 @@ void focus_draw() {
   }
   oy += slide;
 
-  // Name along the top arc.
-  arcText(a.name, 101, ANG_TOP, c(an.ramp, 13), F_MED, true);
+  // Name along the top arc (initials when camera-safe).
+  bool safe = app_camSafe();
+  char name[28];
+  app_label(a, name, sizeof(name), false);
+  arcText(name, 101, ANG_TOP, c(an.ramp, 13), F_MED, true);
   if (app_hasRecentDm(a)) drawDmBadge(CX + 38, 50);
 
-  // Big character with a soft halo.
-  glow(CX, 70, 36, an.ramp, 4 + p / 512);
-  bool ghost = a.health == H_DOWN || a.state == S_OFFLINE;
-  int frame = (a.state == S_WORKING || a.state == S_TYPING) ? (app.now / 260) & 1 : (app.now / 900) & 1;
-  int fy = ghost ? (isin((int)(app.now / 4) & 1023) * 4) >> 14 : 0;
-  drawCharacter(an.spr, frame, CX, 70 + fy, 4, an.ramp, ghost ? CF_GHOST : CF_NONE, app.now);
+  // Big character acting out its current act, with a soft halo.
+  glow(CX, 70, 40, an.ramp, 4 + p / 512);
+  bool ghost = an.act == ACT_OFFLINE;
+  actor_draw(idx, CX, ghost ? 98 : 102, 3, false);
 
   // State chip.
   const char* sl = stateLabel(a.state);
@@ -178,14 +182,38 @@ void focus_draw() {
   fillCircle(CX - cw / 2 + 7, 112, 2, c(sr, 13));
   text(sl, CX + 4, 113, c(sr, 15), F_TINY);
 
-  // Activity, word-wrapped; long texts scroll line by line.
-  const char* act = a.activity[0] ? a.activity : (ghost ? "Not responding" : "No current activity");
+  // Thought (typed out in a cloud) or activity, word-wrapped; long texts scroll line by line.
+  const Thought* th = ghost ? nullptr : model_thought(m, a);
+  const char* act = th ? th->text : (a.activity[0] ? a.activity : (ghost ? "Not responding" : "No current activity"));
   uint16_t st[12];
   uint8_t ln[12];
-  int lines = wrapText(act, 172, F_SMALL, st, ln, 12);
+  int lines = wrapText(act, th ? 164 : 172, F_SMALL, st, ln, 12);
   const int lineH = 16, top = 124, visible = 3;
   int first = 0, sub = 0;
-  if (lines > visible) {
+  static uint32_t s_thoughtHash = 0, s_thoughtStart = 0;
+  int typed = 1 << 14;
+  if (th) {
+    uint32_t h = fnv1a(th->text) ^ a.idHash;
+    if (h != s_thoughtHash) {
+      s_thoughtHash = h;
+      s_thoughtStart = app.now;
+    }
+    uint32_t elapsed = app.now - s_thoughtStart;
+    if (elapsed > 60000) elapsed = 60000;  // fully typed long before; avoids overflow
+    typed = (int)(elapsed * 30 / 1000);
+    // Cloud behind the text, with two puffs rising from the character.
+    fillCircle(CX + 22, 116, 2, c(an.ramp, 3));
+    fillCircle(CX + 30, 121, 3, c(an.ramp, 3));
+    fillRoundRect(CX - 88, top - 2, 176, visible * lineH + 6, 10, c(an.ramp, 3));
+  }
+  if (th && typed < (int)strlen(act)) {
+    // Still typing: keep the line being typed in view.
+    int last = 0;
+    for (int l = 0; l < lines; l++)
+      if (st[l] < typed) last = l;
+    first = last - (visible - 1);
+    if (first < 0) first = 0;
+  } else if (lines > visible) {
     uint32_t period = 2200;
     uint32_t cyc = app.now % (period * (lines - visible + 2));
     int step = (int)(cyc / period);
@@ -200,15 +228,19 @@ void focus_draw() {
     if (y < top - lineH / 2 || y > top + (visible - 1) * lineH + lineH / 2) continue;
     int li = first + l;
     int n = ln[li] < sizeof(buf) - 1 ? ln[li] : sizeof(buf) - 1;
+    if (st[li] + n > typed) n = typed - st[li];
+    if (n <= 0) break;
     memcpy(buf, act + st[li], n);
     buf[n] = 0;
-    text(buf, CX, y + lineH / 2, a.activity[0] ? pal::TEXT : pal::TEXT_DIM, F_SMALL);
+    bool real = th || a.activity[0];
+    if (th) textS(buf, CX - 80, y + lineH / 2, pal::WHITE, F_SMALL, lgfx::middle_left, safe);
+    else textS(buf, CX, y + lineH / 2, real ? pal::TEXT : pal::TEXT_DIM, F_SMALL, lgfx::middle_center, safe && real);
   }
 
   // Task title.
   if (a.task[0]) {
     fillRect(CX - 76, 176, 3, 12, c(pal::GOLD, 9));
-    textFit(a.task, CX - 69, 182, 146, c(pal::GOLD, 12), F_SMALL, lgfx::middle_left);
+    textFitS(a.task, CX - 69, 182, 146, c(pal::GOLD, 12), F_SMALL, lgfx::middle_left, safe);
   } else {
     text("no active task", CX, 182, pal::TEXT_FAINT, F_SMALL);
   }

@@ -164,3 +164,31 @@ void model_recount(Model& m) {
     if (a.state == S_WORKING || a.state == S_TYPING) s.working++;
   }
 }
+
+bool model_setThought(Model& m, int idx, const char* text, int32_t ageSec) {
+  if (idx < 0 || idx >= m.nAgents || !text || !*text) return false;
+  Agent& a = m.agents[idx];
+  int slot = a.thought ? a.thought - 1 : -1;
+  if (slot < 0 && m.nThoughts < MAX_THOUGHTS) slot = m.nThoughts++;
+  if (slot < 0) {
+    int stalest = 0;
+    for (int i = 1; i < m.nThoughts; i++)
+      if (m.thoughts[i].ageSec > m.thoughts[stalest].ageSec) stalest = i;
+    if (m.thoughts[stalest].ageSec <= ageSec) return false;
+    slot = stalest;
+    for (int i = 0; i < m.nAgents; i++)
+      if (m.agents[i].thought == slot + 1) m.agents[i].thought = 0;
+  }
+  Thought& t = m.thoughts[slot];
+  t.agentHash = a.idHash;
+  t.ageSec = ageSec < 0 ? 0 : ageSec;
+  asciiCopy(t.text, sizeof(t.text), text);
+  a.thought = (uint8_t)(slot + 1);
+  return true;
+}
+
+const Thought* model_thought(const Model& m, const Agent& a) {
+  if (!a.thought || a.thought > m.nThoughts) return nullptr;
+  const Thought& t = m.thoughts[a.thought - 1];
+  return (t.agentHash == a.idHash && t.text[0]) ? &t : nullptr;
+}

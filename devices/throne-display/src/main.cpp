@@ -9,12 +9,15 @@
 #include <esp_heap_caps.h>
 
 #include "app.h"
+#include "character.h"
 #include "config_portal.h"
 #include "data_model.h"
 #include "display_config.h"
 #include "live_client.h"
+#include "moments.h"
 #include "palette.h"
 #include "serial_setup.h"
+#include "sprites.h"
 #include "touch.h"
 #include "ui_common.h"
 #include "version.h"
@@ -37,6 +40,8 @@ static uint8_t s_transTarget = 0;
 static bool s_transSwitched = false;
 
 static uint32_t s_lastTouchMs = 0;
+static uint32_t s_lastTapMs = 0;     // double-tap detection (Director: camera-safe ON)
+static uint32_t s_modeSince = 0;     // when the current mode became active
 static uint32_t s_bootMs = 0;
 static int s_backlight = 0;
 static bool s_portalScreen = false;
@@ -97,6 +102,7 @@ static int transitionStep() {
   if (!s_transSwitched) {
     s_transSwitched = true;
     app.mode = s_transTarget;
+    s_modeSince = app.now;
     clearParticles();
   }
   t -= T_OUT;
@@ -112,7 +118,12 @@ static int transitionStep() {
 
 // ---------------------------------------------------------------- overlays
 
+// Director keeps the frame clean for filming: chrome fades out after a moment.
+static bool directorClean() { return app.mode == MODE_DIRECTOR && s_transDir == 0 && app.now - s_modeSince > 2500; }
+
+
 static void drawStatusDot() {
+  if (directorClean()) return;
   int x, y;
   polar(103, ANG_TOP + 128, x, y);  // 1:30 position
   uint8_t r;
@@ -133,8 +144,9 @@ static void drawStatusDot() {
 }
 
 static void drawModeDots() {
+  if (directorClean()) return;
   for (int i = 0; i < MODE_COUNT; i++) {
-    int a = ANG_BOTTOM + (int)((3 - 2 * i) * 11);  // leftmost = mode 0
+    int a = ANG_BOTTOM + (int)((MODE_COUNT - 1 - 2 * i) * 11);  // leftmost = mode 0
     int x, y;
     polar(110, a, x, y);
     bool on = i == (s_transDir && s_transSwitched ? s_transTarget : app.mode);
@@ -154,10 +166,13 @@ static void drawRimAlerts() {
     arc(CX, CY, 114, 119, 0, 1023, c(pal::RED, (uint8_t)(3 + p * 7 / 1024)), true);
     arc(CX, CY, 109, 113, 0, 1023, c(pal::RED, (uint8_t)(1 + p * 3 / 1024)), true);
   }
-  if (s.pendingApprovals > 0) {
-    int p = pulse(app.now + 500, 2100);
+  // Gold ring while anything waits for a human; brighter and faster for feed v2 `needs`.
+  bool needs = app.model.nNeeds > 0;
+  if (s.pendingApprovals > 0 || needs) {
+    int p = pulse(app.now + 500, needs ? 1300 : 2100);
     int r0 = s.down > 0 ? 105 : 113;
-    arc(CX, CY, r0, r0 + 4, 0, 1023, c(pal::GOLD, (uint8_t)(2 + p * 8 / 1024)), true);
+    if (needs) arc(CX, CY, r0 - 3, r0 + 4, 0, 1023, c(pal::GOLD, (uint8_t)(2 + p * 11 / 1024)), true);
+    else arc(CX, CY, r0, r0 + 4, 0, 1023, c(pal::GOLD, (uint8_t)(2 + p * 8 / 1024)), true);
   }
 }
 
@@ -167,18 +182,43 @@ static void drawHoldProgress() {
   int a = (int)((h - 500) * 1024 / 4500);
   if (a > 1023) a = 1023;
   arc(CX, CY, 116, 119, ANG_TOP, ANG_TOP + a, h >= 1500 ? c(pal::GOLD, 13) : pal::WHITE);
-  const char* msg = h < 1500 ? "keep holding" : (h < 5000 ? (net_demo() ? "release: live mode" : "release: demo mode") : "");
+  // In Director with camera-safe on, the 1.5 s hold turns camera-safe off instead.
+  bool safeOff = app.mode == MODE_DIRECTOR && app_camSafe();
+  const char* msg = h < 1500 ? "keep holding"
+                             : (h < 5000 ? (safeOff ? "release: camera-safe off"
+                                                    : (net_demo() ? "release: live mode" : "release: demo mode"))
+                                         : "");
   if (h >= 3000) msg = "hold for setup";
   fillRoundRect(CX - 56, 206, 112, 14, 7, c(pal::NEUTRAL, 2));
   text(msg, CX, 213, pal::TEXT, F_TINY);
 }
 
 static void drawDemoTag() {
-  if (!app.model.demo) return;
+  if (!app.model.demo || app.mode == MODE_DIRECTOR) return;
   text("DEMO", CX, 222 - 8, c(pal::VIOLET, 12), F_TINY);
   uint32_t t = app.now - s_bootMs;
   bool hint = t < 20000 || (t % 60000) < 5000;
   if (hint && touch_holdMs() < 500) arcText("hold 5s for setup", 96, ANG_BOTTOM, c(pal::NEUTRAL, 9), F_TINY, false);
+}
+
+// Camera-safe: a small badge at the 10:30 position (Director shows its own), and a
+// short confirmation in the middle after a toggle.
+static void drawCamSafe() {
+  if (app_camSafe() && app.mode != MODE_DIRECTOR) {
+    int x, y;
+    polar(100, ANG_TOP - 128, x, y);
+    fillRoundRect(x - 13, y - 6, 27, 12, 6, c(pal::GOLD, 4));
+    text("SAFE", x + 1, y, c(pal::GOLD, 15), F_TINY);
+  }
+  if (app.camSafeToastMs && app.now - app.camSafeToastMs < 1400) {
+    const char* msg = app_camSafe() ? "Camera-safe ON" : "Camera-safe OFF";
+    fillRoundRect(CX - 62, CY - 13, 124, 26, 13, c(pal::NEUTRAL, 1));
+    fillRoundRect(CX - 61, CY - 12, 122, 24, 12, c(pal::GOLD, app_camSafe() ? 5 : 2));
+    text(msg, CX, CY, pal::WHITE, F_SMALL);
+  } else if (app.camSafeHintMs && app.now - app.camSafeHintMs < 1800 && app_camSafe()) {
+    fillRoundRect(CX - 70, CY - 13, 140, 26, 13, c(pal::NEUTRAL, 1));
+    text("Hold 1.5 s to turn off", CX, CY, c(pal::GOLD, 13), F_SMALL);
+  }
 }
 
 static void drawNoDataNotice() {
@@ -186,7 +226,11 @@ static void drawNoDataNotice() {
   const char* l1 = "Connecting";
   char l2[48] = "";
   switch (g_net.status) {
-    case NET_WIFI: l1 = "Joining Wi-Fi"; strlcpy(l2, g_cfg.ssid, sizeof(l2)); break;
+    case NET_WIFI:
+      l1 = "Joining Wi-Fi";
+      if (app_camSafe()) strlcpy(l2, "network hidden", sizeof(l2));  // never film the SSID
+      else strlcpy(l2, g_cfg.ssid, sizeof(l2));
+      break;
     case NET_ERROR:
       l1 = "Server error";
       if (g_net.lastHttp == 401 || g_net.lastHttp == 403) strlcpy(l2, "token rejected", sizeof(l2));
@@ -272,12 +316,29 @@ static void handleGesture(const TouchEvent& ev) {
       if (app.mode == MODE_FOCUS) focus_step(-1);
       break;
     case G_TAP:
-      if (app.mode == MODE_THRONE && throne_tap(ev.x, ev.y)) startTransition(MODE_FOCUS, +1);
+      if (app.mode == MODE_DIRECTOR && s_transDir == 0) {
+        // A single tap opens / closes the needs card. A double-tap can only turn
+        // camera-safe ON, and only when neither tap touched the card: turning it OFF
+        // takes the deliberate 1.5 s hold (or the serial `camsafe` command).
+        if (moments_tap(ev.x, ev.y, true)) {
+          s_lastTapMs = 0;
+        } else if (s_lastTapMs && app.now - s_lastTapMs < 450) {
+          s_lastTapMs = 0;
+          if (!app_camSafe()) app_setCamSafe(true);
+          else app.camSafeHintMs = app.now;
+        } else {
+          s_lastTapMs = app.now;
+        }
+      } else if (app.mode == MODE_THRONE && moments_tap(ev.x, ev.y, false)) {
+        // needs card opened / closed
+      } else if (app.mode == MODE_THRONE && throne_tap(ev.x, ev.y)) startTransition(MODE_FOCUS, +1);
       else if (app.mode == MODE_PULSE && pulse_tap(ev.x, ev.y)) startTransition(MODE_FOCUS, -1);
       else if (app.mode == MODE_FOCUS && s_transDir == 0) focus_openChat(true);
       break;
     case G_HOLD_2S:
-      if (net_demo() && !config_complete()) {
+      if (app.mode == MODE_DIRECTOR && app_camSafe()) {
+        app_setCamSafe(false);  // deliberate gesture, confirmed on screen
+      } else if (net_demo() && !config_complete()) {
         Serial.println("[ui] no configuration yet: staying in demo (hold 5 s for setup)");
       } else {
         bool demo = !net_demo();
@@ -318,7 +379,7 @@ static void handleSerial() {
     }
     if (!strcmp(cmd, "help")) {
       Serial.println("commands: status | stats | version | scan | provision <base64> | demo | live | setup |"
-                     " reset | touch | mode <0-3> | ssid <v> | pass <v> | server <url> | token <v> | save");
+                     " reset | touch | mode <0-4> | camsafe | ssid <v> | pass <v> | server <url> | token <v> | save");
     } else if (!strcmp(cmd, "version")) {
       Serial.println("[version] " FW_VERSION);
     } else if (!strcmp(cmd, "scan")) {
@@ -360,6 +421,8 @@ static void handleSerial() {
     } else if (!strcmp(cmd, "touch")) {
       g_touchDebug = !g_touchDebug;
       Serial.printf("[cmd] touch debug %s\n", g_touchDebug ? "on" : "off");
+    } else if (!strcmp(cmd, "camsafe")) {
+      app_toggleCamSafe();
     } else if (!strcmp(cmd, "mode")) {
       int m = atoi(arg);
       if (m >= 0 && m < MODE_COUNT) startTransition((uint8_t)m, m > app.mode ? 1 : -1);
@@ -434,11 +497,14 @@ void setup() {
   pal::build();
   pal::apply(s_canvas, 256);
   ui::init(&s_canvas);
+  char_init();
 
   touch_init();
   config_load();
   model_init();
   memset(&app, 0, sizeof(app));
+  app_loadPrefs();
+  Serial.printf("[mem] Model %u B (x3 copies), App %u B\n", (unsigned)sizeof(Model), (unsigned)sizeof(App));
   bool demo = g_cfg.demo || !config_complete();
   Serial.printf("[cfg] %s (ssid %s, server %s, token %s)\n", demo ? "demo mode" : "live mode",
                 g_cfg.ssid[0] ? "set" : "missing", g_cfg.server[0] ? g_cfg.server : "missing",
@@ -479,13 +545,17 @@ void loop() {
     uint32_t r0 = micros();
     int bright = transitionStep();
     pal::apply(s_canvas, bright);
+    if (app.mode == MODE_THRONE || app.mode == MODE_DIRECTOR) ox += moments_nudgeX();  // knock on the glass
     switch (app.mode) {
       case MODE_FOCUS: focus_draw(); break;
       case MODE_PULSE: pulse_draw(); break;
       case MODE_FEED: feed_draw(); break;
-      default: throne_draw(); break;
+      case MODE_DIRECTOR: director_draw(); break;
+      default: throne_draw(false); break;
     }
     ox = oy = 0;
+    moments_drawNeedsCard();
+    drawCamSafe();
     drawNoDataNotice();
     drawRimAlerts();
     drawStatusDot();

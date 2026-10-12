@@ -337,6 +337,108 @@ void arcText(const char* s, int radius, int centerAngle, uint8_t c, Font f, bool
   }
 }
 
+// ---------------------------------------------------------------- camera-safe text
+
+void scribble(const char* s, int x, int y, uint8_t c, Font f, lgfx::textdatum_t datum) {
+  canvas->setFont(fontPtr(f));
+  char buf[132];
+  int n = (int)strlen(s);
+  if (n > 130) n = 130;
+  memcpy(buf, s, n);
+  buf[n] = 0;
+  int total = canvas->textWidth(buf);
+  int left = x;
+  int hz = datum & 3;  // LovyanGFX datum: low two bits are left / center / right
+  if (hz == 1) left = x - total / 2;
+  else if (hz == 2) left = x - total;
+  int fh = canvas->fontHeight();
+  int amp = fh >= 14 ? 3 : 2;
+  bool thick = fh >= 14;
+  int i = 0;
+  while (i < n) {
+    while (i < n && buf[i] == ' ') i++;
+    if (i >= n) break;
+    int j = i;
+    while (j < n && buf[j] != ' ') j++;
+    char save = buf[i];
+    buf[i] = 0;
+    int x0 = left + (i ? canvas->textWidth(buf) : 0);
+    buf[i] = save;
+    save = buf[j];
+    buf[j] = 0;
+    int x1 = left + canvas->textWidth(buf) - 2;
+    buf[j] = save;
+    // The shape depends on the word's position only, never on its letters.
+    uint32_t seed = (uint32_t)i * 2654435761u;
+    int prevY = 0;
+    for (int px0 = x0; px0 <= x1; px0++) {
+      int ph = (int)(((px0 - x0) * 150 + (seed >> 22)) & 1023);
+      int wob = (int)(((px0 - x0) * 61 + (seed >> 12)) & 1023);
+      int yy = y + ((isin(ph) * amp) >> 14) + ((isin(wob) * 1) >> 14);
+      if (px0 > x0) line(px0 - 1, prevY, px0, yy, c);
+      else px(px0, yy, c);
+      if (thick) px(px0, yy + 1, c);
+      prevY = yy;
+    }
+    i = j;
+  }
+}
+
+void textS(const char* s, int x, int y, uint8_t c, Font f, lgfx::textdatum_t datum, bool safe) {
+  if (safe) scribble(s, x, y, c, f, datum);
+  else text(s, x, y, c, f, datum);
+}
+
+void textFitS(const char* s, int x, int y, int maxW, uint8_t c, Font f, lgfx::textdatum_t datum, bool safe) {
+  if (!safe) {
+    textFit(s, x, y, maxW, c, f, datum);
+    return;
+  }
+  canvas->setFont(fontPtr(f));
+  char buf[132];
+  size_t n = strlen(s);
+  if (n > 130) n = 130;
+  memcpy(buf, s, n);
+  buf[n] = 0;
+  while (n > 1 && canvas->textWidth(buf) > maxW) buf[--n] = 0;
+  scribble(buf, x, y, c, f, datum);
+}
+
+// ---------------------------------------------------------------- zoom
+
+void zoomFrame(int camX, int camY, int z) {
+  if (z < 256) z = 256;
+  if (z == 256 && camX == CX && camY == CY) return;
+  static int16_t mapX[W];
+  static uint8_t row[W];
+  int32_t inv = (256L << 16) / z;  // Q16 source step per screen pixel (<= 1)
+  for (int dx = 0; dx < W; dx++) {
+    int sx = camX + (int)(((int32_t)(dx - CX) * inv) >> 16);
+    mapX[dx] = (int16_t)((unsigned)sx < (unsigned)W ? sx : -1);
+  }
+  auto srcY = [&](int dy) { return camY + (int)(((int32_t)(dy - CY) * inv) >> 16); };
+  auto doRow = [&](int dy) {
+    int sy = srcY(dy);
+    uint8_t* d = fb + dy * W;
+    if ((unsigned)sy >= (unsigned)H) {
+      memset(d, 0, W);
+      return;
+    }
+    memcpy(row, fb + sy * W, W);
+    for (int x = 0; x < W; x++) {
+      int sx = mapX[x];
+      d[x] = sx >= 0 ? row[sx] : 0;
+    }
+  };
+  // srcY(dy) - dy never increases with dy, so rows split into a prefix that reads
+  // from at or below itself and a suffix that reads from above. Writing the suffix
+  // bottom-up and then the prefix top-down never reads a row that was overwritten.
+  int k = 0;
+  while (k < H && srcY(k) >= k) k++;
+  for (int dy = H - 1; dy >= k; dy--) doRow(dy);
+  for (int dy = 0; dy < k; dy++) doRow(dy);
+}
+
 // ---------------------------------------------------------------- easing
 
 int easeOutCubic(int t) {

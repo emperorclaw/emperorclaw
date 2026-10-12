@@ -1,6 +1,8 @@
 // FEED: latest messages as chat bubbles stacked from the bottom of the circle.
-// A new message slides in from below and pushes older ones up.
+// A new message slides in from below and pushes older ones up. Camera-safe turns
+// the text into scribbles, names into initials and hides the company name.
 #include "../app.h"
+#include "../character.h"
 #include "../palette.h"
 #include "../sprites.h"
 #include "../ui_common.h"
@@ -49,12 +51,17 @@ static void drawBubble(const Message& msg, int yBottom, const BubbleLayout& L, i
   int total = 28 + bw;
   int x0 = CX - total / 2;
   int bx = x0 + 28;
+  bool safe = app_camSafe();
   // Avatar
   if (agent >= 0) {
-    const Agent& a = app.model.agents[agent];
-    bool ghost = a.health == H_DOWN || a.state == S_OFFLINE;
-    int frame = (app.now / 500 + idx) & 1;
-    drawCharacter(app.anim[agent].spr, frame, x0 + 12, yTop + 12, 2, ramp, ghost ? CF_GHOST : CF_NONE, app.now);
+    const AgentAnim& an = app.anim[agent];
+    Pose p;
+    memset(&p, 0, sizeof(p));
+    p.expr = an.mood ? an.mood : (uint8_t)MOOD_NEUTRAL;
+    p.ghost = an.act == ACT_OFFLINE;
+    p.legs = LEGS_SEATED;
+    p.arms = (app.now / 500 + idx) & 1 ? ARMS_DOWN : ARMS_TYPE;
+    char_draw(an.look, p, x0 + 12, yTop + 21, 1, app.now, an.idHash);
   } else {
     drawCrown(x0 + 12, yTop + 10, 2);
   }
@@ -63,7 +70,11 @@ static void drawBubble(const Message& msg, int yBottom, const BubbleLayout& L, i
   for (int t = 0; t < 4; t++) hline(bx - 4 + t, bx, yTop + 8 + t, c(ramp, 2));
   hline(bx + 6, bx + bw - 7, yTop, c(ramp, 5));
   // Header: name + age
-  text(msg.from, bx + 7, yTop + 8, c(ramp, 12), F_TINY, lgfx::middle_left);
+  char from[16];
+  if (!safe) strlcpy(from, msg.from, sizeof(from));
+  else if (agent >= 0) app_label(app.model.agents[agent], from, sizeof(from), true);
+  else app_initials(msg.from, from, sizeof(from));
+  text(from, bx + 7, yTop + 8, c(ramp, 12), F_TINY, lgfx::middle_left);
   char age[16];
   int32_t s = msg.ageSec + app_snapshotAgeSec();
   if (s < 60) snprintf(age, sizeof(age), "%lds", (long)s);
@@ -78,10 +89,10 @@ static void drawBubble(const Message& msg, int yBottom, const BubbleLayout& L, i
     buf[n] = 0;
     bool truncated = l == L.lines - 1 && L.st[l] + L.ln[l] < (int)strlen(msg.text);
     if (truncated) {
-      textFit(buf, bx + 6, yTop + 16 + l * LINE_H + LINE_H / 2, L.textW - 6, pal::TEXT, F_SMALL, lgfx::middle_left);
+      textFitS(buf, bx + 6, yTop + 16 + l * LINE_H + LINE_H / 2, L.textW - 6, pal::TEXT, F_SMALL, lgfx::middle_left, safe);
       text("...", bx + bw - 6, yTop + 16 + l * LINE_H + LINE_H / 2, pal::TEXT_DIM, F_SMALL, lgfx::middle_right);
     } else {
-      text(buf, bx + 6, yTop + 16 + l * LINE_H + LINE_H / 2, pal::TEXT, F_SMALL, lgfx::middle_left);
+      textS(buf, bx + 6, yTop + 16 + l * LINE_H + LINE_H / 2, pal::TEXT, F_SMALL, lgfx::middle_left, safe);
     }
   }
 }
@@ -95,7 +106,7 @@ void feed_draw() {
     int hw = chordHalf(y, 1);
     if (hw) hline(CX - hw, CX + hw, y, c(pal::NEUTRAL, 2));
   }
-  const char* title = m.company[0] ? m.company : "Team feed";
+  const char* title = m.company[0] && !app_camSafe() ? m.company : "Team feed";
   if (m.nMsgs == 0) {
     arcText(title, 103, ANG_TOP, c(pal::GOLD, 11), F_MED, true);
     text("No messages yet", CX, CY, pal::TEXT_DIM, F_SMALL);

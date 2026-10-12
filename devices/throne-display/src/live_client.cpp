@@ -168,6 +168,59 @@ uint8_t parseState(const char* s) {
   return S_IDLE;
 }
 
+// Feed v2 enums. Unknown strings fall back to "derive it on the device".
+uint8_t parseAct(const char* s) {
+  static const char* const kActs[] = {"typing", "writing", "reviewing", "presenting", "talking", "thinking", "waiting",
+                                      "blocked", "celebrate", "coffee", "nap", "stretch", "offline", "idle"};
+  if (!s) return ACT_AUTO;
+  for (uint8_t i = 0; i < sizeof(kActs) / sizeof(kActs[0]); i++)
+    if (!strcmp(s, kActs[i])) return (uint8_t)(ACT_TYPING + i);
+  return ACT_AUTO;
+}
+
+uint8_t parseMood(const char* s) {
+  static const char* const kMoods[] = {"neutral", "happy", "focused", "worried", "sleepy", "scanning"};
+  if (!s) return MOOD_AUTO;
+  for (uint8_t i = 0; i < sizeof(kMoods) / sizeof(kMoods[0]); i++)
+    if (!strcmp(s, kMoods[i])) return (uint8_t)(MOOD_NEUTRAL + i);
+  return MOOD_AUTO;
+}
+
+uint8_t parseEventType(const char* s) {
+  if (!s) return EV_NONE;
+  if (!strcmp(s, "handoff")) return EV_HANDOFF;
+  if (!strcmp(s, "task_done")) return EV_TASK_DONE;
+  if (!strcmp(s, "needs_you")) return EV_NEEDS_YOU;
+  if (!strcmp(s, "blocked")) return EV_BLOCKED;
+  return EV_NONE;
+}
+
+// `look`: {k:"r"|"h", u:hue, v:variant, s:skin, h:hair, hs?:hairStyle, a:"-"|"g"|"h"|"c"|"b"}.
+// Hair packs color = h % 8 and style = floor(h / 8) % 6, unless `hs` carries the style.
+void parseLook(JsonObject o, uint16_t hue, Look& L) {
+  memset(&L, 0, sizeof(L));
+  if (o.isNull()) return;
+  const char* k = o["k"] | "";
+  if (k[0] != 'r' && k[0] != 'h') return;
+  L.kind = k[0] == 'h' ? LOOK_HUMAN : LOOK_ROBOT;
+  int u = o["u"] | (int)hue;
+  L.hue = (uint16_t)(((u % 360) + 360) % 360);
+  L.variant = (uint8_t)((o["v"] | 0) & 3);
+  L.skin = (uint8_t)((o["s"] | 0) % 6);
+  int h = o["h"] | 0;
+  if (h < 0) h = 0;
+  L.hairColor = (uint8_t)(h % 8);
+  L.hairStyle = (uint8_t)(o["hs"].isNull() ? (h / 8) % 6 : (o["hs"].as<int>() % 6 + 6) % 6);
+  const char* acc = o["a"] | "-";
+  switch (acc[0]) {
+    case 'g': L.acc = ACC_GLASSES; break;
+    case 'h': L.acc = ACC_HEADSET; break;
+    case 'c': L.acc = ACC_CAP; break;
+    case 'b': L.acc = ACC_BOW; break;
+    default: L.acc = ACC_NONE; break;
+  }
+}
+
 void buildFilter(JsonDocument& f) {
   f["v"] = true;
   f["company"]["name"] = true;
@@ -184,6 +237,22 @@ void buildFilter(JsonDocument& f) {
   a["task"]["title"] = true;
   a["lastSeenSec"] = true;
   a["unanswered"] = true;
+  // Feed v2 (absent on v1 servers).
+  a["look"] = true;
+  a["act"] = true;
+  a["mood"] = true;
+  a["thought"] = true;
+  a["thoughtAgeSec"] = true;
+  JsonObject e = f["events"].add<JsonObject>();
+  e["id"] = true;
+  e["t"] = true;
+  e["a"] = true;
+  e["b"] = true;
+  e["title"] = true;
+  e["ageSec"] = true;
+  JsonObject n = f["needs"].add<JsonObject>();
+  n["agentId"] = true;
+  n["title"] = true;
   JsonObject m = f["messages"].add<JsonObject>();
   m["id"] = true;
   m["from"] = true;
@@ -245,6 +314,7 @@ void mapDm(JsonArray dm, Model& m) {
 void mapDocument(JsonDocument& doc, Model& m) {
   memset(&m, 0, sizeof(m));
   m.demo = false;
+  m.version = (uint8_t)(doc["v"] | 1);
   asciiCopy(m.company, sizeof(m.company), doc["company"]["name"] | "");
   for (JsonObject a : doc["agents"].as<JsonArray>()) {
     if (m.nAgents >= MAX_AGENTS) break;
@@ -270,6 +340,37 @@ void mapDocument(JsonDocument& doc, Model& m) {
     }
     g.lastSeenSec = a["lastSeenSec"].isNull() ? -1 : a["lastSeenSec"].as<int32_t>();
     g.unanswered = (uint16_t)(a["unanswered"] | 0);
+    parseLook(a["look"].as<JsonObject>(), g.hue, g.look);
+    g.act = parseAct(a["act"] | (const char*)nullptr);
+    g.mood = parseMood(a["mood"] | (const char*)nullptr);
+    // Only the MAX_THOUGHTS freshest thoughts are kept (shared pool).
+    const char* th = a["thought"] | (const char*)nullptr;
+    if (th && *th) model_setThought(m, m.nAgents - 1, th, a["thoughtAgeSec"] | 0);
+  }
+  for (JsonObject x : doc["events"].as<JsonArray>()) {
+    if (m.nEvents >= MAX_EVENTS) break;
+    uint8_t type = parseEventType(x["t"] | (const char*)nullptr);
+    const char* id = x["id"] | (const char*)nullptr;
+    const char* actor = x["a"] | (const char*)nullptr;
+    // needs_you may come without a requesting agent (the Emperor knocks instead).
+    if (type == EV_NONE || !id || !*id) continue;
+    if ((!actor || !*actor) && type != EV_NEEDS_YOU) continue;
+    Event& g = m.events[m.nEvents++];
+    g.idHash = fnv1a(id);
+    g.type = type;
+    g.aHash = (actor && *actor) ? fnv1a(actor) : 0;
+    const char* to = x["b"] | (const char*)nullptr;
+    g.bHash = (to && *to) ? fnv1a(to) : 0;
+    g.ageSec = x["ageSec"] | 0;
+    if (g.ageSec < 0) g.ageSec = 0;
+    asciiCopy(g.title, sizeof(g.title), x["title"] | "");
+  }
+  for (JsonObject x : doc["needs"].as<JsonArray>()) {
+    if (m.nNeeds >= MAX_NEEDS) break;
+    const char* aid = x["agentId"] | (const char*)nullptr;
+    Need& g = m.needs[m.nNeeds++];
+    g.agentHash = (aid && *aid) ? fnv1a(aid) : 0;
+    asciiCopy(g.title, sizeof(g.title), x["title"] | "");
   }
   for (JsonObject x : doc["messages"].as<JsonArray>()) {
     if (m.nMsgs >= MAX_MESSAGES) break;

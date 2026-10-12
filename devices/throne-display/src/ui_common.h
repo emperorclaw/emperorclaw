@@ -70,6 +70,18 @@ int wrapText(const char* s, int maxW, Font f, uint16_t* starts, uint8_t* lens, i
 void textFit(const char* s, int x, int y, int maxW, uint8_t c, Font f,
              lgfx::textdatum_t datum = lgfx::middle_center);
 
+// Camera-safe text: every word becomes an illegible squiggle of the same width, so a
+// video shows that something was written without leaking what.
+void scribble(const char* s, int x, int y, uint8_t c, Font f, lgfx::textdatum_t datum = lgfx::middle_center);
+// text() or, when safe, scribble().
+void textS(const char* s, int x, int y, uint8_t c, Font f, lgfx::textdatum_t datum, bool safe);
+// textFit() or, when safe, a scribble clipped to maxW.
+void textFitS(const char* s, int x, int y, int maxW, uint8_t c, Font f, lgfx::textdatum_t datum, bool safe);
+
+// Nearest-neighbour zoom of the whole frame buffer, in place (no second buffer):
+// world point (camX, camY) lands on the screen center. zoomQ8 >= 256 (256 = 1x).
+void zoomFrame(int camX, int camY, int zoomQ8);
+
 // Easing, t in 0..1024 -> 0..1024.
 int easeOutCubic(int t);
 int easeInOutCubic(int t);

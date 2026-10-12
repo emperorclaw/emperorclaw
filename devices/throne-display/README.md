@@ -95,7 +95,7 @@ If the port still drops, use a shorter or better cable, plug into a port on the 
 
 ## First boot: demo mode
 
-When the display has no configuration, it starts in **demo mode**. A simulated company of 7 agents changes state, finishes tasks, raises flags, goes down and comes back, and chats. Every visual shows up within a minute, so you can check the hardware before any server is set up. A small **DEMO** tag appears at the bottom.
+When the display has no configuration, it starts in **demo mode**. A scripted company of 7 agents, each with its own look, acts out its work and thinks out loud. A handoff paper plane flies every ~8 s and a task finishes (confetti and a crown flash) every ~15 s. Every ~45 s an agent knocks on the glass because it needs you, and gets answered ~18 s later. Every ~33 s an agent gets blocked. Agents also take coffee, stretch and nap breaks, go down and come back, and chat. The first handoff, task done and needs-you all play within 15 seconds, so demo mode is also the easiest thing to film. A small **DEMO** tag appears at the bottom (hidden in Director).
 
 ## Setup without a browser: captive portal
 
@@ -124,7 +124,8 @@ Settings are stored in the chip's NVS (Preferences). Saved secrets are never sho
 | `demo` / `live` | Switch data source (saved) |
 | `setup` | Open the setup portal |
 | `ssid <v>`, `pass <v>`, `server <url>`, `token <v>`, then `save` | Configure without the portal |
-| `mode <0-3>` | Jump to a mode |
+| `mode <0-4>` | Jump to a mode (0 Throne, 1 Focus, 2 Pulse, 3 Feed, 4 Director) |
+| `camsafe` | Toggle camera-safe |
 | `touch` | Toggle touch debug logging |
 | `reset` | Erase all settings and restart |
 
@@ -146,11 +147,12 @@ Swipe **left / right** to change mode. Dots along the bottom edge show which mod
 
 | Mode | What you see |
 |---|---|
-| **Throne Room** (default) | A round room seen from above. The Emperor sits on a throne in the middle. Agents sit at desks around it. **Working**: monitor glows and flickers and code sparks rise. **Typing**: animated "..." bubble. **Idle**: leaves the desk and wanders, gently bumping into others. **Attention**: red "!" bobbing above the head. **Down / offline**: translucent grey ghost floating by the desk. When an agent's task finishes or disappears, confetti bursts. A gold **envelope** next to an agent's head means a private message in the last 10 minutes. **Tap an agent** to open it in Focus. |
-| **Focus** | One agent per page. **Swipe up / down** to move between agents. Shows a large character, the name curved along the top, a state chip, the current activity (scrolls if it is long), the task title, and when the agent was last seen. The outer ring is the health color, and its progress arc tracks how long the agent has been in its current state (one turn per minute). A gold envelope beside the character means a private message in the last 10 minutes. **Tap** to open the agent's private chat. |
+| **Throne Room** (default) | A round "tiny living office" seen from above. The Emperor sits on a throne in the middle. Agents look like they do on the web (robot or human, hair, skin, glasses / headset / cap / bow), sit at desks around the throne and act out what they are doing (see [Acting](#acting)). Every few seconds one agent's latest **thought** types out in a cloud above its head. **Attention**: red "!" above the head. A gold **envelope** next to an agent's head means a private message in the last 10 minutes. **Tap an agent** to open it in Focus. Tap the outer ring, or an agent at the glass, to read what needs you. |
+| **Focus** | One agent per page. **Swipe up / down** to move between agents. Shows a large character acting out what it is doing, the name curved along the top, a state chip, the agent's latest thought typing out in a cloud (or the current activity when it has no thought; long text scrolls), the task title, and when the agent was last seen. The outer ring is the health color, and its progress arc tracks how long the agent has been in its current state (one turn per minute). A gold envelope beside the character means a private message in the last 10 minutes. **Tap** to open the agent's private chat. |
 | **Focus: private chat** | Your direct messages with that agent, as bubbles inside the circle: yours on the right in gold, the agent's on the left in its own color, newest at the bottom, each with its age. A padlock in the header marks it as private. "No private messages" when there are none (or the token does not include private chats). **Swipe down** for older messages, **swipe up** for newer ones. **Tap**, or swipe left / right, to go back to the agent page. |
 | **Pulse** | A health radar. Each agent gets one arc segment around the edge, colored by health, and lights up as the rotating sweep passes over it. The center shows healthy/total, plus working, in progress, overdue and pending approvals. Tap a segment to focus that agent. |
 | **Feed** | The latest messages as chat bubbles, each with the sender's mini character. New messages slide in from the bottom. |
+| **Director** | An automatic camera for filming, one swipe right from the Throne Room. It cycles through shots: the wide room, an eased 2x push-in on the busiest agent while its thought types out, then a pull back to the next agent. Every moment (handoff, task done, needs you, blocked) interrupts the cycle and gets framed. A caption names the agent and what it is doing. To keep the frame clean, the status dot, mode dots and DEMO tag fade out after 2.5 s; a **LIVE** tag and the camera-safe badge stay. **Double-tap** turns camera-safe on; **hold 1.5 s and release** turns it off. A single tap shows what needs you. |
 
 Gesture map:
 
@@ -163,6 +165,10 @@ Gesture map:
 | Focus | Tap | Open the agent's private chat |
 | Private chat | Swipe down / up | Older / newer messages |
 | Private chat | Tap | Back to the agent page |
+| Throne Room | Tap the outer ring, or an agent at the glass | Show what needs you (tap again to close, or wait 6 s) |
+| Director | Double-tap | Turn camera-safe on (saved) |
+| Director | Hold 1.5 s, then release (camera-safe on) | Turn camera-safe off (saved); the hold hint reads "release: camera-safe off" |
+| Director | Tap | Show what needs you |
 
 To get from Focus back to the Throne Room, swipe right. (Earlier firmware used a tap for this; the tap now opens the private chat.)
 
@@ -174,9 +180,48 @@ Long press anywhere:
 Overlays that appear in every mode:
 
 - **Red pulsing rim**: at least one agent is down.
-- **Gold pulsing ring**: there are pending approvals.
+- **Gold pulsing ring**: there are pending approvals. While the feed lists `needs`, the ring is brighter, thicker and faster until they are answered.
+- **SAFE badge** (at about the 10:30 position, or next to LIVE in Director): camera-safe is on.
 - **Status dot**: violet means demo, green means live, gold means connecting or stale data, red means error. It brightens during a fetch.
 - **Backlight**: dims after 2 minutes with no touch and no data change. It wakes on touch or when new data arrives.
+
+### Acting
+
+Each agent acts out its feed v2 `act`. Older servers send no `act`, so the firmware derives one from `state`: working = typing, typing = talking.
+
+| Act | On screen |
+|---|---|
+| typing | At the desk behind a laptop, hands moving, screen light flickering on the face, code sparks rising |
+| writing | A pen scribbling lines onto a sheet of paper |
+| reviewing | Holding a magnifier, eyes scanning left and right |
+| presenting | Pointing at a small board with a growing bar chart |
+| talking | Speech bubble with bouncing dots |
+| thinking | Small `...` thought puff |
+| waiting | Walks to the front glass and faces you, one size bigger (closer to the viewer) |
+| blocked | Worried face, red `!`, a short shake |
+| celebrate | Jumps with arms up |
+| coffee / stretch / nap | A mug with steam / arms up / `z Z z` at the desk |
+| offline | Translucent ghost floating by the desk |
+| idle | Wanders the floor. Every 24 to 36 s (varies per agent) it takes a coffee, stretch or nap break |
+
+The face follows `mood` (neutral, happy, focused, worried, sleepy, scanning). When the feed sends no `mood`, the firmware picks one that fits the act.
+
+### Moments
+
+Each event in the feed v2 `events` list plays once: ids are de-duplicated, and after a restart only events younger than 60 s play.
+
+- **handoff**: a paper plane flies from sender to recipient along an arc, and the recipient lights up.
+- **task_done**: a confetti burst, the agent jumps, the Emperor's crown flashes, and a "Done" toast shows the task title.
+- **needs_you**: the agent walks to the glass and knocks (the screen nudges with each knock), a toast shows the title, and the outer ring pulses gold until the need is answered. A pending need gets a reminder knock every 45 s. When a need has no requesting agent, the Emperor knocks instead.
+- **blocked**: worried face, red `!` and a "Blocked" toast.
+
+Servers without events (v1) still trigger confetti when an agent's task id changes or is cleared.
+
+### Camera-safe
+
+Camera-safe is for filming without leaking client data. Thought, message, activity, task and request text turns into unreadable scribbles of the same width. Agent names become initials ("A.R."), and the company name in Feed becomes "Team feed".
+
+Until you first toggle it, camera-safe is on in Director only. In Director, double-tap to turn it on, or hold 1.5 s and release to turn it off (while it is on, that hold does not switch demo / live). A tap that opens or closes the needs card never counts toward a double-tap. The serial `camsafe` command toggles it. From then on your choice applies to every mode: Throne, Focus, private chat, Feed and Director. It is saved in NVS (namespace `throne-ui`), so it survives restarts and firmware updates.
 
 Agent colors are health-coded in rings and segments: green healthy, orange attention, red down, blue idle. Each character's body color comes from the agent's `hue`.
 
@@ -191,13 +236,18 @@ The fields it uses:
 - `agents[].{id, name, short, hue, health, state, activity, task.{id,title}, lastSeenSec, unanswered}`
 - `messages[].{id, from, agentId, text, ageSec}`
 - `dm[].{agentId, messages[].{me, text, ageSec}}` (optional: a server without `dm` is treated as "no private messages")
+- Feed v2 (`"v": 2`). Every field is optional, so v1 servers keep working:
+  - `agents[].look.{k, u, v, s, h, hs, a}`: robot or human, hue, variant, skin, hair color (`h % 8`), hair style, accessory. The hair style is `hs`, or `floor(h / 8) % 6` when `hs` is absent. Without `look`, the character is derived from the agent id the same way the web's `deriveAppearance()` does it.
+  - `agents[].act`, `agents[].mood`, `agents[].thought` (up to 140 chars) and `agents[].thoughtAgeSec`
+  - `events[].{id, t, a, b, title, ageSec}`, where `t` is `handoff`, `task_done`, `needs_you` or `blocked`
+  - `needs[].{agentId, title}` (`agentId` can be empty)
 
 Assumptions the firmware makes about the server:
 
 - `health` is one of `healthy | attention | down | idle` and `state` is one of `typing | working | idle | offline`. Unknown values are treated as idle.
 - Messages are sorted on the device by `ageSec`, oldest to newest, so the server may return them in either order.
 - A task "completes" (confetti) when an agent's `task.id` changes or `task` becomes `null`.
-- Up to 24 agents and 12 messages are kept, plus up to 4 private messages per agent and 40 in total (one shared pool, the server's own caps). Any extra are ignored.
+- Up to 24 agents and 12 messages are kept, plus up to 4 private messages per agent and 40 in total (one shared pool, the server's own caps). The firmware also keeps the 6 freshest thoughts (another shared pool), 10 events and 3 needs. Anything beyond these limits is ignored.
 - Text is converted to ASCII, because the bitmap fonts are ASCII-only: smart quotes and dashes are mapped, accented Latin letters fold to their base letter (á→a, ñ→n, č→c, ľ→l, ô→o, ß→ss, and so on, upper and lower case), and emoji are dropped.
 - Every clock (`ageSec` in `messages` and `dm`, `lastSeenSec`) is aged on the device from the time of the last `200`. The server's `ETag` ignores those fields, so a `304` keeps the cached snapshot and the times keep moving.
 - Chunked and `Content-Length` responses both work. The connection is kept alive between polls, so TLS handshakes are rare.
@@ -224,9 +274,10 @@ The ESP32-C3 has no PSRAM, and Wi-Fi plus TLS need roughly 50 KB of heap. These 
 - **Integer math only.** A 1024-step sine table in Q14, integer square roots, and fixed-point easing. The C3 has no FPU.
 - **Background networking.** Fetching, parsing and the demo simulation run on their own FreeRTOS task. Each finished snapshot is copied under a mutex into a shared slot. The render loop copies it into its own fixed-size `Model`, so drawing never waits on I/O and never allocates.
 - **Bounded JSON parsing.** ArduinoJson parses straight from the socket with a filter document, so only the needed fields are kept.
-- **Deterministic characters.** Each agent's 12x12 character is generated from the FNV-1a hash of its `id`. The left half is random, mirrored, auto-shaded and outlined, with two animation frames. The same id always gives the same character.
+- **Procedural characters.** Each agent is drawn every frame from its `look` on a 16x20 grid, with a 1-pixel outline, a pose and an expression. The scale is 2 in the Throne Room (1 with more than 8 agents) and 3 in Focus. Nothing is stored per agent, which removed the old 12x12 sprite buffers (about 14 KB). Skin and hair colors are mapped to the nearest palette entries at boot.
+- **Director zoom without a second buffer.** The scene is drawn at 1x, then the 8-bit frame is zoomed in place (nearest neighbour). The rows are processed in an order that never reads a row that was already overwritten. Text overlays are drawn after the zoom, so they stay sharp.
 
-Measured on the device (demo mode, 7 agents):
+Measured on the device with firmware 1.1.0 (demo mode, 7 agents). Not yet re-measured for v2:
 
 | Measurement | Value |
 |---|---|
@@ -250,7 +301,9 @@ src/
   display_config.h    LovyanGFX device (GC9A01 + PWM backlight) and pin map
   palette.*           256-color ramp palette and fades
   ui_common.*         frame buffer primitives, arcs, glows, arc text, easing, particles
-  sprites.*           procedural characters, throne and crown pixel art
+  character.*         web-style pixel-art characters: look, poses, expressions
+  moments.*           events (planes, confetti, knocks), needs card, toasts, thought bubbles
+  sprites.*           throne and crown pixel art
   data_model.*        fixed-size model, mutex publish/take, hashing, ASCII sanitizing
   live_client.*       network task: Wi-Fi, HTTP(S), ETag, chunked body reader, JSON mapping
   demo_data.*         simulated company
@@ -259,5 +312,5 @@ src/
   version.h           FW_VERSION (from custom_fw_version in platformio.ini)
   touch.*             CST816D driver and gesture recognizer
   app.*               UI state, per-agent animation, layout helpers
-  modes/              throne.cpp, focus.cpp, pulse.cpp, feed.cpp
+  modes/              throne.cpp, focus.cpp, pulse.cpp, feed.cpp, director.cpp
 ```

@@ -1,8 +1,8 @@
 {
   "name": "throne-display",
   "chip": "ESP32-C3",
-  "version": "1.1.0",
-  "builtAt": "2026-10-05T18:10:52.673Z",
+  "version": "2.0.0",
+  "builtAt": "2026-10-12T12:23:57.519Z",
   "flash": {
     "mode": "dio",
     "freq": "80m",
@@ -34,8 +34,8 @@
       "name": "firmware",
       "file": "firmware.bin",
       "offset": 65536,
-      "size": 1331072,
-      "sha256": "c4204b98192bee96b7bde15d46ae0463ebfc932859b455cabdc8b40963bd50f5"
+      "size": 1364768,
+      "sha256": "657f9015cc1896c72562ca1480c8904d582197d02128e7435fc80d6defb7bc34"
     }
   ]
 }
