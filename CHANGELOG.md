@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.91] — 2026-10-12
+
+### Fixed
+- Preserve the authenticated caller when assigning tasks, so an agent assigning work to itself does not receive a redundant wake message. Assignments from other agents and people still wake the owner.
+- Prefer the authenticated agent identity over a caller-supplied identity when creating tasks, preserving self-assignment suppression and project scope checks.
+- Record the assigning actor separately from the task owner in assignment history.
+
 ## [0.8.90] — 2026-10-12
 
 ### Changed

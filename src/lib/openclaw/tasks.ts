@@ -71,6 +71,8 @@ type AssignTaskInput = {
   taskId: string;
   agentId: string;
   mode?: "assign" | "claim";
+  /** Authenticated caller, distinct from the target agent. */
+  actorAgentId?: string | null;
 };
 
 type UpdateTaskInput = {
@@ -243,8 +245,8 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
     companyId: input.companyId,
     taskId: input.taskId,
     eventType: mode === "claim" ? "task_claimed" : "task_assigned",
-    actorType: "agent",
-    actorId: internalAgentId,
+    actorType: mode === "claim" || input.actorAgentId ? "agent" : "system",
+    actorId: mode === "claim" ? internalAgentId : input.actorAgentId ?? null,
     payloadJson: {
       mode,
       assignedAgentId: internalAgentId,
@@ -260,7 +262,7 @@ export async function assignTaskToAgent(input: AssignTaskInput) {
     await wakeAgentOnTaskAssignment({
       companyId: input.companyId,
       task,
-      actorAgentId: null,
+      actorAgentId: input.actorAgentId,
       reason: existingTask.assignedAgentId ? "reassigned" : "assigned",
     });
   }

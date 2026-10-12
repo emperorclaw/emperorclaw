@@ -157,9 +157,10 @@ export async function POST(req: NextRequest) {
     } = parsed.data;
 
     let actorAgentId: string | null = null;
-    if (agentId) {
+    const actorIdentity = auth.companyToken!.agentId || agentId;
+    if (actorIdentity) {
         try {
-            actorAgentId = await resolveAgentId(companyId, agentId);
+            actorAgentId = await resolveAgentId(companyId, actorIdentity);
             const { allowedProjectIds } = await loadAgentScopeContext(companyId, actorAgentId);
             if (!isProjectAllowed(allowedProjectIds, projectId)) {
                 return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });

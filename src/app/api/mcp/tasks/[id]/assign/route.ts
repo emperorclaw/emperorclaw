@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
-    const result = await assignTaskToAgent({ companyId, taskId, agentId, mode });
+    const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, actorAgentId: auth.companyToken!.agentId ?? null });
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
