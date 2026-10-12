@@ -5,6 +5,7 @@
  */
 
 import { deriveAppearance, hashString, type CharacterAppearance } from "@/lib/character/model";
+import type { CharacterExpression } from "@/lib/character/draw";
 
 export { hashString };
 
@@ -598,6 +599,22 @@ export function deriveBehavior(input: BehaviorInput): Behavior {
     if (attention?.kind === "late") return { ...base, caption: `Running late on ${attention.title}` };
     // Health observations stay alongside work; they never replace its caption.
     return base;
+}
+
+/**
+ * The face a character wears for an activity. Bodies stay still; the eyes
+ * carry the state. Shared by the office scene and the live feed's `mood`, so
+ * a physical display shows the same expression as the web.
+ */
+export function expressionForActivity(kind: SceneActivity): CharacterExpression {
+    switch (kind) {
+        case "typing": case "writing": case "presenting": case "thinking": return "focused";
+        case "reviewing": return "scanning";
+        case "talking": case "celebrate": case "coffee": case "stretch": return "happy";
+        case "waiting": case "blocked": return "worried";
+        case "nap": case "offline": return "sleepy";
+        default: return "neutral";
+    }
 }
 
 /* ── Deterministic per-agent animation jitter ───────────────────────── */

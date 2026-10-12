@@ -1,27 +1,34 @@
 import { resolveAppearance } from "@/lib/character/model";
 import { createHash } from "crypto";
-import { and, count, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { approvals, companies, companyMembers, messageThreads, tasks, threadMessages, threadParticipants } from "@/db/schema";
+import { approvals, companies, companyMembers, incidents, messageThreads, taskEvents, tasks, threadMessageReasoning, threadMessages, threadParticipants } from "@/db/schema";
 import { computeCompanyHealth, scoreAgent, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
+import {
+    approvalTitle, deriveActs, deriveEvents, deriveNeeds, fitThoughtsToBudget, isLiveProblemIncident, LIVE_RECENT_MS, packLook, pickThoughts,
+    recentlyDoneAgents,
+    type LiveAct, type LiveEvent, type LiveLook, type LiveMood, type LiveNeed, type PendingApprovalRow, type ReasoningRow,
+} from "@/lib/live-feed-v2";
 
 /**
  * The live agent feed (GET /api/mcp/live): a small, read-only snapshot of what
  * every agent is doing, for physical screens and dashboards. The first
  * consumer is a 240x240 ESP32 display that parses it with ArduinoJson on
  * ~200 KB of heap, so the payload is deliberately tiny, flat, and stable:
- * every key is always present (null, never omitted) and strings are short,
+ * every v1 key is always present (null, never omitted) and strings are short,
  * plain text. The keys are a firmware contract — bump `v` on any change that
- * is not purely additive.
+ * is not purely additive. v2 (devices/throne-display/V2_PLAN.md) adds `look`,
+ * `act`, `mood`, optional `thought`/`thoughtAgeSec` per agent, and top-level
+ * `events` and `needs`; a v1 device ignores them.
  *
  * Private direct chats never reach a screen, with one opt-in exception: a
  * read_only token minted with "include my private chats" carries its
  * creator's own exchanges with each agent in `dm` (see buildDmFeed).
  */
 
-export const LIVE_FEED_VERSION = 1;
+export const LIVE_FEED_VERSION = 2;
 export const LIVE_MAX_AGENTS = 24;
 export const LIVE_DEFAULT_MESSAGES = 8;
 export const LIVE_MAX_MESSAGES = 20;
@@ -55,6 +62,15 @@ export interface LiveAgent {
     task: { id: string; title: string } | null;
     lastSeenSec: number | null;
     unanswered: number;
+    /** v2: compact character spec from the agent's resolved appearance. */
+    look: LiveLook;
+    /** v2: what the web office scene shows the agent doing. */
+    act: LiveAct;
+    /** v2: the scene's expression for that activity. */
+    mood: LiveMood;
+    /** v2: latest redacted reasoning snippet (≤140 chars); omitted when none, stale or private. */
+    thought?: string;
+    thoughtAgeSec?: number;
 }
 
 export interface LiveMessage {
@@ -98,6 +114,10 @@ export interface LiveFeed {
     messages: LiveMessage[];
     /** The token creator's own direct chats with each agent; [] unless opted in. */
     dm: LiveDmThread[];
+    /** v2: handoffs, completions, blocks and new approvals from the last 10 minutes, newest first. */
+    events: LiveEvent[];
+    /** v2: up to 3 pending approvals waiting on a human. */
+    needs: LiveNeed[];
 }
 
 // ─── Pure helpers (unit-tested) ────────────────────────────────────────────
@@ -189,9 +209,10 @@ export function liveFeedEtag(feed: LiveFeed): string {
     const stable = {
         ...feed,
         ts: undefined,
-        agents: feed.agents.map((a) => ({ ...a, lastSeenSec: undefined })),
+        agents: feed.agents.map((a) => ({ ...a, lastSeenSec: undefined, thoughtAgeSec: undefined })),
         messages: feed.messages.map((m) => ({ ...m, ageSec: undefined })),
         dm: (feed.dm ?? []).map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, ageSec: undefined })) })),
+        events: (feed.events ?? []).map((e) => ({ ...e, ageSec: undefined })),
     };
     const digest = createHash("sha256").update(JSON.stringify(stable)).digest("base64url").slice(0, 22);
     return `"${digest}"`;
@@ -387,6 +408,173 @@ async function loadPrivateChats(companyId: string, userId: string | null | undef
     return loadCreatorDirectChats(companyId, userId);
 }
 
+// ─── v2 loaders (each ONE query for the whole company) ─────────────────────
+
+/** Only this much of a reasoning transcript (its end: the latest thinking) is read. */
+const THOUGHT_SCAN_CHARS = 1500;
+/** Per agent, the newest few reasoning rows are read, so a stub can fall back to the one before. */
+const THOUGHT_ROWS_PER_AGENT = 3;
+const HANDOFF_SCAN_ROWS = 40;
+const TRANSITION_SCAN_ROWS = 40;
+const PENDING_APPROVAL_ROWS = 20;
+const INCIDENT_SCAN_ROWS = 50;
+
+/**
+ * The newest reasoning rows per agent from the last 10 minutes, in ONE query.
+ * Rows are ranked on light columns first (id, agent, time, thread type) and
+ * only the THOUGHT_ROWS_PER_AGENT survivors per agent have their transcript
+ * tail read, so large reasoning rows are not detoasted on every poll. Rows
+ * come from team/group threads, plus, when `creatorReplyIds` is non-empty
+ * (an opted-in screen whose creator is still an admin), exactly those agent
+ * replies to the creator that `dm` shows. Other direct chats are never read.
+ * Uses thread_message_reasoning_company_created_idx.
+ */
+async function loadRecentReasoning(companyId: string, since: Date, creatorReplyIds: readonly string[]): Promise<ReasoningRow[]> {
+    const visibleThread = creatorReplyIds.length
+        ? or(
+            inArray(messageThreads.type, [...PUBLIC_THREAD_TYPES]),
+            and(eq(messageThreads.type, "direct"), inArray(threadMessages.id, [...creatorReplyIds])),
+        )
+        : inArray(messageThreads.type, [...PUBLIC_THREAD_TYPES]);
+    const ranked = db.select({
+        reasoningId: sql<string>`${threadMessageReasoning.id}`.as("ranked_reasoning_id"),
+        agentId: sql<string>`${threadMessages.senderId}`.as("ranked_agent_id"),
+        messageId: sql<string>`${threadMessages.id}`.as("ranked_message_id"),
+        threadType: sql<string>`${messageThreads.type}`.as("ranked_thread_type"),
+        ms: sql<string>`extract(epoch from ${threadMessageReasoning.createdAt}) * 1000`.as("ranked_ms"),
+        rn: sql<number>`row_number() over (partition by ${threadMessages.senderId} order by ${threadMessageReasoning.createdAt} desc, ${threadMessageReasoning.id} desc)`.as("ranked_rn"),
+    }).from(threadMessageReasoning)
+        .innerJoin(threadMessages, eq(threadMessages.id, threadMessageReasoning.messageId))
+        .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
+        .where(and(
+            eq(threadMessageReasoning.companyId, companyId),
+            gt(threadMessageReasoning.createdAt, since),
+            eq(threadMessages.companyId, companyId),
+            eq(threadMessages.senderType, "agent"),
+            eq(messageThreads.companyId, companyId),
+            isNull(messageThreads.archivedAt),
+            visibleThread,
+        ))
+        .as("ranked");
+    const rows = await db.select({
+        agentId: ranked.agentId,
+        messageId: ranked.messageId,
+        threadType: ranked.threadType,
+        ms: ranked.ms,
+        tail: sql<string>`right(${threadMessageReasoning.reasoning}, ${THOUGHT_SCAN_CHARS})`,
+        truncated: sql<boolean>`length(${threadMessageReasoning.reasoning}) > ${THOUGHT_SCAN_CHARS}`,
+    }).from(ranked)
+        .innerJoin(threadMessageReasoning, eq(threadMessageReasoning.id, ranked.reasoningId))
+        .where(lte(ranked.rn, THOUGHT_ROWS_PER_AGENT));
+    return rows.filter((r) => r.agentId).map((r) => ({
+        agentId: r.agentId,
+        messageId: r.messageId,
+        threadType: r.threadType,
+        createdAtMs: Number(r.ms),
+        reasoning: r.tail ?? "",
+        truncatedHead: r.truncated === true,
+    }));
+}
+
+/** Agent-authored, non-control messages in shared threads from the window (thread_messages_company_sender_created_idx). */
+function loadRecentAgentMessages(companyId: string, since: Date) {
+    return db.select({
+        id: threadMessages.id,
+        senderId: threadMessages.senderId,
+        targetAgentId: threadMessages.targetAgentId,
+        text: sql<string>`left(${threadMessages.text}, ${MESSAGE_SCAN_CHARS})`,
+        createdAt: threadMessages.createdAt,
+    }).from(threadMessages)
+        .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
+        .where(and(
+            eq(threadMessages.companyId, companyId),
+            eq(threadMessages.senderType, "agent"),
+            gt(threadMessages.createdAt, since),
+            sql`(${threadMessages.metadataJson} -> 'runtimeControl') is null`,
+            eq(messageThreads.companyId, companyId),
+            inArray(messageThreads.type, [...PUBLIC_THREAD_TYPES]),
+            isNull(messageThreads.archivedAt),
+        ))
+        .orderBy(desc(threadMessages.createdAt))
+        .limit(HANDOFF_SCAN_ROWS);
+}
+
+/** Task transitions to done/blocked in the window (task_events_company_created_idx). */
+function loadRecentTransitions(companyId: string, since: Date) {
+    return db.select({
+        id: taskEvents.id,
+        state: sql<string | null>`coalesce(${taskEvents.payloadJson} ->> 'state', substring(${taskEvents.eventType} from 6))`,
+        actorType: taskEvents.actorType,
+        actorId: taskEvents.actorId,
+        assignedAgentId: tasks.assignedAgentId,
+        title: sql<string | null>`${tasks.inputJson}->>'title'`,
+        taskType: tasks.taskType,
+        createdAt: taskEvents.createdAt,
+    }).from(taskEvents)
+        .innerJoin(tasks, and(eq(tasks.id, taskEvents.taskId), eq(tasks.companyId, companyId)))
+        .where(and(
+            eq(taskEvents.companyId, companyId),
+            gt(taskEvents.createdAt, since),
+            or(
+                inArray(taskEvents.eventType, ["task_done", "task_blocked"]),
+                and(inArray(taskEvents.eventType, ["task_updated", "task_reassigned"]), sql`${taskEvents.payloadJson} ->> 'state' in ('done', 'blocked')`),
+            ),
+        ))
+        .orderBy(desc(taskEvents.createdAt))
+        .limit(TRANSITION_SCAN_ROWS);
+}
+
+/**
+ * The newest pending approvals, ONE row per approval, with the title of its
+ * first linked task (lowest task id), so titles never flip between polls and
+ * break the ETag. The limit counts approvals, not join rows.
+ */
+function loadPendingApprovals(companyId: string) {
+    const firstTask = sql<{ title: string | null; taskType: string } | null>`(
+        select json_build_object('title', lt.input_json ->> 'title', 'taskType', lt.task_type)
+          from approval_task_links l
+          join tasks lt on lt.id = l.task_id and lt.company_id = ${companyId}
+         where l.approval_id = "approvals"."id"
+         order by l.task_id
+         limit 1)`;
+    return db.select({
+        id: approvals.id,
+        requesterAgentId: approvals.requesterAgentId,
+        actionType: approvals.actionType,
+        rationale: sql<string | null>`left(${approvals.rationale}, 300)`,
+        requestedAt: approvals.requestedAt,
+        task: firstTask,
+    }).from(approvals)
+        .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending")))
+        .orderBy(desc(approvals.requestedAt), approvals.id)
+        .limit(PENDING_APPROVAL_ROWS);
+}
+
+/** Open incidents on agent-assigned tasks (the dashboard's "stuck" source). */
+function loadOpenAgentIncidents(companyId: string) {
+    return db.select({
+        id: incidents.id,
+        reasonCode: incidents.reasonCode,
+        summary: sql<string>`left(${incidents.summary}, 300)`,
+        createdAt: incidents.createdAt,
+        taskId: incidents.taskId,
+        taskState: tasks.state,
+        taskDeletedAt: tasks.deletedAt,
+        assignedAgentId: tasks.assignedAgentId,
+        title: sql<string | null>`${tasks.inputJson}->>'title'`,
+        taskType: tasks.taskType,
+    }).from(incidents)
+        .innerJoin(tasks, and(eq(tasks.id, incidents.taskId), eq(tasks.companyId, companyId)))
+        .where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt), isNotNull(tasks.assignedAgentId)))
+        .orderBy(desc(incidents.createdAt))
+        .limit(INCIDENT_SCAN_ROWS);
+}
+
+/** The agent replies to the token creator that `dm` is built from. */
+function creatorReplyIdsOf(chats: Awaited<ReturnType<typeof loadPrivateChats>>): string[] {
+    return (chats ?? []).flatMap((c) => c.messages.filter((m) => !m.me).map((m) => m.id));
+}
+
 const STATE_ORDER: Record<LiveState, number> = { typing: 0, working: 0, idle: 0, offline: 1 };
 
 export async function buildLiveFeed(companyId: string, options: {
@@ -394,31 +582,43 @@ export async function buildLiveFeed(companyId: string, options: {
     now?: Date;
     /** The token creator whose own direct chats the feed may carry (opted-in read_only tokens only). */
     privateChatsUserId?: string | null;
+    /** Carry each agent's `thought` (opted-in read_only tokens only). When false, reasoning is never queried. */
+    agentThoughts?: boolean;
 } = {}): Promise<LiveFeed> {
     const now = options.now ?? new Date();
     const messageLimit = Math.min(LIVE_MAX_MESSAGES, Math.max(0, options.messages ?? LIVE_DEFAULT_MESSAGES));
 
-    const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows, privateChats] = await Promise.all([
+    const since = new Date(now.getTime() - LIVE_RECENT_MS);
+    const privateChatsPromise = loadPrivateChats(companyId, options.privateChatsUserId);
+    // Thoughts wait for the private chats: direct rows are filtered to the
+    // creator's own replies in SQL, so other DMs never crowd out the top rows.
+    const reasoningPromise: Promise<ReasoningRow[]> = options.agentThoughts
+        ? privateChatsPromise.then((chats) => loadRecentReasoning(companyId, since, creatorReplyIdsOf(chats)))
+        : Promise.resolve([]);
+    const [health, companyRows, taskCounts, agentTasks, approvalCount, typingRows, messageRows, privateChats,
+        reasoningRows, handoffRows, transitionRows, approvalRows, incidentRows] = await Promise.all([
         getCachedHealth(companyId, now),
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         db.select({
             inProgress: sql<number>`count(*) filter (where ${tasks.state} = ${TASK_STATES.inProgress})`,
             overdue: sql<number>`count(*) filter (where ${inArray(tasks.state, [...SLA_TRACKED_TASK_STATES])} and ${lt(tasks.slaDueAt, now)})`,
         }).from(tasks).where(and(eq(tasks.companyId, companyId), isNull(tasks.deletedAt))),
-        // Each agent's most relevant in-progress task: highest priority, then most recently touched.
-        db.selectDistinctOn([tasks.assignedAgentId], {
+        // Each agent's most relevant in-progress task (and, for `act`, in-review
+        // task): highest priority, then most recently touched.
+        db.selectDistinctOn([tasks.assignedAgentId, tasks.state], {
             id: tasks.id,
             agentId: tasks.assignedAgentId,
+            state: tasks.state,
             title: sql<string | null>`${tasks.inputJson}->>'title'`,
             taskType: tasks.taskType,
         }).from(tasks)
             .where(and(
                 eq(tasks.companyId, companyId),
                 isNull(tasks.deletedAt),
-                eq(tasks.state, TASK_STATES.inProgress),
+                inArray(tasks.state, [TASK_STATES.inProgress, TASK_STATES.review]),
                 sql`${tasks.assignedAgentId} is not null`,
             ))
-            .orderBy(tasks.assignedAgentId, desc(tasks.priority), desc(tasks.updatedAt)),
+            .orderBy(tasks.assignedAgentId, tasks.state, desc(tasks.priority), desc(tasks.updatedAt)),
         db.select({ value: count() }).from(approvals).where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending"))),
         db.select({
             agentId: threadParticipants.participantId,
@@ -454,7 +654,12 @@ export async function buildLiveFeed(companyId: string, options: {
                 .orderBy(desc(threadMessages.createdAt))
                 // Headroom for messages that strip to nothing (control notices, empty bodies).
                 .limit(messageLimit + 10),
-        loadPrivateChats(companyId, options.privateChatsUserId),
+        privateChatsPromise,
+        reasoningPromise,
+        loadRecentAgentMessages(companyId, since),
+        loadRecentTransitions(companyId, since),
+        loadPendingApprovals(companyId),
+        loadOpenAgentIncidents(companyId),
     ]);
 
     // Freshest live activity per agent. Activity from a private direct thread
@@ -475,23 +680,66 @@ export async function buildLiveFeed(companyId: string, options: {
             typing.set(row.agentId, { until, activity });
         }
     }
-    const taskByAgent = new Map(agentTasks.filter((t) => t.agentId).map((t) => [t.agentId!, t]));
+    const taskByAgent = new Map(agentTasks.filter((t) => t.agentId && t.state === TASK_STATES.inProgress).map((t) => [t.agentId!, t]));
+    const reviewByAgent = new Map(agentTasks.filter((t) => t.agentId && t.state === TASK_STATES.review).map((t) => [t.agentId!, t]));
+    const titleOf = (t: { title: string | null; taskType: string | null }) => taskTitle({ inputJson: { title: t.title }, taskType: t.taskType });
 
-    const all: LiveAgent[] = health.agents.map((a) => {
-        const live = typing.get(a.id);
+    // v2 inputs.
+    const pending: PendingApprovalRow[] = [];
+    for (const a of approvalRows) {
+        const task = a.task ? titleOf({ title: a.task.title, taskType: a.task.taskType }) : null;
+        pending.push({ id: a.id, requesterAgentId: a.requesterAgentId, title: approvalTitle({ actionType: a.actionType, rationale: a.rationale, taskTitle: task }), requestedAtMs: a.requestedAt.getTime() });
+    }
+    const approvalByAgent = new Map<string, { id: string; title: string }>();
+    for (const a of pending) if (a.requesterAgentId && !approvalByAgent.has(a.requesterAgentId)) approvalByAgent.set(a.requesterAgentId, { id: a.id, title: a.title });
+    const incidentByAgent = new Map<string, { id: string; taskId: string | null; title: string; reason: string }>();
+    for (const i of incidentRows) {
+        if (!i.assignedAgentId || incidentByAgent.has(i.assignedAgentId)) continue;
+        if (!isLiveProblemIncident({ reasonCode: i.reasonCode, summary: i.summary, taskState: i.taskState, taskDeleted: i.taskDeletedAt !== null, createdAt: i.createdAt })) continue;
+        incidentByAgent.set(i.assignedAgentId, { id: i.id, taskId: i.taskId, title: titleOf(i), reason: i.reasonCode.replace(/_/g, " ") });
+    }
+    const knownAgents = new Set(health.agents.map((a) => a.id));
+    const transitions = transitionRows.map((r) => ({
+        id: r.id, state: r.state ?? "", actorType: r.actorType, actorId: r.actorId, assignedAgentId: r.assignedAgentId,
+        title: titleOf(r), createdAtMs: r.createdAt.getTime(),
+    }));
+    const justDone = recentlyDoneAgents(transitions, knownAgents, now.getTime());
+
+    const scored = health.agents.map((a) => ({ a, live: typing.get(a.id), status: scoreAgent({ ...a, online: Boolean(typing.get(a.id)) || a.online }).status }));
+    const acts = deriveActs(scored.map(({ a, live, status }) => {
+        const task = taskByAgent.get(a.id);
+        const review = reviewByAgent.get(a.id);
+        return {
+            id: a.id,
+            name: a.name,
+            health: status,
+            activity: live?.activity ?? null,
+            working: task ? [{ id: task.id, title: titleOf(task), taskType: task.taskType }] : [],
+            waiting: review ? [{ id: review.id, title: titleOf(review), taskType: review.taskType }] : [],
+            incident: incidentByAgent.get(a.id) ?? null,
+            approval: approvalByAgent.get(a.id) ?? null,
+            justDone: justDone.has(a.id),
+        };
+    }));
+
+    const all: LiveAgent[] = scored.map(({ a, live, status }) => {
         const task = taskByAgent.get(a.id);
         const lastSeenMs = a.lastSeenAt ? Date.parse(a.lastSeenAt) : NaN;
+        const act = acts.get(a.id) ?? { act: "idle" as const, mood: "neutral" as const };
         return {
             id: a.id,
             name: a.name,
             short: shortName(a.name),
             hue: agentHue(a.id, a),
-            health: scoreAgent({ ...a, online: Boolean(live) || a.online }).status,
+            health: status,
             state: deriveLiveState({ typing: Boolean(live), online: a.online, hasTaskInProgress: Boolean(task) }),
             activity: live?.activity ? toPlainText(live.activity, ACTIVITY_MAX) || null : null,
             task: task ? { id: task.id, title: truncateText(taskTitle({ inputJson: { title: task.title }, taskType: task.taskType }), TASK_TITLE_MAX) } : null,
             lastSeenSec: Number.isFinite(lastSeenMs) ? Math.max(0, Math.floor((now.getTime() - lastSeenMs) / 1000)) : null,
             unanswered: a.unanswered,
+            look: packLook(resolveAppearance({ id: a.id, avatarUrl: a.avatarUrl, avatarAppearance: a.avatarAppearance })),
+            act: act.act,
+            mood: act.mood,
         };
     });
     // Stable order for a carousel: online agents first, then offline, each by
@@ -523,10 +771,34 @@ export async function buildLiveFeed(companyId: string, options: {
     }
 
     const shown = all.slice(0, LIVE_MAX_AGENTS);
-    const dm = privateChats ? shapeDm(privateChats, new Set(shown.map((a) => a.id)), now.getTime()) : [];
+    const shownIds = new Set(shown.map((a) => a.id));
+    const dm = privateChats ? shapeDm(privateChats, shownIds, now.getTime()) : [];
+
+    // Thoughts: shared threads, plus - only on an opted-in screen whose creator
+    // is still an admin (privateChats non-null) - the agent's replies to the
+    // creator that `dm` is built from. Never another member's direct chat.
+    const creatorReplyIds = new Set(creatorReplyIdsOf(privateChats));
+    const thoughts = pickThoughts(reasoningRows.filter((r) => shownIds.has(r.agentId)), { nowMs: now.getTime(), creatorReplyIds });
+    for (const agent of shown) {
+        const t = thoughts.get(agent.id);
+        if (t) {
+            agent.thought = t.thought;
+            agent.thoughtAgeSec = t.ageSec;
+        }
+    }
+
+    const events = deriveEvents({
+        handoffs: handoffRows.map((m) => ({ id: m.id, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text ?? "", createdAtMs: m.createdAt.getTime() })),
+        transitions,
+        approvals: pending,
+        roster: health.agents.map((a) => ({ id: a.id, name: a.name })),
+        shown: shownIds,
+        nowMs: now.getTime(),
+    });
+    const needs = deriveNeeds(pending);
 
     const tally = (status: HealthStatus) => all.filter((a) => a.health === status).length;
-    return {
+    const feed: LiveFeed = {
         v: LIVE_FEED_VERSION,
         ts: now.toISOString(),
         company: { name: companyRows[0]?.name ?? "" },
@@ -545,5 +817,8 @@ export async function buildLiveFeed(companyId: string, options: {
         agents: shown,
         messages,
         dm,
+        events,
+        needs,
     };
+    return fitThoughtsToBudget(feed);
 }

@@ -4,14 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { IconPlus, IconZoomIn, IconZoomOut, IconArrowsMaximize } from "@tabler/icons-react";
 import {
-    arcPath, CHARACTER_SCALE, hashString, iso, labelLifts, WALL_H,
+    arcPath, CHARACTER_SCALE, expressionForActivity, hashString, iso, labelLifts, WALL_H,
     requiresHumanAction, agentMotion, centerOn, fitCamera, panCamera, worldTransform, zoomAtPoint,
     type CameraState, type CollaborationLink, type OfficeLayout, type PlacedAgent, type SceneActivity, type ZoneId, type ZoneLayout,
 } from "@/lib/team-scene";
 import { resolveAppearance } from "@/lib/character/model";
 import { cn } from "@/lib/utils";
 import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
-import type { CharacterExpression } from "@/lib/character/draw";
 import { ActivityCue } from "./character-activity";
 import { AgentAvatar, STATUS_COLOR } from "./agent-character";
 import {
@@ -534,18 +533,6 @@ function MeetingCorner({ cell }: { cell: { gx: number; gy: number; w: number; d:
     );
 }
 
-/** Bodies stay still; the eyes carry the state. */
-function expressionFor(kind: SceneActivity): CharacterExpression {
-    switch (kind) {
-        case "typing": case "writing": case "presenting": case "thinking": return "focused";
-        case "reviewing": return "scanning";
-        case "talking": case "celebrate": case "coffee": case "stretch": return "happy";
-        case "waiting": case "blocked": return "worried";
-        case "nap": case "offline": return "sleepy";
-        default: return "neutral";
-    }
-}
-
 function SceneCharacter({ agent, selected, hovered, onSelect, onHover, onCenter, talking, lite, reducedMotion }: {
     agent: PlacedAgent;
     selected: boolean;
@@ -587,7 +574,7 @@ function SceneCharacter({ agent, selected, hovered, onSelect, onHover, onCenter,
                 <g style={vars}>
                     <g style={{ filter: glow }} className="transition-[filter] duration-200">
                         <g transform={`scale(${CHARACTER_SCALE})`}>
-                            <CharacterFigureView appearance={appearance} mood={mood} expression={reducedMotion && kind === "reviewing" ? "neutral" : expressionFor(kind)} seated={agent.pose !== "standing"} salt={agent.member.id.slice(0, 6)} />
+                            <CharacterFigureView appearance={appearance} mood={mood} expression={reducedMotion && kind === "reviewing" ? "neutral" : expressionForActivity(kind)} seated={agent.pose !== "standing"} salt={agent.member.id.slice(0, 6)} />
                             <ActivityCue activity={kind} hue={appearance.hue} lite={lite} reducedMotion={reducedMotion} variant={behavior.variant} />
                         </g>
                     </g>

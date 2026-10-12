@@ -5,7 +5,7 @@ import { randomBytes, createHash } from "crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { requireRole, AuthError, roleGte } from "@/lib/roles";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { isCompanyTokenScope, resolveIncludePrivateChats, serializeCompanyToken } from "@/lib/mcp";
+import { isCompanyTokenScope, resolveIncludeAgentThoughts, resolveIncludePrivateChats, serializeCompanyToken } from "@/lib/mcp";
 import { prepareCallbackUrl } from "@/lib/agent-requests";
 
 // Company tokens grant programmatic access to every agent and (at mcp_danger)
@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
         // A screen token may show its creator's own direct chats with agents.
         const privateChats = resolveIncludePrivateChats(scope, body.includePrivateChats);
         if ("error" in privateChats) return NextResponse.json({ error: privateChats.error }, { status: 400 });
+        // A screen token may show each agent's latest redacted reasoning.
+        const agentThoughts = resolveIncludeAgentThoughts(scope, body.includeAgentThoughts);
+        if ("error" in agentThoughts) return NextResponse.json({ error: agentThoughts.error }, { status: 400 });
 
         // A requests token (an outside platform sending work) may get status callbacks.
         let callback: { encrypted: string; hint: string } | null = null;
@@ -88,6 +91,7 @@ export async function POST(req: NextRequest) {
             callbackUrlHint: callback?.hint ?? null,
             createdByUserId: ctx.userId,
             includePrivateChats: privateChats.value,
+            includeAgentThoughts: agentThoughts.value,
         }).returning();
 
         await broadcastMcpEvent(companyId, {

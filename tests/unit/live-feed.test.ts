@@ -14,7 +14,7 @@ import {
     truncateText,
     type LiveFeed,
 } from "../../src/lib/live-feed";
-import { hasRequiredCompanyTokenScope, isCompanyTokenScope, isIsolatedCompanyTokenScope, normalizeCompanyTokenScope, resolveIncludePrivateChats, serializeCompanyToken } from "../../src/lib/mcp";
+import { hasRequiredCompanyTokenScope, isCompanyTokenScope, isIsolatedCompanyTokenScope, normalizeCompanyTokenScope, resolveIncludeAgentThoughts, resolveIncludePrivateChats, serializeCompanyToken } from "../../src/lib/mcp";
 
 test("short name is the first word, at most 10 characters", () => {
     assert.equal(shortName("Ada Researcher"), "Ada");
@@ -136,6 +136,19 @@ test("includePrivateChats is accepted only on read_only tokens", () => {
     const base = { id: "t", name: "Screen", scope: "read_only", createdAt: new Date("2026-10-01T00:00:00Z") };
     assert.equal(serializeCompanyToken({ ...base, includePrivateChats: true }).includePrivateChats, true);
     assert.equal(serializeCompanyToken(base).includePrivateChats, false);
+});
+
+test("includeAgentThoughts is accepted only on read_only tokens and is off by default", () => {
+    assert.deepEqual(resolveIncludeAgentThoughts("read_only", true), { value: true });
+    assert.deepEqual(resolveIncludeAgentThoughts("read_only", undefined), { value: false });
+    for (const scope of ["mcp_full", "mcp_danger", "requests"] as const) {
+        assert.deepEqual(resolveIncludeAgentThoughts(scope, undefined), { value: false });
+        assert.match((resolveIncludeAgentThoughts(scope, true) as { error: string }).error, /includeAgentThoughts is only allowed for read_only/);
+    }
+    assert.ok("error" in resolveIncludeAgentThoughts("read_only", 1), "not a boolean");
+    const base = { id: "t", name: "Screen", scope: "read_only", createdAt: new Date("2026-10-01T00:00:00Z") };
+    assert.equal(serializeCompanyToken({ ...base, includeAgentThoughts: true }).includeAgentThoughts, true);
+    assert.equal(serializeCompanyToken(base).includeAgentThoughts, false);
 });
 
 test("dm shaping: plain text, newest first, per-agent and total caps, visible agents only", () => {

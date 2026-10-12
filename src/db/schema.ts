@@ -90,6 +90,10 @@ export const companyTokens = pgTable("company_tokens", {
     // read_only only: the live feed also carries the creator's own direct
     // conversations with each agent (the `dm` key), while they remain a member.
     includePrivateChats: boolean("include_private_chats").default(false).notNull(),
+    // read_only only: the live feed also carries each agent's latest redacted
+    // reasoning snippet (`thought`). Off unless chosen at creation; the
+    // Displays page turns it on by default for new display tokens.
+    includeAgentThoughts: boolean("include_agent_thoughts").default(false).notNull(),
     lastUsedAt: timestamp("last_used_at"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

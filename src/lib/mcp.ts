@@ -117,9 +117,22 @@ export function getCompanyTokenExpiresAt(token: { createdAt: Date; scope: unknow
  * scope is a client error rather than something to silently drop.
  */
 export function resolveIncludePrivateChats(scope: CompanyTokenScope, raw: unknown): { value: boolean } | { error: string } {
+    return resolveReadOnlyFlag("includePrivateChats", scope, raw);
+}
+
+/**
+ * The `includeAgentThoughts` option on token creation: the live feed carries
+ * each agent's latest redacted reasoning snippet. read_only tokens only, off
+ * unless asked for.
+ */
+export function resolveIncludeAgentThoughts(scope: CompanyTokenScope, raw: unknown): { value: boolean } | { error: string } {
+    return resolveReadOnlyFlag("includeAgentThoughts", scope, raw);
+}
+
+function resolveReadOnlyFlag(name: string, scope: CompanyTokenScope, raw: unknown): { value: boolean } | { error: string } {
     if (raw === undefined || raw === null || raw === false) return { value: false };
-    if (raw !== true) return { error: "includePrivateChats must be a boolean" };
-    if (scope !== "read_only") return { error: "includePrivateChats is only allowed for read_only tokens" };
+    if (raw !== true) return { error: `${name} must be a boolean` };
+    if (scope !== "read_only") return { error: `${name} is only allowed for read_only tokens` };
     return { value: true };
 }
 
@@ -133,6 +146,7 @@ export function serializeCompanyToken(token: {
     agentId?: string | null;
     callbackUrlHint?: string | null;
     includePrivateChats?: boolean | null;
+    includeAgentThoughts?: boolean | null;
 }) {
     return {
         id: token.id,
@@ -141,6 +155,7 @@ export function serializeCompanyToken(token: {
         agentId: token.agentId ?? null,
         callbackUrlHint: token.callbackUrlHint ?? null,
         includePrivateChats: token.includePrivateChats === true,
+        includeAgentThoughts: token.includeAgentThoughts === true,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
         revokedAt: token.revokedAt ? token.revokedAt.toISOString() : null,

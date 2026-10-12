@@ -1,0 +1,1 @@
+ALTER TABLE "company_tokens" ADD COLUMN "include_agent_thoughts" boolean DEFAULT false NOT NULL;

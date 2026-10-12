@@ -24,6 +24,7 @@ type SettingsToken = {
     expiresAt: string;
     callbackUrlHint?: string | null;
     includePrivateChats?: boolean;
+    includeAgentThoughts?: boolean;
 };
 
 import { resolveSettingsTab, settingsSections, type SettingsTab } from "@/lib/settings-navigation";
@@ -518,6 +519,9 @@ Walk me through step by step.`}</pre>
                                                 </span>
                                                 {token.scope === "read_only" && token.includePrivateChats && (
                                                     <span className="text-xs text-muted-foreground">+ my private chats</span>
+                                                )}
+                                                {token.scope === "read_only" && token.includeAgentThoughts && (
+                                                    <span className="text-xs text-muted-foreground">+ agent thoughts</span>
                                                 )}
                                             </div>
                                             <p className="mt-1 font-mono text-xs text-muted-foreground">

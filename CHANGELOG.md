@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Added
+- Live feed v2 (`GET /api/mcp/live`, `"v": 2`) for the Throne Display "living office". All v1 keys and behavior (ETag/304, 24-agent cap, private-chat masking, `?messages=`) are unchanged. Each agent now carries `look` (a compact character spec from the same appearance resolver the web uses), `act` and `mood` (the activity and expression the web office scene shows), and, when fresh, `thought` plus `thoughtAgeSec`: the latest reasoning snippet from the last 10 minutes. A thought is at most 140 characters, with URLs, emails, keys, tokens and home-directory paths redacted, and it is never taken from a private chat unless the screen's token carries its creator's own chats. New top-level `events` (handoff, task_done, blocked, needs_you; last 10 minutes, newest first, at most 10, with stable ids) and `needs` (up to 3 pending approvals) arrive in a few batched queries per poll. Thoughts shorten automatically to keep the payload near the device's 12 KB budget.
+- Agent thoughts are opt-in per display. A new read-only token setting, **Show agent thoughts** (`include_agent_thoughts`, migration `0057`), gates `thought` server-side; the reasoning query does not run when it is off. It defaults to on for displays set up from **Settings → Displays** and off for every other token, including existing ones.
+- Throne Display firmware 2.0.0, a "living office": agents drawn with the web's character model (robot/human, skin, hair, accessories, six expressions) who act out what they are doing (typing, reviewing, thinking, coffee, nap, blocked, celebrate), thought bubbles that type out an agent's reasoning, paper-plane handoffs, confetti on finished tasks, a gold ring and a knock on the glass when something needs you, and a new **Director** mode that cuts between shots automatically for filming. **Camera-safe** scrambles names and text on screen (on by default in Director). The demo mode shows all of it with sample data.
+
 ## [0.8.87] — 2026-10-12
 
 ### Fixed

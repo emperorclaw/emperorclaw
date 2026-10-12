@@ -59,7 +59,7 @@ maybe("a read_only token reads the live feed: agents, activity, tasks, and publi
     assert.ok(raw.length < 6000, `payload is small (${raw.length} bytes)`);
     const feed = JSON.parse(raw);
 
-    assert.equal(feed.v, 1);
+    assert.equal(feed.v, 2);
     assert.equal(feed.company.name, "Test Co");
     assert.equal(feed.summary.agents, 3, "deleted agents are excluded");
     assert.equal(feed.summary.tasksInProgress, 1);
@@ -186,13 +186,13 @@ async function seedMember(companyId: string, role = "member") {
     return user.id;
 }
 
-async function seedScreenToken(companyId: string, createdByUserId: string | null, includePrivateChats: boolean) {
+async function seedScreenToken(companyId: string, createdByUserId: string | null, includePrivateChats: boolean, includeAgentThoughts = false) {
     const db = await getDb();
     const { companyTokens } = await getSchema();
     const raw = `ec_screen_${randomUUID().replace(/-/g, "")}`;
     await db.insert(companyTokens).values({
         companyId, tokenHash: createHash("sha256").update(raw).digest("hex"), name: "Screen", scope: "read_only",
-        createdByUserId, includePrivateChats,
+        createdByUserId, includePrivateChats, includeAgentThoughts,
     });
     return raw;
 }
@@ -335,4 +335,138 @@ maybe("a member's screen never shows another member's chats, even with the flag 
     // Only owners and admins can mint tokens; a token attributed to a plain member carries no chats.
     const plainFeed = await (await getLive(await seedScreenToken(companyId, plain, true))).json();
     assert.deepEqual(plainFeed.dm, []);
+});
+
+maybe("v2: look, act, mood, thought, events and needs, with private threads kept off the screen", async () => {
+    await resetDb();
+    const { companyId } = await seedCompanyWithToken();
+    const creator = await seedMember(companyId, "owner");
+    const other = await seedMember(companyId);
+    const db = await getDb();
+    const { messageThreads, threadParticipants, threadMessages, threadMessageReasoning, projects, tasks, taskEvents, approvals, approvalTaskLinks, incidents } = await getSchema();
+    const now = Date.now();
+    const ago = (sec: number) => new Date(now - sec * 1000);
+
+    const appearance = { version: 1, kind: "human", seed: "ada-seed", hue: 205, variant: 2, skin: 1, hair: 3, accessory: "glasses" };
+    const ada = await seedAgent(companyId, { name: "Ada Researcher", lastSeenAt: new Date(), avatarAppearance: appearance });
+    const bob = await seedAgent(companyId, { name: "Bob Builder", lastSeenAt: new Date() });
+    const cy = await seedAgent(companyId, { name: "Cy Ops", lastSeenAt: new Date() });
+    const dee = await seedAgent(companyId, { name: "Dee Data", lastSeenAt: new Date() });
+
+    const [team] = await db.insert(messageThreads).values({ companyId, type: "team", title: "Team" }).returning();
+    const { ensureDirectThread } = await import("@/lib/control-plane");
+    const bobDirect = await ensureDirectThread(companyId, bob.id);
+    const cyDirect = await ensureDirectThread(companyId, cy.id);
+    await db.insert(threadParticipants).values({ companyId, threadId: team.id, participantType: "agent", participantId: ada.id, typingUntil: new Date(now + 60_000), currentActivity: "debugging the build" });
+
+    // Ada hands off to Bob in team chat; Bob answers the creator and Cy
+    // answers another member in their direct chats.
+    const [handoff, adaOld, adaStale] = await db.insert(threadMessages).values([
+        { companyId, threadId: team.id, senderType: "agent", senderId: ada.id, text: "@Bob Builder can you take the deploy?", createdAt: ago(30) },
+        { companyId, threadId: team.id, senderType: "agent", senderId: ada.id, text: "Earlier note", createdAt: ago(90) },
+        { companyId, threadId: team.id, senderType: "agent", senderId: ada.id, text: "Stale note", createdAt: ago(20 * 60) },
+    ]).returning();
+    const [creatorAsk] = await db.insert(threadMessages).values({ companyId, threadId: bobDirect.id, senderType: "human", senderId: creator, text: "Bob, status?", createdAt: ago(60) }).returning();
+    const [bobReply] = await db.insert(threadMessages).values({ companyId, threadId: bobDirect.id, senderType: "agent", senderId: bob.id, text: "On it", metadataJson: { replyToMessageId: creatorAsk.id }, createdAt: ago(50) }).returning();
+    await db.insert(threadMessages).values({ companyId, threadId: cyDirect.id, senderType: "human", senderId: other, text: "Cy, private question", createdAt: ago(40) });
+    const [cyReply] = await db.insert(threadMessages).values({ companyId, threadId: cyDirect.id, senderType: "agent", senderId: cy.id, text: "Private answer", createdAt: ago(35) }).returning();
+
+    await db.insert(threadMessageReasoning).values([
+        { companyId, messageId: handoff.id, reasoning: "Reading the deploy logs with ghp_abcdefghijk123456.\n\nThe build fails at /home/ada/app with key sk-live123456789abc; asking Bob to take the deploy at https://ci.example.com/run/1\n\nok", createdAt: ago(25) },
+        { companyId, messageId: adaOld.id, reasoning: "An older thought that should lose to the newer one", createdAt: ago(80) },
+        { companyId, messageId: adaStale.id, reasoning: "A stale thought from twenty minutes ago, never shown", createdAt: ago(20 * 60) },
+        { companyId, messageId: bobReply.id, reasoning: "The creator wants the launch status for the board", createdAt: ago(45) },
+        { companyId, messageId: cyReply.id, reasoning: "The other member asked a sensitive salary question", createdAt: ago(30) },
+    ]);
+
+    // Work: Bob finished a task, Cy got blocked, Cy requests approval, Dee holds a stuck task.
+    const [project] = await db.insert(projects).values({ companyId, goal: "Launch", status: "active" }).returning();
+    const [done, blocked, gated, stuck] = await db.insert(tasks).values([
+        { companyId, projectId: project.id, taskType: "deploy", state: "done", assignedAgentId: bob.id, inputJson: { title: "Ship the landing page" } },
+        { companyId, projectId: project.id, taskType: "ops", state: "blocked", assignedAgentId: cy.id, inputJson: { title: "Rotate the certificates" } },
+        { companyId, projectId: project.id, taskType: "ops", state: "review", assignedAgentId: cy.id, inputJson: { title: "Publish the release notes" } },
+        { companyId, projectId: project.id, taskType: "code", state: "failed", assignedAgentId: dee.id, inputJson: { title: "Migrate the database" } },
+    ]).returning();
+    await db.insert(taskEvents).values([
+        { companyId, taskId: done.id, eventType: "task_done", actorType: "agent", actorId: bob.id, createdAt: ago(20) },
+        { companyId, taskId: blocked.id, eventType: "task_blocked", actorType: "agent", actorId: cy.id, createdAt: ago(15) },
+        { companyId, taskId: done.id, eventType: "task_done", actorType: "agent", actorId: bob.id, createdAt: ago(30 * 60) },
+    ]);
+    const [approval] = await db.insert(approvals).values({ companyId, projectId: project.id, requesterAgentId: cy.id, status: "pending", actionType: "task_done", requestedAt: ago(10) }).returning();
+    // Two linked tasks: the title comes from the lowest task id, the same on every poll.
+    await db.insert(approvalTaskLinks).values([{ companyId, approvalId: approval.id, taskId: gated.id }, { companyId, approvalId: approval.id, taskId: done.id }]);
+    const approvalTask = [gated, done].sort((x, y) => (x.id < y.id ? -1 : 1))[0];
+    const approvalTitle = `Approve ${(approvalTask.inputJson as { title: string }).title}`;
+    await db.insert(incidents).values({ companyId, projectId: project.id, taskId: stuck.id, severity: "high", reasonCode: "max_retries_exceeded", summary: "Task exceeded retries" });
+
+    const off = await seedScreenToken(companyId, creator, false, true);
+    const on = await seedScreenToken(companyId, creator, true, true);
+    const noThoughts = await seedScreenToken(companyId, creator, true, false);
+    const legacyReadOnly = await seedScopedToken(companyId, "read_only");
+
+    // Thoughts are opt-in per token: a screen without the setting (and any
+    // older read_only token) gets every other v2 key but never a thought.
+    for (const token of [noThoughts, legacyReadOnly]) {
+        const plain = JSON.parse(await (await getLive(token)).text());
+        assert.equal(plain.v, 2);
+        assert.ok(plain.agents.every((a: Record<string, unknown>) => !("thought" in a) && !("thoughtAgeSec" in a)));
+        assert.ok(plain.agents.every((a: Record<string, unknown>) => a.look && a.act && a.mood));
+        assert.equal(plain.events.length, 4);
+    }
+
+    const res = await getLive(off);
+    assert.equal(res.status, 200);
+    const raw = await res.text();
+    const feed = JSON.parse(raw);
+    assert.equal(feed.v, 2);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byId = (list: { id: string }[], id: string) => list.find((a) => a.id === id) as Record<string, any>;
+
+    // look: the same resolver and hair math as the web.
+    const { packLook, liveEventId } = await import("@/lib/live-feed-v2");
+    const { resolveAppearance } = await import("@/lib/character/model");
+    assert.deepEqual(byId(feed.agents, ada.id).look, { k: "h", u: 205, v: 2, s: 1, h: 3, hs: 1, a: "g" });
+    assert.deepEqual(byId(feed.agents, bob.id).look, packLook(resolveAppearance({ id: bob.id })));
+
+    // act + mood: the office scene's mapping.
+    assert.equal(byId(feed.agents, ada.id).act, "typing");
+    assert.equal(byId(feed.agents, ada.id).mood, "focused");
+    assert.equal(byId(feed.agents, bob.id).act, "celebrate", "just finished a task");
+    assert.equal(byId(feed.agents, bob.id).mood, "happy");
+    assert.equal(byId(feed.agents, dee.id).act, "blocked", "a failed task with an open incident is stuck");
+    assert.equal(byId(feed.agents, dee.id).mood, "worried");
+    assert.equal(byId(feed.agents, cy.id).act, "waiting", "work in review, approval pending");
+
+    // thought: newest substantive, redacted, with an age; nothing private.
+    const adaLive = byId(feed.agents, ada.id);
+    assert.equal(adaLive.thought, "The build fails at [path] with key [secret]; asking Bob to take the deploy at [link]");
+    assert.ok(adaLive.thoughtAgeSec >= 25 && adaLive.thoughtAgeSec < 120);
+    assert.equal("thought" in byId(feed.agents, bob.id), false, "a direct-chat thought needs the private-chats opt-in");
+    assert.equal("thoughtAgeSec" in byId(feed.agents, bob.id), false);
+    assert.equal("thought" in byId(feed.agents, cy.id), false);
+    for (const leaked of ["salary", "launch status", "stale thought", "ghp_", "sk-live", "/home/ada", "ci.example"]) {
+        assert.ok(!raw.includes(leaked), `"${leaked}" must not reach the screen`);
+    }
+
+    // events: newest first; handoff, blocked, done, needs_you; old ones excluded.
+    assert.deepEqual(feed.events.map((e: { t: string }) => e.t), ["needs_you", "blocked", "task_done", "handoff"]);
+    assert.deepEqual(feed.events[3], { id: liveEventId("handoff", handoff.id), t: "handoff", a: ada.id, b: bob.id, ageSec: feed.events[3].ageSec });
+    assert.equal(feed.events[2].a, bob.id);
+    assert.equal(feed.events[2].title, "Ship the landing page");
+    assert.equal(feed.events[1].a, cy.id);
+    assert.equal(feed.events[1].title, "Rotate the certificates");
+    assert.equal(feed.events[0].title, approvalTitle);
+    assert.deepEqual(feed.needs, [{ agentId: cy.id, title: approvalTitle }]);
+    assert.equal(feed.summary.pendingApprovals, 1);
+
+    // The ETag ignores ages: an immediate re-poll is a 304.
+    const again = await getLive(off, "", { "If-None-Match": res.headers.get("etag")! });
+    assert.equal(again.status, 304);
+
+    // Opted in: the creator's own exchange may show Bob's thought; Cy's chat with another member never does.
+    const onRaw = await (await getLive(on)).text();
+    const onFeed = JSON.parse(onRaw);
+    assert.equal(byId(onFeed.agents, bob.id).thought, "The creator wants the launch status for the board");
+    assert.equal("thought" in byId(onFeed.agents, cy.id), false);
+    assert.ok(!onRaw.includes("salary"));
 });

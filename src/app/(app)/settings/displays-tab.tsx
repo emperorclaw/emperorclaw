@@ -39,6 +39,7 @@ export type DisplayToken = {
     createdAt: string;
     lastUsedAt: string | null;
     includePrivateChats?: boolean;
+    includeAgentThoughts?: boolean;
 };
 
 type Step = "connect" | "firmware" | "wifi" | "options" | "finish";
@@ -54,6 +55,9 @@ const STEPS: { id: Step; label: string }[] = [
 const OTHER = "__other__";
 const PRIVATE_CHATS_HELP =
     "Shows your own direct conversations with each agent on the screen. Never includes other people's chats. Anyone who can see the screen can read them.";
+
+const AGENT_THOUGHTS_HELP =
+    "Shows each agent's latest reasoning in a thought bubble, shortened and with links, emails, keys and file paths removed. Anyone who can see the screen can read it.";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const noSubscribe = () => () => undefined;
@@ -127,6 +131,7 @@ export function DisplaysTab({
 
     const [displayName, setDisplayName] = useState("Desk display");
     const [privateChats, setPrivateChats] = useState(false);
+    const [agentThoughts, setAgentThoughts] = useState(true);
 
     const [progress, setProgress] = useState<ProvisionProgress>(initialProvisionProgress);
     const [usbLost, setUsbLost] = useState(false);
@@ -135,7 +140,7 @@ export function DisplaysTab({
     const sessionRef = useRef<DisplaySerialSession | null>(null);
     const portRef = useRef<SerialPort | null>(null);
     // The minted display key lives only in memory, only until the board confirms it.
-    const mintedRef = useRef<{ id: string; secret: string; includePrivateChats: boolean } | null>(null);
+    const mintedRef = useRef<{ id: string; secret: string; includePrivateChats: boolean; includeAgentThoughts: boolean } | null>(null);
     const runRef = useRef(0);
 
     // Leaving the tab stops any running flow and releases the port.
@@ -346,16 +351,16 @@ export function DisplaysTab({
             if (!session) throw new Error("The display is not connected. Press Reconnect, then try again.");
 
             // A key from an earlier attempt is reused unless its options changed.
-            if (mintedRef.current && mintedRef.current.includePrivateChats !== privateChats) revokeUnused();
+            if (mintedRef.current && (mintedRef.current.includePrivateChats !== privateChats || mintedRef.current.includeAgentThoughts !== agentThoughts)) revokeUnused();
             if (!mintedRef.current) {
                 const res = await fetch("/api/settings/tokens", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name: displayName.trim() || "Desk display", scope: "read_only", ...(privateChats ? { includePrivateChats: true } : {}) }),
+                    body: JSON.stringify({ name: displayName.trim() || "Desk display", scope: "read_only", ...(privateChats ? { includePrivateChats: true } : {}), ...(agentThoughts ? { includeAgentThoughts: true } : {}) }),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || "Couldn't create the display key.");
-                mintedRef.current = { id: data.token.id, secret: data.secret, includePrivateChats: privateChats };
+                mintedRef.current = { id: data.token.id, secret: data.secret, includePrivateChats: privateChats, includeAgentThoughts: agentThoughts };
                 onTokenCreated(data.token);
             }
             const minted = mintedRef.current;
@@ -586,6 +591,13 @@ export function DisplaysTab({
                                     <span className="block text-xs leading-5 text-muted-foreground">{PRIVATE_CHATS_HELP}</span>
                                 </span>
                             </label>
+                            <label className="flex items-start gap-3 rounded-xl border border-border bg-white/[0.02] p-3">
+                                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-cyan-400" checked={agentThoughts} onChange={(e) => setAgentThoughts(e.target.checked)} />
+                                <span className="space-y-1">
+                                    <span className="block text-sm font-medium text-foreground">Show agent thoughts</span>
+                                    <span className="block text-xs leading-5 text-muted-foreground">{AGENT_THOUGHTS_HELP}</span>
+                                </span>
+                            </label>
                             <div className="flex flex-wrap gap-2">
                                 <Button variant="outline" onClick={() => setStep("wifi")}>Back</Button>
                                 <Button onClick={() => void provision()} disabled={!displayName.trim() || !!serverProblem}>Finish setup</Button>
@@ -653,7 +665,7 @@ export function DisplaysTab({
                                     <p className="mt-1 text-xs text-muted-foreground">
                                         Created {new Date(token.createdAt).toLocaleDateString()} · Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "never"}
                                     </p>
-                                    <p className="mt-1 text-xs text-muted-foreground">Private chats: {token.includePrivateChats ? "on" : "off"}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">Private chats: {token.includePrivateChats ? "on" : "off"} · Agent thoughts: {token.includeAgentThoughts ? "on" : "off"}</p>
                                 </div>
                                 <Button variant="destructive" size="sm" onClick={() => onRevoke(token.id)} disabled={revokingTokenId === token.id}>
                                     <IconTrash className="h-4 w-4" /> {revokingTokenId === token.id ? "Revoking..." : confirmingRevokeId === token.id ? "Click again to confirm" : "Revoke"}

@@ -11,6 +11,8 @@ import { buildLiveFeed, clampMessageCount, etagMatches, liveFeedEtag } from "@/l
  *
  * `dm` is always present and empty unless the token was minted with
  * includePrivateChats by a user who is still a member of the company.
+ * Per-agent `thought` is sent only to read_only tokens minted with
+ * includeAgentThoughts; for every other token reasoning is never queried.
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req, { allowReadOnlyScope: true });
@@ -22,7 +24,8 @@ export async function GET(req: NextRequest) {
         // Only an opted-in read_only token carries its creator's own direct chats.
         const token = auth.companyToken;
         const privateChatsUserId = token.scope === "read_only" && token.includePrivateChats ? token.createdByUserId : null;
-        const feed = await buildLiveFeed(token.companyId, { messages, privateChatsUserId });
+        const agentThoughts = token.scope === "read_only" && token.includeAgentThoughts === true;
+        const feed = await buildLiveFeed(token.companyId, { messages, privateChatsUserId, agentThoughts });
         const etag = liveFeedEtag(feed);
         const headers = { ETag: etag, "Cache-Control": "no-store" };
         if (etagMatches(req.headers.get("if-none-match"), etag)) {
