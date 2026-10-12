@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [Unreleased]
+
+### Fixed
+- Status broadcasts no longer pause agent rooms. In team and group chats the loop guard now counts only agent messages that wake another agent (a `targetAgentId`, or an @mention of an agent other than the sender); a broadcast that addresses nobody neither counts nor resets the streak, so a real escalation after many cron status reports is delivered instead of being silently `loop_paused`. Pair threads, human resets, progress, resume markers and the cooldown window are unchanged.
+- Short agent mentions wake the right agent. `@Architect` now reaches `Hermes-Architect` when exactly one agent's name contains that token (3+ characters); an exact name still wins (`@QA` with `QA` and `Hermes-QA` reaches only `QA`), and a token shared by several agents (`@Hermes`) reaches nobody.
+
 ## [0.8.86] — 2026-10-12
 
 ### Fixed

@@ -116,22 +116,56 @@ export function normalizeMention(value: string): string {
     return value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+/** The display part of a name: no "(…)" notes and no " - role" suffix. */
+function cleanAgentName(name: string): string {
+    return cleanMentionText(name).replace(/\([^)]*\)/g, "").trim().split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0].trim();
+}
+
 /** Full-name style aliases (mirrors the bridge's agent_name_aliases, minus the first word). */
 function fullAliases(name: string): string[] {
-    const clean = cleanMentionText(name).replace(/\([^)]*\)/g, "").trim().split(/\s+-\s+|\s+—\s+|\s+\|\s+/)[0].trim();
+    const clean = cleanAgentName(name);
     const parts = clean.split(/\s+/).filter(Boolean);
     return [name, clean, parts.join("-"), parts.join("_")].map(normalizeMention).filter(Boolean);
+}
+
+/** A short alias must be at least this long, so tiny fragments of longer names never alias. */
+const MIN_TOKEN_ALIAS_LENGTH = 3;
+
+/** Broadcast-style handles that must never resolve to one agent through a short alias. */
+const RESERVED_ALIAS_TOKENS = new Set(["all", "everyone", "team", "here", "channel", "group"]);
+
+/** The single-word tokens of a name (split on spaces, "-" and "_"), e.g. "Hermes-Architect" -> hermes, architect. */
+function nameTokens(name: string): string[] {
+    return [...new Set(cleanAgentName(name).split(/[\s_-]+/).map(normalizeMention)
+        .filter((t) => t.length >= MIN_TOKEN_ALIAS_LENGTH && !RESERVED_ALIAS_TOKENS.has(t)))];
+}
+
+export interface MentionMatchOptions {
+    /**
+     * Also accept a single name token ("@Architect" for "Hermes-Architect") when
+     * exactly one roster entry has it. Defaults to true. Turn it off when the
+     * roster is not the full set of candidates (ambiguity cannot be judged).
+     */
+    tokenAliases?: boolean;
 }
 
 /**
  * Agent ids addressed by @mentions in `text`. Full names win over first
  * names, and a first name only counts when exactly one agent has it — so
- * "@Max Builder" never also wakes an agent called "Max".
+ * "@Max Builder" never also wakes an agent called "Max". Last, a single name
+ * token counts when exactly one agent's name contains it ("@Architect" wakes
+ * "Hermes-Architect"); a token shared by several agents ("@Hermes" with
+ * Hermes-Architect and Hermes-QA) matches nobody.
  */
-export function mentionedAgentIds(text: string, roster: RosterAgent[]): Set<string> {
+export function mentionedAgentIds(text: string, roster: RosterAgent[], options: MentionMatchOptions = {}): Set<string> {
     const full = new Map<string, Set<string>>();
     const first = new Map<string, Set<string>>();
+    const tokens = new Map<string, Set<string>>();
     for (const agent of roster) {
+        for (const token of nameTokens(agent.name)) {
+            if (!tokens.has(token)) tokens.set(token, new Set());
+            tokens.get(token)!.add(agent.id);
+        }
         for (const alias of fullAliases(agent.name)) {
             if (!full.has(alias)) full.set(alias, new Set());
             full.get(alias)!.add(agent.id);
@@ -158,10 +192,37 @@ export function mentionedAgentIds(text: string, roster: RosterAgent[]): Set<stri
         }
         if (!matched) {
             const ids = first.get(normalizeMention(words[0]));
+            if (ids && ids.size === 1) {
+                ids.forEach((id) => found.add(id));
+                matched = true;
+            }
+        }
+        if (!matched && options.tokenAliases !== false) {
+            const ids = tokens.get(normalizeMention(words[0]));
             if (ids && ids.size === 1) ids.forEach((id) => found.add(id));
         }
     }
     return found;
+}
+
+/**
+ * Whether an agent-authored message can wake another agent — the only kind of
+ * message that can form an agent loop. It does when it targets an agent, when
+ * it @mentions an agent other than its sender, or when it is posted in a
+ * two-agent pair thread (where every message addresses the counterpart).
+ * An agent's @all does not count: it never fans out to agents.
+ */
+export function agentMessageWakesAgent(
+    message: { senderId: string | null; targetAgentId: string | null; text: string | null },
+    roster: RosterAgent[],
+    isAgentPair: boolean,
+): boolean {
+    if (isAgentPair) return true;
+    if (message.targetAgentId && message.targetAgentId !== message.senderId) return true;
+    for (const id of mentionedAgentIds(message.text || "", roster)) {
+        if (id !== message.senderId) return true;
+    }
+    return false;
 }
 
 const EVERYONE_RE = /(?<![\w@])@(all|everyone)(?![\w-])/i;
@@ -245,6 +306,9 @@ export function decideDelivery(input: {
  * Streak of consecutive agent messages ending at each message, given a
  * thread's messages oldest-first. A human message resets it; system notices
  * (e.g. a runtime control or a loop-guard notice) neither count nor reset.
+ * Neither does an agent message that wakes no other agent (`wakesAgent: false`,
+ * e.g. a status broadcast with no @mention): it cannot form a loop. Such a
+ * message reports the streak it leaves unchanged.
  *
  * `progress` is a list of timestamps of real progress — a task state change,
  * an assignment, a task note, or a delivered artifact by a thread participant.
@@ -260,6 +324,25 @@ export interface StreakMessage {
     createdAt?: Date | string;
     /** A system "Resume" marker resets the streak (unlike ordinary system notices). */
     resumes?: boolean;
+    /**
+     * For an agent message: whether it wakes another agent (see
+     * {@link agentMessageWakesAgent}). `false` means it neither counts nor
+     * resets; undefined keeps the legacy behavior (it counts).
+     */
+    wakesAgent?: boolean;
+}
+
+/** An agent message that wakes no other agent: it does not count, reset, or extend the cooldown. */
+function isBroadcast(m: StreakMessage): boolean {
+    return (m.senderType || "").toLowerCase() === "agent" && m.wakesAgent === false;
+}
+
+/** How a message affects the streak: reset it, add to it, or skip (neither). */
+function streakEffect(m: StreakMessage): "reset" | "count" | "skip" {
+    const type = (m.senderType || "").toLowerCase();
+    if (type === "human" || m.resumes === true) return "reset";
+    if (type === "agent" && m.wakesAgent !== false) return "count";
+    return "skip";
 }
 
 export function agentStreaks(
@@ -291,9 +374,10 @@ export function agentStreaks(
             const timestamp = m.createdAt !== undefined ? new Date(m.createdAt).getTime() : undefined;
             if (timestamp !== undefined && lastActivity !== undefined && timestamp - lastActivity >= AGENT_LOOP_COOLDOWN_MS) streak = 0;
             const type = (m.senderType || "").toLowerCase();
-            if (type === "human" || m.resumes === true) streak = 0;
-            else if (type === "agent") streak += 1;
-            if (type !== "system" && timestamp !== undefined) lastActivity = timestamp;
+            const effect = streakEffect(m);
+            if (effect === "reset") streak = 0;
+            else if (effect === "count") streak += 1;
+            if (type !== "system" && !isBroadcast(m) && timestamp !== undefined) lastActivity = timestamp;
             if (m.resumes === true) lastActivity = timestamp;
             streaks.set(m.id, type === "agent" ? streak : 0);
         }
@@ -323,9 +407,10 @@ export function agentStreaks(
         const timestamp = event.at;
         if (lastActivity !== undefined && timestamp - lastActivity >= AGENT_LOOP_COOLDOWN_MS) streak = 0;
         const type = (m.senderType || "").toLowerCase();
-        if (type === "human" || m.resumes === true) streak = 0;
-        else if (type === "agent") streak += 1;
-        if (type !== "system") lastActivity = timestamp;
+        const effect = streakEffect(m);
+        if (effect === "reset") streak = 0;
+        else if (effect === "count") streak += 1;
+        if (type !== "system" && !isBroadcast(m)) lastActivity = timestamp;
         if (m.resumes === true) lastActivity = timestamp;
         streaks.set(m.id, type === "agent" ? streak : 0);
     }
@@ -375,13 +460,14 @@ export function agentStreakState(
             resetAt = timestamp;
         }
         const type = (m.senderType || "").toLowerCase();
-        if (type === "human" || m.resumes === true) {
+        const effect = streakEffect(m);
+        if (effect === "reset") {
             streak = 0;
             resetAt = timestamp ?? nowMs;
-        } else if (type === "agent") {
+        } else if (effect === "count") {
             streak += 1;
         }
-        if (type !== "system" && timestamp !== undefined) lastActivity = timestamp;
+        if (type !== "system" && !isBroadcast(m) && timestamp !== undefined) lastActivity = timestamp;
         if (m.resumes === true && timestamp !== undefined) lastActivity = timestamp;
         lastMessageStreak = type === "agent" ? streak : 0;
         resetAtLastMessage = resetAt;
@@ -500,8 +586,10 @@ export function noteProgressResets(messages: StreakMessage[], noteTimes: (Date |
     if (notes.length === 0) return [];
 
     const events: { at: number; kind: "message" | "note" }[] = [
+        // Only counted agent messages: a broadcast that wakes nobody must not
+        // earn a note reset for a streak it never added to.
         ...messages
-            .filter((m) => (m.senderType || "").toLowerCase() === "agent" && m.createdAt !== undefined)
+            .filter((m) => streakEffect(m) === "count" && m.createdAt !== undefined)
             .map((m) => ({ at: new Date(m.createdAt as Date | string).getTime(), kind: "message" as const }))
             .filter((e) => Number.isFinite(e.at)),
         ...notes.map((at) => ({ at, kind: "note" as const })),

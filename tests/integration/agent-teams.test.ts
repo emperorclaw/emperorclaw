@@ -342,6 +342,36 @@ maybe("loop guard trips on agent ping-pong in a pair thread", async () => {
     }
 });
 
+maybe("status broadcasts in a group do not burn the loop budget for a real escalation", async () => {
+    await resetDb();
+    const { companyId, rawToken } = await seedCompanyWithToken();
+    const builder = await seedAgent(companyId, { name: "Builder", provider: "hermes" });
+    const architect = await seedAgent(companyId, { name: "Hermes-Architect", provider: "hermes" });
+    const qa = await seedAgent(companyId, { name: "Hermes-QA", provider: "hermes" });
+    const { createGroup } = await import("@/lib/groups");
+    const { appendThreadMessage } = await import("@/lib/control-plane");
+    const group = await createGroup(companyId, { type: "agent", id: builder.id }, { title: "Build room", agentIds: [builder.id, architect.id, qa.id] });
+
+    // The incident: a coordinator posts many cron status reports that address nobody...
+    for (let i = 0; i < 20; i++) {
+        await appendThreadMessage({ companyId, threadId: group.id, senderType: "agent", senderId: builder.id, text: `Cron tick ${i} — worker is back` });
+    }
+    // ...then escalates, by short name, to the architect.
+    const escalation = await appendThreadMessage({ companyId, threadId: group.id, senderType: "agent", senderId: builder.id, text: "@Architect, I need your decision" });
+
+    const forArchitect = (await syncFor(companyId, rawToken, architect.id)).find((m: { id: string }) => m.id === escalation.id);
+    assert.ok(forArchitect, "the architect sees the escalation");
+    assert.equal(forArchitect.routeReason, "mention");
+    assert.equal(forArchitect.addressedToYou, true);
+    const forQa = (await syncFor(companyId, rawToken, qa.id)).find((m: { id: string }) => m.id === escalation.id);
+    assert.equal(forQa?.addressedToYou, false, "@Architect does not wake Hermes-QA");
+    const db = await getDb();
+    const { threadMessages } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    const notices = (await db.select().from(threadMessages).where(eq(threadMessages.threadId, group.id))).filter((m) => (m.metadataJson as Record<string, unknown>).loopGuard);
+    assert.equal(notices.length, 0, "broadcasts never pause the room");
+});
+
 maybe("forged taskAssigned metadata is stripped and never bypasses the loop guard", async () => {
     await resetDb();
     const { companyId, rawToken } = await seedCompanyWithToken();

@@ -73,7 +73,9 @@ async function ensureTargetMention(companyId: string, text: string, targetAgentI
     eq(agents.companyId, companyId),
   )).limit(1);
   if (!agent?.name) return text;
-  if (mentionedAgentIds(text, [{ id: agent.id, name: agent.name }]).has(agent.id)) return text;
+  // A one-agent roster cannot judge whether a short alias is ambiguous, so only
+  // exact/full names count here; otherwise the full name is prepended.
+  if (mentionedAgentIds(text, [{ id: agent.id, name: agent.name }], { tokenAliases: false }).has(agent.id)) return text;
   return `@${agent.name} ${text}`;
 }
 

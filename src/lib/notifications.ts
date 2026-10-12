@@ -221,7 +221,9 @@ export async function mentionedHumanIds(companyId: string, text: string): Promis
         ...(p.displayName ? [{ id: p.id, name: p.displayName }] : []),
         { id: p.id, name: p.email.split("@")[0] },
     ]);
-    return [...mentionedAgentIds(text, roster)];
+    // People are notified by display name or email name only, never by a
+    // single name token (that alias is for agent routing).
+    return [...mentionedAgentIds(text, roster, { tokenAliases: false })];
 }
 
 function threadLink(thread: { id: string; type: string }, agentId: string | null): string {

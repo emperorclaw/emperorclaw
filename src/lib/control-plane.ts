@@ -23,7 +23,7 @@ import { and, desc, eq, gte, inArray, isNull, lt, ne, notInArray, or, sql } from
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
-import { agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, noteProgressResets, type AgentStreakState } from "./message-routing";
+import { agentMessageWakesAgent, agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, noteProgressResets, type AgentStreakState } from "./message-routing";
 import { notifyAgentMessage, notify, companyAdminIds } from "./notifications";
 import { isAgentPairThread } from "./groups";
 import { parseObjectiveStatusMarker, OBJECTIVE_STATUS_METADATA_KEY } from "./objective-status-marker";
@@ -515,6 +515,9 @@ export async function progressTimestampsForThread(companyId: string, threadId: s
     }
 }
 
+/** Messages read to compute a thread's streak (matches the sync route's tail). */
+const STREAK_TAIL_WINDOW = 200;
+
 /**
  * Consecutive agent-authored messages at the end of a thread with no progress
  * (0 when the last counted message is a human's, a resume marker, or after a
@@ -532,16 +535,33 @@ export async function currentAgentStreak(companyId: string, threadId: string, wi
  * resume marker.
  */
 export async function currentAgentStreakState(companyId: string, threadId: string, window = 100): Promise<AgentStreakState> {
-    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt, metadataJson: threadMessages.metadataJson })
+    // Broadcasts that wake nobody are skipped by the streak, so a small window
+    // could hide counted messages behind them: read at least the same tail the
+    // sync route routes from, so the guard, notice and resume all agree.
+    const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, senderId: threadMessages.senderId, targetAgentId: threadMessages.targetAgentId, text: threadMessages.text, createdAt: threadMessages.createdAt, metadataJson: threadMessages.metadataJson })
         .from(threadMessages)
         .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId)))
         .orderBy(desc(threadMessages.createdAt))
-        .limit(window);
+        .limit(Math.max(window, STREAK_TAIL_WINDOW));
     if (tail.length === 0) return { streak: 0, resetAt: 0 };
     const ordered = tail.reverse();
     const since = new Date(ordered[0].createdAt.getTime() - AGENT_LOOP_COOLDOWN_MS);
-    const { core, notes } = await progressTimestampsForThread(companyId, threadId, since);
-    const msgs = ordered.map((m) => ({ id: m.id, senderType: m.senderType, createdAt: m.createdAt, resumes: isLoopGuardResume(m.metadataJson) }));
+    const [{ core, notes }, [thread], roster] = await Promise.all([
+        progressTimestampsForThread(companyId, threadId, since),
+        db.select({ description: messageThreads.description, createdByType: messageThreads.createdByType })
+            .from(messageThreads)
+            .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))).limit(1),
+        db.select({ id: agents.id, name: agents.name }).from(agents)
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
+    ]);
+    const isAgentPair = thread ? isAgentPairThread(thread) : false;
+    const msgs = ordered.map((m) => ({
+        id: m.id,
+        senderType: m.senderType,
+        createdAt: m.createdAt,
+        resumes: isLoopGuardResume(m.metadataJson),
+        wakesAgent: m.senderType.toLowerCase() === "agent" ? agentMessageWakesAgent(m, roster, isAgentPair) : undefined,
+    }));
     return agentStreakState(msgs, [...core, ...noteProgressResets(msgs, notes)]);
 }
 

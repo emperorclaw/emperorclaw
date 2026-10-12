@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
 import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
 import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpose } from "@/lib/groups";
-import { agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
+import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 
@@ -264,7 +264,7 @@ async function routeForAgent(
     }
     await Promise.all([...byThread.entries()].map(async ([threadId, latest]) => {
         if (threadInfo.get(threadId)?.type === "direct") return;
-        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, createdAt: threadMessages.createdAt, metadataJson: threadMessages.metadataJson })
+        const tail = await db.select({ id: threadMessages.id, senderType: threadMessages.senderType, senderId: threadMessages.senderId, targetAgentId: threadMessages.targetAgentId, text: threadMessages.text, createdAt: threadMessages.createdAt, metadataJson: threadMessages.metadataJson })
             .from(threadMessages)
             .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.threadId, threadId), lte(threadMessages.createdAt, latest)))
             .orderBy(desc(threadMessages.createdAt))
@@ -272,7 +272,16 @@ async function routeForAgent(
         const ordered = tail.reverse();
         const since = new Date((ordered[0]?.createdAt.getTime() ?? latest.getTime()) - AGENT_LOOP_COOLDOWN_MS);
         const { core, notes } = await progressTimestampsForThread(companyId, threadId, since);
-        const msgs = ordered.map((m) => ({ id: m.id, senderType: m.senderType, createdAt: m.createdAt, resumes: isLoopGuardResume(m.metadataJson) }));
+        // Only agent messages that wake another agent count toward the streak:
+        // a status broadcast that addresses nobody cannot form a loop.
+        const isAgentPair = Boolean(threadInfo.get(threadId)?.isAgentPair);
+        const msgs = ordered.map((m) => ({
+            id: m.id,
+            senderType: m.senderType,
+            createdAt: m.createdAt,
+            resumes: isLoopGuardResume(m.metadataJson),
+            wakesAgent: m.senderType.toLowerCase() === "agent" ? agentMessageWakesAgent(m, roster, isAgentPair) : undefined,
+        }));
         for (const [id, streak] of agentStreaks(msgs, [...core, ...noteProgressResets(msgs, notes)])) streaks.set(id, streak);
     }));
 

@@ -4,6 +4,7 @@ import {
     agentLoopHardCap,
     agentLoopMaxTurns,
     agentLoopMaxTurnsFor,
+    agentMessageWakesAgent,
     agentPairLoopHardCap,
     agentPairLoopMaxTurns,
     agentStreakState,
@@ -352,4 +353,177 @@ test("answeredCutoffByThread falls back to the reply instant without a reported 
         new Map(),
     );
     assert.equal(cutoff.get("g1")!.toISOString(), reply.toISOString());
+});
+
+// ── Loop guard: only messages that wake another agent count ────────────────
+
+const team = [
+    { id: "builder", name: "Builder" },
+    { id: "architect", name: "Hermes-Architect" },
+    { id: "hqa", name: "Hermes-QA" },
+];
+
+type RoomMessage = { id: string; senderType: string; senderId: string | null; targetAgentId: string | null; text: string; createdAt: string };
+
+/** What the sync route does: stamp wakesAgent, compute streaks, then route. */
+function routeRoom(messages: RoomMessage[], agentId: string, opts: { isAgentPair?: boolean; threadType?: string } = {}) {
+    const isAgentPair = Boolean(opts.isAgentPair);
+    const streaks = agentStreaks(messages.map((m) => ({
+        id: m.id,
+        senderType: m.senderType,
+        createdAt: m.createdAt,
+        wakesAgent: m.senderType === "agent" ? agentMessageWakesAgent(m, team, isAgentPair) : undefined,
+    })));
+    const last = messages[messages.length - 1];
+    return {
+        streak: streaks.get(last.id),
+        decision: decideDelivery({
+            agentId,
+            message: last,
+            threadType: opts.threadType ?? "group",
+            roster: team,
+            agentStreak: streaks.get(last.id) ?? 0,
+            isAgentPair,
+        }),
+    };
+}
+
+const at = (n: number) => new Date(n * 1000).toISOString();
+const roomAgent = (i: number, senderId: string, text: string, targetAgentId: string | null = null): RoomMessage =>
+    ({ id: `m${i}`, senderType: "agent", senderId, targetAgentId, text, createdAt: at(i) });
+
+test("agentMessageWakesAgent: targets, mentions of others, and pair threads wake; broadcasts do not", () => {
+    assert.equal(agentMessageWakesAgent({ senderId: "builder", targetAgentId: null, text: "Cron 22:12Z — worker is back" }, team, false), false);
+    assert.equal(agentMessageWakesAgent({ senderId: "builder", targetAgentId: null, text: "@Hermes-Architect decide" }, team, false), true);
+    assert.equal(agentMessageWakesAgent({ senderId: "builder", targetAgentId: "architect", text: "decide" }, team, false), true);
+    // Mentioning only yourself, or @all, wakes no agent.
+    assert.equal(agentMessageWakesAgent({ senderId: "builder", targetAgentId: null, text: "@Builder here: status ok" }, team, false), false);
+    assert.equal(agentMessageWakesAgent({ senderId: "builder", targetAgentId: null, text: "@all standup done" }, team, false), false);
+    // In a pair thread every message addresses the counterpart.
+    assert.equal(agentMessageWakesAgent({ senderId: "builder", targetAgentId: null, text: "status" }, team, true), true);
+});
+
+test("status broadcasts never burn the loop budget: an escalation after 20 broadcasts is delivered", () => {
+    const msgs: RoomMessage[] = [{ id: "h", senderType: "human", senderId: "u1", targetAgentId: null, text: "go", createdAt: at(0) }];
+    for (let i = 1; i <= 20; i++) msgs.push(roomAgent(i, "builder", `Cron tick ${i} — worker is back`));
+    msgs.push(roomAgent(21, "builder", "@Hermes-Architect, I need your decision"));
+    const { streak, decision } = routeRoom(msgs, "architect");
+    assert.equal(streak, 1);
+    assert.deepEqual(decision, { addressedToYou: true, routeReason: "mention" });
+});
+
+test("a mention ping-pong still trips the guard on the 13th message", () => {
+    const msgs: RoomMessage[] = [];
+    for (let i = 1; i <= 13; i++) {
+        msgs.push(i % 2 ? roomAgent(i, "builder", "@Hermes-Architect your turn") : roomAgent(i, "architect", "@Builder your turn"));
+    }
+    const { streak, decision } = routeRoom(msgs, "architect");
+    assert.equal(streak, 13);
+    assert.deepEqual(decision, { addressedToYou: false, routeReason: "loop_paused" });
+    assert.equal(routeRoom(msgs.slice(0, 12), "builder").decision.routeReason, "mention");
+});
+
+test("broadcasts inside a mention ping-pong neither count nor reset the streak", () => {
+    const msgs: RoomMessage[] = [];
+    let i = 0;
+    for (let turn = 1; turn <= 13; turn++) {
+        i += 1;
+        msgs.push(turn % 2 ? roomAgent(i, "builder", "@Hermes-Architect your turn") : roomAgent(i, "architect", "@Builder your turn"));
+        i += 1;
+        msgs.push(roomAgent(i, "hqa", `FYI: tests green (${turn})`));
+    }
+    msgs.pop(); // end on the 13th mention
+    const { streak, decision } = routeRoom(msgs, "architect");
+    assert.equal(streak, 13);
+    assert.equal(decision.routeReason, "loop_paused");
+    // A broadcast reports the unchanged streak of the run it sits in.
+    const streaks = agentStreaks(msgs.map((m) => ({ ...m, wakesAgent: agentMessageWakesAgent(m, team, false) })));
+    assert.equal(streaks.get("m2"), 1);
+    assert.equal(streaks.get("m4"), 2);
+});
+
+test("a human message still resets a counted streak", () => {
+    const msgs: RoomMessage[] = [];
+    for (let i = 1; i <= 12; i++) msgs.push(roomAgent(i, i % 2 ? "builder" : "architect", i % 2 ? "@Hermes-Architect go" : "@Builder go"));
+    msgs.push({ id: "h", senderType: "human", senderId: "u1", targetAgentId: null, text: "keep going", createdAt: at(13) });
+    msgs.push(roomAgent(14, "builder", "@Hermes-Architect go"));
+    const { streak, decision } = routeRoom(msgs, "architect");
+    assert.equal(streak, 1);
+    assert.equal(decision.routeReason, "mention");
+});
+
+test("pair threads count every agent message, mention or not", () => {
+    const msgs: RoomMessage[] = [];
+    for (let i = 1; i <= 31; i++) msgs.push(roomAgent(i, i % 2 ? "builder" : "architect", "status update"));
+    const { streak, decision } = routeRoom(msgs, "architect", { isAgentPair: true });
+    assert.equal(streak, 31);
+    assert.equal(decision.routeReason, "loop_paused");
+    assert.equal(routeRoom(msgs.slice(0, 30), "builder", { isAgentPair: true }).decision.routeReason, "agent_pair");
+});
+
+test("legacy callers without wakesAgent count every agent message", () => {
+    const msgs = Array.from({ length: 13 }, (_, i) => ({ id: `m${i}`, senderType: "agent", createdAt: at(i) }));
+    assert.equal(agentStreaks(msgs).get("m12"), 13);
+    assert.equal(agentStreakState(msgs).streak, 13);
+    // An explicit false is skipped, by both the streak and its state.
+    const skipped = msgs.map((m, i) => ({ ...m, wakesAgent: i % 2 === 0 }));
+    assert.equal(agentStreaks(skipped).get("m12"), 7);
+    assert.equal(agentStreakState(skipped).streak, 7);
+});
+
+test("a broadcast does not extend the cooldown window", () => {
+    const streaks = agentStreaks([
+        { id: "a", senderType: "agent", createdAt: new Date(0) },
+        { id: "b", senderType: "agent", createdAt: new Date(200000), wakesAgent: false },
+        { id: "c", senderType: "agent", createdAt: new Date(301000) },
+    ]);
+    assert.equal(streaks.get("c"), 1);
+});
+
+test("broadcasts cannot earn task-note resets", () => {
+    const msgs = [
+        { id: "a", senderType: "agent", createdAt: at(0) },
+        ...Array.from({ length: 6 }, (_, i) => ({ id: `b${i}`, senderType: "agent", createdAt: at(1 + i), wakesAgent: false })),
+    ];
+    // The first note always counts; the second would need 5 counted messages.
+    assert.deepEqual(noteProgressResets(msgs, [at(0.5), at(7.5)]), [new Date(at(0.5)).getTime()]);
+});
+
+// ── Short, unambiguous mention aliases ──────────────────────────────────────
+
+test("a single name token aliases an agent when it is unambiguous", () => {
+    assert.deepEqual([...mentionedAgentIds("@Architect please decide", team)], ["architect"]);
+    assert.deepEqual([...mentionedAgentIds("@SEO check the titles", [...team, { id: "seo", name: "SEO-Expert" }])], ["seo"]);
+    assert.equal(decideDelivery({ agentId: "architect", roster: team, threadType: "group", message: agent("@Architect decide", "builder"), agentStreak: 1 }).routeReason, "mention");
+});
+
+test("an exact name wins over a token alias", () => {
+    const qa = [{ id: "qa", name: "QA" }, { id: "hqa", name: "Hermes-QA" }];
+    assert.deepEqual([...mentionedAgentIds("@QA run the suite", qa)], ["qa"]);
+    const builders = [{ id: "b", name: "Builder" }, { id: "mb", name: "Max Builder" }];
+    assert.deepEqual([...mentionedAgentIds("@Builder ship it", builders)], ["b"]);
+});
+
+test("a token shared by several agents matches nobody", () => {
+    const hermes = [{ id: "architect", name: "Hermes-Architect" }, { id: "hqa", name: "Hermes-QA" }];
+    assert.equal(mentionedAgentIds("@Hermes anyone?", hermes).size, 0);
+    assert.deepEqual([...mentionedAgentIds("@Hermes anyone?", [...hermes, { id: "h", name: "Hermes" }])], ["h"]);
+});
+
+test("tokens shorter than three characters never alias", () => {
+    const roster2 = [{ id: "ux", name: "Hermes-UX" }];
+    assert.equal(mentionedAgentIds("@UX review", roster2).size, 0);
+    assert.deepEqual([...mentionedAgentIds("@Hermes review", roster2)], ["ux"]);
+});
+
+test("broadcast-style words never alias to a single agent", () => {
+    const roster2 = [{ id: "dev", name: "Dev-Team" }, { id: "rounder", name: "Hermes All-Rounder" }];
+    assert.equal(mentionedAgentIds("@team please look", roster2).size, 0);
+    assert.equal(mentionedAgentIds("@all please look", roster2).size, 0);
+    assert.deepEqual([...mentionedAgentIds("@Dev-Team please look", roster2)], ["dev"]);
+});
+
+test("token aliases can be turned off for partial rosters", () => {
+    assert.equal(mentionedAgentIds("@Architect decide", [{ id: "architect", name: "Hermes-Architect" }], { tokenAliases: false }).size, 0);
+    assert.deepEqual([...mentionedAgentIds("@Hermes-Architect decide", [{ id: "architect", name: "Hermes-Architect" }], { tokenAliases: false })], ["architect"]);
 });

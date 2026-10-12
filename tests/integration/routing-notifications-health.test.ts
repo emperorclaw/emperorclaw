@@ -50,10 +50,11 @@ maybe("sync carries the server's routing verdict, and the loop guard pauses agen
     const notices = (await db.select().from(threadMessages).where(eq(threadMessages.threadId, team.id))).filter((m) => (m.metadataJson as Record<string, unknown>).loopGuard);
     assert.equal(notices.length, 1, "exactly one pause notice");
 
-    // A runtime that ignores the verdict hits the hard cap.
+    // A runtime that ignores the verdict hits the hard cap. Only messages that
+    // wake another agent count, so the noise keeps @mentioning one.
     const { sendThreadMessageFromMcp } = await import("@/lib/openclaw/messaging");
     for (let i = 0; i < agentLoopHardCap(); i++) {
-        await appendThreadMessage({ companyId, threadId: team.id, senderType: "agent", senderId: qa.id, text: `noise ${i}` });
+        await appendThreadMessage({ companyId, threadId: team.id, senderType: "agent", senderId: qa.id, text: `@Max Builder noise ${i}` });
     }
     const { currentAgentStreak } = await import("@/lib/control-plane");
     const observedStreak = await currentAgentStreak(companyId, team.id);
