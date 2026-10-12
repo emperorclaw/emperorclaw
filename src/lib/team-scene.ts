@@ -27,6 +27,8 @@ export interface DashboardTask {
     assigneeKey: string | null;
     updatedAt: string;
     dueAt: string | null;
+    /** When work on the task started (first claim / in-progress), if recorded. */
+    startedAt?: string | null;
 }
 
 export interface DashboardMember {
@@ -136,6 +138,24 @@ export interface SceneCommunication {
     href: string;
 }
 
+/** An agent's latest reasoning snippet, redacted, from team/group threads only. */
+export interface SceneThought {
+    memberKey: string;
+    text: string;
+    at: string;
+}
+
+/** A moment the living office plays once: same derivation as the device feed's `events`. */
+export interface SceneLiveEvent {
+    id: string;
+    type: "handoff" | "task_done" | "needs_you" | "blocked";
+    actorKey: string;
+    /** Handoff recipient. */
+    targetKey: string | null;
+    title: string | null;
+    at: string;
+}
+
 export interface DashboardData {
     companyName?: string;
     generatedAt: string;
@@ -149,6 +169,9 @@ export interface DashboardData {
     cost: CostSummary;
     throughput: ThroughputSummary;
     feed: FeedEvent[];
+    /** Living office: fresh thoughts (≤10 min) and recent moments. */
+    thoughts?: SceneThought[];
+    liveEvents?: SceneLiveEvent[];
 }
 
 /* ── Cost & throughput summaries ─────────────────────────────────────── */

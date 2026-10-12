@@ -138,10 +138,11 @@ export function ActivityCue({ activity, hue, lite = false, reducedMotion = false
         case "blocked":
             return (
                 <g className={cn("office-cue office-blocked", lite && "office-cue-lite")} aria-hidden>
+                    {/* A red "!": stuck, distinct from the amber "waiting for you" mark. */}
                     <g transform="translate(15 -88)">
-                        <circle r={6.4} fill="#fbbf24" />
-                        <rect x={-1.2} y={-4} width={2.4} height={5} rx={1.2} fill="#7c2d12" />
-                        <circle cx={0} cy={2.6} r={1.4} fill="#7c2d12" />
+                        <circle r={6.8} fill="#e11d48" stroke="#fff1f2" strokeWidth={1} />
+                        <rect x={-1.2} y={-4} width={2.4} height={5} rx={1.2} fill="#fff1f2" />
+                        <circle cx={0} cy={2.6} r={1.4} fill="#fff1f2" />
                     </g>
                     <path d="M -3 -74 q 4 3 0 7" stroke="#7dd3fc" strokeWidth={1.4} fill="none" strokeLinecap="round" className={reducedMotion ? undefined : "office-sweat"} />
                 </g>

@@ -858,3 +858,30 @@
 .observatory .office-key { animation: office-typing var(--typing-t, 3.2s) ease-in-out infinite; animation-delay: var(--typing-d, 0s); }
 .observatory .office-bar { transform-box: fill-box; animation: office-bar var(--cue-t, 1.8s) ease-in-out infinite alternate; animation-delay: var(--cue-d, 0s); }
 .observatory .office-dots { animation: office-dots var(--cue-t, 1.3s) ease-in-out infinite; animation-delay: var(--cue-d, 0s); }
+
+/* Living office (dashboard Scene). Idle life is CSS only: shared keyframes,
+   transform/opacity, per-desk timing from custom properties. One-shot moments
+   (plane, confetti, gold pulse) run once and are removed by the component. */
+.living-floor-glow { background: radial-gradient(ellipse 70% 60% at 50% 0%, rgb(34 211 238 / .07), transparent 70%), linear-gradient(rgb(103 232 249 / .035) 1px, transparent 1px) 0 0 / 100% 46px; mask-image: linear-gradient(to bottom, black, transparent 92%); }
+@keyframes living-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.2px); } }
+.living-breathe { animation: living-breathe var(--bob-t, 2.6s) ease-in-out infinite; animation-delay: var(--bob-d, 0s); }
+@keyframes living-gold { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.living-gold { animation: living-gold 2.4s ease-in-out infinite; }
+@keyframes living-pulse { from { transform: scale(1); opacity: .95; } to { transform: scale(1.45); opacity: 0; } }
+.living-pulse { transform-box: fill-box; transform-origin: center; animation: living-pulse 1.2s cubic-bezier(.16, 1, .3, 1) 3 both; }
+@keyframes living-aura { 0%, 100% { opacity: .7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
+.living-aura { transform-box: fill-box; transform-origin: center; animation: living-aura 3s ease-in-out infinite; }
+.living-ghost { opacity: .38; filter: grayscale(.85); transition: opacity 240ms ease-out, filter 240ms ease-out; }
+.living-ghost:hover, .living-ghost:focus-within { opacity: .7; }
+/* Tailwind v4 centers with the `translate` property, so animating `transform` here does not fight it. */
+@keyframes living-bubble-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.living-bubble { animation: living-bubble-in 220ms cubic-bezier(.16, 1, .3, 1) both; }
+.living-confetti i { position: absolute; left: -2px; top: -2px; width: 5px; height: 5px; border-radius: 1px; opacity: 0; animation: living-burst 1.3s cubic-bezier(.16, 1, .3, 1) forwards; }
+.living-confetti i:nth-child(3n) { width: 4px; height: 7px; }
+@keyframes living-burst { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 14px)) rotate(var(--r)); } }
+.living-plane { position: absolute; left: 0; top: 0; offset-rotate: auto; offset-distance: 0%; animation: living-fly 1.7s cubic-bezier(.45, 0, .2, 1) forwards; }
+@keyframes living-fly { 0% { offset-distance: 0%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+.living-trail { opacity: 0; animation: living-trail 1.7s ease-out forwards; }
+@keyframes living-trail { 15% { opacity: .45; } 100% { opacity: 0; } }
+.living-still *, .living-still { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .living-office * { animation: none !important; transition: none !important; } }

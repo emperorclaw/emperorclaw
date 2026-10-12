@@ -13,6 +13,8 @@ import { NotificationBell } from "@/components/notification-bell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { TeamObservatory } from "./team-observatory";
+import { LiveLinkProvider } from "./live-link";
+import { updatedAgo } from "@/lib/live-office";
 import { TeamStructure } from "./team-structure";
 import { TeamPulse } from "./team-pulse";
 import { AgentList } from "./agent-list";
@@ -74,7 +76,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const freshness = snapshotFreshness(data.generatedAt, now, online);
     const actions = useMemo(() => data.attention.filter(requiresHumanAction), [data.attention]);
     const watchlist = useMemo(() => data.attention.filter((entry) => !requiresHumanAction(entry)), [data.attention]);
-    const actionMembers = useMemo(() => new Set(actions.map((entry) => entry.memberKey)), [actions]);
+    const actionMembers = useMemo(() => new Set(actions.flatMap((entry) => entry.memberKey ? [entry.memberKey] : [])), [actions]);
 
     const observedData = useMemo(() => freshness === "current" ? data : { ...data, members: data.members.map((member) => ({ ...member, activity: null, runtimeOnline: false })) }, [data, freshness]);
     const agents = useMemo(() => deriveSceneAgents(observedData, playfulIdle, now), [observedData, playfulIdle, now]);
@@ -123,6 +125,11 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
         setZoneFilter(null);
     };
 
+    const openInbox = () => {
+        inboxRef.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
+        inboxRef.current?.focus({ preventScroll: true });
+    };
+
     const toggleKpi = (id: KpiFilter) => {
         setKpi((current) => current === id ? null : id);
         setZoneFilter(null);
@@ -137,6 +144,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     };
 
     return (
+        <LiveLinkProvider>
         <div className="space-y-5">
             <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
@@ -176,10 +184,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                 <div className="min-w-0">
                                     <h2 id="live-workspace-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
                                         Live workspace
-                                        <span role="status" className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset", freshness === "current" ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300")}>
-                                            <span className={cn("h-1.5 w-1.5 rounded-full", freshness === "current" ? "bg-emerald-500" : "bg-amber-500")} />
-                                            {freshness === "current" ? "Updated recently" : freshness === "offline" ? "Offline · saved snapshot" : "Updates delayed"}
-                                        </span>
+                                        <FreshnessBadge generatedAt={data.generatedAt} freshness={freshness} />
                                     </h2>
                                     <p className="text-xs text-muted-foreground">{`${agents.length} agents · refreshes every 15s · work and connection shown separately`}</p>
                                 </div>
@@ -226,7 +231,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                         )}
 
                         {view === "scene" ? (
-                            <TeamObservatory companyName={data.companyName ?? "Your company"} agents={agents.filter(isActive)} teams={data.teams ?? []} communications={data.communications ?? []} events={data.collaborations} selectedKey={selectedKey} onSelect={selectMember} now={now} reducedMotion={reducedMotion} fresh={freshness === "current"} />
+                            <TeamObservatory agents={agents.filter(isActive)} teams={data.teams ?? []} communications={data.communications ?? []} thoughts={data.thoughts ?? []} liveEvents={data.liveEvents ?? []}
+                                pendingActions={actions.length} actionKeys={actionMembers} selectedKey={selectedKey} onSelect={selectMember} onOpenInbox={openInbox} onShowAll={() => setView("list")}
+                                now={now} reducedMotion={reducedMotion} fresh={freshness === "current"} />
                         ) : view === "pulse" ? (
                             <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />
                         ) : view === "teams" ? (
@@ -238,7 +245,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                 </div>
 
                 <aside aria-label="Decisions and observations" className="grid min-w-0 grid-cols-1 content-start gap-4 md:grid-cols-2 xl:grid-cols-1">
-                    <div ref={inboxRef} className="scroll-mt-4"><NeedsAttention entries={actions} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} /></div>
+                    <div ref={inboxRef} tabIndex={-1} className="scroll-mt-4 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><NeedsAttention entries={actions} now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} /></div>
 
                     {watchlist.length > 0 && <NeedsAttention entries={watchlist} watchlist now={now} onFocusMember={focusMember} canAct={canAct} agents={agents.map((a) => a.member)} />}
                 </aside>
@@ -255,5 +262,24 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
             <MovementFeed feed={data.feed} now={now} isOwnerOrAdmin={isOwnerOrAdmin} />
             {kpi !== "attention" && <WorkBoard columns={columns} assignees={assignees} canAct={canAct} />}
         </div>
+        </LiveLinkProvider>
     );
+}
+
+function subscribeSecond(onChange: () => void) {
+    const timer = window.setInterval(onChange, 1000);
+    return () => window.clearInterval(timer);
+}
+
+/** "Updated 12s ago", ticking every second; only this badge re-renders. */
+function FreshnessBadge({ generatedAt, freshness }: { generatedAt: string; freshness: "current" | "stale" | "offline" }) {
+    const nowMs = useSyncExternalStore(subscribeSecond, () => Math.floor(Date.now() / 1000) * 1000, () => Date.parse(generatedAt));
+    const ago = updatedAgo(generatedAt, nowMs);
+    const current = freshness === "current";
+    return <span className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium tabular-nums ring-1 ring-inset", current ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300")}>
+        <span className={cn("h-1.5 w-1.5 rounded-full", current ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
+        {/* The ticking text is not announced; the state change is. */}
+        <span aria-hidden="true">{current ? ago : freshness === "offline" ? "Offline · saved snapshot" : `Updates delayed · ${ago.replace("Updated ", "")}`}</span>
+        <span role="status" className="sr-only">{current ? "Live" : freshness === "offline" ? "Offline, showing a saved snapshot" : "Updates delayed"}</span>
+    </span>;
 }

@@ -10,6 +10,7 @@ import {
 import { timeAgo, type AttentionEntry, type AttentionKind, type DashboardMember } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useLiveLink } from "./live-link";
 
 const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile: string; verb: string }> = {
     approval: { icon: IconFileText, tile: "bg-sky-500/10 text-sky-500 ring-sky-500/25 dark:text-sky-300", verb: "Approve" },
@@ -35,6 +36,9 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
     const [expanded, setExpanded] = useState(false);
     const titleId = watchlist ? "watchlist-title" : "needs-attention-title";
     const [busyId, setBusyId] = useState<string | null>(null);
+    // Action inbox ↔ living office: pointing at an item lights its agent's desk and back.
+    const link = useLiveLink();
+    const point = (entry: AttentionEntry | null) => { if (!watchlist) link.set(entry?.memberKey ?? null, "inbox"); };
 
     const run = async (id: string, fn: () => Promise<void>, success: string) => {
         setBusyId(id);
@@ -114,7 +118,9 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                         const style = KIND_STYLE[entry.kind];
                         const busy = busyId !== null;
                         return (
-                            <li key={entry.id} className="group relative rounded-xl border border-border/70 bg-muted/30 p-3 transition-colors hover:border-border hover:bg-muted/60 dark:bg-white/[0.02] dark:hover:bg-white/[0.04]">
+                            <li key={entry.id} onMouseEnter={() => point(entry)} onMouseLeave={() => point(null)} onFocus={() => point(entry)} onBlur={() => point(null)}
+                                className={cn("group relative rounded-xl border border-border/70 bg-muted/30 p-3 transition-colors hover:border-border hover:bg-muted/60 dark:bg-white/[0.02] dark:hover:bg-white/[0.04]",
+                                    !watchlist && link.from === "desk" && entry.memberKey && link.key === entry.memberKey && "border-amber-400/70 bg-amber-400/10 ring-1 ring-amber-400/50 dark:bg-amber-300/[0.07]")}>
                                 <div className="flex gap-3">
                                     <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset", style.tile)}><style.icon className="h-[18px] w-[18px]" stroke={1.8} /></span>
                                     <div className="min-w-0 flex-1">

@@ -19,15 +19,17 @@ function prefixFor(appearance: CharacterAppearance, salt: string): string {
 }
 
 /** The full figure used by the office scene. */
-export function CharacterFigureView({ appearance, mood = "online", seated = true, salt = "f", expression, className }: {
+export function CharacterFigureView({ appearance, mood = "online", seated = true, salt = "f", expression, armsUp = false, className }: {
     appearance: CharacterAppearance;
     mood?: CharacterMood;
     expression?: CharacterExpression;
     seated?: boolean;
     salt?: string;
+    /** Celebrating: both arms raised. */
+    armsUp?: boolean;
     className?: string;
 }) {
-    const options: FigureOptions = { idPrefix: prefixFor(appearance, salt), mood, seated, expression };
+    const options: FigureOptions = { idPrefix: prefixFor(appearance, salt), mood, seated, expression, armsUp };
     return <g className={className}>{figureNodes(appearance, options).map((node, i) => <SvgNodeView key={i} node={node} />)}</g>;
 }
 

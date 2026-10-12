@@ -11,6 +11,7 @@ import { AGENT_PAIR_DESCRIPTION, isAgentPairThread, listGroups } from "@/lib/gro
 import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { sceneMessagePreview } from "@/lib/observatory";
+import { loadDashboardLive, pendingApprovalRows } from "@/lib/dashboard-live";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import {
     dashboardActivity, attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
@@ -76,7 +77,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents, lastResetMonth: agents.lastResetMonth })
             .from(agents)
             .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
-        db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
+        db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, processingStartedAt: tasks.processingStartedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt)))
             .orderBy(desc(tasks.priority), tasks.createdAt),
         db.select({ id: approvals.id, requestedAt: approvals.requestedAt, actionType: approvals.actionType, rationale: approvals.rationale, projectId: approvals.projectId, requesterAgentId: approvals.requesterAgentId, taskInput: tasks.inputJson, taskType: tasks.taskType })
@@ -125,6 +126,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             .orderBy(desc(tasks.updatedAt)).limit(BOARD_LIMIT),
     ]);
 
+    // Living office: thoughts (team/group reasoning only, never a direct
+    // thread) and recent moments, from the device feed's loaders and helpers.
+    // Started now so it overlaps the queries below.
+    const livePromise = loadDashboardLive(companyId, {
+        now,
+        agents: agentRows.map((a) => ({ id: a.id, name: a.name })),
+        approvals: pendingApprovalRows(pendingApprovals),
+        includePairThreads: isOwnerOrAdmin,
+    }).catch((error) => {
+        // Thoughts and moments are decoration: the dashboard must render without them.
+        console.error("[dashboard] live office data failed:", error);
+        return { thoughts: [], liveEvents: [] };
+    });
+
     // Pair threads are a private agent conversation. Non-owners/admins never
     // query their participants or messages: no pair text reaches the payload.
     const pairThreads = isOwnerOrAdmin
@@ -141,6 +156,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         .from(threadMessages).where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, roomIds), eq(threadMessages.senderType, "agent"), gte(threadMessages.createdAt, new Date(now.getTime() - 60_000))))
         .orderBy(desc(threadMessages.createdAt)).limit(30) : [];
 
+    const live = await livePromise;
     const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
     const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, dashboardActivity(t.activity, t.threadType)]));
@@ -154,6 +170,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const toTask = (t: (typeof openTasks)[number]): DashboardTask => ({
         id: t.id, projectId: t.projectId, projectName: projectName.get(t.projectId) ?? null, title: taskTitle(t.inputJson, t.taskType),
         state: t.state, taskType: t.taskType, assigneeKey: assigneeKey(t), updatedAt: t.updatedAt.toISOString(), dueAt: t.slaDueAt?.toISOString() ?? null,
+        startedAt: t.processingStartedAt?.toISOString() ?? null,
     });
     const doneTodayByAgent = new Map(doneTodayAgentRows.map((r) => [r.agentId, Number(r.count) || 0]));
     const doneTodayByMember = new Map(doneTodayMemberRows.map((r) => [r.memberId, Number(r.count) || 0]));
@@ -424,6 +441,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         cost,
         throughput,
         feed,
+        thoughts: live.thoughts,
+        liveEvents: live.liveEvents,
     };
 
     const setup = await (async () => {

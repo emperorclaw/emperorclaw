@@ -29,6 +29,13 @@ export interface FigureOptions {
     seated?: boolean;
     /** What the eyes say; the body stays still, the face carries the state. */
     expression?: CharacterExpression;
+    /** Both arms raised (celebrating a finished task). */
+    armsUp?: boolean;
+}
+
+/** Raise one arm (side -1 left, 1 right) about its shoulder; unchanged nodes when down. */
+function raiseArm(nodes: SvgNode[], side: -1 | 1, up: boolean): SvgNode[] {
+    return up ? [n("g", { transform: `rotate(${-side * 145} ${side * 16} -35)` }, nodes)] : nodes;
 }
 
 export type CharacterExpression = "neutral" | "happy" | "focused" | "worried" | "sleepy" | "scanning";
@@ -152,7 +159,7 @@ function robotFace(appearance: CharacterAppearance, mood: CharacterMood, express
     ];
 }
 
-function robot(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: string, seated: boolean, expression: CharacterExpression): SvgNode[] {
+function robot(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: string, seated: boolean, expression: CharacterExpression, armsUp = false): SvgNode[] {
     const { hue, variant } = appearance;
     const off = mood === "offline";
     const shellLight = off ? "#94a3b8" : h(hue, 30, 96);
@@ -190,10 +197,14 @@ function robot(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: s
         ]),
         ...shadowAndLegs(seated, shellDark, accentDark),
         // arms
-        n("rect", { x: -20, y: -36, width: 7.5, height: 17, rx: 3.75, fill: `url(#${shellId})` }),
-        n("rect", { x: 12.5, y: -36, width: 7.5, height: 17, rx: 3.75, fill: `url(#${shellId})` }),
-        n("circle", { cx: -16.25, cy: -19.5, r: 3.8, fill: accent }),
-        n("circle", { cx: 16.25, cy: -19.5, r: 3.8, fill: accent }),
+        ...raiseArm([
+            n("rect", { x: -20, y: -36, width: 7.5, height: 17, rx: 3.75, fill: `url(#${shellId})` }),
+            n("circle", { cx: -16.25, cy: -19.5, r: 3.8, fill: accent }),
+        ], -1, armsUp),
+        ...raiseArm([
+            n("rect", { x: 12.5, y: -36, width: 7.5, height: 17, rx: 3.75, fill: `url(#${shellId})` }),
+            n("circle", { cx: 16.25, cy: -19.5, r: 3.8, fill: accent }),
+        ], 1, armsUp),
         // torso
         n("rect", { x: -13.5, y: -41, width: 27, height: 32, rx: 12, fill: `url(#${shellId})` }),
         n("path", { d: "M -9 -38 Q 0 -41 9 -38", fill: "none", stroke: "#ffffff", strokeWidth: 2, strokeLinecap: "round", opacity: 0.7 }),
@@ -235,7 +246,7 @@ function humanHair(style: number, color: string, back: boolean): SvgNode | false
     }
 }
 
-function human(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: string, seated: boolean, expression: CharacterExpression): SvgNode[] {
+function human(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: string, seated: boolean, expression: CharacterExpression, armsUp = false): SvgNode[] {
     const { hue, skin: skinIndex, hair: hairIndex, variant } = appearance;
     const off = mood === "offline";
     const skin = SKIN_TONES[skinIndex % SKIN_TONES.length];
@@ -253,10 +264,14 @@ function human(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: s
         n("defs", undefined, [gradient(shirtId, shirtLight, shirtDark)]),
         ...shadowAndLegs(seated, "#334155", "#1e293b"),
         // arms
-        n("rect", { x: -19.5, y: -37, width: 7, height: 17, rx: 3.5, fill: `url(#${shirtId})` }),
-        n("rect", { x: 12.5, y: -37, width: 7, height: 17, rx: 3.5, fill: `url(#${shirtId})` }),
-        n("circle", { cx: -16, cy: -19.5, r: 3.4, fill: skin }),
-        n("circle", { cx: 16, cy: -19.5, r: 3.4, fill: skin }),
+        ...raiseArm([
+            n("rect", { x: -19.5, y: -37, width: 7, height: 17, rx: 3.5, fill: `url(#${shirtId})` }),
+            n("circle", { cx: -16, cy: -19.5, r: 3.4, fill: skin }),
+        ], -1, armsUp),
+        ...raiseArm([
+            n("rect", { x: 12.5, y: -37, width: 7, height: 17, rx: 3.5, fill: `url(#${shirtId})` }),
+            n("circle", { cx: 16, cy: -19.5, r: 3.4, fill: skin }),
+        ], 1, armsUp),
         // torso, collar and a lanyard badge
         n("path", { d: "M -13.5 -9 L -13.5 -31 Q -13.5 -41 -4 -41 L 4 -41 Q 13.5 -41 13.5 -31 L 13.5 -9 Z", fill: `url(#${shirtId})` }),
         n("path", { d: "M -5.5 -41 L 0 -35 L 5.5 -41 Z", fill: "#f8fafc", opacity: 0.92 }),
@@ -292,7 +307,8 @@ function human(appearance: CharacterAppearance, mood: CharacterMood, idPrefix: s
 export function figureNodes(appearance: CharacterAppearance, options: FigureOptions): SvgNode[] {
     const mood = options.mood ?? "online";
     const expression = options.expression ?? "neutral";
-    const parts = appearance.kind === "robot" ? robot(appearance, mood, options.idPrefix, options.seated ?? true, expression) : human(appearance, mood, options.idPrefix, options.seated ?? true, expression);
+    const armsUp = options.armsUp === true;
+    const parts = appearance.kind === "robot" ? robot(appearance, mood, options.idPrefix, options.seated ?? true, expression, armsUp) : human(appearance, mood, options.idPrefix, options.seated ?? true, expression, armsUp);
     return [n("g", { class: mood === "offline" ? "office-offline" : undefined }, parts)];
 }
 

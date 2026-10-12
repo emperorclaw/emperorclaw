@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { approvals, companies, companyMembers, incidents, messageThreads, taskEvents, tasks, threadMessageReasoning, threadMessages, threadParticipants } from "@/db/schema";
 import { computeCompanyHealth, scoreAgent, type CompanyHealth, type HealthStatus } from "@/lib/agent-health";
 import { taskTitle } from "@/lib/emperor-entities";
+import { AGENT_PAIR_DESCRIPTION } from "@/lib/groups";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import {
     approvalTitle, deriveActs, deriveEvents, deriveNeeds, fitThoughtsToBudget, isLiveProblemIncident, LIVE_RECENT_MS, packLook, pickThoughts,
@@ -410,6 +411,21 @@ async function loadPrivateChats(companyId: string, userId: string | null | undef
 
 // ─── v2 loaders (each ONE query for the whole company) ─────────────────────
 
+export interface SharedThreadOptions {
+    /**
+     * Read machine-managed agent pair threads (group threads with the reserved
+     * pair marker and a system creator). The device feed treats them as shared;
+     * the web dashboard shows them to owners/admins only.
+     */
+    includePairThreads?: boolean;
+}
+
+/** SQL guard that drops agent pair threads when the reader may not see them. */
+function sharedThreadFilter(options: SharedThreadOptions) {
+    if (options.includePairThreads !== false) return undefined;
+    return sql`(${messageThreads.description} is distinct from ${AGENT_PAIR_DESCRIPTION} or ${messageThreads.createdByType} is distinct from 'system')`;
+}
+
 /** Only this much of a reasoning transcript (its end: the latest thinking) is read. */
 const THOUGHT_SCAN_CHARS = 1500;
 /** Per agent, the newest few reasoning rows are read, so a stub can fall back to the one before. */
@@ -429,7 +445,8 @@ const INCIDENT_SCAN_ROWS = 50;
  * replies to the creator that `dm` shows. Other direct chats are never read.
  * Uses thread_message_reasoning_company_created_idx.
  */
-async function loadRecentReasoning(companyId: string, since: Date, creatorReplyIds: readonly string[]): Promise<ReasoningRow[]> {
+export async function loadRecentReasoning(companyId: string, since: Date, creatorReplyIds: readonly string[], options: SharedThreadOptions = {}): Promise<ReasoningRow[]> {
+    const shared = sharedThreadFilter(options);
     const visibleThread = creatorReplyIds.length
         ? or(
             inArray(messageThreads.type, [...PUBLIC_THREAD_TYPES]),
@@ -454,6 +471,7 @@ async function loadRecentReasoning(companyId: string, since: Date, creatorReplyI
             eq(messageThreads.companyId, companyId),
             isNull(messageThreads.archivedAt),
             visibleThread,
+            shared,
         ))
         .as("ranked");
     const rows = await db.select({
@@ -477,7 +495,7 @@ async function loadRecentReasoning(companyId: string, since: Date, creatorReplyI
 }
 
 /** Agent-authored, non-control messages in shared threads from the window (thread_messages_company_sender_created_idx). */
-function loadRecentAgentMessages(companyId: string, since: Date) {
+export function loadRecentAgentMessages(companyId: string, since: Date, options: SharedThreadOptions = {}) {
     return db.select({
         id: threadMessages.id,
         senderId: threadMessages.senderId,
@@ -494,13 +512,14 @@ function loadRecentAgentMessages(companyId: string, since: Date) {
             eq(messageThreads.companyId, companyId),
             inArray(messageThreads.type, [...PUBLIC_THREAD_TYPES]),
             isNull(messageThreads.archivedAt),
+            sharedThreadFilter(options),
         ))
         .orderBy(desc(threadMessages.createdAt))
         .limit(HANDOFF_SCAN_ROWS);
 }
 
 /** Task transitions to done/blocked in the window (task_events_company_created_idx). */
-function loadRecentTransitions(companyId: string, since: Date) {
+export function loadRecentTransitions(companyId: string, since: Date) {
     return db.select({
         id: taskEvents.id,
         state: sql<string | null>`coalesce(${taskEvents.payloadJson} ->> 'state', substring(${taskEvents.eventType} from 6))`,
