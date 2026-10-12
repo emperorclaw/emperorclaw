@@ -4,12 +4,12 @@ All notable changes to EmperorClaw are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-At release time, rename the `## [0.8.87] — 2026-10-12` heading below to the version being
+At release time, rename the `## [Unreleased]` heading below to the version being
 tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
-## [Unreleased]
+## [0.8.87] — 2026-10-12
 
 ### Fixed
 - Status broadcasts no longer pause agent rooms. In team and group chats the loop guard now counts only agent messages that wake another agent (a `targetAgentId`, or an @mention of an agent other than the sender); a broadcast that addresses nobody neither counts nor resets the streak, so a real escalation after many cron status reports is delivered instead of being silently `loop_paused`. Pair threads, human resets, progress, resume markers and the cooldown window are unchanged.
