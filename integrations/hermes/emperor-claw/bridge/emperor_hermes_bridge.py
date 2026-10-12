@@ -954,45 +954,72 @@ def format_my_team_roles() -> str:
     return "\n".join(lines)
 
 
-def format_organization_context() -> str:
-    """Fetch current reporting guidance, bounded independently of company prompts."""
+# The chart changes rarely, so GET /organization is fetched at most once per
+# window and the block is injected from memory on every other turn. On a fetch
+# failure the last successful value is kept, so a transient server hiccup does
+# not silently drop the org block for the next ten minutes.
+ORG_CONTEXT_TTL_SECONDS = 600
+_organization_cache: Dict[str, Any] = {"info": None, "fetchedAt": 0.0}
+
+
+def _fetch_organization() -> Any:
+    """GET /organization cached for ORG_CONTEXT_TTL_SECONDS, last value on error."""
+    now = time.monotonic()
+    cached = _organization_cache["info"]
+    if cached is not None and now - float(_organization_cache["fetchedAt"] or 0.0) < ORG_CONTEXT_TTL_SECONDS:
+        return cached
     try:
         info = api("GET", "/organization", query={"agentId": AGENT_ID})
     except Exception:
         # Older servers keep their existing group context and message flow.
-        return ""
-    if not isinstance(info, dict) or not info.get("configured"):
-        return ""
-    leader = info.get("leader")
-    leader = leader if isinstance(leader, dict) else {}
-    lines = ["Company reporting structure:",
-             "Company leader: " + str(leader.get("name") or "unassigned")[:64]]
-    if leader.get("kind") == "agent" and leader.get("id") == AGENT_ID:
-        lines.append("You are the company leader; coordinate cross-team work and report to humans.")
-    teams = info.get("teams") if isinstance(info.get("teams"), list) else []
+        return cached
+    _organization_cache["info"] = info
+    _organization_cache["fetchedAt"] = now
+    return info
+
+
+def _organization_reports_to(info: Dict[str, Any], leader: Dict[str, Any]) -> str:
+    """Who this agent reports to: its first reporting line, else its team
+    coordinator. Same resolution the previous full block used."""
     reporting = info.get("reporting") if isinstance(info.get("reporting"), list) else []
-    for relation in reporting[:4]:
+    for relation in reporting:
         if not isinstance(relation, dict):
             continue
         target = relation.get("reportsTo")
         target = target if isinstance(target, dict) else {}
-        lines.append(str(relation.get("context") or "Direct reporting")[:48] + ": report to " + str(target.get("name") or "humans")[:64])
-    for team in ([] if reporting else teams[:4]):
+        return str(target.get("name") or "humans")
+    teams = info.get("teams") if isinstance(info.get("teams"), list) else []
+    for team in teams:
         if not isinstance(team, dict):
             continue
         coordinator = team.get("coordinator")
         coordinator = coordinator if isinstance(coordinator, dict) else {}
-        target = coordinator.get("name") or leader.get("name") or "unassigned"
         if coordinator.get("kind") == "agent" and coordinator.get("id") == AGENT_ID:
-            target = leader.get("name") or "humans"
             if leader.get("kind") == "agent" and leader.get("id") == AGENT_ID:
-                target = "humans"
-        lines.append(str(team.get("name") or "Team")[:48] + ": report to " + str(target)[:64])
-    if len(teams) > 4:
-        lines.append(f"Plus {len(teams) - 4} teams; consult the endpoint for full details.")
-    lines.append("Use the task/conversation team to choose its reporting line; one coordinating owner per task. Shared membership does not transfer ownership. Escalate conflicting priorities to the company leader or humans.")
-    lines.append("Consult current IDs, team purposes and reporting rules with emperor_request GET /organization; use /groups?mine=1 for members. Avoid acknowledgment loops. Ownership, approvals and access rules still apply.")
-    return "\n".join(lines)[:1100]
+                return "humans"
+            return str(leader.get("name") or "humans")
+        return str(coordinator.get("name") or leader.get("name") or "unassigned")
+    return "humans"
+
+
+def format_organization_context() -> str:
+    """Minimal org chart reminder: the leader and this agent's reporting line,
+    plus one escalation rule. Bounded well under 400 chars so the per-turn cost
+    stays flat regardless of company size; served from a 10-minute cache."""
+    info = _fetch_organization()
+    if not isinstance(info, dict) or not info.get("configured"):
+        return ""
+    leader = info.get("leader")
+    leader = leader if isinstance(leader, dict) else {}
+    leader_name = str(leader.get("name") or "unassigned")[:64]
+    if leader.get("kind") == "agent" and leader.get("id") == AGENT_ID:
+        reporting_line = "you lead the company; report to humans"
+    else:
+        reporting_line = "you report to " + _organization_reports_to(info, leader)[:64]
+    return (
+        f"Org: leader {leader_name}; {reporting_line}\n"
+        "Escalate cross-team conflicts to the leader; details: GET /organization."
+    )
 
 
 def update_chat_status(

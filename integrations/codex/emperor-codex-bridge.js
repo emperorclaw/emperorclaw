@@ -17,7 +17,7 @@
 
 const { spawn } = require("child_process");
 const os = require("os");
-const { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide } = require("./bridge-logic");
+const { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide, organizationContext } = require("./bridge-logic");
 
 const API_URL = (process.env.EMPEROR_CLAW_API_URL || "http://localhost:3000").replace(/\/+$/, "");
 const API_TOKEN = process.env.EMPEROR_CLAW_API_TOKEN || "";
@@ -35,6 +35,12 @@ if (!API_TOKEN || !AGENT_ID) {
 const seen = new Set();
 const loopCounts = new Map(); // threadId → consecutive agent message count
 let lastSeenAt = null;
+
+// The company chart changes rarely; cache GET /organization for this long so
+// the per-turn prompt block does not re-fetch it on every message. On a failed
+// fetch the last successful value is reused.
+const ORG_CACHE_TTL_MS = 10 * 60 * 1000;
+let orgCache = { info: null, at: 0 };
 
 function log(msg) {
     console.log(`[emperor-codex] ${new Date().toISOString()} ${msg}`);
@@ -55,6 +61,21 @@ async function api(method, path, body) {
     const text = await res.text();
     if (!res.ok) throw new Error(`API ${method} ${path} failed ${res.status}: ${text.slice(0, 500)}`);
     return text ? JSON.parse(text) : {};
+}
+
+/** Compact org block for this turn, served from the 10-minute cache. */
+async function organizationBlock() {
+    const now = Date.now();
+    if (orgCache.info && now - orgCache.at < ORG_CACHE_TTL_MS) {
+        return organizationContext(orgCache.info, AGENT_ID);
+    }
+    try {
+        const info = await api("GET", `/organization?agentId=${encodeURIComponent(AGENT_ID)}`);
+        orgCache = { info, at: now };
+        return organizationContext(info, AGENT_ID);
+    } catch (e) {
+        return orgCache.info ? organizationContext(orgCache.info, AGENT_ID) : "";
+    }
 }
 
 async function heartbeat() {
@@ -210,6 +231,7 @@ async function main() {
                 await updateStatus(msg, { typing: true, executionState: "acting" });
 
                 // Operating manual + message prompt
+                const orgBlock = await organizationBlock();
                 const prompt = [
                     `You are an AI agent running on EmperorClaw, an open-source AI operations platform (github.com/emperorclaw/emperorclaw).`,
                     `Agent: ${AGENT_NAME} | Role: ${AGENT_ROLE} | Runtime: Codex CLI (on-demand)`,
@@ -223,6 +245,7 @@ async function main() {
                     `- Be concise. One clear answer per response. No walls of text.`,
                     `- Your reply is shown in Emperor Claw's web chat, not a terminal: Markdown renders (tables, code, links).`,
                     ``,
+                    ...(orgBlock ? [orgBlock, ``] : []),
                     ...(formatGuide ? [formatGuide, ``] : []),
                     `## Message to answer`,
                     text,

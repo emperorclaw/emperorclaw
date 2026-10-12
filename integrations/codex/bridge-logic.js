@@ -88,6 +88,51 @@ function stripCodexNoise(stdout) {
 }
 
 /**
+ * Who this agent reports to, from the chart: its first reporting line, else the
+ * coordinator of a team it belongs to. Mirrors the Hermes bridge's resolution.
+ */
+function reportsToName(info, leader, agentId) {
+    const reporting = Array.isArray(info.reporting) ? info.reporting : [];
+    for (const relation of reporting) {
+        if (!relation || typeof relation !== "object") continue;
+        const target = relation.reportsTo && typeof relation.reportsTo === "object" ? relation.reportsTo : {};
+        return String(target.name || "humans");
+    }
+    const teams = Array.isArray(info.teams) ? info.teams : [];
+    for (const team of teams) {
+        if (!team || typeof team !== "object") continue;
+        const coordinator = team.coordinator && typeof team.coordinator === "object" ? team.coordinator : {};
+        if (coordinator.kind === "agent" && coordinator.id === agentId) {
+            if (leader.kind === "agent" && leader.id === agentId) return "humans";
+            return String(leader.name || "humans");
+        }
+        return String(coordinator.name || leader.name || "unassigned");
+    }
+    return "humans";
+}
+
+/**
+ * Minimal org chart reminder: the leader and this agent's reporting line, plus
+ * one escalation rule. Same wording as the Hermes bridge so both runtimes speak
+ * one minimal org vocabulary. Returns "" when the organization is unconfigured
+ * or the payload is malformed. Kept well under 400 chars regardless of company
+ * size.
+ *
+ * @param {object} info     GET /organization response.
+ * @param {string} agentId  This agent's id.
+ */
+function organizationContext(info, agentId) {
+    if (!info || typeof info !== "object" || !info.configured) return "";
+    const leader = info.leader && typeof info.leader === "object" ? info.leader : {};
+    const leaderName = String(leader.name || "unassigned").slice(0, 64);
+    const reportingLine = leader.kind === "agent" && leader.id === agentId
+        ? "you lead the company; report to humans"
+        : "you report to " + reportsToName(info, leader, agentId).slice(0, 64);
+    return `Org: leader ${leaderName}; ${reportingLine}\n`
+        + "Escalate cross-team conflicts to the leader; details: GET /organization.";
+}
+
+/**
  * Reply-format guide from the server's /runtime/register handshake, or "".
  * Only a server advertising rich-blocks-v1 sends one; an older server's
  * response has neither field, so the agent keeps writing plain Markdown.
@@ -103,4 +148,4 @@ function replyFormatGuide(registerResponse, env = process.env) {
     return typeof guide === "string" ? guide.trim().slice(0, 8000) : "";
 }
 
-module.exports = { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide };
+module.exports = { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide, organizationContext };

@@ -7,6 +7,7 @@ const {
     estimateUsageTokens,
     stripCodexNoise,
     replyFormatGuide,
+    organizationContext,
 } = require("../../integrations/codex/bridge-logic");
 
 const CTX = { agentId: "agent-1", agentName: "Ada" };
@@ -146,4 +147,54 @@ test("classifyMessage: an agent never answers its own message even if addressed"
 test("classifyMessage: a legacy server fails agent messages closed (no agent @all fan-out)", () => {
     assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@all standup" }, CTX).action, "skip");
     assert.equal(classifyMessage({ senderType: "agent", threadType: "group", text: "@Ada standup" }, CTX).action, "skip");
+});
+
+// ── Compact organization block ──────────────────────────────────────────
+// Same wording rules as the Hermes bridge: leader + this agent's reporting
+// line, one escalation rule, <=400 chars, "" when unconfigured.
+test("organizationContext: names the leader and this agent's reporting line", () => {
+    const info = {
+        configured: true,
+        leader: { kind: "human", id: "h1", name: "Grace" },
+        reporting: [{ context: "Direct reporting", reportsTo: { kind: "agent", id: "a1", name: "Ada" } }],
+        teams: [],
+    };
+    assert.equal(
+        organizationContext(info, "a2"),
+        "Org: leader Grace; you report to Ada\n"
+        + "Escalate cross-team conflicts to the leader; details: GET /organization."
+    );
+});
+
+test("organizationContext: an agent that is the leader reports to humans", () => {
+    const info = { configured: true, leader: { kind: "agent", id: "a1", name: "Ada" }, reporting: [], teams: [] };
+    assert.match(organizationContext(info, "a1"), /you lead the company; report to humans/);
+});
+
+test("organizationContext: not configured (or malformed) omits the block", () => {
+    assert.equal(organizationContext({ configured: false }, "a1"), "");
+    assert.equal(organizationContext(null, "a1"), "");
+    assert.equal(organizationContext(undefined, "a1"), "");
+});
+
+test("organizationContext: falls back to a team coordinator's reporting line", () => {
+    const info = {
+        configured: true,
+        leader: { kind: "human", id: "h1", name: "Grace" },
+        reporting: [],
+        teams: [{ name: "Dev", coordinator: { kind: "agent", id: "a1", name: "Ada" } }],
+    };
+    // A member reports to the coordinator; the coordinator itself reports to the leader.
+    assert.match(organizationContext(info, "a2"), /you report to Ada/);
+    assert.match(organizationContext(info, "a1"), /you report to Grace/);
+});
+
+test("organizationContext: stays under 400 chars with long names", () => {
+    const info = {
+        configured: true,
+        leader: { kind: "human", id: "h1", name: "L".repeat(200) },
+        reporting: [{ context: "Direct reporting", reportsTo: { kind: "agent", id: "a1", name: "R".repeat(200) } }],
+        teams: [],
+    };
+    assert.ok(organizationContext(info, "a2").length <= 400);
 });
