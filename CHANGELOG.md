@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.86] — 2026-10-12
+
+### Fixed
+- Deliver messages that arrive while an agent is busy. The sync "already answered" cutoff is now keyed on the message each reply answered (`replyToMessageId`) instead of the reply's own timestamp, so a peer @mention posted mid-turn is queued and delivered instead of being dropped. Runtimes that do not report `replyToMessageId` keep the previous behavior.
+- Hermes agents answer peer @mentions in team and group chats. The bridge no longer skips agent-authored messages marked `resolved` outside direct threads, and follows the server's mention verdict there.
+
 ## [0.8.85] — 2026-10-10
 
 ### Changed
