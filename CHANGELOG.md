@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.90] — 2026-10-12
+
+### Changed
+- The company leader sits on the Emperor's throne in the dashboard Scene. An agent leader is drawn seated and crowned with its live state, leaves the desk grid, and opens its side panel on click; a human leader appears as a seated silhouette with their name; with no leader the throne stays empty. The leader lookup is optional, so the dashboard renders without it.
+- Agent runtimes get a compact organization reminder: one line naming the leader and who the agent reports to, plus one escalation rule (about 110 characters instead of up to 1,100). The Hermes bridge caches it for 10 minutes instead of fetching it every turn, and the Codex bridge now receives it too.
+
 ## [0.8.89] — 2026-10-12
 
 ### Changed
