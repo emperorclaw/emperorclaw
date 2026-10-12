@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { IconBubbleText, IconLayoutList, IconMessageCircle, IconUsersGroup } from "@tabler/icons-react";
-import { assignIdleRoutines, requiresHumanAction, type DashboardTeam, type SceneActivity, type SceneAgent, type SceneCommunication, type SceneLiveEvent, type SceneThought } from "@/lib/team-scene";
+import { assignIdleRoutines, requiresHumanAction, type CompanyLeader, type DashboardTeam, type SceneActivity, type SceneAgent, type SceneCommunication, type SceneLiveEvent, type SceneThought } from "@/lib/team-scene";
 import { visibleCommunications, sceneMessagePreview } from "@/lib/observatory";
 import {
-    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, orderByUrgency, plural, rotateSpeakers, urgencyBucket, visibleDesks, MAX_DESKS,
+    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, leaderMemberKey, orderDesks, plural, rotateSpeakers, urgencyBucket, visibleDesks, MAX_DESKS,
 } from "@/lib/live-office";
 import { LivingDesk, Throne } from "./living-desk";
 import { useLiveLink } from "./live-link";
@@ -43,12 +43,16 @@ type Moment = { id: string; key: string; kind: "celebrate" | "confetti" | "pulse
  * at a desk ordered by who needs a person first. Desks act out real work,
  * show the real task and its age, and play recent moments once.
  */
-export function TeamObservatory({ agents, teams, communications, thoughts, liveEvents, pendingActions, actionKeys, selectedKey, onSelect, onOpenInbox, onShowAll, now, reducedMotion, fresh }: {
+export function TeamObservatory({ agents, teams, communications, thoughts, liveEvents, pendingActions, actionKeys, selectedKey, leader, leaderAgent, onSelect, onOpenInbox, onShowAll, now, reducedMotion, fresh }: {
     agents: SceneAgent[];
     teams: DashboardTeam[];
     communications: SceneCommunication[];
     thoughts: SceneThought[];
     liveEvents: SceneLiveEvent[];
+    /** The company leader, resolved from the organization chart (or null). */
+    leader: CompanyLeader | null;
+    /** The leader's scene agent when the leader is an agent, for live state. */
+    leaderAgent: SceneAgent | null;
     /** Same count as the Action inbox. */
     pendingActions: number;
     /** Member keys with at least one Action inbox item. */
@@ -86,7 +90,11 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
     const team = teams.find((t) => t.id === group) ?? null;
     const still = reducedMotion || !fresh;
     const ghosts = useMemo(() => ghostKeys(agents, team), [agents, team]);
-    const ordered = useMemo(() => orderByUrgency(agents, actionKeys), [agents, actionKeys]);
+    // The leader sits on the throne, not on the floor; ghost it when the
+    // selected team chat does not include it.
+    const leaderKey = leaderMemberKey(leader);
+    const leaderGhost = Boolean(leaderKey && team && !team.memberKeys.includes(leaderKey));
+    const ordered = useMemo(() => orderDesks(agents, actionKeys, leader), [agents, actionKeys, leader]);
     const { shown, hidden } = useMemo(() => visibleDesks(ordered, ghosts, MAX_DESKS), [ordered, ghosts]);
     const columns = frameWidth ? deskColumns(frameWidth) : 6;
     const floorKeys = useMemo(() => new Set(shown.map((a) => a.member.key)), [shown]);
@@ -198,7 +206,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
         <div className="observatory-stage relative isolate overflow-hidden rounded-2xl border border-cyan-400/20 px-2 pb-16 pt-2 sm:px-4 sm:pb-4">
             <div className="observatory-stars pointer-events-none absolute inset-0" aria-hidden="true" />
             <div className="living-floor-glow pointer-events-none absolute inset-x-0 bottom-0 top-24" aria-hidden="true" />
-            <div className="relative flex justify-center"><Throne pending={pendingActions} onOpen={onOpenInbox} still={still} /></div>
+            <div className="relative flex justify-center"><Throne pending={pendingActions} onOpen={onOpenInbox} still={still} leader={leader} leaderAgent={leaderAgent} actionKeys={actionKeys} ghost={leaderGhost} selected={Boolean(leaderKey && selectedKey === leaderKey)} onSelectLeader={onSelect} /></div>
             <ol ref={floorRef} aria-label="Agents, most urgent first" className="mt-2 grid gap-x-2 gap-y-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
                 {shown.map((agent, index) => {
                     const m = agent.member;

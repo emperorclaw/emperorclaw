@@ -82,6 +82,10 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const agents = useMemo(() => deriveSceneAgents(observedData, playfulIdle, now), [observedData, playfulIdle, now]);
     const counts = useMemo(() => kpiCounts(agents, data), [agents, data]);
     const byKey = useMemo(() => new Map(agents.map((a) => [a.member.key, a])), [agents]);
+    // The company leader sits on the throne, not at a desk. Its scene agent is
+    // looked up from the full roster so filters never blank the throne state.
+    const leader = data.leader ?? null;
+    const leaderAgent = leader?.kind === "agent" ? byKey.get(`agent:${leader.id}`) ?? null : null;
 
     const isActive = useCallback((agent: SceneAgent) => (kpi === "attention" ? actionMembers.has(agent.member.key) : matchesKpi(kpi, agent.member, agent.status)) && matchesQuery(agent, query) && (!zoneFilter || agent.zone === zoneFilter), [kpi, query, zoneFilter, actionMembers]);
 
@@ -233,6 +237,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                         {view === "scene" ? (
                             <TeamObservatory agents={agents.filter(isActive)} teams={data.teams ?? []} communications={data.communications ?? []} thoughts={data.thoughts ?? []} liveEvents={data.liveEvents ?? []}
                                 pendingActions={actions.length} actionKeys={actionMembers} selectedKey={selectedKey} onSelect={selectMember} onOpenInbox={openInbox} onShowAll={() => setView("list")}
+                                leader={leader} leaderAgent={leaderAgent}
                                 now={now} reducedMotion={reducedMotion} fresh={freshness === "current"} />
                         ) : view === "pulse" ? (
                             <TeamPulse agents={agents.filter(isActive)} selectedKey={selectedKey} onSelect={selectMember} now={now} />

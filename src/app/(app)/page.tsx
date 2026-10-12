@@ -12,6 +12,7 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { sceneMessagePreview } from "@/lib/observatory";
 import { loadDashboardLive, pendingApprovalRows } from "@/lib/dashboard-live";
+import { loadOrganization } from "@/lib/organization";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import {
     dashboardActivity, attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
@@ -140,6 +141,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         return { thoughts: [], liveEvents: [] };
     });
 
+    // The company leader sits on the Emperor's throne. Reuse the organization
+    // resolver (same as GET /api/mcp/organization); a failure must never take
+    // the dashboard down, so the leader falls back to null.
+    const leaderPromise = loadOrganization(companyId)
+        .then((org) => org.leader)
+        .catch((error) => {
+            console.error("[dashboard] organization leader failed:", error);
+            return null;
+        });
+
     // Pair threads are a private agent conversation. Non-owners/admins never
     // query their participants or messages: no pair text reaches the payload.
     const pairThreads = isOwnerOrAdmin
@@ -156,6 +167,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         .from(threadMessages).where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, roomIds), eq(threadMessages.senderType, "agent"), gte(threadMessages.createdAt, new Date(now.getTime() - 60_000))))
         .orderBy(desc(threadMessages.createdAt)).limit(30) : [];
 
+    const leader = await leaderPromise;
     const live = await livePromise;
     const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
@@ -428,6 +440,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const data: DashboardData = {
         generatedAt: now.toISOString(),
         companyName: company?.name ?? "Your company",
+        leader,
         teams, communications,
         members: dashboardMembers,
         board: {

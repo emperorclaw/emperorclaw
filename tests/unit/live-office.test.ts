@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-    bubbleCandidates, bubbleText, deskColumns, deskStatusLine, eventsToPlay, formatElapsed, ghostKeys, orderByUrgency, plural, rotateSpeakers, updatedAgo, urgencyBucket, visibleDesks,
+    bubbleCandidates, bubbleText, deskColumns, deskStatusLine, eventsToPlay, excludeLeader, formatElapsed, ghostKeys, leaderMemberKey, orderByUrgency, orderDesks, plural, rotateSpeakers, updatedAgo, urgencyBucket, visibleDesks,
 } from "../../src/lib/live-office";
 import { dashboardLiveFromRows, pendingApprovalRows } from "../../src/lib/dashboard-live";
 import { deriveSceneAgents, type DashboardMember, type SceneAgent, type SceneLiveEvent } from "../../src/lib/team-scene";
@@ -45,6 +45,27 @@ test("order inside a bucket is stable by name, whatever the input order", () => 
     const reversed = orderByUrgency([...agents].reverse(), new Set()).map((a) => a.member.name);
     assert.deepEqual(forward, ["Bea", "Ada", "Mira", "Quinn"]);
     assert.deepEqual(reversed, forward);
+});
+
+test("the company leader is excluded from desk ordering, but only when it is an agent", () => {
+    const agents = [agent("Viktor", "working"), agent("Ada", "blocked"), agent("Bo", "idle")];
+    const agentLeader = { kind: "agent" as const, id: "viktor", name: "Viktor" };
+    assert.deepEqual(orderDesks(agents, new Set(), agentLeader).map((a) => a.member.name), ["Ada", "Bo"]);
+    assert.deepEqual(orderDesks(agents, new Set(), null).map((a) => a.member.name).sort(), ["Ada", "Bo", "Viktor"]);
+    assert.deepEqual(orderDesks(agents, new Set(), { kind: "human", id: "u1", name: "Ana" }).map((a) => a.member.name).sort(), ["Ada", "Bo", "Viktor"]);
+});
+
+test("leader helpers: null, human and agent cases", () => {
+    assert.equal(leaderMemberKey(null), null);
+    assert.equal(leaderMemberKey(undefined), null);
+    assert.equal(leaderMemberKey({ kind: "human", id: "u1", name: "Ana" }), null);
+    assert.equal(leaderMemberKey({ kind: "agent", id: "viktor", name: "Viktor" }), "agent:viktor");
+
+    const agents = [agent("Viktor", "idle"), agent("Bo", "idle")];
+    assert.deepEqual(excludeLeader(agents, { kind: "agent", id: "viktor", name: "Viktor" }).map((a) => a.member.key), ["agent:bo"]);
+    assert.equal(excludeLeader(agents, null).length, 2);
+    assert.equal(excludeLeader(agents, { kind: "human", id: "u1", name: "Ana" }).length, 2);
+    assert.equal(excludeLeader(agents, { kind: "agent", id: "missing", name: "X" }).length, 2, "an unknown leader id leaves the roster intact");
 });
 
 test("needs-you agents from the fixture take the front row", () => {

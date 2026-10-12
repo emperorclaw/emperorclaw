@@ -1,4 +1,4 @@
-import type { DashboardTeam, SceneAgent, SceneLiveEvent, SceneThought } from "@/lib/team-scene";
+import type { CompanyLeader, DashboardTeam, SceneAgent, SceneLiveEvent, SceneThought } from "@/lib/team-scene";
 
 /**
  * Pure helpers for the dashboard's living office (the Scene view): urgency
@@ -54,6 +54,25 @@ export function orderByUrgency(agents: SceneAgent[], needsYou: ReadonlySet<strin
         .map((agent) => ({ agent, rank: rank.get(urgencyBucket(agent, needsYou)) ?? URGENCY_ORDER.length }))
         .sort((a, b) => a.rank - b.rank || a.agent.member.name.localeCompare(b.agent.member.name) || a.agent.member.key.localeCompare(b.agent.member.key))
         .map((entry) => entry.agent);
+}
+
+/** Member key of an agent leader, or null when the leader is human or absent. */
+export function leaderMemberKey(leader: CompanyLeader | null | undefined): string | null {
+    return leader?.kind === "agent" ? `agent:${leader.id}` : null;
+}
+
+/**
+ * The company leader sits on the throne, never at a desk, so it is removed from
+ * the floor. A human or missing leader leaves the roster untouched.
+ */
+export function excludeLeader(agents: SceneAgent[], leader: CompanyLeader | null | undefined): SceneAgent[] {
+    const key = leaderMemberKey(leader);
+    return key ? agents.filter((a) => a.member.key !== key) : agents;
+}
+
+/** Desk order with the company leader excluded, so the throne seat is unique. */
+export function orderDesks(agents: SceneAgent[], needsYou: ReadonlySet<string>, leader: CompanyLeader | null | undefined): SceneAgent[] {
+    return orderByUrgency(excludeLeader(agents, leader), needsYou);
 }
 
 /** Desks outside the selected team chat stay in place as ghosts. No team → no ghosts. */

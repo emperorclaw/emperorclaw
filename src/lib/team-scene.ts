@@ -156,9 +156,18 @@ export interface SceneLiveEvent {
     at: string;
 }
 
+/** The company leader resolved from the organization chart, shown on the throne. */
+export interface CompanyLeader {
+    kind: "agent" | "human";
+    id: string;
+    name: string;
+}
+
 export interface DashboardData {
     companyName?: string;
     generatedAt: string;
+    /** Company leader for the living office throne, or null when none is set. */
+    leader?: CompanyLeader | null;
     teams?: DashboardTeam[];
     communications?: SceneCommunication[];
     members: DashboardMember[];

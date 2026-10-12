@@ -2,9 +2,9 @@
 
 import { forwardRef, useEffect, useRef, useState, type CSSProperties } from "react";
 import { IconActivity, IconAlertTriangle, IconBellRinging, IconCoffee, IconConfetti, IconEye, IconMoon, IconPlugConnectedX } from "@tabler/icons-react";
-import { agentMotion, expressionForActivity, type SceneActivity, type SceneAgent } from "@/lib/team-scene";
+import { agentMotion, expressionForActivity, type CompanyLeader, type SceneActivity, type SceneAgent } from "@/lib/team-scene";
 import { resolveAppearance, resolveAvatarPhoto } from "@/lib/character/model";
-import { bubbleText, type DeskStatus, type UrgencyBucket } from "@/lib/live-office";
+import { bubbleText, deskStateLabel, leaderMemberKey, urgencyBucket, type DeskStatus, type UrgencyBucket } from "@/lib/live-office";
 import { CharacterFigureView, moodForStatus } from "@/components/character/character-avatar";
 import { ActivityCue } from "./character-activity";
 import { cn } from "@/lib/utils";
@@ -170,10 +170,35 @@ function ThoughtBubble({ text, still, align }: { text: string; still: boolean; a
     </div>;
 }
 
-/** The Emperor's throne at the head of the room; gold while decisions wait. */
-export function Throne({ pending, onOpen, still }: { pending: number; onOpen: () => void; still: boolean }) {
+export interface ThroneProps {
+    pending: number;
+    onOpen: () => void;
+    still: boolean;
+    /** The company leader; null keeps the current empty throne. */
+    leader?: CompanyLeader | null;
+    /** The leader's scene agent when the leader is an agent (carries live state). */
+    leaderAgent?: SceneAgent | null;
+    /** Member keys with a pending decision, for the leader's urgency bucket. */
+    actionKeys?: ReadonlySet<string>;
+    /** Outside the selected team chat: dim like a desk. */
+    ghost?: boolean;
+    selected?: boolean;
+    /** Opens the selected-agent side panel, like a desk does. */
+    onSelectLeader?: (key: string) => void;
+}
+
+const NO_KEYS: ReadonlySet<string> = new Set();
+
+/**
+ * The Emperor's throne at the head of the room, gold while decisions wait. When
+ * a company leader is set it sits on the throne: an agent acts out its real
+ * state (and opens its briefing), a human sits as a silent silhouette. Only the
+ * "decisions waiting" badge opens the Action inbox.
+ */
+export function Throne({ pending, onOpen, still, leader = null, leaderAgent = null, actionKeys = NO_KEYS, ghost = false, selected = false, onSelectLeader }: ThroneProps) {
     const waiting = pending > 0;
-    return <button type="button" onClick={onOpen} aria-label={waiting ? `Action inbox: ${pending} ${pending === 1 ? "decision" : "decisions"} waiting for you` : "Action inbox: all clear"}
+
+    if (!leader) return <button type="button" onClick={onOpen} aria-label={waiting ? `Action inbox: ${pending} ${pending === 1 ? "decision" : "decisions"} waiting for you` : "Action inbox: all clear"}
         className="group relative mx-auto flex flex-col items-center rounded-2xl px-4 pb-1 pt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
         <svg viewBox="-90 -78 180 92" className="h-[70px] w-[137px] overflow-visible" aria-hidden="true">
             <defs>
@@ -196,4 +221,77 @@ export function Throne({ pending, onOpen, still }: { pending: number; onOpen: ()
             ? <span className="mt-0.5 inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{pending} {pending === 1 ? "decision" : "decisions"} waiting</span>
             : <span className="mt-0.5 inline-flex items-center rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-300">All clear</span>}
     </button>;
+
+    const leaderKey = leaderMemberKey(leader);
+    const bucket: UrgencyBucket = leaderAgent ? urgencyBucket(leaderAgent, actionKeys) : "idle";
+    const label = leaderAgent ? deskStateLabel(leaderAgent, bucket) : leader.kind === "human" ? "Company leader" : "Offline";
+    const aria = leaderAgent ? `Company leader: ${leader.name}, ${label}` : `Company leader: ${leader.name}`;
+    const m = leaderAgent?.member ?? null;
+    const appearance = leader.kind === "human"
+        ? resolveAppearance({ id: leader.id, kind: "human" })
+        : m ? resolveAppearance({ id: m.id, avatarUrl: m.avatarUrl, avatarAppearance: m.avatarAppearance }) : null;
+    const photo = m ? resolveAvatarPhoto({ avatarUrl: m.avatarUrl }) : null;
+    const motion = leaderAgent ? agentMotion(leaderAgent.member.id) : null;
+    const offline = bucket === "offline" || bucket === "stale";
+    const armsUp = leaderAgent?.behavior.kind === "celebrate";
+    const working = Boolean(leaderAgent) && bucket === "working" && !armsUp;
+    const activity: SceneActivity = leaderAgent?.behavior.kind ?? "available";
+    const Icon = armsUp ? IconConfetti : BUCKET_ICON[bucket];
+    const vars = motion ? {
+        "--agent-hue": appearance?.hue ?? 200,
+        "--blink-t": `${motion.blink.duration}ms`, "--blink-d": `${motion.blink.delay}ms`,
+        "--bob-t": `${motion.bob.duration}ms`, "--bob-d": `${motion.bob.delay}ms`,
+        "--cue-t": `${motion.cue.duration}ms`, "--cue-d": `${motion.cue.delay}ms`,
+        "--typing-t": `${motion.typing.duration}ms`, "--typing-d": `${motion.typing.delay}ms`,
+        "--screen-t": `${motion.screen.duration}ms`, "--screen-d": `${motion.screen.delay}ms`,
+        "--celebrate-t": "2.4s", "--celebrate-d": "0s",
+    } as CSSProperties : undefined;
+
+    return <div className="group relative mx-auto flex flex-col items-center rounded-2xl px-4 pb-1 pt-1">
+        <div className="relative" style={vars}>
+            {/* Taller canvas so the seated occupant and its crown fit above the chair. */}
+            <svg viewBox="-90 -150 180 164" className="h-[125px] w-[137px] overflow-visible" aria-hidden={leaderAgent ? true : undefined} role={leaderAgent ? undefined : "img"} aria-label={leaderAgent ? undefined : aria}>
+                <defs>
+                    <radialGradient id="throne-aura" cx="0.5" cy="0.55" r="0.5"><stop stopColor="#fbbf24" stopOpacity="0.55" /><stop offset="0.6" stopColor="#f59e0b" stopOpacity="0.16" /><stop offset="1" stopColor="#f59e0b" stopOpacity="0" /></radialGradient>
+                    <linearGradient id="throne-back" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#1d4363" /><stop offset="1" stopColor="#0b1c2f" /></linearGradient>
+                </defs>
+                {waiting && <ellipse cx="0" cy="-26" rx="86" ry="52" fill="url(#throne-aura)" className={still ? undefined : "living-aura"} />}
+                {/* Dais */}
+                <path d="M-78 6 L78 6 L70 -2 L-70 -2 Z" fill="#132a42" stroke="#67e8f9" strokeOpacity="0.25" />
+                <path d="M-60 -2 L60 -2 L54 -9 L-54 -9 Z" fill="#183450" stroke="#67e8f9" strokeOpacity="0.3" />
+                {/* Chair back */}
+                <path d="M-26 -12 L-26 -52 Q-26 -70 0 -74 Q26 -70 26 -52 L26 -12 Z" fill="url(#throne-back)" stroke={waiting ? "#fcd34d" : "#67e8f9"} strokeOpacity={waiting ? 0.9 : 0.5} strokeWidth="1.5" />
+                <path d="M-17 -18 L-17 -50 Q-17 -62 0 -65 Q17 -62 17 -50 L17 -18" fill="none" stroke={waiting ? "#fde68a" : "#a5f3fc"} strokeOpacity="0.35" />
+                {/* Occupant: seated, slightly larger than a desk, in front of the back and behind the cushion. */}
+                {appearance && <g transform="translate(0 -15) scale(1.15)" className={cn(ghost && "living-ghost")}>
+                    <g className={cn(!still && leaderAgent && (working ? "observatory-working" : offline ? undefined : "living-breathe"))}>
+                        <CharacterFigureView appearance={appearance} mood={leaderAgent ? moodForStatus(leaderAgent.status) : "online"} seated
+                            expression={armsUp ? "happy" : leaderAgent ? expressionForActivity(activity) : "neutral"} armsUp={armsUp} salt={`throne-${leader.id}`} />
+                        {photo && <image href={photo} x="-17" y="-76" width="34" height="34" preserveAspectRatio="xMidYMid slice" />}
+                    </g>
+                </g>}
+                {/* A small crown above the leader's head: it leads the company. */}
+                {leaderAgent && <image href="/crown.png" x="-13" y="-118" width="26" height="19" preserveAspectRatio="xMidYMid meet" />}
+                {/* Seat cushion overlays the lower body. */}
+                <rect x="-34" y="-17" width="68" height="9" rx="3" fill="#1f4a6e" stroke="#67e8f9" strokeOpacity="0.35" />
+                <rect x="-38" y="-30" width="9" height="20" rx="3" fill="#163552" />
+                <rect x="29" y="-30" width="9" height="20" rx="3" fill="#163552" />
+            </svg>
+            {leaderAgent && leaderKey && <button type="button" onClick={() => onSelectLeader?.(leaderKey)}
+                aria-haspopup="dialog" aria-pressed={selected} aria-label={aria}
+                className="absolute left-1/2 top-[6px] h-[104px] w-[92px] -translate-x-1/2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300" />}
+        </div>
+        <div className={cn("mt-0.5 flex max-w-[11rem] flex-col items-center text-center", ghost && "living-ghost")}>
+            <span className="w-full truncate text-[13px] font-semibold leading-5 text-slate-50">{leader.name}</span>
+            <span className={cn("flex max-w-full items-center gap-1 text-[11px] font-medium leading-4", !leaderAgent ? "text-slate-400" : armsUp ? "text-lime-200" : BUCKET_TONE[bucket])}>
+                {leaderAgent && <Icon className="h-3 w-3 shrink-0" stroke={2} aria-hidden="true" />}<span className="truncate">{label}</span>
+            </span>
+        </div>
+        <button type="button" onClick={onOpen} aria-label={waiting ? `Action inbox: ${pending} ${pending === 1 ? "decision" : "decisions"} waiting for you` : "Action inbox: all clear"}
+            className="mt-1 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+            {waiting
+                ? <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-950"><IconBellRinging className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />{pending} {pending === 1 ? "decision" : "decisions"} waiting</span>
+                : <span className="inline-flex items-center rounded-full bg-white/[0.06] px-2.5 py-0.5 text-xs font-semibold text-slate-300">All clear</span>}
+        </button>
+    </div>;
 }
