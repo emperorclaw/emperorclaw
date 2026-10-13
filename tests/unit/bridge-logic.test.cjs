@@ -8,6 +8,17 @@ const {
     stripCodexNoise,
     replyFormatGuide,
     organizationContext,
+    RUNS_CAPABILITY,
+    parseServerCapabilities,
+    serverSupportsRuns,
+    mapRunFinishStatus,
+    mapExitToRunStatus,
+    isRetryableLedgerError,
+    createLedgerBreaker,
+    LEDGER_BREAKER_THRESHOLD,
+    LEDGER_BREAKER_COOLDOWN_MS,
+    buildRunStartPayload,
+    buildRunFinishPayload,
 } = require("../../integrations/codex/bridge-logic");
 
 const CTX = { agentId: "agent-1", agentName: "Ada" };
@@ -197,4 +208,124 @@ test("organizationContext: stays under 400 chars with long names", () => {
         teams: [],
     };
     assert.ok(organizationContext(info, "a2").length <= 400);
+});
+
+// ── Run ledger (PR 3) ───────────────────────────────────────────────────
+
+test("parseServerCapabilities: reads the handshake, [] for an older server", () => {
+    assert.deepEqual(parseServerCapabilities({ serverCapabilities: ["rich-blocks-v1", "runs: 1"] }), ["rich-blocks-v1", "runs: 1"]);
+    assert.deepEqual(parseServerCapabilities({ runtimeNode: {} }), []);
+    assert.deepEqual(parseServerCapabilities(null), []);
+    assert.deepEqual(parseServerCapabilities({ serverCapabilities: [null, 1, "runs: 1"] }), ["1", "runs: 1"]);
+});
+
+test("serverSupportsRuns: gated on the runs: 1 capability", () => {
+    assert.equal(RUNS_CAPABILITY, "runs: 1");
+    assert.equal(serverSupportsRuns(["runs: 1"]), true);
+    assert.equal(serverSupportsRuns(["rich-blocks-v1"]), false);
+    assert.equal(serverSupportsRuns([]), false);
+    assert.equal(serverSupportsRuns(undefined), false);
+});
+
+test("mapRunFinishStatus: outcome → terminal status", () => {
+    assert.equal(mapRunFinishStatus(null), "succeeded");
+    assert.equal(mapRunFinishStatus(undefined), "succeeded");
+    assert.equal(mapRunFinishStatus({ code: "RUN_TIMEOUT" }), "timeout");
+    assert.equal(mapRunFinishStatus({ timedOut: true }), "timeout");
+    assert.equal(mapRunFinishStatus({ code: "RUN_CANCELLED" }), "cancelled");
+    assert.equal(mapRunFinishStatus(new Error("boom")), "failed");
+});
+
+test("mapExitToRunStatus: non-zero exit is failed, a signal is timeout", () => {
+    assert.equal(mapExitToRunStatus(0, null), "succeeded");
+    assert.equal(mapExitToRunStatus(0, undefined), "succeeded");
+    assert.equal(mapExitToRunStatus(1, null), "failed");
+    assert.equal(mapExitToRunStatus(2, null), "failed");
+    assert.equal(mapExitToRunStatus(null, "SIGTERM"), "timeout");
+    assert.equal(mapExitToRunStatus(1, "SIGKILL"), "timeout");
+});
+
+test("isRetryableLedgerError: 4xx is permanent, everything else retries", () => {
+    assert.equal(isRetryableLedgerError({ status: 400 }), false);
+    assert.equal(isRetryableLedgerError({ status: 404 }), false);
+    assert.equal(isRetryableLedgerError({ status: 401 }), false);
+    assert.equal(isRetryableLedgerError({ status: 500 }), true);
+    assert.equal(isRetryableLedgerError({ status: 503 }), true);
+    assert.equal(isRetryableLedgerError(new Error("network timed out")), true);
+    assert.equal(isRetryableLedgerError(null), true);
+});
+
+test("createLedgerBreaker: opens after 3 failures, skips while open, closes after the window", () => {
+    let clock = 1_000_000;
+    const events = [];
+    const breaker = createLedgerBreaker({
+        now: () => clock,
+        onOpen: () => events.push("open"),
+        onClose: () => events.push("close"),
+    });
+
+    assert.equal(LEDGER_BREAKER_THRESHOLD, 3);
+    assert.equal(LEDGER_BREAKER_COOLDOWN_MS, 5 * 60 * 1000);
+
+    breaker.recordFailure();
+    breaker.recordFailure();
+    assert.equal(breaker.shouldSkip(), false, "still closed after 2 failures");
+    assert.deepEqual(events, []);
+
+    breaker.recordFailure();
+    assert.equal(breaker.shouldSkip(), true, "open after the 3rd consecutive failure");
+    assert.deepEqual(events, ["open"]);
+
+    // While the window is open every call is skipped and nothing is re-logged.
+    clock += LEDGER_BREAKER_COOLDOWN_MS - 1;
+    assert.equal(breaker.shouldSkip(), true);
+    assert.deepEqual(events, ["open"]);
+
+    // The window elapsing closes the breaker once.
+    clock += 2;
+    assert.equal(breaker.shouldSkip(), false);
+    assert.deepEqual(events, ["open", "close"]);
+
+    // A success resets the consecutive-failure counter.
+    breaker.recordFailure();
+    breaker.recordFailure();
+    breaker.recordSuccess();
+    breaker.recordFailure();
+    clock += LEDGER_BREAKER_COOLDOWN_MS;
+    breaker.shouldSkip();
+    assert.equal(breaker.shouldSkip(), false, "counter reset means it does not reopen");
+    assert.deepEqual(events, ["open", "close"]);
+});
+
+test("buildRunStartPayload: shape includes runtimeKind=codex, omits absent ids", () => {
+    const payload = buildRunStartPayload({
+        id: "run-1", agentId: "agent-1", runtimeId: "codex-abc", bridgeVersion: "0.2.0",
+        triggerMessageId: "msg-1", threadId: "thread-1", taskId: "task-1",
+        startedAt: "2026-01-01T00:00:00Z",
+    });
+    assert.deepEqual(payload, {
+        id: "run-1", agentId: "agent-1", runtimeId: "codex-abc", runtimeKind: "codex",
+        bridgeVersion: "0.2.0", triggerKind: "message", triggerMessageId: "msg-1",
+        threadId: "thread-1", taskId: "task-1", startedAt: "2026-01-01T00:00:00Z",
+    });
+    const minimal = buildRunStartPayload({ id: "run-2", agentId: "a", runtimeId: "r", bridgeVersion: "0.2.0", startedAt: "t" });
+    assert.equal("threadId" in minimal, false);
+    assert.equal("taskId" in minimal, false);
+    assert.equal("triggerMessageId" in minimal, false);
+});
+
+test("buildRunFinishPayload: shape omits unset fields, keeps zeroes", () => {
+    const payload = buildRunFinishPayload({
+        status: "succeeded", endedAt: "2026-01-01T00:00:02Z", durationMs: 2000,
+        inputTokens: 3, outputTokens: 4, replyMessageId: "reply-1", error: null,
+    });
+    assert.deepEqual(payload, {
+        status: "succeeded", endedAt: "2026-01-01T00:00:02Z", durationMs: 2000,
+        inputTokens: 3, outputTokens: 4, replyMessageId: "reply-1",
+    });
+    const zeroed = buildRunFinishPayload({ status: "failed", durationMs: 0, toolCalls: 0 });
+    assert.equal(zeroed.durationMs, 0);
+    assert.equal(zeroed.toolCalls, 0);
+    assert.equal("error" in zeroed, false);
+    assert.equal("replyMessageId" in zeroed, false);
 });

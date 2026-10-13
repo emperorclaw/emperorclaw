@@ -148,4 +148,113 @@ function replyFormatGuide(registerResponse, env = process.env) {
     return typeof guide === "string" ? guide.trim().slice(0, 8000) : "";
 }
 
-module.exports = { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide, organizationContext };
+// ── Run ledger (PR 3) ───────────────────────────────────────────────────────
+// Pure builders/mappers for the turn ledger; the bridge keeps only the I/O.
+
+/** The run-ledger capability token (matches the server's SERVER_CAPABILITIES). */
+const RUNS_CAPABILITY = "runs: 1";
+
+/**
+ * Server capabilities from a /runtime/register response, coerced to strings.
+ * An older server sends neither field, so this yields [] and ledger reporting
+ * is skipped rather than erroring.
+ */
+function parseServerCapabilities(registerResponse) {
+    if (!registerResponse || typeof registerResponse !== "object") return [];
+    const raw = Array.isArray(registerResponse.serverCapabilities) ? registerResponse.serverCapabilities : [];
+    return raw.filter((c) => typeof c === "string" || typeof c === "number").map(String);
+}
+
+/** Whether a capability list includes the run-ledger capability. */
+function serverSupportsRuns(capabilities) {
+    return Array.isArray(capabilities) && capabilities.includes(RUNS_CAPABILITY);
+}
+
+/**
+ * Map a turn outcome to a ledger finish status. `err` is null/undefined for a
+ * clean turn; RUN_TIMEOUT / RUN_CANCELLED carry their terminal status; anything
+ * else is a failure.
+ */
+function mapRunFinishStatus(err) {
+    if (!err) return "succeeded";
+    if (err.code === "RUN_TIMEOUT" || err.timedOut === true) return "timeout";
+    if (err.code === "RUN_CANCELLED") return "cancelled";
+    return "failed";
+}
+
+/**
+ * Map a finished `codex exec` child to a ledger status. A signal means the
+ * spawn timeout killed the child (a timed-out turn); any other non-zero exit is
+ * a failure; only a 0 exit with no signal is a success.
+ */
+function mapExitToRunStatus(code, signal) {
+    if (signal) return "timeout";
+    if (code !== 0) return "failed";
+    return "succeeded";
+}
+
+/** A 4xx (validation/auth) is permanent and never retried; anything else is. */
+function isRetryableLedgerError(err) {
+    const status = err && err.status;
+    if (typeof status === "number" && status >= 400 && status < 500) return false;
+    return true;
+}
+
+const LEDGER_BREAKER_THRESHOLD = 3;
+const LEDGER_BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
+
+/**
+ * A circuit breaker for the run ledger. After `threshold` consecutive failures
+ * it skips every ledger call for `cooldownMs`, then tries once more. Pure
+ * timing logic with an injectable clock so tests can advance time without
+ * waiting; `onOpen`/`onClose` fire exactly once per transition for logging.
+ */
+function createLedgerBreaker({ threshold = LEDGER_BREAKER_THRESHOLD, cooldownMs = LEDGER_BREAKER_COOLDOWN_MS, now = Date.now, onOpen = () => {}, onClose = () => {} } = {}) {
+    let failures = 0;
+    let openUntil = 0;
+    return {
+        /** True while the breaker is open, so every ledger call is skipped. */
+        shouldSkip() {
+            if (!openUntil) return false;
+            if (now() >= openUntil) {
+                openUntil = 0;
+                failures = 0;
+                onClose();
+                return false;
+            }
+            return true;
+        },
+        recordSuccess() {
+            failures = 0;
+        },
+        recordFailure() {
+            failures += 1;
+            if (!openUntil && failures >= threshold) {
+                openUntil = now() + cooldownMs;
+                onOpen(failures, cooldownMs);
+            }
+        },
+    };
+}
+
+/** POST /agents/runs body for one turn. Unset optional ids are omitted. */
+function buildRunStartPayload({ id, agentId, runtimeId, runtimeKind = "codex", bridgeVersion, triggerKind = "message", triggerMessageId, threadId, taskId, startedAt }) {
+    const payload = { id, agentId, runtimeId, runtimeKind, bridgeVersion, triggerKind, startedAt };
+    if (triggerMessageId) payload.triggerMessageId = triggerMessageId;
+    if (threadId) payload.threadId = threadId;
+    if (taskId) payload.taskId = taskId;
+    return payload;
+}
+
+/** PATCH /agents/runs/{id} body for one turn. Unset fields are omitted. */
+function buildRunFinishPayload({ status, endedAt, durationMs, inputTokens, outputTokens, toolCalls, replyMessageId, error }) {
+    const payload = { status };
+    if (endedAt) payload.endedAt = endedAt;
+    const optional = { durationMs, inputTokens, outputTokens, toolCalls, replyMessageId, error };
+    for (const key of Object.keys(optional)) {
+        if (optional[key] !== undefined && optional[key] !== null) payload[key] = optional[key];
+    }
+    return payload;
+}
+
+module.exports = { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide, organizationContext, RUNS_CAPABILITY, parseServerCapabilities, serverSupportsRuns, mapRunFinishStatus, mapExitToRunStatus, isRetryableLedgerError, createLedgerBreaker, LEDGER_BREAKER_THRESHOLD, LEDGER_BREAKER_COOLDOWN_MS, buildRunStartPayload, buildRunFinishPayload };

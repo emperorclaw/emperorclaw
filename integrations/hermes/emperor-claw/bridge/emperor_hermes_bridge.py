@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Callable, Dict, Iterable, List
 
 
 API_URL = os.environ.get("EMPEROR_CLAW_API_URL", "https://emperorclaw.malecu.eu").rstrip("/")
@@ -81,6 +81,13 @@ MAIN_CHAT_CONTEXT_PER_MESSAGE_CHARS = int(os.environ.get("EMPEROR_CLAW_MAIN_CHAT
 # Set EMPEROR_CLAW_RICH_REPLIES=off to keep an agent on plain Markdown.
 RICH_REPLIES_ENABLED = os.environ.get("EMPEROR_CLAW_RICH_REPLIES", "on").strip().lower() not in {"0", "off", "false", "no"}
 RICH_BLOCKS_CAPABILITY = "rich-blocks-v1"
+# Run-ledger capability: a server advertising it accepts POST/PATCH /agents/runs.
+# An older server never does, so an upgraded bridge skips ledger reporting
+# entirely rather than erroring. Keep in step with the server's SERVER_CAPABILITIES.
+RUNS_CAPABILITY = "runs: 1"
+# Bridge release, reported to the run ledger (and in the User-Agent). Stays in
+# step with plugin.yaml; bump both together on release.
+BRIDGE_VERSION = "0.2.0"
 # Re-run the /runtime/register handshake this often, so a server upgraded
 # after the bridge started is picked up without restarting the bridge.
 CAPABILITY_REFRESH_SECONDS = float(os.environ.get("EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS", "600"))
@@ -122,7 +129,21 @@ def log(message: str) -> None:
     print(f"[emperor-hermes] {message}", flush=True)
 
 
-def api(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[str, Any] | None = None) -> Dict[str, Any]:
+class ApiError(RuntimeError):
+    """An HTTP error from the Emperor API, carrying the numeric status.
+
+    The run ledger uses the status to tell a transient failure (timeout, 5xx)
+    apart from a permanent one (4xx, e.g. a rejected payload), which is never
+    retried. Subclasses RuntimeError so existing `except RuntimeError` callers
+    keep working.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def api(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[str, Any] | None = None, timeout: int = 30) -> Dict[str, Any]:
     if not API_TOKEN:
         raise RuntimeError("EMPEROR_CLAW_API_TOKEN is required")
     clean_path = "/" + path.lstrip("/")
@@ -137,7 +158,7 @@ def api(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Accept": "application/json",
-        "User-Agent": "emperor-hermes-bridge/0.1.0",
+        "User-Agent": f"emperor-hermes-bridge/{BRIDGE_VERSION}",
     }
     if body is not None:
         payload = json.dumps(body).encode("utf-8")
@@ -146,12 +167,12 @@ def api(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[
         headers["Idempotency-Key"] = str(uuid.uuid4())
     req = urllib.request.Request(url, data=payload, headers=headers, method=method.upper())
     try:
-        with urllib.request.urlopen(req, timeout=30) as res:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
             text = res.read().decode("utf-8", errors="replace")
             return json.loads(text) if text else {}
     except urllib.error.HTTPError as exc:
         text = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Emperor API {method} {path} failed {exc.code}: {text[:500]}") from exc
+        raise ApiError(f"Emperor API {method} {path} failed {exc.code}: {text[:500]}", exc.code) from exc
 
 
 def load_state() -> Dict[str, Any]:
@@ -327,6 +348,15 @@ def parse_server_capabilities(response: Any) -> tuple[List[str], str]:
 def rich_replies_active() -> bool:
     """True when this server renders rich replies and sent the matching guide."""
     return RICH_REPLIES_ENABLED and RICH_BLOCKS_CAPABILITY in _server_capabilities and bool(_reply_format_guide)
+
+
+def server_supports_runs() -> bool:
+    """True when the server advertised the run-ledger capability.
+
+    An older server that never sent it yields False, so the bridge reports no
+    runs and makes zero extra ledger requests against it.
+    """
+    return RUNS_CAPABILITY in _server_capabilities
 
 
 def format_reply_guidance() -> str:
@@ -2341,6 +2371,305 @@ def check_budget() -> bool:
         return False
 
 
+# ── Run ledger (PR 3) ─────────────────────────────────────────────────────────
+# Each dispatched turn is one `agent_runs` row: POST start before the runtime
+# call, PATCH finish after it. Reporting is strictly best-effort — a slow or
+# failing ledger never delays, blocks or fails the turn — and gated on the
+# server advertising `runs: 1`, so an upgraded bridge talking to an older server
+# makes zero extra requests.
+LEDGER_TIMEOUT_SECONDS = 5
+# After this many consecutive ledger failures, skip every ledger call for the
+# cooldown window, then try once more. A 4xx counts toward the breaker too, but
+# a 4xx finish is never retried (a rejected payload will be rejected again).
+LEDGER_BREAKER_THRESHOLD = 3
+LEDGER_BREAKER_COOLDOWN_SECONDS = 5 * 60
+_ledger_failure_logged = False
+# A finish that failed once; retried a single time on the next loop iteration.
+_pending_run_finish: Dict[str, Any] | None = None
+
+
+class LedgerBreaker:
+    """Trips after N consecutive ledger failures, then skips all ledger calls
+    for a cooldown window.
+
+    Pure timing logic with an injectable clock, so tests can advance time
+    without sleeping. While open it reports skip; when the window elapses it
+    closes once, logging exactly once on each transition.
+    """
+
+    def __init__(
+        self,
+        threshold: int = LEDGER_BREAKER_THRESHOLD,
+        cooldown: float = LEDGER_BREAKER_COOLDOWN_SECONDS,
+        now: Callable[[], float] = time.time,
+    ) -> None:
+        self._threshold = threshold
+        self._cooldown = cooldown
+        self._now = now
+        self._failures = 0
+        self._open_until = 0.0
+
+    @property
+    def open(self) -> bool:
+        return self._open_until > 0
+
+    def should_skip(self) -> bool:
+        """True while the breaker is open, so every ledger call is skipped."""
+        if self._open_until <= 0:
+            return False
+        if self._now() >= self._open_until:
+            self._open_until = 0.0
+            self._failures = 0
+            log("run ledger circuit breaker closed; resuming ledger reporting")
+            return False
+        return True
+
+    def record_success(self) -> None:
+        self._failures = 0
+
+    def record_failure(self) -> None:
+        self._failures += 1
+        if self._open_until <= 0 and self._failures >= self._threshold:
+            self._open_until = self._now() + self._cooldown
+            log(
+                f"run ledger circuit breaker open after {self._failures} consecutive failures; "
+                f"skipping ledger calls for {int(self._cooldown)}s"
+            )
+
+
+# Process-wide breaker shared by every ledger call site.
+_ledger_breaker = LedgerBreaker()
+
+
+def _is_retryable_ledger_error(exc: BaseException) -> bool:
+    """A 4xx (validation/auth) is permanent and never retried; anything else is."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int) and 400 <= status < 500:
+        return False
+    return True
+
+
+def _log_ledger_failure(where: str, exc: BaseException) -> None:
+    """Log the first ledger failure only, so a down ledger cannot spam the log."""
+    global _ledger_failure_logged
+    if _ledger_failure_logged:
+        return
+    _ledger_failure_logged = True
+    log(f"run ledger {where} failed (best-effort, continuing): {exc}")
+
+
+def _mark_ledger_ok() -> None:
+    global _ledger_failure_logged
+    _ledger_failure_logged = False
+
+
+def build_run_start_payload(run_id: str, message: Dict[str, Any], started_at: float) -> Dict[str, Any]:
+    """The POST /agents/runs body for one turn. Pure; no I/O."""
+    payload: Dict[str, Any] = {
+        "id": run_id,
+        "agentId": AGENT_ID,
+        "runtimeId": RUNTIME_ID,
+        "runtimeKind": "hermes",
+        "bridgeVersion": BRIDGE_VERSION,
+        "triggerKind": "message",
+        "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started_at)),
+    }
+    message_id = str(message.get("id") or "")
+    thread_id = str(message.get("threadId") or message.get("thread_id") or "")
+    task_id = str(message.get("taskId") or message.get("task_id") or "")
+    if message_id:
+        payload["triggerMessageId"] = message_id
+    if thread_id:
+        payload["threadId"] = thread_id
+    if task_id:
+        payload["taskId"] = task_id
+    return payload
+
+
+def estimate_run_tokens(char_count: int) -> int:
+    """The ~4-chars-per-token estimate report-usage uses (0 for empty input)."""
+    return max(1, char_count // 4) if char_count > 0 else 0
+
+
+def map_run_status(exc: BaseException | None) -> str:
+    """Map a turn outcome to a ledger finish status.
+
+    None is a clean turn; the idle/wall-clock timeouts and an operator stop
+    have their own terminal status; anything else is a failure.
+    """
+    if exc is None:
+        return "succeeded"
+    if isinstance(exc, (HermesIdleTimeout, subprocess.TimeoutExpired)):
+        return "timeout"
+    if isinstance(exc, TurnInterrupted):
+        return "cancelled"
+    return "failed"
+
+
+def ledger_error_message(exc: BaseException) -> str | None:
+    """A short, secret-safe ledger error (no stack, no prompt text).
+
+    A timeout/cancel is a status, not a stack-bearing failure, so it carries no
+    error text.
+    """
+    if isinstance(exc, (HermesIdleTimeout, subprocess.TimeoutExpired, TurnInterrupted)):
+        return None
+    return describe_processing_error(exc)[:500] or None
+
+
+def build_run_finish_payload(
+    status: str,
+    started_at: float | None = None,
+    *,
+    ended_at: float | None = None,
+    reply_message_id: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    tool_calls: int | None = None,
+    error: str | None = None,
+) -> Dict[str, Any]:
+    """The PATCH /agents/runs/{id} body. Pure; no I/O. Unset fields are omitted."""
+    now = time.time() if ended_at is None else ended_at
+    payload: Dict[str, Any] = {
+        "status": status,
+        "endedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+    }
+    if started_at is not None:
+        payload["durationMs"] = max(0, int((now - started_at) * 1000))
+    for key, value in (
+        ("inputTokens", input_tokens),
+        ("outputTokens", output_tokens),
+        ("toolCalls", tool_calls),
+        ("replyMessageId", reply_message_id),
+        ("error", error),
+    ):
+        if value is not None:
+            payload[key] = value
+    return payload
+
+
+def count_tool_calls(since_ts: float, tail_bytes: int = 1_000_000) -> int | None:
+    """Count tool executions recorded in agent.log since the turn started.
+
+    Reuses the same log line the live status already parses. Best-effort and
+    bounded (tail read only): returns None — so the caller omits `toolCalls` —
+    when the log is unavailable.
+    """
+    log_path = _agent_log_path()
+    if not log_path:
+        return None
+    try:
+        size = log_path.stat().st_size
+        with log_path.open("rb") as fh:
+            if size > tail_bytes:
+                fh.seek(size - tail_bytes)
+            raw = fh.read()
+    except OSError:
+        return None
+    count = 0
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        match = _TOOL_LOG_RE.match(line)
+        if not match:
+            continue
+        try:
+            ts = time.mktime(time.strptime(match.group(1), _TOOL_LOG_TS_FORMAT))
+        except ValueError:
+            continue
+        if ts > since_ts:
+            count += 1
+    return count
+
+
+def post_run_start(payload: Dict[str, Any]) -> bool:
+    """POST the run start. Never raises; False on any failure (never retried)."""
+    if _ledger_breaker.should_skip():
+        return False
+    try:
+        api("POST", "/agents/runs", body=payload, timeout=LEDGER_TIMEOUT_SECONDS)
+        _mark_ledger_ok()
+        _ledger_breaker.record_success()
+        return True
+    except Exception as exc:
+        _log_ledger_failure("start", exc)
+        _ledger_breaker.record_failure()
+        return False
+
+
+def post_run_finish(run_id: str, payload: Dict[str, Any]) -> None:
+    """PATCH the run finish. Never raises; a transient failure queues one retry."""
+    global _pending_run_finish
+    if _ledger_breaker.should_skip():
+        return
+    try:
+        api("PATCH", f"/agents/runs/{run_id}", body=payload, timeout=LEDGER_TIMEOUT_SECONDS)
+        _mark_ledger_ok()
+        _ledger_breaker.record_success()
+        if _pending_run_finish and _pending_run_finish.get("id") == run_id:
+            _pending_run_finish = None
+    except Exception as exc:
+        _log_ledger_failure("finish", exc)
+        _ledger_breaker.record_failure()
+        # The id is idempotent server-side, so replaying it is safe. A 4xx is
+        # permanent, so it is never queued for retry.
+        if _is_retryable_ledger_error(exc):
+            _pending_run_finish = {"id": run_id, "payload": payload}
+
+
+def retry_pending_run_finish() -> None:
+    """Flush a finish that failed last iteration — exactly one retry."""
+    global _pending_run_finish
+    pending = _pending_run_finish
+    if not pending:
+        return
+    _pending_run_finish = None
+    if _ledger_breaker.should_skip():
+        return
+    try:
+        api("PATCH", f"/agents/runs/{pending['id']}", body=pending["payload"], timeout=LEDGER_TIMEOUT_SECONDS)
+        _mark_ledger_ok()
+        _ledger_breaker.record_success()
+    except Exception as exc:
+        _log_ledger_failure("finish retry", exc)
+        _ledger_breaker.record_failure()
+
+
+def safe_finish_run(
+    run_id: str,
+    status: str,
+    started_at: float | None = None,
+    *,
+    reply_message_id: str | None = None,
+    input_chars: int | None = None,
+    output_chars: int | None = None,
+    count_tools_since: float | None = None,
+    exc: BaseException | None = None,
+) -> None:
+    """Build and post a turn's run finish. NEVER raises.
+
+    The whole per-turn ledger path lives here — the token estimates, the
+    tool-call count, the error text, the payload build and the PATCH — so a bug
+    anywhere in it cannot escape into the turn's handler. If it did, the handler
+    would treat a ledger fault as a runtime failure and requeue the message,
+    re-sending the reply on the next poll.
+    """
+    try:
+        input_tokens = (estimate_run_tokens(input_chars) or None) if input_chars is not None else None
+        output_tokens = (estimate_run_tokens(output_chars) or None) if output_chars is not None else None
+        tool_calls = count_tool_calls(count_tools_since) if count_tools_since is not None else None
+        error = ledger_error_message(exc) if exc is not None else None
+        post_run_finish(run_id, build_run_finish_payload(
+            status,
+            started_at,
+            reply_message_id=reply_message_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            tool_calls=tool_calls,
+            error=error,
+        ))
+    except Exception as ledger_exc:
+        _log_ledger_failure("finish", ledger_exc)
+
+
 def main() -> int:
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
@@ -2368,6 +2697,8 @@ def main() -> int:
             if CAPABILITY_REFRESH_SECONDS > 0 and time.time() - last_capability_refresh >= CAPABILITY_REFRESH_SECONDS:
                 refresh_server_capabilities()
                 last_capability_refresh = time.time()
+            # One retry for a run finish that failed transiently last iteration.
+            retry_pending_run_finish()
             import emperor_goals
             apply_runtime_controls(fetch_runtime_control(), state)
             emperor_goals.process_commands(sys.modules[__name__], state)
@@ -2469,6 +2800,13 @@ def main() -> int:
                 update_chat_status(message, typing=True, execution_state="acting")
                 send_heartbeat(1)
                 text = str(message.get("text") or "")
+                # Open the run before dispatch, but only on a server that
+                # advertises the ledger; older servers get zero extra requests.
+                ledger_enabled = server_supports_runs()
+                run_id = str(uuid.uuid4())
+                turn_started = time.time()
+                if ledger_enabled:
+                    post_run_start(build_run_start_payload(run_id, message, turn_started))
                 try:
                     reply = run_hermes(message, state)
                     try:
@@ -2488,7 +2826,19 @@ def main() -> int:
                             post_reasoning_history(reply_message_id, _last_turn_reasoning)
                         except Exception as reasoning_exc:
                             log(f"reasoning history not stored for {reply_message_id}: {reasoning_exc}")
+                    # User-visible state first: the ledger report must never
+                    # delay the resolved status.
                     update_chat_status(message, typing=False, execution_state="resolved")
+                    if ledger_enabled:
+                        safe_finish_run(
+                            run_id,
+                            "succeeded",
+                            turn_started,
+                            reply_message_id=reply_message_id,
+                            input_chars=len(text),
+                            output_chars=len(reply),
+                            count_tools_since=turn_started,
+                        )
                     clear_retry(state, message_id)
                 except TurnInterrupted:
                     log(f"operator stopped message {message_id}")
@@ -2496,6 +2846,8 @@ def main() -> int:
                         update_chat_status(message, typing=False)
                     except Exception as status_exc:
                         log(f"failed to clear stopped turn status: {status_exc}")
+                    if ledger_enabled:
+                        safe_finish_run(run_id, "cancelled", turn_started)
                     clear_retry(state, message_id)
                     remember_seen(state, message_id)
                 except Exception as exc:
@@ -2521,6 +2873,8 @@ def main() -> int:
                         log(f"message {message_id} cancelled visibly after {attempts} failed attempts: {describe_processing_error(exc)}")
                     else:
                         log(f"error processing message {message_id}; retry {attempts} scheduled: {describe_processing_error(exc)}")
+                    if ledger_enabled:
+                        safe_finish_run(run_id, map_run_status(exc), turn_started, exc=exc)
                 finally:
                     try:
                         send_heartbeat(0)

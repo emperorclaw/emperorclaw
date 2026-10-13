@@ -17,7 +17,13 @@
 
 const { spawn } = require("child_process");
 const os = require("os");
-const { classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide, organizationContext } = require("./bridge-logic");
+const crypto = require("crypto");
+const {
+    classifyMessage, loopGuardOk, estimateUsageTokens, stripCodexNoise, replyFormatGuide,
+    organizationContext, parseServerCapabilities, serverSupportsRuns, mapRunFinishStatus,
+    mapExitToRunStatus, isRetryableLedgerError, createLedgerBreaker,
+    buildRunStartPayload, buildRunFinishPayload,
+} = require("./bridge-logic");
 
 const API_URL = (process.env.EMPEROR_CLAW_API_URL || "http://localhost:3000").replace(/\/+$/, "");
 const API_TOKEN = process.env.EMPEROR_CLAW_API_TOKEN || "";
@@ -26,6 +32,10 @@ const AGENT_NAME = process.env.EMPEROR_CLAW_AGENT_NAME || "Codex Agent";
 const AGENT_ROLE = process.env.EMPEROR_CLAW_AGENT_ROLE || "operator";
 const POLL_SECONDS = Math.max(2, parseInt(process.env.EMPEROR_CLAW_POLL_SECONDS || "5", 10));
 const TIMEOUT_SECONDS = parseInt(process.env.EMPEROR_CLAW_CODEX_TIMEOUT || "120", 10);
+// Bridge release, reported to the run ledger (and in the User-Agent).
+const BRIDGE_VERSION = "0.2.0";
+// Runtime id, reused by registration and the ledger start payload.
+const RUNTIME_ID = `codex-${AGENT_ID.slice(0, 8)}`;
 
 if (!API_TOKEN || !AGENT_ID) {
     console.error("[emperor-codex] EMPEROR_CLAW_API_TOKEN and EMPEROR_CLAW_AGENT_ID are required");
@@ -42,25 +52,138 @@ let lastSeenAt = null;
 const ORG_CACHE_TTL_MS = 10 * 60 * 1000;
 let orgCache = { info: null, at: 0 };
 
+// Server capabilities from the last /runtime/register handshake, re-checked
+// periodically so a server upgraded after this bridge started is picked up.
+// Run-ledger reporting is gated on them: an older server advertises nothing
+// and receives zero extra requests.
+const CAPABILITY_REFRESH_MS = 10 * 60 * 1000;
+let serverCapabilities = [];
+let formatGuide = "";
+let lastCapabilityRefresh = 0;
+
+// Run-ledger state: a failed finish is retried exactly once on the next loop
+// iteration; ledger failures are logged once until a call succeeds.
+const LEDGER_TIMEOUT_MS = 5000;
+let pendingRunFinish = null;
+let ledgerFailureLogged = false;
+
 function log(msg) {
     console.log(`[emperor-codex] ${new Date().toISOString()} ${msg}`);
 }
 
-async function api(method, path, body) {
+// One breaker for all ledger calls: after 3 consecutive failures, skip the
+// ledger for 5 minutes, then try once more.
+const ledgerBreaker = createLedgerBreaker({
+    onOpen: (failures, cooldownMs) => log(`run ledger circuit breaker open after ${failures} consecutive failures; skipping ledger calls for ${Math.round(cooldownMs / 1000)}s`),
+    onClose: () => log("run ledger circuit breaker closed; resuming ledger reporting"),
+});
+
+async function api(method, path, body, timeoutMs) {
     const url = `${API_URL}/api/mcp${path}`;
     const headers = {
         "Authorization": `Bearer ${API_TOKEN}`,
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "User-Agent": "emperor-codex-bridge/0.1.0",
+        "User-Agent": `emperor-codex-bridge/${BRIDGE_VERSION}`,
     };
     const opts = { method, headers };
     if (body) opts.body = JSON.stringify(body);
+    if (timeoutMs) opts.signal = AbortSignal.timeout(timeoutMs);
 
     const res = await fetch(url, opts);
     const text = await res.text();
-    if (!res.ok) throw new Error(`API ${method} ${path} failed ${res.status}: ${text.slice(0, 500)}`);
+    if (!res.ok) {
+        const error = new Error(`API ${method} ${path} failed ${res.status}: ${text.slice(0, 500)}`);
+        error.status = res.status;
+        throw error;
+    }
     return text ? JSON.parse(text) : {};
+}
+
+/**
+ * Learn (or refresh) the server's capability handshake. A failure keeps the
+ * last known capabilities — an older or briefly unreachable server simply gets
+ * no ledger reporting.
+ */
+async function refreshCapabilities() {
+    try {
+        const registered = await api("POST", "/runtime/register", {
+            runtimeId: RUNTIME_ID,
+            name: `Codex on ${os.hostname()}`,
+            hostname: os.hostname(),
+            gatewayVersion: "codex-cli",
+            capabilitiesJson: ["codex-cli", "thread-reply", "rich-replies"],
+        });
+        serverCapabilities = parseServerCapabilities(registered);
+        formatGuide = replyFormatGuide(registered);
+    } catch (e) {
+        // Keep the previous values; nothing to report yet.
+    }
+    lastCapabilityRefresh = Date.now();
+}
+
+function noteLedgerFailure(where, e) {
+    if (ledgerFailureLogged) return;
+    ledgerFailureLogged = true;
+    log(`run ledger ${where} failed (best-effort, continuing): ${e.message}`);
+}
+
+function noteLedgerOk() {
+    ledgerFailureLogged = false;
+}
+
+/** POST a run start. Never throws; a failure is not retried. */
+async function reportRunStart(payload) {
+    if (ledgerBreaker.shouldSkip()) return false;
+    try {
+        await api("POST", "/agents/runs", payload, LEDGER_TIMEOUT_MS);
+        noteLedgerOk();
+        ledgerBreaker.recordSuccess();
+        return true;
+    } catch (e) {
+        noteLedgerFailure("start", e);
+        ledgerBreaker.recordFailure();
+        return false;
+    }
+}
+
+/** PATCH a run finish. Never throws; a transient failure queues one retry. */
+async function reportRunFinish(id, payload) {
+    if (ledgerBreaker.shouldSkip()) return;
+    try {
+        await api("PATCH", `/agents/runs/${id}`, payload, LEDGER_TIMEOUT_MS);
+        noteLedgerOk();
+        ledgerBreaker.recordSuccess();
+        if (pendingRunFinish && pendingRunFinish.id === id) pendingRunFinish = null;
+    } catch (e) {
+        noteLedgerFailure("finish", e);
+        ledgerBreaker.recordFailure();
+        // A 4xx is permanent, so it is never queued for retry.
+        if (isRetryableLedgerError(e)) pendingRunFinish = { id, payload };
+    }
+}
+
+/** Flush a finish that failed last iteration — exactly one retry. */
+async function retryPendingRunFinish() {
+    if (!pendingRunFinish) return;
+    const pending = pendingRunFinish;
+    pendingRunFinish = null;
+    if (ledgerBreaker.shouldSkip()) return;
+    try {
+        await api("PATCH", `/agents/runs/${pending.id}`, pending.payload, LEDGER_TIMEOUT_MS);
+        noteLedgerOk();
+        ledgerBreaker.recordSuccess();
+    } catch (e) {
+        noteLedgerFailure("finish retry", e);
+        ledgerBreaker.recordFailure();
+    }
+}
+
+/** Short, secret-safe ledger error text (no stack). */
+function ledgerErrorText(err) {
+    if (!err) return null;
+    const text = String(err.message || err).replace(/\s+/g, " ").trim();
+    return text ? text.slice(0, 500) : null;
 }
 
 /** Compact org block for this turn, served from the 10-minute cache. */
@@ -134,7 +257,7 @@ async function syncMessages() {
 }
 
 async function sendReply(message, text) {
-    if (!text) return;
+    if (!text) return null;
     const body = {
         thread_id: message.threadId || message.thread_id,
         agentId: AGENT_ID,
@@ -147,7 +270,8 @@ async function sendReply(message, text) {
     // lets the server derive the real thread from the message being answered.
     const threadType = message.threadType || message.thread_type;
     if (threadType) body.thread_type = threadType;
-    await api("POST", "/messages/send", body);
+    const response = await api("POST", "/messages/send", body);
+    return response && response.message_id ? String(response.message_id) : null;
 }
 
 async function updateStatus(message, opts = {}) {
@@ -163,19 +287,10 @@ async function updateStatus(message, opts = {}) {
 async function main() {
     log(`starting agent=${AGENT_NAME} id=${AGENT_ID} poll=${POLL_SECONDS}s`);
 
-    // Register runtime. The response may carry the server's reply-format
-    // guide (rich chat blocks); older servers return only runtimeNode.
-    let formatGuide = "";
-    try {
-        const registered = await api("POST", "/runtime/register", {
-            runtimeId: `codex-${AGENT_ID.slice(0, 8)}`,
-            name: `Codex on ${os.hostname()}`,
-            hostname: os.hostname(),
-            gatewayVersion: "codex-cli",
-            capabilitiesJson: ["codex-cli", "thread-reply", "rich-replies"],
-        });
-        formatGuide = replyFormatGuide(registered);
-    } catch (e) { /* ignore */ }
+    // Register runtime. The response carries the server's capability handshake
+    // and (when advertised) the rich-reply guide. Older servers return only
+    // runtimeNode, so capabilities stay empty and ledger reporting is skipped.
+    await refreshCapabilities();
 
     await heartbeat();
 
@@ -187,6 +302,11 @@ async function main() {
                 await heartbeat();
                 lastHeartbeat = Date.now();
             }
+            if (Date.now() - lastCapabilityRefresh >= CAPABILITY_REFRESH_MS) {
+                await refreshCapabilities();
+            }
+            // One retry for a run finish that failed transiently last iteration.
+            await retryPendingRunFinish();
 
             const messages = await syncMessages();
             for (const msg of messages) {
@@ -251,6 +371,30 @@ async function main() {
                     text,
                 ].join("\n");
 
+                // Open the run before dispatch, but only on a server that
+                // advertises the ledger; an older server gets zero extra calls.
+                const runId = crypto.randomUUID();
+                const turnStartMs = Date.now();
+                const ledgerEnabled = serverSupportsRuns(serverCapabilities);
+                if (ledgerEnabled) {
+                    await reportRunStart(buildRunStartPayload({
+                        id: runId,
+                        agentId: AGENT_ID,
+                        runtimeId: RUNTIME_ID,
+                        bridgeVersion: BRIDGE_VERSION,
+                        triggerMessageId: msgId,
+                        threadId,
+                        taskId: msg.taskId || msg.task_id,
+                        startedAt: new Date(turnStartMs).toISOString(),
+                    }));
+                }
+
+                let finishStatus = "succeeded";
+                let finishError = null;
+                let replyMessageId = null;
+                let usage = null;
+                let replyFailure = null;
+
                 // Pipe prompt via stdin (Paperclip pattern)
                 // shell:true needed on Windows for .cmd files
                 try {
@@ -271,34 +415,76 @@ async function main() {
                         child.stdin.write(prompt);
                         child.stdin.end();
 
-                        child.on("close", (code) => {
+                        child.on("close", (code, signal) => {
                             // Strip Codex rollout noise (Paperclip pattern)
                             const clean = stripCodexNoise(stdout);
                             const output = clean || stderr.trim();
-                            resolve({ output, code });
+                            resolve({ output, code, signal });
                         });
                         child.on("error", reject);
                     });
+
+                    // A non-zero exit is a failed turn; the spawn timeout kills
+                    // the child with a signal, which is a timeout.
+                    const exitStatus = mapExitToRunStatus(result.code, result.signal);
+                    if (exitStatus !== "succeeded") {
+                        finishStatus = exitStatus;
+                        finishError = result.signal
+                            ? `codex exec killed after ${TIMEOUT_SECONDS}s`
+                            : `codex exec exited with code ${result.code}`;
+                    }
 
                     if (result.output) {
                         // Estimate and report token usage. Split into input (prompt)
                         // vs output (reply) so the server applies the correct
                         // per-direction price and enforces budget.
-                        const usage = estimateUsageTokens(prompt, result.output);
+                        usage = estimateUsageTokens(prompt, result.output);
                         try {
                             await reportUsage(usage.inputTokens, usage.outputTokens);
                         } catch (error) {
                             log(`usage report pending; future dispatch blocked: ${error.message}`);
                         }
-                        await sendReply(msg, result.output);
+                        replyMessageId = await sendReply(msg, result.output);
                         log(`replied to ${msgId} (${result.output.length} chars)`);
                     }
                 } catch (execErr) {
                     log(`codex exec failed: ${execErr.message}`);
-                    await sendReply(msg, `[Codex error: ${execErr.message}]`);
+                    finishStatus = mapRunFinishStatus(execErr);
+                    finishError = ledgerErrorText(execErr);
+                    // A failing error reply must still throw into the loop catch
+                    // (message not marked seen, retried), exactly as before the
+                    // ledger existed. Capture it, attempt the finish best-effort,
+                    // then rethrow below.
+                    try {
+                        await sendReply(msg, `[Codex error: ${execErr.message}]`);
+                    } catch (replyErr) {
+                        replyFailure = replyErr;
+                    }
                 }
 
-                await updateStatus(msg, { typing: false, executionState: "resolved" });
+                // User-visible state first: the ledger report must never delay
+                // the resolved status. On a failed reply, skip it exactly as
+                // before so the message stays unseen and is retried.
+                if (!replyFailure) {
+                    await updateStatus(msg, { typing: false, executionState: "resolved" });
+                }
+
+                // Always attempt the finish when the ledger is enabled — a lost
+                // start is upserted by the server PATCH — subject to the breaker.
+                if (ledgerEnabled) {
+                    await reportRunFinish(runId, buildRunFinishPayload({
+                        status: finishStatus,
+                        endedAt: new Date().toISOString(),
+                        durationMs: Date.now() - turnStartMs,
+                        inputTokens: usage ? usage.inputTokens : undefined,
+                        outputTokens: usage ? usage.outputTokens : undefined,
+                        replyMessageId,
+                        error: finishError,
+                    }));
+                }
+
+                if (replyFailure) throw replyFailure;
+
                 seen.add(msgId);
                 if (msg.createdAt) lastSeenAt = msg.createdAt;
 
