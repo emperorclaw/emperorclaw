@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.92] — 2026-10-13
+
+### Added
+- **Dismiss** for approvals: a third decision, next to Approve and Reject, for requests that are obsolete. The agent is told not to perform the action and the linked task is left where it is. Available on the Approvals page and in the dashboard Action inbox.
+- Approvals for external actions (`send_email`, `publish`, `spend`, `delete`) left pending for more than 48 hours expire automatically; the agent is told not to act and to ask again if it is still needed.
+- Approving a request older than 48 hours asks for confirmation first ("This request is N days old. Approve and let <agent> act now?") with Approve anyway, Dismiss instead and Cancel.
+- The agent approvals API returns `mayProceed`, true only for an approved request, and documents that `dismissed` and `expired` mean do not act.
+
+### Fixed
+- A decision on an approval that was already resolved (expired, or decided by someone else) now reports the outcome that stands instead of confirming the click.
+
 ## [0.8.91] — 2026-10-12
 
 ### Fixed
