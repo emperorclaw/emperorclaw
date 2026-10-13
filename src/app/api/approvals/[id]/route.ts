@@ -38,8 +38,8 @@ export async function PATCH(
         const body = await req.json();
         const { status, resolutionNote } = body;
 
-        if (status !== "approved" && status !== "rejected") {
-            return NextResponse.json({ error: "status must be approved or rejected" }, { status: 400 });
+        if (status !== "approved" && status !== "rejected" && status !== "dismissed") {
+            return NextResponse.json({ error: "status must be approved, rejected, or dismissed" }, { status: 400 });
         }
 
         const approval = await resolveApproval({

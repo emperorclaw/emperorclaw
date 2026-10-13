@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { requireRole, AuthError } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
+import { mayProceed } from "@/lib/approval-status";
 
 export async function GET(
     req: NextRequest,
@@ -19,7 +20,9 @@ export async function GET(
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
 
-    return NextResponse.json(detail);
+    // Unambiguous for agents: `mayProceed` is true ONLY for an explicit
+    // approval. A dismissed or expired request means DO NOT ACT.
+    return NextResponse.json({ ...detail, mayProceed: mayProceed(detail.approval.status) });
 }
 
 export async function PATCH(
@@ -43,8 +46,8 @@ export async function PATCH(
         const body = await _req.json();
         const { status, resolutionNote } = body;
 
-        if (status !== "approved" && status !== "rejected") {
-            return NextResponse.json({ error: "status must be approved or rejected" }, { status: 400 });
+        if (status !== "approved" && status !== "rejected" && status !== "dismissed") {
+            return NextResponse.json({ error: "status must be approved, rejected, or dismissed" }, { status: 400 });
         }
 
         const approval = await resolveApproval({

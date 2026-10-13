@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-    IconAlertTriangle, IconCheck, IconChevronRight, IconCircleCheck, IconClock, IconFileText, IconMessageCircle, IconPlugConnectedX, IconRefresh, IconX, IconPlayerPlay,
+    IconAlertTriangle, IconArchive, IconCheck, IconChevronRight, IconCircleCheck, IconClock, IconFileText, IconMessageCircle, IconPlugConnectedX, IconRefresh, IconX, IconPlayerPlay,
 } from "@tabler/icons-react";
 import { timeAgo, type AttentionEntry, type AttentionKind, type DashboardMember } from "@/lib/team-scene";
+import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useLiveLink } from "./live-link";
@@ -53,7 +54,7 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
         }
     };
 
-    const approve = (entry: AttentionEntry, decision: "approved" | "rejected") =>
+    const approve = (entry: AttentionEntry, decision: "approved" | "rejected" | "dismissed") =>
         run(entry.id, async () => {
             if (!entry.approvalId) throw new Error("Approval id missing");
             const res = await fetch(`/api/approvals/${entry.approvalId}`, {
@@ -61,7 +62,16 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                 body: JSON.stringify({ status: decision }),
             });
             if (!res.ok) throw new Error("Couldn't record the decision");
-        }, decision === "approved" ? "Approved." : "Sent back.");
+            // A decision is final: report what actually stands if it was already resolved.
+            const stored = ((await res.json().catch(() => ({}))) as { approval?: { status?: string } }).approval?.status;
+            if (stored && stored !== decision) {
+                router.refresh();
+                throw new Error(`Already ${stored} — your decision was not applied.`);
+            }
+        },
+            decision === "approved" ? "Approved."
+                : decision === "dismissed" ? `Dismissed. ${entry.memberName ?? "The agent"} has been told not to do it.`
+                    : "Sent back.");
 
     const resume = (entry: AttentionEntry) =>
         run(entry.id, async () => {
@@ -144,7 +154,7 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                                         {canAct ? (
                                             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                                                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><IconClock className="h-3.5 w-3.5" />{timeAgo(entry.at, now)}</span>
-                                                <Actions entry={entry} busy={busy} agents={agents} onApprove={(e) => approve(e, "approved")} onReject={(e) => approve(e, "rejected")} onResume={resume} onRestart={restart} onReassign={reassign} />
+                                                <Actions entry={entry} busy={busy} agents={agents} onApprove={(e) => approve(e, "approved")} onReject={(e) => approve(e, "rejected")} onDismiss={(e) => approve(e, "dismissed")} onResume={resume} onRestart={restart} onReassign={reassign} />
                                             </div>
                                         ) : (
                                             <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"><IconClock className="h-3.5 w-3.5" />{timeAgo(entry.at, now)}</div>
@@ -165,27 +175,55 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
     );
 }
 
-function Actions({ entry, busy, agents, onApprove, onReject, onResume, onRestart, onReassign }: {
+function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume, onRestart, onReassign }: {
     entry: AttentionEntry;
     busy: boolean;
     agents: DashboardMember[];
     onApprove: (e: AttentionEntry) => void;
     onReject: (e: AttentionEntry) => void;
+    onDismiss: (e: AttentionEntry) => void;
     onResume: (e: AttentionEntry) => void;
     onRestart: (e: AttentionEntry) => void;
     onReassign: (e: AttentionEntry, target: { type: "agent" | "human"; id: string }) => void;
 }) {
+    const [confirming, setConfirming] = useState(false);
+    const [confirmDays, setConfirmDays] = useState(0);
     const disabled = busy;
     const btn = "relative z-10 inline-flex min-h-11 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold ring-1 ring-inset transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50";
     const primary = "bg-cyan-500/15 text-cyan-700 ring-cyan-500/40 hover:bg-cyan-500/25 dark:text-cyan-200";
     const danger = "bg-rose-500/10 text-rose-600 ring-rose-500/30 hover:bg-rose-500/20 dark:text-rose-300";
+    const neutral = "bg-zinc-500/10 text-zinc-600 ring-zinc-500/30 hover:bg-zinc-500/20 dark:text-zinc-300";
+    const requestedAtMs = new Date(entry.at).getTime();
+    // The clock is read in the click handler, never during render (React purity).
+    const approveClick = () => {
+        const now = Date.now();
+        if (Number.isFinite(requestedAtMs) && isStaleApproval(requestedAtMs, now)) {
+            setConfirmDays(approvalAgeDays(requestedAtMs, now));
+            setConfirming(true);
+            return;
+        }
+        onApprove(entry);
+    };
 
     switch (entry.kind) {
         case "approval":
+            if (confirming) {
+                return (
+                    <span role="alertdialog" aria-label="Confirm approving a stale request" className="relative z-10 flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-400/10 p-2 text-left dark:bg-amber-300/[0.07]">
+                        <span className="text-xs text-amber-700 dark:text-amber-200">This request is {confirmDays} days old. Approve and let {entry.memberName ?? "the agent"} act now?</span>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                            <button type="button" disabled={disabled} onClick={() => onApprove(entry)} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />Approve anyway</button>
+                            <button type="button" disabled={disabled} onClick={() => onDismiss(entry)} className={cn(btn, neutral)}><IconArchive className="h-3.5 w-3.5" />Dismiss instead</button>
+                            <button type="button" onClick={() => setConfirming(false)} className="relative z-10 inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Cancel</button>
+                        </span>
+                    </span>
+                );
+            }
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
-                    <button type="button" disabled={disabled} onClick={() => onApprove(entry)} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />Approve</button>
+                    <button type="button" disabled={disabled} onClick={approveClick} className={cn(btn, primary)}><IconCheck className="h-3.5 w-3.5" />Approve</button>
                     <button type="button" disabled={disabled} onClick={() => onReject(entry)} className={cn(btn, danger)}><IconX className="h-3.5 w-3.5" />Reject</button>
+                    <button type="button" disabled={disabled} onClick={() => onDismiss(entry)} title="Obsolete — the agent won't do it" aria-label="Dismiss (obsolete — the agent won't do it)" className={cn(btn, neutral)}><IconArchive className="h-3.5 w-3.5" />Dismiss</button>
                 </span>
             );
         case "paused":

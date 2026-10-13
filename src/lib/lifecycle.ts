@@ -5,6 +5,7 @@ import { agentSessions, agents, tasks, threadMessages } from "@/db/schema";
 import { notifyAgentDown } from "./notifications";
 import { runDailyRoutines } from "./agent-routines";
 import { runStallSweep } from "./stall-sweep";
+import { expireStaleApprovals } from "./approvals";
 import { runObjectiveFollowups } from "./agent-objective";
 import { flushPendingAgentWakes } from "./task-wake";
 import { deliverRequestCallbacks } from "./agent-requests";
@@ -74,6 +75,10 @@ async function runLifecycleMonitor() {
     if (now.getTime() - lastStallSweepCheck >= stallSweepIntervalMs()) {
       lastStallSweepCheck = now.getTime();
       await runStallSweep(now).catch((error) => console.error("Stall sweep failed:", error));
+      // Stale external approvals (send/publish/spend/delete) expire on the same
+      // slower cadence: an action nobody decided within the TTL must not stay
+      // approvable. Idempotent — the update is guarded on `pending`.
+      await expireStaleApprovals(now).catch((error) => console.error("Approval expiry failed:", error));
       // The starter-doctrine rollout shares the slow cadence: it is idempotent
       // per company and cheap when every company is already up to date.
       await runStarterDoctrineUpgrades().catch((error) => console.error("Starter doctrine upgrade failed:", error));

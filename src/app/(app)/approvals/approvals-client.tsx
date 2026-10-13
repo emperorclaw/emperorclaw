@@ -3,17 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { IconArrowRight, IconCheck, IconClockHour4, IconRosetteDiscountCheck, IconSearch, IconX } from "@tabler/icons-react";
+import { IconArchive, IconArrowRight, IconCheck, IconClockHour4, IconRosetteDiscountCheck, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { agentAvatarSrc } from "@/lib/avatar";
+import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
 import { cn } from "@/lib/utils";
 
 export type ApprovalItem = {
     key: string;
     approvalId: string | null;
-    status: "pending" | "approved" | "rejected";
+    status: "pending" | "approved" | "rejected" | "dismissed" | "expired";
     actionType: string;
     rationale: string | null;
     resolutionNote: string | null;
@@ -52,10 +53,26 @@ function Avatar({ requester }: { requester: ApprovalItem["requester"] }) {
     return <img src={agentAvatarSrc(requester)} alt="" className="h-8 w-8 shrink-0 rounded-full border border-zinc-800 bg-zinc-900 object-cover" />;
 }
 
-function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (item: ApprovalItem, decision: "approved" | "rejected", note: string) => void; busy: boolean }) {
+type Decision = "approved" | "rejected" | "dismissed";
+
+function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (item: ApprovalItem, decision: Decision, note: string) => void; busy: boolean }) {
     const [note, setNote] = useState("");
     const [rejecting, setRejecting] = useState(false);
+    const [confirming, setConfirming] = useState(false);
+    const [confirmDays, setConfirmDays] = useState(0);
     const action = ACTION_LABEL[item.actionType] ?? item.actionType.replace(/_/g, " ");
+    const requestedAtMs = new Date(item.requestedAt).getTime();
+    const requester = item.requester?.name ?? "the agent";
+    // The clock is read in the click handler, never during render (React purity).
+    const approve = () => {
+        const now = Date.now();
+        if (isStaleApproval(requestedAtMs, now)) {
+            setConfirmDays(approvalAgeDays(requestedAtMs, now));
+            setConfirming(true);
+        } else {
+            onDecide(item, "approved", note);
+        }
+    };
     return (
         <article className="emperor-panel rounded-2xl p-4 sm:p-5">
             <div className="flex items-start gap-3">
@@ -90,48 +107,69 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                     )}
                 </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-800/80 pt-3.5">
-                <input
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder={rejecting ? "What should change? (sent to the agent)" : "Note for the agent (optional)"}
-                    aria-label="Note for the agent"
-                    className={cn("h-9 min-w-0 flex-1 rounded-lg border bg-zinc-900 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60", rejecting ? "border-rose-500/40" : "border-zinc-700")}
-                />
-                {rejecting ? (
-                    <>
-                        <button type="button" disabled={busy || !note.trim()} onClick={() => onDecide(item, "rejected", note)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-rose-500/20 px-3 text-sm font-medium text-rose-200 hover:bg-rose-500/30 disabled:opacity-50">
-                            <IconX className="h-4 w-4" />Send back
-                        </button>
-                        <button type="button" onClick={() => setRejecting(false)} className="h-9 rounded-lg px-2 text-sm text-zinc-500 hover:text-zinc-200">Cancel</button>
-                    </>
-                ) : (
-                    <>
-                        <button type="button" disabled={busy} onClick={() => setRejecting(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 hover:border-rose-500/40 hover:text-rose-200 disabled:opacity-50">
-                            <IconX className="h-4 w-4" />Reject
-                        </button>
+            {confirming ? (
+                <div role="alertdialog" aria-label="Confirm approving a stale request" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5">
+                    <p className="text-sm text-amber-100">This request is {confirmDays} days old. Approve and let {requester} act now?</p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
                         <button type="button" disabled={busy} onClick={() => onDecide(item, "approved", note)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50">
-                            <IconCheck className="h-4 w-4" />Approve
+                            <IconCheck className="h-4 w-4" />Approve anyway
                         </button>
-                    </>
-                )}
-            </div>
+                        <button type="button" disabled={busy} onClick={() => onDecide(item, "dismissed", note)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50">
+                            <IconArchive className="h-4 w-4" />Dismiss instead
+                        </button>
+                        <button type="button" onClick={() => setConfirming(false)} className="h-9 rounded-lg px-2 text-sm text-zinc-500 hover:text-zinc-200">Cancel</button>
+                    </div>
+                </div>
+            ) : (
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-800/80 pt-3.5">
+                    <input
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder={rejecting ? "What should change? (sent to the agent)" : "Note for the agent (optional)"}
+                        aria-label="Note for the agent"
+                        className={cn("h-9 min-w-0 flex-1 rounded-lg border bg-zinc-900 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-400/60", rejecting ? "border-rose-500/40" : "border-zinc-700")}
+                    />
+                    {rejecting ? (
+                        <>
+                            <button type="button" disabled={busy || !note.trim()} onClick={() => onDecide(item, "rejected", note)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-rose-500/20 px-3 text-sm font-medium text-rose-200 hover:bg-rose-500/30 disabled:opacity-50">
+                                <IconX className="h-4 w-4" />Send back
+                            </button>
+                            <button type="button" onClick={() => setRejecting(false)} className="h-9 rounded-lg px-2 text-sm text-zinc-500 hover:text-zinc-200">Cancel</button>
+                        </>
+                    ) : (
+                        <>
+                            <button type="button" disabled={busy} onClick={() => setRejecting(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 hover:border-rose-500/40 hover:text-rose-200 disabled:opacity-50">
+                                <IconX className="h-4 w-4" />Reject
+                            </button>
+                            <button type="button" disabled={busy} onClick={() => onDecide(item, "dismissed", note)} title="Obsolete — the agent won't do it" aria-label="Dismiss (obsolete — the agent won't do it)" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50">
+                                <IconArchive className="h-4 w-4" />Dismiss
+                            </button>
+                            <button type="button" disabled={busy} onClick={approve} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50">
+                                <IconCheck className="h-4 w-4" />Approve
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
         </article>
     );
 }
 
 function ResolvedRow({ item }: { item: ApprovalItem }) {
     const approved = item.status === "approved";
+    const dismissed = item.status === "dismissed";
+    const label = approved ? "Approved" : dismissed ? "Dismissed" : item.status === "expired" ? "Expired" : "Rejected";
     return (
         <li>
             <Link href={taskHref(item)} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-900">
-                <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", approved ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300")}>
-                    {approved ? <IconCheck className="h-3.5 w-3.5" /> : <IconX className="h-3.5 w-3.5" />}
+                <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full",
+                    approved ? "bg-emerald-500/15 text-emerald-300" : dismissed || item.status === "expired" ? "bg-zinc-500/15 text-zinc-300" : "bg-rose-500/15 text-rose-300")}>
+                    {approved ? <IconCheck className="h-3.5 w-3.5" /> : dismissed || item.status === "expired" ? <IconArchive className="h-3.5 w-3.5" /> : <IconX className="h-3.5 w-3.5" />}
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-zinc-200">{item.task.title}</span>
                     <span className="block truncate text-xs text-zinc-500">
-                        {approved ? "Approved" : "Rejected"}{item.resolverName ? ` by ${item.resolverName}` : ""}{item.resolutionNote ? ` — "${item.resolutionNote}"` : ""}
+                        {label}{item.resolverName ? ` by ${item.resolverName}` : ""}{item.resolutionNote ? ` — "${item.resolutionNote}"` : ""}
                     </span>
                 </span>
                 <span className="shrink-0 text-[11px] text-zinc-600">{item.resolvedAt ? ago(item.resolvedAt) : ""}</span>
@@ -155,7 +193,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
     const pending = filtered.filter((i) => i.status === "pending").sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
     const resolved = filtered.filter((i) => i.status !== "pending").sort((a, b) => (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? "")).slice(0, 30);
 
-    const decide = async (item: ApprovalItem, decision: "approved" | "rejected", note: string) => {
+    const decide = async (item: ApprovalItem, decision: Decision, note: string) => {
         setBusyKey(item.key);
         try {
             let approvalId = item.approvalId;
@@ -175,7 +213,20 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
                 body: JSON.stringify({ status: decision, resolutionNote: note.trim() || null }),
             });
             if (!res.ok) throw new Error("Couldn't record the decision");
-            toast.success(decision === "approved" ? `Approved. ${item.requester?.name ?? "The agent"} has been told.` : `Sent back to ${item.requester?.name ?? "the agent"} with your note.`);
+            // A decision is final: if it was already resolved (expired, or decided
+            // by someone else), say what actually stands instead of confirming ours.
+            const stored = ((await res.json().catch(() => ({}))) as { approval?: { status?: string } }).approval?.status;
+            if (stored && stored !== decision) {
+                router.refresh();
+                throw new Error(`Already ${stored} — your decision was not applied.`);
+            }
+            toast.success(
+                decision === "approved"
+                    ? `Approved. ${item.requester?.name ?? "The agent"} has been told.`
+                    : decision === "dismissed"
+                        ? `Dismissed. ${item.requester?.name ?? "The agent"} has been told not to do it.`
+                        : `Sent back to ${item.requester?.name ?? "the agent"} with your note.`,
+            );
             router.refresh();
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Something went wrong");

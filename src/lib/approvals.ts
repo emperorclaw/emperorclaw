@@ -1,10 +1,18 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { approvalTaskLinks, approvals, projects, taskEvents, tasks } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
 import { TASK_STATES } from "./task-state";
 import { notifyApprovalRequested } from "./notifications";
+import {
+  approvalDecisionMessage,
+  ApprovalDecision,
+  EXPIRED_RESOLUTION_NOTE,
+  EXTERNAL_APPROVAL_TTL_MS,
+  EXTERNAL_ACTION_TYPES,
+  resolutionTaskState,
+} from "./approval-status";
 
 export async function createApprovalRequest(input: {
   companyId: string;
@@ -67,7 +75,7 @@ export async function resolveApproval(input: {
   companyId: string;
   approvalId: string;
   resolverUserId?: string | null;
-  status: "approved" | "rejected";
+  status: ApprovalDecision;
   resolutionNote?: string | null;
 }) {
   const [approval] = await db.update(approvals).set({
@@ -87,58 +95,48 @@ export async function resolveApproval(input: {
     return existing ?? null;
   }
 
-  const linkedTasks = await db.select({
-    taskId: approvalTaskLinks.taskId,
-  }).from(approvalTaskLinks).where(eq(approvalTaskLinks.approvalId, approval.id));
-
-  const taskIds = linkedTasks.map((item) => item.taskId);
-  const linkedTaskRows = taskIds.length > 0
-    ? await db.select({
-      task: tasks,
-      project: projects,
-    }).from(tasks)
-      .innerJoin(projects, eq(projects.id, tasks.projectId))
-      .where(and(
-        eq(tasks.companyId, input.companyId),
-        inArray(tasks.id, taskIds),
-      ))
-    : [];
+  const linkedTaskRows = await loadLinkedTasks(input.companyId, approval.id);
+  const taskIds = linkedTaskRows.map((row) => row.task.id);
 
   // Approving "close this task" closes it. Approving any other action (send,
   // spend, publish, delete) means "go ahead": the task goes back to work.
-  // A rejection always returns it to the agent to revise — never left
-  // parked in review with nobody acting on it.
-  const nextState = input.status === "approved" && approval.actionType === "task_done" ? TASK_STATES.done : TASK_STATES.inProgress;
+  // A rejection returns it to the agent to revise. A dismissal (and an expiry,
+  // resolved the same way by expireStaleApprovals) leaves the linked task
+  // exactly where it is: the action is obsolete, so there is nothing to rework
+  // and nothing to complete, and the least-destructive path is no change.
+  const nextState = resolutionTaskState(input.status, approval.actionType);
 
-  for (const row of linkedTaskRows) {
-    if (row.task.state === TASK_STATES.done && nextState === TASK_STATES.done) {
-      continue;
+  if (nextState) {
+    for (const row of linkedTaskRows) {
+      if (row.task.state === TASK_STATES.done && nextState === TASK_STATES.done) {
+        continue;
+      }
+
+      const [updatedTask] = await db.update(tasks).set({
+        state: nextState,
+        leaseOwner: null,
+        leaseUntil: null,
+        updatedAt: new Date(),
+      }).where(eq(tasks.id, row.task.id)).returning();
+
+      await db.insert(taskEvents).values({
+        companyId: input.companyId,
+        taskId: row.task.id,
+        eventType: `task_${nextState}`,
+        actorType: "human",
+        actorId: input.resolverUserId || null,
+        payloadJson: {
+          approvalId: approval.id,
+          approvalStatus: input.status,
+          note: input.resolutionNote || null,
+        },
+      });
+
+      await broadcastMcpEvent(input.companyId, {
+        type: "task_updated",
+        task: updatedTask,
+      });
     }
-
-    const [updatedTask] = await db.update(tasks).set({
-      state: nextState,
-      leaseOwner: null,
-      leaseUntil: null,
-      updatedAt: new Date(),
-    }).where(eq(tasks.id, row.task.id)).returning();
-
-    await db.insert(taskEvents).values({
-      companyId: input.companyId,
-      taskId: row.task.id,
-      eventType: `task_${nextState}`,
-      actorType: "human",
-      actorId: input.resolverUserId || null,
-      payloadJson: {
-        approvalId: approval.id,
-        approvalStatus: input.status,
-        note: input.resolutionNote || null,
-      },
-    });
-
-    await broadcastMcpEvent(input.companyId, {
-      type: "task_updated",
-      task: updatedTask,
-    });
   }
 
   await broadcastMcpEvent(input.companyId, {
@@ -149,6 +147,78 @@ export async function resolveApproval(input: {
   await tellAgentAboutDecision(input.companyId, approval, linkedTaskRows.map((r) => r.task));
 
   return approval;
+}
+
+/** The linked tasks of an approval, with their projects, for refs and effects. */
+async function loadLinkedTasks(companyId: string, approvalId: string) {
+  const linked = await db.select({
+    taskId: approvalTaskLinks.taskId,
+  }).from(approvalTaskLinks).where(eq(approvalTaskLinks.approvalId, approvalId));
+
+  const taskIds = linked.map((item) => item.taskId);
+  if (taskIds.length === 0) return [];
+
+  return db.select({
+    task: tasks,
+    project: projects,
+  }).from(tasks)
+    .innerJoin(projects, eq(projects.id, tasks.projectId))
+    .where(and(
+      eq(tasks.companyId, companyId),
+      inArray(tasks.id, taskIds),
+    ));
+}
+
+/** Approvals expired per sweep tick; a backlog drains over several ticks. */
+const EXPIRE_BATCH_SIZE = 200;
+
+/**
+ * Expire pending approvals of external actions that have waited longer than
+ * {@link EXTERNAL_APPROVAL_TTL_MS}. A stale "send / publish / spend / delete"
+ * must never be acted on just because a human pressed the one button the UI
+ * offered days later. Runs from the periodic sweep (see lifecycle.ts); the
+ * update is guarded on `pending`, so a concurrent human decision wins and a
+ * repeat pass is a no-op. Returns how many approvals expired.
+ */
+export async function expireStaleApprovals(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - EXTERNAL_APPROVAL_TTL_MS);
+  const candidates = await db.select().from(approvals).where(and(
+    eq(approvals.status, "pending"),
+    inArray(approvals.actionType, [...EXTERNAL_ACTION_TYPES]),
+    lt(approvals.requestedAt, cutoff),
+  )).orderBy(approvals.requestedAt).limit(EXPIRE_BATCH_SIZE);
+
+  let expired = 0;
+  for (const candidate of candidates) {
+    // One failing row (notification, broadcast) must not stop the rest of the batch.
+    try {
+      const [approval] = await db.update(approvals).set({
+        status: "expired",
+        resolverUserId: null,
+        resolutionNote: EXPIRED_RESOLUTION_NOTE,
+        resolvedAt: now,
+      }).where(and(
+        eq(approvals.id, candidate.id),
+        eq(approvals.companyId, candidate.companyId),
+        eq(approvals.status, "pending"),
+      )).returning();
+
+      if (!approval) continue;
+      expired += 1;
+
+      const linkedTaskRows = await loadLinkedTasks(candidate.companyId, approval.id);
+      await broadcastMcpEvent(candidate.companyId, {
+        type: "approval_updated",
+        approval,
+        taskIds: linkedTaskRows.map((row) => row.task.id),
+      });
+      await tellAgentAboutDecision(candidate.companyId, approval, linkedTaskRows.map((r) => r.task));
+    } catch (error) {
+      console.error(`[approvals] failed to expire approval ${candidate.id}:`, error);
+    }
+  }
+
+  return expired;
 }
 
 export async function listApprovalsForCompany(companyId: string) {
@@ -293,20 +363,20 @@ async function tellAgentAboutDecision(companyId: string, approval: typeof approv
       const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : t.taskType;
       return `[${title.replace(/[[\]]/g, "")}](emperor://task/${t.id})`;
     }).join(", ");
-    const approved = approval.status === "approved";
-    const next = approved
-      ? approval.actionType === "task_done"
-        ? "The task is closed. Nothing else to do unless the note asks for it."
-        : "Go ahead with it now, then update the task (note what you did, attach the evidence) and close it when its acceptance criteria are met."
-      : "Revise according to the note, update the task, and request approval again when it's ready.";
+    const message = approvalDecisionMessage({
+      status: approval.status as ApprovalDecision | "expired",
+      actionType: approval.actionType,
+      refs,
+      note: approval.resolutionNote,
+    });
     await appendThreadMessage({
       companyId,
       threadId: thread.id,
       senderType: "system",
       targetAgentId: agentId,
-      text: `Approval ${approved ? "granted" : "rejected"} for ${refs}${approval.resolutionNote ? `: "${approval.resolutionNote}"` : "."}\n\n${next}`,
+      text: message.text,
       // Queued (the runtime acts on it) unless there is nothing left to do.
-      deliveryState: approved && approval.actionType === "task_done" ? "resolved" : "queued",
+      deliveryState: message.deliveryState,
       metadataJson: { approvalDecision: approval.status, approvalId: approval.id },
     });
   } catch (error) {
