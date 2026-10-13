@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.97] — 2026-10-13
+
+### Fixed
+- The run ledger no longer stores reply text. Bridges recorded exception text in a run's error field, and in production that text was the agent's own reply. The Hermes and Codex bridges now record only a classification (the error type or exit status). Errors already stored on this instance were cleared.
+- Run token counts are real. The Hermes bridge sums the input and output tokens Hermes logs for each model call in the turn, instead of estimating from the incoming message's length.
+
 ## [0.8.96] — 2026-10-13
 
 ### Security
