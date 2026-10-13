@@ -803,6 +803,9 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
     uniqueRequest: uniqueIndex("idx_idempotency_unique_request").on(table.companyId, table.requestHash),
+    // The retention job prunes "older than the TTL" by created_at; without this
+    // index the batched delete would scan the whole table on every tick.
+    createdAtIdx: index("idempotency_keys_created_at_idx").on(table.createdAt),
 }));
 
 export const messageThreads = pgTable("message_threads", {

@@ -9,6 +9,7 @@ const OPS_LINKS = [
     { href: "/ops/companies", label: "Companies" },
     { href: "/ops/errors", label: "Errors" },
     { href: "/ops/runtimes", label: "Runtimes" },
+    { href: "/ops/storage", label: "Storage" },
 ];
 
 export function OpsNav() {

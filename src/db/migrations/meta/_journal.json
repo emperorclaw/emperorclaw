@@ -407,6 +407,13 @@
       "when": 1791806327596,
       "tag": "0057_live-feed-agent-thoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1791912991487,
+      "tag": "0058_idempotency-created-index",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import { agentSessions, agents, tasks, threadMessages } from "@/db/schema";
 import { notifyAgentDown } from "./notifications";
 import { runDailyRoutines } from "./agent-routines";
 import { runStallSweep } from "./stall-sweep";
+import { runScheduledRetention } from "./retention";
 import { expireStaleApprovals } from "./approvals";
 import { runObjectiveFollowups } from "./agent-objective";
 import { flushPendingAgentWakes } from "./task-wake";
@@ -27,11 +28,20 @@ export function stallSweepIntervalMs(env: Record<string, string | undefined> = p
     return Number.isFinite(value) && value >= 60_000 ? value : STALL_SWEEP_INTERVAL_MS;
 }
 
+/** Data retention is heavy and hourly; env-configurable, `0` disables it. */
+const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
+
+export function retentionIntervalMs(env: Record<string, string | undefined> = process.env): number {
+    const value = Number(env.EMPEROR_RETENTION_INTERVAL_MS);
+    return Number.isFinite(value) && value >= 0 ? value : RETENTION_INTERVAL_MS;
+}
+
 let isLifecycleMonitorRunning = false;
 let lastRoutineCheck = 0;
 let lastStallSweepCheck = 0;
 let lastObjectiveCheck = 0;
 let lastCallbackCheck = 0;
+let lastRetentionCheck = 0;
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_CONNECTION_STRING,
@@ -82,6 +92,15 @@ async function runLifecycleMonitor() {
       // The starter-doctrine rollout shares the slow cadence: it is idempotent
       // per company and cheap when every company is already up to date.
       await runStarterDoctrineUpgrades().catch((error) => console.error("Starter doctrine upgrade failed:", error));
+    }
+    // Data retention: prune expired high-volume rows in bounded batches. It
+    // runs hourly by default and is disabled with EMPEROR_RETENTION_INTERVAL_MS=0.
+    // One instance at a time (runScheduledRetention takes its own xact lock); a
+    // failure is logged and never breaks this loop.
+    const retentionInterval = retentionIntervalMs();
+    if (retentionInterval > 0 && now.getTime() - lastRetentionCheck >= retentionInterval) {
+      lastRetentionCheck = now.getTime();
+      await runScheduledRetention(now).catch((error) => console.error("Retention run failed:", error));
     }
     // Persistent objectives: post the next scheduled private prompt when due.
     // The sweep itself is advisory-locked and overlap-checked, so a 60s tick is
