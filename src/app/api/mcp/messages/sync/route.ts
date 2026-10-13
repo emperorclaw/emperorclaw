@@ -7,6 +7,7 @@ import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpo
 import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
+import { recordInterestingVerdicts, type VerdictRecord } from "@/lib/run-ledger";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -184,6 +185,17 @@ export async function GET(req: NextRequest) {
                             return null;
                         })
                         : null;
+                    // Best-effort: store the verdicts that explain delivery for
+                    // the inspector. Never let a ledger failure break or slow
+                    // the sync response.
+                    if (routing && routing.verdicts.length > 0) {
+                        // Fire-and-forget: persisting verdicts must never add
+                        // latency to the sync hot path. A failure is logged only —
+                        // the routing response was already computed above.
+                        void recordInterestingVerdicts(companyId, routing.verdicts).catch((error) => {
+                            console.warn("Verdict logging failed:", error instanceof Error ? error.message : error);
+                        });
+                    }
                     return NextResponse.json({
                         ok: true,
                         mode,
@@ -194,7 +206,7 @@ export async function GET(req: NextRequest) {
                             threadType: threadInfo.get(m.threadId)?.type ?? null,
                             threadTitle: threadInfo.get(m.threadId)?.title ?? null,
                             isAgentPair: threadInfo.get(m.threadId)?.isAgentPair ?? false,
-                            ...(routing?.get(m.id) ?? {}),
+                            ...(routing?.decisions.get(m.id) ?? {}),
                         })),
                     });
                 }
@@ -249,7 +261,7 @@ async function routeForAgent(
     agentId: string,
     messages: (typeof threadMessages.$inferSelect)[],
     threadInfo: Map<string, { type: string; title: string | null; description: string | null; isAgentPair: boolean }>,
-): Promise<Map<string, RouteDecision>> {
+): Promise<{ decisions: Map<string, RouteDecision>; verdicts: VerdictRecord[] }> {
     const roster = await db.select({ id: agents.id, name: agents.name }).from(agents)
         .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
 
@@ -285,20 +297,32 @@ async function routeForAgent(
         for (const [id, streak] of agentStreaks(msgs, [...core, ...noteProgressResets(msgs, notes)])) streaks.set(id, streak);
     }));
 
-    const verdicts = new Map<string, RouteDecision>();
+    const decisions = new Map<string, RouteDecision>();
+    const verdicts: VerdictRecord[] = [];
     for (const m of messages) {
         const info = threadInfo.get(m.threadId);
         const metadata = (m.metadataJson && typeof m.metadataJson === "object" ? m.metadataJson : {}) as Record<string, unknown>;
-        verdicts.set(m.id, decideDelivery({
+        const agentStreak = streaks.get(m.id) ?? 0;
+        const maxTurns = agentLoopMaxTurnsFor(Boolean(info?.isAgentPair));
+        const decision = decideDelivery({
             agentId,
             message: { senderType: m.senderType, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text },
             threadType: info?.type ?? null,
             roster,
-            agentStreak: streaks.get(m.id) ?? 0,
-            maxAgentTurns: agentLoopMaxTurnsFor(Boolean(info?.isAgentPair)),
+            agentStreak,
+            maxAgentTurns: maxTurns,
             isAgentPair: info?.isAgentPair ?? false,
             taskAssignedWake: metadata.taskAssigned === true,
-        }));
+        });
+        decisions.set(m.id, decision);
+        verdicts.push({
+            messageId: m.id,
+            agentId,
+            addressed: decision.addressedToYou,
+            routeReason: decision.routeReason,
+            agentStreak,
+            maxTurns,
+        });
     }
-    return verdicts;
+    return { decisions, verdicts };
 }

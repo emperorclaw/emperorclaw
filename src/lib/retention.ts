@@ -1,7 +1,12 @@
 import { eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { db } from "@/db";
-import { instanceSettings } from "@/db/schema";
+import { agentRuns, instanceSettings } from "@/db/schema";
+import {
+    RUN_DAILY_RETENTION_DAYS,
+    closeLostRuns,
+    rollupFinishedRuns,
+} from "@/lib/run-ledger";
 
 /**
  * Data retention: prune high-volume tables on a schedule so nothing grows
@@ -21,6 +26,16 @@ export const DEFAULT_RETENTION_BUDGET_ROWS = 50_000;
 export const DEFAULT_RETENTION_BUDGET_MS = 20_000;
 
 export const DEFAULT_IDEMPOTENCY_TTL_HOURS = 48;
+/** Detail run rows live this long (once rolled up). */
+export const DEFAULT_RUN_RETENTION_DAYS = 30;
+/** Stored delivery verdicts live this long. */
+export const DEFAULT_ROUTE_RETENTION_DAYS = 14;
+
+/** Shared parser for the per-table TTL env vars (invalid or sub-1 → default). */
+function ttlDaysFrom(env: Record<string, string | undefined>, name: string, fallback: number): number {
+    const value = Number(env[name]);
+    return Number.isFinite(value) && value >= 1 ? value : fallback;
+}
 
 /**
  * How long idempotency keys are kept. A key only needs to outlive a client's
@@ -32,6 +47,21 @@ export function idempotencyTtlHours(env: Record<string, string | undefined> = pr
     return Number.isFinite(value) && value >= 1 ? value : DEFAULT_IDEMPOTENCY_TTL_HOURS;
 }
 
+/** How long `agent_runs` detail rows are kept. */
+export function runRetentionDays(env: Record<string, string | undefined> = process.env): number {
+    return ttlDaysFrom(env, "EMPEROR_RUN_RETENTION_DAYS", DEFAULT_RUN_RETENTION_DAYS);
+}
+
+/** How long `message_routes` verdicts are kept. */
+export function routeRetentionDays(env: Record<string, string | undefined> = process.env): number {
+    return ttlDaysFrom(env, "EMPEROR_ROUTE_RETENTION_DAYS", DEFAULT_ROUTE_RETENTION_DAYS);
+}
+
+/** Rows strictly older than this many days are eligible for deletion. */
+export function dayCutoff(now: Date, days: number): Date {
+    return new Date(now.getTime() - days * 86_400_000);
+}
+
 /** Rows strictly older than this instant are eligible for deletion. */
 export function ttlCutoff(now: Date, hours: number): Date {
     return new Date(now.getTime() - hours * 3_600_000);
@@ -39,7 +69,7 @@ export function ttlCutoff(now: Date, hours: number): Date {
 
 /** Minimal SQL surface the runner needs, so tests can inject a fake. */
 export interface RetentionSqlClient {
-    execute(query: SQL): Promise<{ rowCount?: number | null }>;
+    execute(query: SQL): Promise<{ rowCount?: number | null; rows?: unknown[] }>;
 }
 
 /** Deletes a bounded batch of rows older than `cutoff`; returns rows removed. */
@@ -48,9 +78,9 @@ export interface RetentionExecutor {
 }
 
 /**
- * One retention step. PR 2 adds `agent_runs`, `message_routes` and rollup
- * entries here. `prepare` is an optional non-delete pass (close lost runs, roll
- * up finished days) run once per tick before the batched deletes.
+ * A time-based delete step: deletes rows in `table` whose `timeColumn` is older
+ * than `cutoff`, in bounded batches. `where` adds an extra predicate (e.g. "the
+ * day is already rolled up") to the batched sub-select.
  */
 export interface RetentionStep {
     /** Stable id (the table name) used in summaries and logs. */
@@ -63,18 +93,84 @@ export interface RetentionStep {
     timeColumn: string;
     /** Rows strictly older than this instant are eligible for deletion. */
     cutoff: (now: Date) => Date;
-    /** Optional non-delete pass run once before the batched deletes. */
-    prepare?: (executor: RetentionExecutor, now: Date) => Promise<void>;
+    /** Optional extra predicate for the batched delete. */
+    where?: SQL;
 }
 
-/** The idempotency key TTL: the first (and, in PR 1, only) retention step. */
-export const RETENTION_STEPS: readonly RetentionStep[] = [
+/**
+ * A non-delete pass run once per tick (close lost runs, roll up finished days).
+ * `run` returns the number of rows it touched, which counts toward the budget.
+ */
+export interface RetentionPrepareStep {
+    id: string;
+    label: string;
+    kind: "prepare";
+    run: (now: Date) => Promise<number>;
+}
+
+export type RegisteredRetentionStep = RetentionStep | RetentionPrepareStep;
+
+export function isPrepareStep(step: RegisteredRetentionStep): step is RetentionPrepareStep {
+    return (step as RetentionPrepareStep).kind === "prepare";
+}
+
+/**
+ * The registry, run in order. Order matters: runs must be closed (`lost`) and
+ * rolled up before their detail rows are deleted, so `agent_runs` pruning only
+ * touches days already present in `agent_run_daily`.
+ */
+export const RETENTION_STEPS: readonly RegisteredRetentionStep[] = [
     {
         id: "idempotency_keys",
         label: "Idempotency keys",
         table: "idempotency_keys",
         timeColumn: "created_at",
         cutoff: (now) => ttlCutoff(now, idempotencyTtlHours()),
+    },
+    {
+        id: "agent_runs_lost",
+        label: "Close lost runs",
+        kind: "prepare",
+        run: (now) => closeLostRuns(now),
+    },
+    {
+        id: "agent_run_daily_rollup",
+        label: "Roll up finished runs",
+        kind: "prepare",
+        run: (now) => rollupFinishedRuns(now),
+    },
+    {
+        id: "agent_runs",
+        label: "Agent runs",
+        table: "agent_runs",
+        timeColumn: "started_at",
+        cutoff: (now) => dayCutoff(now, runRetentionDays()),
+        // An attributed run is only pruned once its day has been rolled up to
+        // agent_run_daily. An unattributed row (a finish whose start was lost)
+        // has no rollup to wait for — the rollup groups by agent_id and skips
+        // nulls — so it is pruned on its TTL alone and never accumulates.
+        where: sql`(
+            ${agentRuns.agentId} IS NULL OR EXISTS (
+                SELECT 1 FROM agent_run_daily d
+                WHERE d.company_id = ${agentRuns.companyId}
+                  AND d.agent_id = ${agentRuns.agentId}
+                  AND d.day = date_trunc('day', ${agentRuns.startedAt})::date
+            )
+        )`,
+    },
+    {
+        id: "message_routes",
+        label: "Delivery verdicts",
+        table: "message_routes",
+        timeColumn: "decided_at",
+        cutoff: (now) => dayCutoff(now, routeRetentionDays()),
+    },
+    {
+        id: "agent_run_daily",
+        label: "Run rollups",
+        table: "agent_run_daily",
+        timeColumn: "day",
+        cutoff: (now) => dayCutoff(now, RUN_DAILY_RETENTION_DAYS),
     },
 ];
 
@@ -99,11 +195,13 @@ export function createDbExecutor(client: RetentionSqlClient): RetentionExecutor 
         async deleteBatch(step, cutoff, limit) {
             const table = sql.identifier(step.table);
             const column = sql.identifier(step.timeColumn);
+            const olderThan = sql`${column} < ${cutoff}`;
+            const predicate = step.where ? sql`${olderThan} AND ${step.where}` : olderThan;
             const result = await client.execute(sql`
                 DELETE FROM ${table}
                 WHERE id IN (
                     SELECT id FROM ${table}
-                    WHERE ${column} < ${cutoff}
+                    WHERE ${predicate}
                     ORDER BY ${column}
                     LIMIT ${limit}
                 )
@@ -126,7 +224,7 @@ export interface RunRetentionDeps {
     /** Persist the summary; skipped when absent. */
     saveSummary?: (summary: RetentionSummary) => Promise<void>;
     /** Override the registry (tests only). Defaults to `RETENTION_STEPS`. */
-    steps?: readonly RetentionStep[];
+    steps?: readonly RegisteredRetentionStep[];
 }
 
 /**
@@ -155,11 +253,23 @@ export async function runRetention(
             continue;
         }
 
+        if (isPrepareStep(step)) {
+            let affected = 0;
+            let error: string | undefined;
+            try {
+                affected = await step.run(now);
+                rowsUsed += affected;
+            } catch (cause) {
+                error = cause instanceof Error ? cause.message : String(cause);
+            }
+            results.push({ table: step.id, deleted: affected, exhausted: false, ...(error ? { error } : {}) });
+            continue;
+        }
+
         let deleted = 0;
         let exhausted = false;
         let error: string | undefined;
         try {
-            if (step.prepare) await step.prepare(deps.executor, now);
             const cutoff = step.cutoff(now);
             for (;;) {
                 const rowsRemaining = budgetRows - rowsUsed;

@@ -58,4 +58,12 @@ A click sends that option's prompt (or its label) to you as the operator's reply
 
 For metrics across agents, projects, or time (usage, cost, tasks, load), lead with stats tiles or a chart and keep a table for the details. Every table row goes on its own line, and the separator row needs exactly one cell per header column. Keep tables to about 20 rows (summarize the rest) and use one or two visuals per reply unless asked for more. In team chat, other agents read your message as text, so state the key facts in prose too.`;
 
-export const SERVER_CAPABILITIES = [RICH_BLOCKS_CAPABILITY] as const;
+/**
+ * The run-ledger capability. A bridge that sees it may report start/finish for
+ * each turn; an older server never advertises it, so an upgraded bridge skips
+ * ledger reporting instead of erroring. Version 1 is the contract in
+ * `.opencode-tasks/pr2-ledger-server.md`.
+ */
+export const RUNS_CAPABILITY = "runs: 1";
+
+export const SERVER_CAPABILITIES = [RICH_BLOCKS_CAPABILITY, RUNS_CAPABILITY] as const;

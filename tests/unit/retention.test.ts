@@ -7,6 +7,7 @@ import {
     RETENTION_BATCH_SIZE,
     RETENTION_STEPS,
     idempotencyTtlHours,
+    isPrepareStep,
     runRetention,
     ttlCutoff,
     type RetentionExecutor,
@@ -55,16 +56,43 @@ test("ttlCutoff subtracts whole hours from the run instant", () => {
     assert.equal(ttlCutoff(now, 1).getTime(), now.getTime() - HOUR);
 });
 
-test("the default registry prunes idempotency keys by created_at", () => {
-    assert.equal(RETENTION_STEPS.length, 1);
-    const [first] = RETENTION_STEPS;
-    assert.equal(first.id, "idempotency_keys");
+test("the default registry starts with the idempotency prune and adds the ledger steps in order", () => {
+    assert.deepEqual(
+        RETENTION_STEPS.map((entry) => entry.id),
+        ["idempotency_keys", "agent_runs_lost", "agent_run_daily_rollup", "agent_runs", "message_routes", "agent_run_daily"],
+    );
+    const first = RETENTION_STEPS[0];
+    assert.equal(isPrepareStep(first), false);
+    if (isPrepareStep(first)) return;
     assert.equal(first.table, "idempotency_keys");
     assert.equal(first.timeColumn, "created_at");
     assert.equal(typeof first.cutoff, "function");
     // The step's cutoff honors the env-configured TTL.
     const now = new Date("2026-01-01T00:00:00.000Z");
     assert.equal(first.cutoff(now).getTime(), now.getTime() - DEFAULT_IDEMPOTENCY_TTL_HOURS * HOUR);
+});
+
+test("prepare steps run and count their touched rows toward the budget", async () => {
+    const { executor, calls } = fakeExecutor(() => 0);
+    const ran: string[] = [];
+    const prepare = {
+        id: "rollup",
+        label: "Rollup",
+        kind: "prepare" as const,
+        run: async () => {
+            ran.push("rollup");
+            return 3;
+        },
+    };
+    const summary = await runRetention(
+        { now: new Date(0), budgetRows: 2 },
+        { executor, clock: () => 0, steps: [prepare, step({ id: "t" })] },
+    );
+    assert.deepEqual(ran, ["rollup"]);
+    assert.equal(summary.steps[0].deleted, 3);
+    // The prepare step spent the row budget, so the later delete is deferred.
+    assert.equal(summary.steps[1].exhausted, true);
+    assert.equal(calls.length, 0);
 });
 
 test("batch loop stops when the row budget is exhausted", async () => {

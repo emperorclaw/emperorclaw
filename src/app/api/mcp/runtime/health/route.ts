@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
       messagesAgentMentionsReply: true,
       docsVersioned: true,
       forceSharingInjection: true,
+      // Run ledger (PR 2): bridges gate start/finish reporting on this.
+      runs: 1,
     },
   });
 }
