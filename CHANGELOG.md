@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.96] — 2026-10-13
+
+### Security
+- Knowledge secrets are never sent to agents or to the browser. `list_knowledge`, the resources REST routes, task context packs and the Knowledge page returned whole notes including their secret field; they now return public fields only. Secrets stay available only through the existing protected lease route.
+- Agents can only read notes in their scope: company notes, their own agent notes, and project or customer notes they are granted. This now also applies when a note is requested by id, and an agent-bound token always acts as its own agent instead of trusting a caller-supplied `agentId`.
+
+### Fixed
+- Knowledge search matches words in a note's body, not only its title.
+
 ## [0.8.95] — 2026-10-13
 
 ### Added
