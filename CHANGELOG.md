@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.93] — 2026-10-13
+
+### Added
+- Hourly data retention. A runner in the lifecycle monitor deletes `idempotency_keys` older than 48 hours (`EMPEROR_IDEMPOTENCY_TTL_HOURS`) in committed batches of 5,000, with a per-run budget of 50,000 rows or 20 seconds so a backlog drains over several runs without long locks. Set `EMPEROR_RETENTION_INTERVAL_MS=0` to disable it.
+- **Ops → Storage** for platform admins: database size, the largest tables with estimated rows, and the recent retention runs.
+
+### Changed
+- Idempotency keys now expire after 48 hours: a client that retries the same request later than that runs it again instead of receiving the cached response. Migration `0058` adds an index on `idempotency_keys.created_at`; on large installs the first runs work through the existing backlog.
+
 ## [0.8.92] — 2026-10-13
 
 ### Added
