@@ -9,6 +9,13 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.94] — 2026-10-13
+
+### Added
+- Run ledger (server side). Runtimes can record every turn through `POST /api/mcp/agents/runs` and `PATCH /api/mcp/agents/runs/{id}`: trigger, thread, outcome (`succeeded`, `failed`, `timeout`, `cancelled`, `blocked`, `lost`), duration, tokens, cost, tool count and a redacted error. Calls are idempotent by the runtime-generated id and limited to the token's own agent. The server advertises `runs: 1` so bridges report only where it is supported.
+- Delivery verdicts: when the sync route decides a message is for an agent, or that a mentioned or targeted agent is held back (`loop_paused`, `targeted_other`), the decision is stored so it can be inspected later. `GET /api/messages/{id}/delivery` and `GET /api/agents/{id}/runs` serve them.
+- Retention for the new data: turns stuck `running` for 2 hours close as `lost`, finished days roll up into daily per-agent totals (kept 400 days), turn detail is kept 30 days (`EMPEROR_RUN_RETENTION_DAYS`) and delivery verdicts 14 days (`EMPEROR_ROUTE_RETENTION_DAYS`).
+
 ## [0.8.93] — 2026-10-13
 
 ### Added
