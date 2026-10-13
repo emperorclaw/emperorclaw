@@ -372,5 +372,28 @@ class TestMainLoopLedger(unittest.TestCase):
         self.assertEqual(finishes[0][2]["replyMessageId"], "stored-msg-1")
 
 
+class TestLedgerPrivacyAndUsage(unittest.TestCase):
+    def test_error_is_a_classification_never_exception_text(self):
+        exc = RuntimeError("API credentials received: key=sk-live-123 secret reply text")
+        self.assertEqual(bridge.ledger_error_message(exc), "RuntimeError")
+        failed = subprocess.CalledProcessError(2, ["hermes", "chat", "-q", "prompt text"])
+        self.assertEqual(bridge.ledger_error_message(failed), "Hermes exited with status 2")
+
+    def test_sum_api_usage_reads_real_tokens_for_this_turn_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "agent.log"
+            log.write_text(
+                "2026-10-13 10:00:00,001 INFO [s1] agent.conversation_loop: API call #1: model=m provider=p in=1000 out=50 total=1050\n"
+                "2026-10-13 10:05:00,001 INFO [s1] agent.conversation_loop: API call #1: model=m provider=p in=80000 out=300 total=80300\n"
+                "2026-10-13 10:05:09,001 INFO [s1] agent.tool_executor: tool web_search completed (0.20s, 10 chars)\n"
+                "2026-10-13 10:05:10,001 INFO [s1] agent.conversation_loop: API call #2: model=m provider=p in=81000 out=120 total=81120\n",
+                encoding="utf-8",
+            )
+            since = __import__("time").mktime(__import__("time").strptime("2026-10-13 10:04:00", "%Y-%m-%d %H:%M:%S"))
+            with patch.object(bridge, "_agent_log_path", return_value=log):
+                self.assertEqual(bridge.sum_api_usage(since), (161000, 420))
+                self.assertIsNone(bridge.sum_api_usage(since + 3600))
+
+
 if __name__ == "__main__":
     unittest.main()

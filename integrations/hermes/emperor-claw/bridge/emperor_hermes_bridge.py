@@ -2514,7 +2514,11 @@ def ledger_error_message(exc: BaseException) -> str | None:
     """
     if isinstance(exc, (HermesIdleTimeout, subprocess.TimeoutExpired, TurnInterrupted)):
         return None
-    return describe_processing_error(exc)[:500] or None
+    # Only a classification: exception text can carry the agent's reply or
+    # tool output (seen in production), which must never reach the ledger.
+    if isinstance(exc, subprocess.CalledProcessError):
+        return f"Hermes exited with status {exc.returncode}"
+    return type(exc).__name__[:120] or None
 
 
 def build_run_finish_payload(
@@ -2578,6 +2582,44 @@ def count_tool_calls(since_ts: float, tail_bytes: int = 1_000_000) -> int | None
         if ts > since_ts:
             count += 1
     return count
+
+
+_API_USAGE_LOG_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+INFO\s+"
+    r"(?:\[[^\]]+\]\s+)?agent\.conversation_loop:\s+API call #\d+:.*?\bin=(\d+)\s+out=(\d+)"
+)
+
+
+def sum_api_usage(since_ts: float, tail_bytes: int = 2_000_000) -> tuple[int, int] | None:
+    """Real input/output tokens Hermes logged for its model calls since the turn
+    started (one `API call #N ... in=X out=Y` line per call). Bounded tail read;
+    None when the log is unavailable or has no call for this turn, so the caller
+    falls back to the character estimate."""
+    log_path = _agent_log_path()
+    if not log_path:
+        return None
+    try:
+        size = log_path.stat().st_size
+        with log_path.open("rb") as fh:
+            if size > tail_bytes:
+                fh.seek(size - tail_bytes)
+            raw = fh.read()
+    except OSError:
+        return None
+    total_in = total_out = calls = 0
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        match = _API_USAGE_LOG_RE.match(line)
+        if not match:
+            continue
+        try:
+            ts = time.mktime(time.strptime(match.group(1), _TOOL_LOG_TS_FORMAT))
+        except ValueError:
+            continue
+        if ts > since_ts:
+            total_in += int(match.group(2))
+            total_out += int(match.group(3))
+            calls += 1
+    return (total_in, total_out) if calls else None
 
 
 def post_run_start(payload: Dict[str, Any]) -> bool:
@@ -2653,8 +2695,12 @@ def safe_finish_run(
     re-sending the reply on the next poll.
     """
     try:
-        input_tokens = (estimate_run_tokens(input_chars) or None) if input_chars is not None else None
-        output_tokens = (estimate_run_tokens(output_chars) or None) if output_chars is not None else None
+        usage = sum_api_usage(count_tools_since) if count_tools_since is not None else None
+        if usage:
+            input_tokens, output_tokens = usage
+        else:
+            input_tokens = (estimate_run_tokens(input_chars) or None) if input_chars is not None else None
+            output_tokens = (estimate_run_tokens(output_chars) or None) if output_chars is not None else None
         tool_calls = count_tool_calls(count_tools_since) if count_tools_since is not None else None
         error = ledger_error_message(exc) if exc is not None else None
         post_run_finish(run_id, build_run_finish_payload(

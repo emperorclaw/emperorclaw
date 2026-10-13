@@ -182,8 +182,11 @@ async function retryPendingRunFinish() {
 /** Short, secret-safe ledger error text (no stack). */
 function ledgerErrorText(err) {
     if (!err) return null;
-    const text = String(err.message || err).replace(/\s+/g, " ").trim();
-    return text ? text.slice(0, 500) : null;
+    // Only a classification: an error message can carry reply or tool output,
+    // which must never reach the ledger.
+    const name = (err && err.name) || "Error";
+    const code = err && (err.code || err.status);
+    return `${name}${code ? ` (${String(code).slice(0, 40)})` : ""}`.slice(0, 120);
 }
 
 /** Compact org block for this turn, served from the 10-minute cache. */
