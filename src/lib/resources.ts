@@ -1,6 +1,6 @@
 import { resourceContextPriority } from "@/lib/resource-context-priority";
 import { randomUUID } from "crypto";
-import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   resourceAccessLogs,
@@ -10,6 +10,7 @@ import {
   resourceVersions,
   scopedResources,
 } from "@/db/schema";
+import { isCustomerAllowed, isProjectAllowed, loadAgentScopeContext } from "@/lib/agent-scope";
 import type { McpTaskScopeContext } from "@/lib/mcp";
 import {
   buildResourceChildPath,
@@ -56,6 +57,90 @@ export function normalizeScopeType(input: unknown): ResourceScopeType {
 export function normalizeResourceType(input: unknown): string {
   const value = typeof input === "string" ? input.trim().toLowerCase() : "";
   return value || "external_account";
+}
+
+/**
+ * Every column except the secret material. List queries select exactly this so
+ * a secret can never reach an agent through a listing, even if a future route
+ * forgets to sanitize its output. Secret material is only returned by the
+ * danger-scoped lease endpoint.
+ */
+export const PUBLIC_RESOURCE_COLUMNS = {
+  id: scopedResources.id,
+  companyId: scopedResources.companyId,
+  scopeType: scopedResources.scopeType,
+  scopeId: scopedResources.scopeId,
+  provider: scopedResources.provider,
+  resourceType: scopedResources.resourceType,
+  name: scopedResources.name,
+  displayName: scopedResources.displayName,
+  path: scopedResources.path,
+  configText: scopedResources.configText,
+  status: scopedResources.status,
+  isShared: scopedResources.isShared,
+  ownership: scopedResources.ownership,
+  lastUsedAt: scopedResources.lastUsedAt,
+  lastFailureAt: scopedResources.lastFailureAt,
+  lastFailureReason: scopedResources.lastFailureReason,
+  createdAt: scopedResources.createdAt,
+  updatedAt: scopedResources.updatedAt,
+  deletedAt: scopedResources.deletedAt,
+} as const;
+
+export type PublicResource = Omit<typeof scopedResources.$inferSelect, "secretText">;
+
+/**
+ * The one agent-facing projection of a scoped_resources row. `listScopedResources`
+ * already selects `PUBLIC_RESOURCE_COLUMNS`, so this matters for rows returned by
+ * create/update `.returning()`, which still carry `secretText`.
+ */
+export function toPublicResource<T extends object>(resource: T): Omit<T, "secretText"> {
+  const safe = { ...resource };
+  delete (safe as { secretText?: unknown }).secretText;
+  return safe as Omit<T, "secretText">;
+}
+
+/**
+ * The read access an agent has to scoped resources. `null` means a human or
+ * operator session with unrestricted access — the previous behaviour.
+ */
+export type AgentResourceAccess = {
+  callerAgentId: string;
+  allowedProjectIds: Set<string> | null;
+  allowedCustomerIds: Set<string> | null;
+};
+
+/**
+ * The single read-access rule for agent-facing knowledge/resources reads, the
+ * same scope match the shared-context selection applies (`resourceContextPriority`):
+ * an agent may read company-scoped notes, notes scoped to itself, and
+ * customer/project notes only for the scopes its `scopeJson` grants (an
+ * unrestricted scope grants all). Anything else is not visible.
+ */
+export function canAgentReadResource(
+  resource: { scopeType: string; scopeId: string | null },
+  access: AgentResourceAccess | null,
+): boolean {
+  if (!access) return true;
+  const scope = normalizeScopeType(resource.scopeType);
+  if (scope === "company") return true;
+  if (scope === "agent") return resource.scopeId === access.callerAgentId;
+  if (scope === "project") return isProjectAllowed(access.allowedProjectIds, resource.scopeId);
+  if (scope === "customer") return isCustomerAllowed(access.allowedCustomerIds, resource.scopeId);
+  return false;
+}
+
+/**
+ * Resolve an agent's read access once per request. Returns null for a
+ * human/operator caller (no agent binding) so those sessions keep their access.
+ */
+export async function loadAgentResourceAccess(
+  companyId: string,
+  callerAgentId: string | null | undefined,
+): Promise<AgentResourceAccess | null> {
+  if (!callerAgentId) return null;
+  const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, callerAgentId);
+  return { callerAgentId, allowedProjectIds, allowedCustomerIds };
 }
 
 function normalizeBrainKey(value: string) {
@@ -203,14 +288,19 @@ export async function listScopedResources(input: {
   if (input.name) conditions.push(ilike(scopedResources.name, `%${input.name}%`));
   if (input.displayName) conditions.push(ilike(scopedResources.displayName, `%${input.displayName}%`));
   if (input.search) {
+    const term = `%${input.search}%`;
+    // Free-text search spans name, display name and the note body. The body is
+    // matched on a bounded prefix so a pathological note cannot force a full
+    // scan of multi-megabyte content; the term stays a bound parameter.
     const searchCondition = or(
-      ilike(scopedResources.name, `%${input.search}%`),
-      ilike(scopedResources.displayName, `%${input.search}%`)
+      ilike(scopedResources.name, term),
+      ilike(scopedResources.displayName, term),
+      ilike(sql`substring(${scopedResources.configText}, 1, 20000)`, term)
     );
     if (searchCondition) conditions.push(searchCondition);
   }
 
-  return db.select().from(scopedResources)
+  return db.select(PUBLIC_RESOURCE_COLUMNS).from(scopedResources)
     .where(and(...conditions))
     .orderBy(desc(scopedResources.updatedAt));
 }
@@ -526,7 +616,7 @@ export async function syncResourceBrainMetadata(
   }
 
   const resources = await listScopedResources({ companyId });
-  const lookup = new Map<string, typeof scopedResources.$inferSelect>();
+  const lookup = new Map<string, PublicResource>();
   for (const candidate of resources) {
     lookup.set(normalizeBrainKey(candidate.displayName || candidate.name), candidate);
     lookup.set(normalizeBrainKey(candidate.name), candidate);
@@ -775,6 +865,8 @@ export async function resolveCompanyBrainContext(input: {
   customerId?: string | null;
   projectId?: string | null;
   agentId?: string | null;
+  /** The authenticated agent making the call; null for human/operator sessions. */
+  callerAgentId?: string | null;
   resourceIds?: string[];
   tagFilters?: string[];
   maxChars?: number;
@@ -782,7 +874,11 @@ export async function resolveCompanyBrainContext(input: {
 }) {
   const maxChars = input.maxChars || DEFAULT_CONTEXT_MAX_CHARS;
   const maxCharsPerResource = input.maxCharsPerResource || resolveMaxCharsPerResource();
-  const allResources = await listScopedResources({ companyId: input.companyId, status: "active" });
+  const access = await loadAgentResourceAccess(input.companyId, input.callerAgentId ?? null);
+  const allResources = (await listScopedResources({ companyId: input.companyId, status: "active" }))
+    // An explicit resourceId (or tag/neighbor) must not let an agent read a note
+    // outside its scope: apply the shared read rule before scoring or selection.
+    .filter((resource) => canAgentReadResource(resource, access));
   const links = await db.select().from(resourceLinks).where(eq(resourceLinks.companyId, input.companyId));
   const requestedTags = new Set((input.tagFilters || []).map((tag) => tag.replace(/^#/, "").trim()).filter(Boolean));
   const tagRows = requestedTags.size > 0

@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { createScopedResource } from "@/lib/resources";
+import { createScopedResource, toPublicResource } from "@/lib/resources";
 
 function slugify(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "knowledge-note";
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({
-    resource,
+    resource: toPublicResource(resource),
     deprecated: true,
     message: "Proposal queues are deprecated. Created a published Knowledge & Rules note instead.",
   }, { status: 201 });

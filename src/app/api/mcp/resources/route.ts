@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
-import { scopedResources } from "@/db/schema";
+import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
 import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 
-function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
+function sanitizeResource(resource: PublicResource) {
   return {
-    ...resource,
+    ...toPublicResource(resource),
     ...resolveResourceScope(resource),
-    secretText: undefined,
   };
 }
 
@@ -22,7 +20,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const customerId = searchParams.get("customerId");
   const projectId = searchParams.get("projectId");
-  const agentId = searchParams.get("agentId");
+  // An agent-bound token always acts as its own agent; ?agentId= only applies to company-wide tokens.
+  const agentId = auth.companyToken!.agentId ?? searchParams.get("agentId");
   const scopeType = searchParams.get("scopeType");
   const scopeId = searchParams.get("scopeId");
   const resourceType = searchParams.get("resourceType");

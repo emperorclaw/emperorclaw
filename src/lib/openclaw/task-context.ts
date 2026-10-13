@@ -13,6 +13,7 @@ import {
   customers,
 } from "@/db/schema";
 import { getPendingApprovalSummaryForTaskIds } from "@/lib/project-workflow";
+import { toPublicResource } from "@/lib/resources";
 
 export async function getTaskDetailForCompany(companyId: string, taskId: string) {
   const rows = await db.select({
@@ -167,11 +168,12 @@ export async function getTaskContextForCompany(companyId: string, taskId: string
     notes,
     projectMemory: projectMemoryItems,
     resources: {
-      project: projectResources,
-      customer: customerResources,
-      shared: sharedAndCompanyResources.filter(r => r.isShared),
-      company: sharedAndCompanyResources.filter(r => r.scopeType === "company"),
-      agent: agentResources,
+      // This pack is fetched by agent runtimes: never expose secret columns.
+      project: projectResources.map(toPublicResource),
+      customer: customerResources.map(toPublicResource),
+      shared: sharedAndCompanyResources.filter(r => r.isShared).map(toPublicResource),
+      company: sharedAndCompanyResources.filter(r => r.scopeType === "company").map(toPublicResource),
+      agent: agentResources.map(toPublicResource),
     },
     relatedThreads: Array.from(threadMap.values()),
     agentProfile: relatedProfile,

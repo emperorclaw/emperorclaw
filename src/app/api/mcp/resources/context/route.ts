@@ -8,7 +8,8 @@ export async function GET(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const companyId = auth.companyToken!.companyId;
   const { searchParams } = new URL(req.url);
-  const agentParam = searchParams.get("agentId");
+  // An agent-bound token always acts as its own agent; ?agentId= only applies to company-wide tokens.
+  const agentParam = auth.companyToken!.agentId ?? searchParams.get("agentId");
   const agentId = agentParam ? await resolveAgentId(companyId, agentParam) : null;
   const customerIdParam = searchParams.get("customerId");
   const projectIdParam = searchParams.get("projectId");
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
     customerId: customerIdParam,
     projectId: projectIdParam,
     agentId,
+    callerAgentId: agentId,
     resourceIds,
     tagFilters,
     maxChars,

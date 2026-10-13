@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { resolveCompanyBrainContext, listScopedResources, createScopedResource, updateScopedResource } from "@/lib/resources";
+import { resolveCompanyBrainContext, listScopedResources, createScopedResource, updateScopedResource, canAgentReadResource, loadAgentResourceAccess, toPublicResource } from "@/lib/resources";
 import { jsonResult, errorResult } from "../result";
 
-export function registerKnowledgeTools(server: McpServer, companyId: string) {
+export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("get_knowledge_context", {
         title: "Get Knowledge Context",
         description: "Get this company's resolved Knowledge & Rules context — operating doctrine, SOPs, and business rules, ranked by relevance to the given scope. Call this before assuming any business convention.",
@@ -17,7 +17,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string) {
         },
     }, async ({ customerId, projectId, agentId, maxChars, resourceIds, tagFilters }) => {
         try {
-            const context = await resolveCompanyBrainContext({ companyId, customerId, projectId, agentId, maxChars, resourceIds, tagFilters });
+            const context = await resolveCompanyBrainContext({ companyId, customerId, projectId, agentId, callerAgentId, maxChars, resourceIds, tagFilters });
             return jsonResult(context);
         } catch (e) {
             return errorResult(e);
@@ -35,7 +35,26 @@ export function registerKnowledgeTools(server: McpServer, companyId: string) {
     }, async ({ scopeType, scopeId, search }) => {
         try {
             const resources = await listScopedResources({ companyId, scopeType, scopeId, search });
-            return jsonResult({ resources: resources.map(resource => ({ ...resource, shareUrl: resource.resourceType === "knowledge_base" ? `emperor://knowledge/${resource.id}` : undefined })) });
+            const access = await loadAgentResourceAccess(companyId, callerAgentId ?? null);
+            return jsonResult({
+                resources: resources
+                    // Index fields only: never the secret or the note body, and
+                    // only notes the calling agent is allowed to see.
+                    .filter((resource) => canAgentReadResource(resource, access))
+                    .map((resource) => ({
+                        id: resource.id,
+                        name: resource.name,
+                        displayName: resource.displayName,
+                        scopeType: resource.scopeType,
+                        scopeId: resource.scopeId,
+                        resourceType: resource.resourceType,
+                        status: resource.status,
+                        isShared: resource.isShared,
+                        path: resource.path,
+                        updatedAt: resource.updatedAt,
+                        shareUrl: resource.resourceType === "knowledge_base" ? `emperor://knowledge/${resource.id}` : undefined,
+                    })),
+            });
         } catch (e) {
             return errorResult(e);
         }
@@ -59,7 +78,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string) {
                 provider: "knowledge", resourceType: "knowledge_base",
                 configText: content, isShared, status,
             });
-            return jsonResult({ message: "Knowledge note created", resource });
+            return jsonResult({ message: "Knowledge note created", resource: toPublicResource(resource) });
         } catch (e) {
             return errorResult(e);
         }
@@ -81,7 +100,7 @@ export function registerKnowledgeTools(server: McpServer, companyId: string) {
                 companyId, resourceId,
                 patch: { configText: content, name, isShared, status },
             });
-            return jsonResult({ message: "Knowledge note updated", resource });
+            return jsonResult({ message: "Knowledge note updated", resource: resource ? toPublicResource(resource) : resource });
         } catch (e) {
             return errorResult(e);
         }

@@ -20,7 +20,7 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
     registerAgentTools(server, companyId, callerAgentId);
     registerTaskTools(server, companyId, callerAgentId);
     registerProjectTools(server, companyId);
-    registerKnowledgeTools(server, companyId);
+    registerKnowledgeTools(server, companyId, callerAgentId);
     registerStorageTools(server, companyId);
     registerMessagingTools(server, companyId, callerAgentId);
     registerObjectiveTools(server, companyId, callerAgentId);

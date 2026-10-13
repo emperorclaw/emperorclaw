@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
-import { scopedResources } from "@/db/schema";
+import { createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
 import { requireProjectInScope, loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
 
-function sanitizeResource(resource: typeof scopedResources.$inferSelect) {
+function sanitizeResource(resource: PublicResource) {
   return {
-    ...resource,
+    ...toPublicResource(resource),
     ...resolveResourceScope(resource),
-    secretText: undefined,
   };
 }
 

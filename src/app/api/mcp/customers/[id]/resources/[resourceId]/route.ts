@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
-import { archiveScopedResource, getScopedResource, updateScopedResource } from "@/lib/resources";
+import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource } from "@/lib/resources";
 
 export async function PATCH(
     req: NextRequest,
@@ -26,7 +26,7 @@ export async function PATCH(
             resourceId,
             patch: body,
         });
-        return NextResponse.json({ resource: updated });
+        return NextResponse.json({ resource: updated ? { ...toPublicResource(updated), ...resolveResourceScope(updated) } : updated });
     } catch (routeError) {
         const message = routeError instanceof Error ? routeError.message : "Internal Server Error";
         const routeStatus = message.startsWith("Scoped resource not found") ? 404 : 400;
@@ -52,5 +52,5 @@ export async function DELETE(
     }
 
     const archived = await archiveScopedResource(companyId, resourceId);
-    return NextResponse.json({ resource: archived });
+    return NextResponse.json({ resource: archived ? { ...toPublicResource(archived), ...resolveResourceScope(archived) } : archived });
 }

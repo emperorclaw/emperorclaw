@@ -36,7 +36,6 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
             initialResources={[...initialResources].sort((a, b) => Number(b.id === requestedResource) - Number(a.id === requestedResource)).map((resource) => ({
                 ...resource,
                 ...resolveResourceScope(resource),
-                secretText: resource.secretText || "",
             }))}
             customers={customerRows}
             projects={projectRows.map((project) => ({ id: project.id, name: project.goal }))}

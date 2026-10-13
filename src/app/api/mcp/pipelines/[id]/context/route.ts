@@ -30,6 +30,8 @@ export async function GET(
     const context = await resolveCompanyBrainContext({
         companyId,
         ...buildPipelineContextParams(pipeline),
+        // Scope the notes to the calling agent when the token is bound to one.
+        callerAgentId: auth.companyToken!.agentId ?? null,
     });
 
     return NextResponse.json({

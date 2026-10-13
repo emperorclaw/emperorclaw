@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { archiveScopedResource, getScopedResource, resolveResourceScope, updateScopedResource } from "@/lib/resources";
+import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource, type PublicResource } from "@/lib/resources";
 import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
 
-function sanitizeResource(resource: any) {
+function sanitizeResource(resource: PublicResource) {
   return {
-    ...resource,
+    ...toPublicResource(resource),
     ...resolveResourceScope(resource),
-    secretText: undefined,
   };
 }
 
-/** null = ok to proceed. Otherwise a resource in scopeType project/customer that the given agent can't reach. */
+/**
+ * true when a resource is not reachable by the given agent: agent-scoped notes
+ * belong to their own agent, project/customer notes to a scope the agent is
+ * granted. Company notes and calls without ?agentId= are always allowed.
+ */
 async function isResourceOutOfScope(companyId: string, agentIdParam: unknown, resource: { scopeType: string; scopeId: string | null }): Promise<boolean> {
   if (typeof agentIdParam !== "string" || !agentIdParam) return false;
-  if (resource.scopeType !== "project" && resource.scopeType !== "customer") return false;
+  if (resource.scopeType === "company") return false;
   if (!resource.scopeId) return false;
   let resolvedAgentId: string;
   try {
@@ -22,6 +25,10 @@ async function isResourceOutOfScope(companyId: string, agentIdParam: unknown, re
   } catch {
     return true; // unknown agent — treat as no access
   }
+  if (resource.scopeType === "agent") {
+    return resource.scopeId !== resolvedAgentId;
+  }
+  if (resource.scopeType !== "project" && resource.scopeType !== "customer") return false;
   const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
   return resource.scopeType === "project"
     ? !isProjectAllowed(allowedProjectIds, resource.scopeId)
@@ -45,7 +52,8 @@ export async function GET(
     return NextResponse.json({ error: "Resource not found" }, { status: 404 });
   }
 
-  const agentIdParam = req.nextUrl.searchParams.get("agentId");
+  // An agent-bound token always acts as its own agent; ?agentId= only applies to company-wide tokens.
+  const agentIdParam = auth.companyToken!.agentId ?? req.nextUrl.searchParams.get("agentId");
   if (await isResourceOutOfScope(companyId, agentIdParam, resource)) {
     return NextResponse.json({ error: "Resource not found" }, { status: 404 });
   }

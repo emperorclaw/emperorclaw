@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { checkIdempotency, saveIdempotencyResponse, verifyMcpToken, resolveAgentId } from "@/lib/mcp";
-import { createScopedResource, listScopedResources } from "@/lib/resources";
+import { createScopedResource, listScopedResources, resolveResourceScope, toPublicResource } from "@/lib/resources";
 import { loadAgentScopeContext, isCustomerAllowed } from "@/lib/agent-scope";
 
 export async function GET(
@@ -55,7 +55,9 @@ export async function GET(
         status: searchParams.get("status"),
         isShared,
     });
-    return NextResponse.json({ resources });
+    return NextResponse.json({
+        resources: resources.map((resource) => ({ ...toPublicResource(resource), ...resolveResourceScope(resource) })),
+    });
 }
 
 export async function POST(
