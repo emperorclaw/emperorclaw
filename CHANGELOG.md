@@ -9,6 +9,14 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.95] — 2026-10-13
+
+### Added
+- The Hermes and Codex bridges (0.2.0) report every turn to the run ledger when the server supports it: what triggered it, its thread, outcome, duration, token estimate, tool count and a short redacted error. Reporting is best effort: a 5-second timeout, one retry of a lost finish, and a circuit breaker that pauses reporting for 5 minutes after 3 failures. A ledger failure never changes how a message is handled.
+
+### Changed
+- The Hermes plugin version is now 0.2.0 and the bridge reports it, so outdated bridges can be told apart.
+
 ## [0.8.94] — 2026-10-13
 
 ### Added
