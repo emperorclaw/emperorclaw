@@ -77,6 +77,8 @@ export async function POST(request: Request) {
       status: "active",
       ownership: "managed",
       isShared: typeof body.isShared === "boolean" ? body.isShared : false,
+      inject: typeof body.inject === "string" ? body.inject : undefined,
+      summary: typeof body.summary === "string" ? body.summary : undefined,
       changeSummary: typeof body.changeSummary === "string" ? body.changeSummary : "Operator created Company Brain note",
       createdByType: "user",
       createdById: membership.userId,

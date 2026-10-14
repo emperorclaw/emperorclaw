@@ -72,7 +72,7 @@ test("Knowledge & Rules UI keeps Company Brain advanced concepts operator-friend
   const source = read("src/app/(app)/resources/resources-client.tsx");
   // "Reading"/"Source" tabs were replaced by the single Obsidian-style
   // live-preview editor (MarkdownLiveEditor) with a built-in source toggle.
-  ["Knowledge & Rules", "Vault explorer", "MarkdownLiveEditor", "Properties", "Local graph", "Linked mentions", "customerNames", "projectNames", "agentNames", "Publication status", "Needs review", "Published", "setNoteStatus", "Inject into matching agents", "shared means context injection", "drafts", "status: draft", "Delete note", "createLinkedResource", "selectAdjacentResource", "UnresolvedGraphNode", "Graph connections", "overflow-y-auto"].forEach((needle) => {
+  ["Knowledge & Rules", "Vault explorer", "MarkdownLiveEditor", "Properties", "Local graph", "Linked mentions", "customerNames", "projectNames", "agentNames", "Publication status", "Needs review", "Published", "setNoteStatus", "Agent context", "Knowledge injection mode", "Always", "In index", "On request", "Always budget", "Summary", "drafts", "status: draft", "Delete note", "createLinkedResource", "selectAdjacentResource", "UnresolvedGraphNode", "Graph connections", "overflow-y-auto"].forEach((needle) => {
     assertContains(source, needle, `resources-client should include ${needle}`);
   });
   ["Brain Feed", "Backlinks", "Company Brain</h1>", "Suggest an update", "Add to Review Queue", "Review Queue", "Agent suggestions", "Advanced relationships", "prefers-reduced-motion", "Vault settings", "More actions"].forEach((needle) => {

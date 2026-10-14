@@ -661,6 +661,17 @@ export const scopedResources = pgTable("scoped_resources", {
     secretText: text("secret_text").default('').notNull(),
     status: text("status").default('active').notNull(),
     isShared: boolean("is_shared").default(false).notNull(),
+    // How this note reaches an agent. Kept in step with isShared, which other
+    // code still reads: isShared === (inject !== 'on_request').
+    //   always     — body is pushed into every session (hard budget)
+    //   index      — title/summary/id line in the index; body on demand
+    //   on_request — only surfaced by explicit search or direct fetch
+    // Default on_request (matching is_shared=false) so a pre-lean writer that
+    // omits the column cannot silently share a new note during a rolling deploy.
+    inject: text("inject").default('on_request').notNull(),
+    // One-line description (frontmatter `summary:` or the body's first sentence,
+    // ≤140 derived, ≤200 stored). Nullable so pre-migration rows backfill lazily.
+    summary: text("summary"),
     ownership: text("ownership").default('managed').notNull(),
     lastUsedAt: timestamp("last_used_at"),
     lastFailureAt: timestamp("last_failure_at"),

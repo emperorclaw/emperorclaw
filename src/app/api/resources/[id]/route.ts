@@ -67,6 +67,8 @@ export async function PATCH(
       configText?: string;
       secretText?: string;
       isShared?: boolean;
+      inject?: string;
+      summary?: string | null;
       scopeType?: string;
       scopeId?: string | null;
       changeSummary?: string;
@@ -84,6 +86,8 @@ export async function PATCH(
     if (body.secretText !== undefined) patch.secretText = body.secretText;
     if (body.secretJson !== undefined) patch.secretText = body.secretJson;
     if (body.isShared !== undefined) patch.isShared = typeof body.isShared === "boolean" ? body.isShared : false;
+    if (body.inject !== undefined) patch.inject = typeof body.inject === "string" ? body.inject : "index";
+    if (body.summary !== undefined) patch.summary = typeof body.summary === "string" ? body.summary : null;
     if (body.scopeType !== undefined) patch.scopeType = typeof body.scopeType === "string" ? body.scopeType : "company";
     if (body.scopeId !== undefined) patch.scopeId = typeof body.scopeId === "string" && body.scopeId.trim() ? body.scopeId.trim() : null;
     if (body.changeSummary !== undefined && typeof body.changeSummary === "string") patch.changeSummary = body.changeSummary.trim();

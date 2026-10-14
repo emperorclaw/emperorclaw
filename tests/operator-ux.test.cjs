@@ -131,7 +131,7 @@ test("Operator polish pass keeps advanced pages consistent and removes dead-feel
 
   assertContains(resources, "Publish note", "draft KB notes should have an obvious publish action");
   assertContains(resources, "Move back to draft", "published KB notes should be reversible without hunting in metadata");
-  assertContains(resources, "Shared is separate", "KB copy should clarify published versus agent injection");
+  assertContains(resources, "Agent context is separate", "KB copy should clarify published versus agent injection");
 
   [approvals, storage].forEach((source) => {
     assertContains(source, "max-w-[1800px]", "operator pages should use the standard wide workspace container");

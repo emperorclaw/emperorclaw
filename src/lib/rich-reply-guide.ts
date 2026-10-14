@@ -66,4 +66,13 @@ For metrics across agents, projects, or time (usage, cost, tasks, load), lead wi
  */
 export const RUNS_CAPABILITY = "runs: 1";
 
-export const SERVER_CAPABILITIES = [RICH_BLOCKS_CAPABILITY, RUNS_CAPABILITY] as const;
+/**
+ * The lean-context capability. A bridge that sees it may switch to the
+ * Tier 0/1/2 model: fetch `/api/mcp/context/lean` (kernel + index + roster)
+ * once per session and pull the rest on demand. A server without it keeps the
+ * old always-sent static block, so an upgraded bridge degrades cleanly.
+ * Version 1 is the contract in `.opencode-tasks/lean1-server.md`.
+ */
+export const LEAN_CONTEXT_CAPABILITY = "lean-context: 1";
+
+export const SERVER_CAPABILITIES = [RICH_BLOCKS_CAPABILITY, RUNS_CAPABILITY, LEAN_CONTEXT_CAPABILITY] as const;

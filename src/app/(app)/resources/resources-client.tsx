@@ -33,7 +33,29 @@ type ResourceRecord = {
   updatedAt: string | Date;
   deletedAt?: string | Date | null;
   isShared: boolean;
+  /** always | index | on_request — how the note reaches agents. */
+  inject?: string | null;
+  /** One-line index summary (frontmatter or derived). */
+  summary?: string | null;
 };
+
+type KnowledgeInjectMode = "always" | "index" | "on_request";
+
+/** Must match KNOWLEDGE_ALWAYS_MAX_CHARS on the server. */
+const ALWAYS_BUDGET_CHARS = 1500;
+
+const INJECT_OPTIONS: { value: KnowledgeInjectMode; label: string; hint: string }[] = [
+  { value: "always", label: "Always", hint: "Push this note's body into every matching session. Always notes share a 1,500-character budget." },
+  { value: "index", label: "In index", hint: "Show a one-line summary in the agent's knowledge index; the body loads on demand." },
+  { value: "on_request", label: "On request", hint: "Keep the note out of the index; agents find it only by search or a direct fetch." },
+];
+
+/** The note's injection mode, falling back to the legacy isShared boolean. */
+function injectOf(resource: Pick<ResourceRecord, "inject" | "isShared">): KnowledgeInjectMode {
+  const value = (resource.inject || "").toLowerCase();
+  if (value === "always" || value === "index" || value === "on_request") return value;
+  return resource.isShared ? "index" : "on_request";
+}
 
 type ScopeOption = { id: string; name: string };
 type BrainLink = { id: string; sourceResourceId: string; targetResourceId: string | null; linkText: string; linkType: string };
@@ -161,7 +183,8 @@ export default function ResourcesClient({
   const [renameFolderValue, setRenameFolderValue] = useState("");
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ scopeKey: string; path: string } | null>(null);
   const [draftScopeId, setDraftScopeId] = useState(initialResources[0]?.scopeId || "");
-  const [draftShared, setDraftShared] = useState(Boolean(initialResources[0]?.isShared));
+  const [draftInject, setDraftInject] = useState<KnowledgeInjectMode>(initialResources[0] ? injectOf(initialResources[0]) : "on_request");
+  const [draftSummary, setDraftSummary] = useState(initialResources[0]?.summary || "");
   const [publicationStatus, setPublicationStatus] = useState<"draft" | "active">(noteStatus(initialResources[0]?.configText || "") === "draft" ? "draft" : "active");
   const [insights, setInsights] = useState<BrainInsights>(EMPTY_INSIGHTS);
   const [isSaving, setIsSaving] = useState(false);
@@ -173,12 +196,25 @@ export default function ResourcesClient({
   const selectedResource = useMemo(() => resources.find((resource) => resource.id === selectedResourceId) || null, [resources, selectedResourceId]);
   const isDeleteArmed = Boolean(selectedResource) && confirmingDelete === selectedResource?.id;
 
+  // Live "Always" budget: every always note's body plus the current editor
+  // draft. Must track KNOWLEDGE_ALWAYS_MAX_CHARS on the server.
+  const alwaysBudget = useMemo(() => {
+    let used = 0;
+    for (const resource of resources) {
+      if (resource.id === selectedResourceId) continue;
+      if (injectOf(resource) === "always") used += (resource.configText || "").length;
+    }
+    if (selectedResource && draftInject === "always") used += draftContent.length;
+    return { used, budget: ALWAYS_BUDGET_CHARS, over: used > ALWAYS_BUDGET_CHARS };
+  }, [resources, selectedResourceId, selectedResource, draftInject, draftContent]);
+  const injectHint = INJECT_OPTIONS.find((option) => option.value === draftInject)?.hint ?? "";
+
   const filteredResources = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return resources.filter((resource) => {
       const haystack = `${resource.name} ${resource.displayName || ""} ${resource.configText}`.toLowerCase();
       if (normalized && !haystack.includes(normalized)) return false;
-      if (filter === "shared") return resource.isShared;
+      if (filter === "shared") return injectOf(resource) !== "on_request";
       if (filter === "drafts") return noteStatus(resource.configText || "") === "draft";
       return true;
     });
@@ -242,7 +278,8 @@ export default function ResourcesClient({
     setDraftScopeType(selectedResource.scopeType);
     setDraftPath(selectedResource.path || "");
     setDraftScopeId(selectedResource.scopeId || "");
-    setDraftShared(Boolean(selectedResource.isShared));
+    setDraftInject(injectOf(selectedResource));
+    setDraftSummary(selectedResource.summary || "");
     setPublicationStatus(noteStatus(selectedResource.configText || "") === "draft" ? "draft" : "active");
     void loadBrainInsights(selectedResource.id);
   }, [selectedResource]);
@@ -394,7 +431,7 @@ export default function ResourcesClient({
             <IconFileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === note.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
             <span className="min-w-0 flex-1 truncate">{note.displayName || note.name}</span>
             {noteStatus(note.configText || "") === "draft" && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-            {note.isShared && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Shared with agents" />}
+            {injectOf(note) !== "on_request" && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" title="Injected into agent context" />}
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
@@ -543,7 +580,9 @@ export default function ResourcesClient({
           provider: selectedResource.provider || "knowledge",
           resourceType: selectedResource.resourceType || "knowledge_base",
           configText: setNoteStatus(unescapeWikilinkBrackets(draftContent), publicationStatus),
-          isShared: draftShared,
+          isShared: draftInject !== "on_request",
+          inject: draftInject,
+          summary: draftSummary,
           changeSummary: "Operator updated Knowledge & Rules entry",
         }),
       });
@@ -576,7 +615,9 @@ export default function ResourcesClient({
           provider: selectedResource.provider || "knowledge",
           resourceType: selectedResource.resourceType || "knowledge_base",
           configText: setNoteStatus(unescapeWikilinkBrackets(draftContent), nextStatus),
-          isShared: draftShared,
+          isShared: draftInject !== "on_request",
+          inject: draftInject,
+          summary: draftSummary,
           changeSummary: nextStatus === "active" ? "Operator published Knowledge & Rules entry" : "Operator moved Knowledge & Rules entry to draft",
         }),
       });
@@ -761,7 +802,7 @@ export default function ResourcesClient({
                     <IconFileText className="h-4 w-4 shrink-0 text-zinc-500" />
                     <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-zinc-100 outline-none" />
                     {publicationStatus === "draft" && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">draft</span>}
-                    {draftShared && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">shared</span>}
+                    {draftInject !== "on_request" && <span className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">{draftInject === "always" ? "always" : "index"}</span>}
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
@@ -825,7 +866,7 @@ export default function ResourcesClient({
                         <IconCheck className="h-3.5 w-3.5" />
                         {publicationStatus === "draft" ? "Publish note" : "Move back to draft"}
                       </button>
-                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">Published means this note is trusted doctrine. Shared is separate: it controls agent context injection.</p>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">Published means this note is trusted doctrine. Agent context is separate: it controls whether agents receive the note.</p>
 
                       <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Scope</label>
                       <select value={draftScopeType} onChange={(event) => setDraftScopeType(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-cyan-400/60">
@@ -840,11 +881,49 @@ export default function ResourcesClient({
                           {(scopeOptions[draftScopeType as "customer" | "project" | "agent"] || []).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
                       )}
-                      <button onClick={() => setDraftShared(!draftShared)} className={cn("mt-3 flex w-full cursor-pointer items-center justify-between rounded-md border p-2 text-xs transition-colors", draftShared ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200" : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900")}>
-                        <span>Inject into matching agents</span>
-                        <span className="font-semibold">{draftShared ? "On" : "Off"}</span>
-                      </button>
-                      <p className="mt-1 text-[11px] leading-4 text-zinc-600">shared means context injection for matching agents. Keep it off unless agents should receive it during work.</p>
+                      <div className="mt-3">
+                        <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Agent context</span>
+                        <div role="group" aria-label="Knowledge injection mode" className="mt-1 grid grid-cols-3 gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1">
+                          {INJECT_OPTIONS.map((option) => {
+                            const active = draftInject === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => setDraftInject(option.value)}
+                                className={cn("cursor-pointer rounded px-2 py-1.5 text-[11px] font-semibold transition-colors", active ? "bg-cyan-400/15 text-cyan-200" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-1 text-[11px] leading-4 text-zinc-600">{injectHint}</p>
+                        {draftInject === "always" && (
+                          <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1.5">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-zinc-500">Always budget</span>
+                              <span className={cn("font-semibold", alwaysBudget.over ? "text-amber-300" : "text-zinc-300")}>{alwaysBudget.used.toLocaleString()} / {alwaysBudget.budget.toLocaleString()} characters</span>
+                            </div>
+                            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                              <div className={cn("h-full rounded-full", alwaysBudget.over ? "bg-amber-400" : "bg-cyan-400")} style={{ width: `${Math.min(100, (alwaysBudget.used / alwaysBudget.budget) * 100)}%` }} />
+                            </div>
+                            {alwaysBudget.over && <p className="mt-1 text-[11px] text-amber-300">Over budget: the last always note is truncated in the agent context.</p>}
+                          </div>
+                        )}
+                      </div>
+
+                      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider text-zinc-600">Summary</label>
+                      <textarea
+                        value={draftSummary}
+                        onChange={(event) => setDraftSummary(event.target.value)}
+                        maxLength={200}
+                        rows={2}
+                        placeholder="One line agents see in the index; leave blank to auto-derive from the note."
+                        className="mt-1 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-400/60"
+                      />
+                      <p className="mt-1 text-[11px] text-zinc-600">Shown as this note's index line. Leave blank to derive the first sentence automatically ({draftSummary.trim().length}/200).</p>
                       {insights.tags.length > 0 && <div className="mt-3"><TagList tags={insights.tags} /></div>}
                       <button onClick={archiveSelectedResource} className={cn("mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-600 hover:text-red-300")}><IconArchive className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}</button>
                     </div>

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { resolveCompanyBrainContext, listScopedResources, createScopedResource, updateScopedResource, canAgentReadResource, loadAgentResourceAccess, toPublicResource } from "@/lib/resources";
+import { resolveCompanyBrainContext, listScopedResources, createScopedResource, updateScopedResource, canAgentReadResource, loadAgentResourceAccess, getVisibleKnowledgeNote, searchVisibleKnowledgeNotes, resolveResourceScope, toPublicResource } from "@/lib/resources";
+import { EMPEROR_MANUAL, EMPEROR_MANUAL_VERSION, getEmperorManualSection, listEmperorManualSections } from "@/lib/emperor-manual";
 import { jsonResult, errorResult } from "../result";
 
 export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("get_knowledge_context", {
         title: "Get Knowledge Context",
-        description: "Get this company's resolved Knowledge & Rules context — operating doctrine, SOPs, and business rules, ranked by relevance to the given scope. Call this before assuming any business convention.",
+        description: "Get this company's resolved Knowledge & Rules context — operating doctrine, SOPs, and business rules, ranked by relevance to the given scope. For the lean model prefer the knowledge index (list_knowledge / search_knowledge) and load a body with get_knowledge_note; use this only when you want the ranked auto-injected bodies in one call.",
         inputSchema: {
             customerId: z.string().optional(),
             projectId: z.string().optional(),
@@ -101,6 +102,59 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
                 patch: { configText: content, name, isShared, status },
             });
             return jsonResult({ message: "Knowledge note updated", resource: resource ? toPublicResource(resource) : resource });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    server.registerTool("get_emperor_manual", {
+        title: "Get Emperor Manual",
+        description: "The single Emperor manual: how Emperor works (chat and mentions, tasks and projects, knowledge and injection modes, storage, approvals, team handoffs, reply formatting). Omit section for the whole manual plus the section list; pass a section id for just that section.",
+        inputSchema: {
+            section: z.string().optional().describe("Section id, e.g. chat-and-mentions, approvals, reply-formatting"),
+        },
+    }, async ({ section }) => {
+        try {
+            if (section) {
+                const found = getEmperorManualSection(section);
+                if (!found) {
+                    return errorResult(new Error(`Unknown section: ${section}. Sections: ${listEmperorManualSections().map((item) => item.id).join(", ")}`));
+                }
+                return jsonResult({ version: EMPEROR_MANUAL_VERSION, section: found });
+            }
+            return jsonResult({ version: EMPEROR_MANUAL_VERSION, sections: listEmperorManualSections(), manual: EMPEROR_MANUAL });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    server.registerTool("get_knowledge_note", {
+        title: "Get Knowledge Note",
+        description: "Load one full Knowledge & Rules note by id, scope-checked and with secrets excluded. Use this to open the body behind a line in the knowledge index.",
+        inputSchema: {
+            id: z.string().describe("Knowledge note resource id"),
+        },
+    }, async ({ id }) => {
+        try {
+            const resource = await getVisibleKnowledgeNote({ companyId, resourceId: id, agentId: callerAgentId ?? null });
+            if (!resource) return errorResult(new Error("Knowledge note not found or outside your scope"));
+            return jsonResult({ resource: { ...toPublicResource(resource), ...resolveResourceScope(resource) } });
+        } catch (e) {
+            return errorResult(e);
+        }
+    });
+
+    server.registerTool("search_knowledge", {
+        title: "Search Knowledge",
+        description: "Search this company's Knowledge & Rules by name, summary, or content and get matching index lines (title — summary — id). Open a result with get_knowledge_note. At most 20 results.",
+        inputSchema: {
+            query: z.string().min(1).describe("Free-text search over name, summary, and content"),
+            limit: z.number().int().min(1).max(20).optional().describe("Maximum results (default 10, max 20)"),
+        },
+    }, async ({ query, limit }) => {
+        try {
+            const results = await searchVisibleKnowledgeNotes({ companyId, query, agentId: callerAgentId ?? null, limit });
+            return jsonResult({ query, count: results.length, results });
         } catch (e) {
             return errorResult(e);
         }

@@ -37,10 +37,12 @@ test("Default Hermes doctrine states the assignment and closure rules", () => {
   assert.match(guide, /assignee is accountable for closing/i, "the guide should make the assignee responsible for closure");
 });
 
-test("MCP instructions state the assignment and closure rules", () => {
-  const instructions = read("src/lib/mcp-server/instructions.ts");
-  assert.match(instructions, /exactly one owner/i, "MCP instructions should require a single owner");
-  assert.match(instructions, /assignee closes it/i, "MCP instructions should make the assignee responsible for closure");
+test("The Emperor manual states the assignment and closure rules", () => {
+  // The rule moved out of the lean MCP instructions into the single manual
+  // (served on demand), so the contract now lives there.
+  const manual = read("src/lib/emperor-manual.ts");
+  assert.match(manual, /exactly one owner/i, "the manual should require a single owner");
+  assert.match(manual, /assignee closes it/i, "the manual should make the assignee responsible for closure");
 });
 
 test("MCP task tools expose the hybrid assignee field", () => {

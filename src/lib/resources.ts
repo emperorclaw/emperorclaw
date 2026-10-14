@@ -13,6 +13,23 @@ import {
 import { isCustomerAllowed, isProjectAllowed, loadAgentScopeContext } from "@/lib/agent-scope";
 import type { McpTaskScopeContext } from "@/lib/mcp";
 import {
+  buildAlwaysBlock,
+  orderKnowledgeNotesForIndex,
+  renderKnowledgeIndex,
+  KNOWLEDGE_ALWAYS_MAX_CHARS,
+  KNOWLEDGE_INDEX_MAX_CHARS,
+  KNOWLEDGE_INDEX_MAX_LINES,
+  type KnowledgeIndexNote,
+} from "@/lib/knowledge-index";
+import {
+  clampKnowledgeSummary,
+  deriveKnowledgeSummary,
+  injectModeFromIsShared,
+  isSharedFromInjectMode,
+  normalizeKnowledgeInjectMode,
+  type KnowledgeInjectMode,
+} from "@/lib/knowledge-summary";
+import {
   buildResourceChildPath,
   buildResourceFolderTree,
   normalizeResourcePath,
@@ -78,6 +95,8 @@ export const PUBLIC_RESOURCE_COLUMNS = {
   configText: scopedResources.configText,
   status: scopedResources.status,
   isShared: scopedResources.isShared,
+  inject: scopedResources.inject,
+  summary: scopedResources.summary,
   ownership: scopedResources.ownership,
   lastUsedAt: scopedResources.lastUsedAt,
   lastFailureAt: scopedResources.lastFailureAt,
@@ -86,6 +105,88 @@ export const PUBLIC_RESOURCE_COLUMNS = {
   updatedAt: scopedResources.updatedAt,
   deletedAt: scopedResources.deletedAt,
 } as const;
+
+/**
+ * The minimal projection the lean index/search needs. It deliberately omits
+ * `configText` (and the secret) so building the index never loads note bodies
+ * into memory; only the `always` path reads a bounded body prefix.
+ */
+export const KNOWLEDGE_INDEX_COLUMNS = {
+  id: scopedResources.id,
+  name: scopedResources.name,
+  displayName: scopedResources.displayName,
+  summary: scopedResources.summary,
+  scopeType: scopedResources.scopeType,
+  scopeId: scopedResources.scopeId,
+  inject: scopedResources.inject,
+  updatedAt: scopedResources.updatedAt,
+} as const;
+
+/** Longest body prefix read for an `always` note (its budget is 1,500 chars). */
+export const KNOWLEDGE_ALWAYS_BODY_PREFIX_MAX_CHARS = 2000;
+/** Bound on the content prefix scanned by search, as before. */
+const KNOWLEDGE_SEARCH_BODY_PREFIX_MAX_CHARS = 20000;
+
+type KnowledgeIndexRow = {
+  id: string;
+  name: string;
+  displayName: string | null;
+  summary: string | null;
+  scopeType: string;
+  scopeId: string | null;
+  inject: string;
+  updatedAt: Date;
+};
+
+type KnowledgeAlwaysRow = KnowledgeIndexRow & { configText: string };
+
+/**
+ * The one query behind the lean index and search: active, non-deleted rows
+ * projected to KNOWLEDGE_INDEX_COLUMNS, optionally filtered by inject mode or a
+ * wildcard-escaped search term. Scope filtering happens in memory against the
+ * agent's access (see `canAgentReadResource`), so columns stay minimal rather
+ * than pushing a join/filter the projection does not need.
+ */
+async function queryKnowledgeRows(input: {
+  companyId: string;
+  inject?: KnowledgeInjectMode;
+  search?: string | null;
+}): Promise<KnowledgeIndexRow[]> {
+  const conditions = [
+    eq(scopedResources.companyId, input.companyId),
+    eq(scopedResources.status, "active"),
+    isNull(scopedResources.deletedAt),
+  ];
+  if (input.inject) conditions.push(eq(scopedResources.inject, input.inject));
+  if (input.search) {
+    const term = `%${escapeLikePattern(input.search)}%`;
+    const condition = or(
+      ilike(scopedResources.name, term),
+      ilike(scopedResources.displayName, term),
+      ilike(scopedResources.summary, term),
+      ilike(sql`substring(${scopedResources.configText}, 1, ${KNOWLEDGE_SEARCH_BODY_PREFIX_MAX_CHARS})`, term),
+    );
+    if (condition) conditions.push(condition);
+  }
+  return db.select(KNOWLEDGE_INDEX_COLUMNS).from(scopedResources)
+    .where(and(...conditions))
+    .orderBy(desc(scopedResources.updatedAt));
+}
+
+/** `always` notes plus a bounded body prefix; the only path that reads content. */
+async function queryKnowledgeAlwaysRows(companyId: string): Promise<KnowledgeAlwaysRow[]> {
+  return db.select({
+    ...KNOWLEDGE_INDEX_COLUMNS,
+    configText: sql<string>`substring(${scopedResources.configText}, 1, ${KNOWLEDGE_ALWAYS_BODY_PREFIX_MAX_CHARS})`,
+  }).from(scopedResources)
+    .where(and(
+      eq(scopedResources.companyId, companyId),
+      eq(scopedResources.status, "active"),
+      eq(scopedResources.inject, "always"),
+      isNull(scopedResources.deletedAt),
+    ))
+    .orderBy(desc(scopedResources.updatedAt));
+}
 
 export type PublicResource = Omit<typeof scopedResources.$inferSelect, "secretText">;
 
@@ -285,16 +386,19 @@ export async function listScopedResources(input: {
   if (input.resourceType) conditions.push(eq(scopedResources.resourceType, normalizeResourceType(input.resourceType)));
   if (input.status) conditions.push(eq(scopedResources.status, input.status));
   if (input.isShared !== undefined && input.isShared !== null) conditions.push(eq(scopedResources.isShared, input.isShared));
-  if (input.name) conditions.push(ilike(scopedResources.name, `%${input.name}%`));
-  if (input.displayName) conditions.push(ilike(scopedResources.displayName, `%${input.displayName}%`));
+  // Escape LIKE wildcards in user-supplied terms so a literal "%" or "_" is
+  // matched as a character, not a wildcard. The term stays a bound parameter.
+  if (input.name) conditions.push(ilike(scopedResources.name, `%${escapeLikePattern(input.name)}%`));
+  if (input.displayName) conditions.push(ilike(scopedResources.displayName, `%${escapeLikePattern(input.displayName)}%`));
   if (input.search) {
-    const term = `%${input.search}%`;
+    const term = `%${escapeLikePattern(input.search)}%`;
     // Free-text search spans name, display name and the note body. The body is
     // matched on a bounded prefix so a pathological note cannot force a full
     // scan of multi-megabyte content; the term stays a bound parameter.
     const searchCondition = or(
       ilike(scopedResources.name, term),
       ilike(scopedResources.displayName, term),
+      ilike(scopedResources.summary, term),
       ilike(sql`substring(${scopedResources.configText}, 1, 20000)`, term)
     );
     if (searchCondition) conditions.push(searchCondition);
@@ -402,10 +506,22 @@ export async function createScopedResource(input: {
   status?: string | null;
   ownership?: string | null;
   isShared?: boolean;
+  /** Explicit injection mode; when omitted it is derived from isShared. */
+  inject?: string | null;
+  /** Explicit summary; when omitted/blank it is derived from the note body. */
+  summary?: string | null;
   changeSummary?: string | null;
   createdByType?: string | null;
   createdById?: string | null;
 }) {
+  const inject: KnowledgeInjectMode = input.inject
+    ? normalizeKnowledgeInjectMode(input.inject)
+    : injectModeFromIsShared(input.isShared ?? false);
+  const providedSummary = typeof input.summary === "string" ? input.summary.trim() : "";
+  const summary = providedSummary
+    ? clampKnowledgeSummary(providedSummary)
+    : deriveKnowledgeSummary(input.configText || "");
+
   const [resource] = await db.insert(scopedResources).values({
     id: randomUUID(),
     companyId: input.companyId,
@@ -420,7 +536,10 @@ export async function createScopedResource(input: {
     secretText: input.secretText || "",
     status: input.status || "active",
     ownership: input.ownership || "managed",
-    isShared: input.isShared ?? false,
+    // isShared stays in step with inject for older readers.
+    isShared: isSharedFromInjectMode(inject),
+    inject,
+    summary: summary || null,
   }).returning();
 
   await createResourceVersion({
@@ -452,6 +571,8 @@ export async function updateScopedResource(input: {
     status: string;
     ownership: string;
     isShared: boolean;
+    inject: string;
+    summary: string | null;
     changeSummary: string;
     createdByType: string;
     createdById: string | null;
@@ -459,6 +580,30 @@ export async function updateScopedResource(input: {
 }) {
   const existing = await getScopedResource(input.companyId, input.resourceId);
   if (!existing) return null;
+
+  const nextConfigText = input.patch.configText ?? existing.configText;
+
+  // Resolve the injection mode. An explicit `inject` wins; otherwise a legacy
+  // `isShared` patch maps onto it without demoting an existing `always` note.
+  let inject: KnowledgeInjectMode = existing.inject
+    ? normalizeKnowledgeInjectMode(existing.inject)
+    : injectModeFromIsShared(existing.isShared);
+  if (input.patch.inject !== undefined) {
+    inject = normalizeKnowledgeInjectMode(input.patch.inject);
+  } else if (input.patch.isShared !== undefined) {
+    if (!input.patch.isShared) inject = "on_request";
+    else if (inject === "on_request") inject = "index";
+  }
+
+  // A blank/omitted summary is re-derived from content; an explicit value is
+  // clamped. A summary is only recomputed from content when the body changed.
+  let summary = existing.summary;
+  if (input.patch.summary !== undefined) {
+    const provided = typeof input.patch.summary === "string" ? input.patch.summary.trim() : "";
+    summary = provided ? clampKnowledgeSummary(provided) : deriveKnowledgeSummary(nextConfigText);
+  } else if (input.patch.configText !== undefined) {
+    summary = deriveKnowledgeSummary(nextConfigText);
+  }
 
   const [resource] = await db.update(scopedResources).set({
     scopeType: input.patch.scopeType ? normalizeScopeType(input.patch.scopeType) : existing.scopeType,
@@ -470,11 +615,13 @@ export async function updateScopedResource(input: {
     // Moving a note between folders is just a path patch. Undefined leaves it
     // where it is; null or "" moves it to the vault root.
     path: input.patch.path === undefined ? existing.path : normalizeResourcePath(input.patch.path),
-    configText: input.patch.configText ?? existing.configText,
+    configText: nextConfigText,
     secretText: input.patch.secretText ?? existing.secretText,
     status: input.patch.status ?? existing.status,
     ownership: input.patch.ownership ?? existing.ownership,
-    isShared: input.patch.isShared ?? existing.isShared,
+    isShared: isSharedFromInjectMode(inject),
+    inject,
+    summary: summary || null,
     updatedAt: new Date(),
   }).where(eq(scopedResources.id, existing.id)).returning();
 
@@ -932,6 +1079,117 @@ export async function resolveCompanyBrainContext(input: {
     maxChars,
     tagFilters: Array.from(requestedTags),
   };
+}
+
+/**
+ * The agent-facing index projection of a note: title, summary and id. The
+ * summary falls back to a fresh derivation only when a body is present (the
+ * `always` path); index/search rows carry no body, so they rely on the stored
+ * summary, which the bounded boot backfill fills in.
+ */
+function toKnowledgeIndexNote(resource: KnowledgeIndexRow & { configText?: string }): KnowledgeIndexNote {
+  return {
+    id: resource.id,
+    title: resource.displayName || resource.name,
+    summary: resource.summary || deriveKnowledgeSummary(resource.configText || ""),
+    scopeType: resource.scopeType,
+    scopeId: resource.scopeId,
+    inject: resource.inject,
+    updatedAt: resource.updatedAt,
+    configText: resource.configText ?? "",
+  };
+}
+
+/**
+ * Tier 1 of the lean context: one compact line per `inject = 'index'` note the
+ * agent may see, plus the bodies of `inject = 'always'` notes under a hard
+ * budget. Bodies of on-request notes are never included here.
+ */
+export async function buildKnowledgeIndex(input: {
+  companyId: string;
+  agentId?: string | null;
+  maxLines?: number;
+  maxChars?: number;
+}) {
+  const access = await loadAgentResourceAccess(input.companyId, input.agentId ?? null);
+  // Two minimal queries instead of loading every note (body included): the
+  // index only needs its columns, and only `always` notes load a bounded body.
+  const [indexRows, alwaysRows] = await Promise.all([
+    queryKnowledgeRows({ companyId: input.companyId, inject: "index" }),
+    queryKnowledgeAlwaysRows(input.companyId),
+  ]);
+
+  // Reuse the phase-0 scope rule: an agent only ever sees notes it may read.
+  const indexNotes = orderKnowledgeNotesForIndex(
+    indexRows.filter((resource) => canAgentReadResource(resource, access)).map(toKnowledgeIndexNote),
+  );
+  const alwaysNotes = alwaysRows.filter((resource) => canAgentReadResource(resource, access)).map(toKnowledgeIndexNote);
+
+  const index = renderKnowledgeIndex(indexNotes, {
+    maxLines: input.maxLines ?? KNOWLEDGE_INDEX_MAX_LINES,
+    maxChars: input.maxChars ?? KNOWLEDGE_INDEX_MAX_CHARS,
+  });
+  const always = buildAlwaysBlock(alwaysNotes, { maxChars: KNOWLEDGE_ALWAYS_MAX_CHARS });
+
+  return {
+    knowledgeIndex: index.text,
+    alwaysBlock: always.text,
+    indexIds: index.ids,
+    alwaysIds: always.ids,
+    indexTruncated: index.truncated,
+    alwaysOverBudget: always.overBudget,
+    alwaysUsedChars: always.usedChars,
+  };
+}
+
+export type VisibleKnowledgeNote = {
+  id: string;
+  title: string;
+  summary: string;
+  scopeType: string;
+  scopeId: string | null;
+  line: string;
+};
+
+/**
+ * Bounded, parameterized knowledge search returning index lines (no bodies).
+ * Matches name, display name, summary and a bounded prefix of the content, and
+ * applies the same scope rule as the index.
+ */
+export async function searchVisibleKnowledgeNotes(input: {
+  companyId: string;
+  query: string;
+  agentId?: string | null;
+  limit?: number;
+}): Promise<VisibleKnowledgeNote[]> {
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 20);
+  const access = await loadAgentResourceAccess(input.companyId, input.agentId ?? null);
+  // Search filters on the body in SQL but never selects it: matching rows are
+  // projected to index columns, so no note body is loaded to return a line.
+  const rows = await queryKnowledgeRows({ companyId: input.companyId, search: input.query });
+  return orderKnowledgeNotesForIndex(rows.filter((resource) => canAgentReadResource(resource, access)).map(toKnowledgeIndexNote))
+    .slice(0, limit)
+    .map((note) => ({
+      id: note.id,
+      title: note.title,
+      summary: note.summary,
+      scopeType: note.scopeType,
+      scopeId: note.scopeId ?? null,
+      line: `${note.title} \u2014 ${note.summary} \u2014 ${note.id}`,
+    }));
+}
+
+/** One note the agent may read (scope-checked), or null. Still carries secrets. */
+export async function getVisibleKnowledgeNote(input: {
+  companyId: string;
+  resourceId: string;
+  agentId?: string | null;
+}) {
+  const resource = await getScopedResource(input.companyId, input.resourceId);
+  if (!resource) return null;
+  const access = await loadAgentResourceAccess(input.companyId, input.agentId ?? null);
+  if (!canAgentReadResource(resource, access)) return null;
+  return resource;
 }
 
 function getResourceLeaseAccessViolation(
