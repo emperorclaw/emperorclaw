@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.98] — 2026-10-14
+
+### Added
+- Knowledge notes have an **Agent context** mode — **Always**, **In index** or **On request** — and a one-line **Summary**. Always notes share a 1,500-character budget shown in the editor; indexed notes appear to agents as a title, summary and id they can load on demand. Migration `0060` maps shared notes to In index and the rest to On request; summaries are filled from each note's first sentence.
+- One versioned Emperor manual with sections (`GET /api/mcp/manual`, MCP `get_emperor_manual`), plus `GET /api/mcp/knowledge/{id}` / `get_knowledge_note` and `GET /api/mcp/knowledge/search` / `search_knowledge` so agents can load guidance and company knowledge when they need it.
+- `GET /api/mcp/context/lean` gives bridges a compact context — the core rules, the always-on notes, the knowledge index and the roster — with an ETag. Servers advertise `lean-context: 1`.
+
+### Changed
+- MCP clients receive a short set of core rules and pointers to the manual and knowledge tools instead of the long doctrine preamble; appended company context is capped at 1,500 characters.
+
 ## [0.8.97] — 2026-10-13
 
 ### Fixed
