@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.101] — 2026-10-14
+
+### Added
+- **Delivery** on chat messages: see, for each agent, whether a message reached it and why not — mentioned, paused by the loop guard (with the count), addressed to another agent — and the turn it started, with its outcome, duration, tokens and error type.
+- A **Runs** tab on each agent: 30 days of daily turns, success rate, typical and slow durations, tokens and cost, and a list of recent turns you can filter by failures, timeouts or lost turns. Sessions and action runs stay visible beside it.
+
 ## [0.8.100] — 2026-10-14
 
 ### Added
