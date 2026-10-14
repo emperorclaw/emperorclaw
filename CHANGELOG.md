@@ -9,6 +9,15 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.100] — 2026-10-14
+
+### Added
+- Lean context for Hermes agents (bridge and plugin 0.3.0). With `EMPEROR_CONTEXT_MODE=lean` on a server that advertises `lean-context: 1`, a session starts with the core rules, the always-on notes, the knowledge index and the roster instead of the full operating guide and note bodies — about 87% smaller in a real session. The default stays `full` and is unchanged.
+- New Hermes tools `emperor_get_manual`, `emperor_get_knowledge_note` and `emperor_search_knowledge` load the manual and company knowledge when the agent needs them.
+
+### Changed
+- The `emperor-claw` Hermes skill now points to the versioned Emperor manual instead of carrying its own copy (32 KB to 2 KB), and `plugin.yaml` lists every tool the plugin registers.
+
 ## [0.8.99] — 2026-10-14
 
 ### Fixed
