@@ -41,6 +41,9 @@ COPY --from=builder /app/src/db/schema.ts ./src/db/schema.ts
 # `@/db` alias — so the character module and tsconfig.json (tsx path resolution)
 # must be present in the runner image for migrations to run at startup.
 COPY --from=builder /app/src/lib/character ./src/lib/character
+# migrate.ts also backfills knowledge summaries at startup (see tests/dockerfile-migrate-imports.test.cjs).
+COPY --from=builder /app/src/lib/knowledge-backfill.ts ./src/lib/knowledge-backfill.ts
+COPY --from=builder /app/src/lib/knowledge-summary.ts ./src/lib/knowledge-summary.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/scripts/reconcile-artifact-storage.ts ./scripts/reconcile-artifact-storage.ts
 COPY --from=builder /app/drizzle.config.ts ./
