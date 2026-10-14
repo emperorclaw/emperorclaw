@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agentRunDaily, agentRuns, agents, messageRoutes, threadMessages } from "@/db/schema";
+import { agentRunDaily, agentRuns, agents, messageRoutes, messageThreads, threadMessages } from "@/db/schema";
 import { RUN_STATUSES } from "@/lib/run-ledger";
 
 /**
@@ -80,10 +80,17 @@ export async function loadMessageDelivery(companyId: string, messageId: string):
 }
 
 export interface AgentRunsPage {
-    runs: (typeof agentRuns.$inferSelect)[];
+    runs: AgentRunWithThread[];
     nextCursor: string | null;
     daily: (typeof agentRunDaily.$inferSelect)[];
 }
+
+/**
+ * A run plus its triggering thread's type. The type rides along so the Runs tab
+ * links only where the messaging hub can honour the deep link: `?group=` opens a
+ * group thread, `?agent=` opens a direct one; anything else is plain text.
+ */
+export type AgentRunWithThread = (typeof agentRuns.$inferSelect) & { threadType: string | null };
 
 /** Keyset cursor: the last run's start instant plus its id for tie-breaking. */
 export function encodeRunsCursor(run: { startedAt: Date; id: string }): string {
@@ -125,18 +132,26 @@ export async function loadAgentRunsPage(
     }
 
     const rows = await db
-        .select()
+        .select({ run: agentRuns, threadType: messageThreads.type })
         .from(agentRuns)
+        .leftJoin(messageThreads, eq(messageThreads.id, agentRuns.threadId))
         .where(and(...ranges))
         .orderBy(desc(agentRuns.startedAt), desc(agentRuns.id))
         .limit(RUNS_PAGE_SIZE + 1);
 
-    const hasMore = rows.length > RUNS_PAGE_SIZE;
-    const runs = hasMore ? rows.slice(0, RUNS_PAGE_SIZE) : rows;
+    const all = rows.map((row) => ({ ...row.run, threadType: row.threadType }));
+    const hasMore = all.length > RUNS_PAGE_SIZE;
+    const runs = hasMore ? all.slice(0, RUNS_PAGE_SIZE) : all;
     const last = runs[runs.length - 1];
     const nextCursor = hasMore && last ? encodeRunsCursor(last) : null;
 
-    const dailyCutoff = new Date(now.getTime() - RUN_DAILY_WINDOW_DAYS * 86_400_000);
+    // The chart's 30-day window and this cutoff are both UTC calendar days so a
+    // rollup written for a UTC day lands in the same bucket the chart draws.
+    const dailyCutoff = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - (RUN_DAILY_WINDOW_DAYS - 1),
+    )).toISOString().slice(0, 10);
     const daily = await db
         .select()
         .from(agentRunDaily)

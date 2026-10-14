@@ -10,6 +10,8 @@ import { hasChoicesBlock, hasRichBlocks } from "@/lib/rich-blocks";
 import { EVERYONE_MENTION, MentionTextarea } from "@/components/mention-textarea";
 import { AttachmentChip, isAttachmentRef, type AttachmentRef } from "@/components/chat-attachments";
 import { MessageReasoningDisclosure } from "@/components/message-reasoning-disclosure";
+import { DeliveryInspector } from "@/components/delivery-inspector";
+import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
@@ -597,6 +599,11 @@ export function AgentTeamChat({
                                                 )}
                                                 {!isHuman && hasStoredReasoning(msg) && (
                                                     <MessageReasoningDisclosure messageId={msg.id} />
+                                                )}
+                                                {isPersistedUuid(msg.id) && (msg.senderType === "human" || msg.senderType === "agent") && (
+                                                    <div className="mt-1.5">
+                                                        <DeliveryInspector messageId={msg.id} />
+                                                    </div>
                                                 )}
                                                 {/* Timestamp bottom-right */}
                                                 <div className={cn(

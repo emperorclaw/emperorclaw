@@ -18,6 +18,7 @@ import { AgentInstructionsTab } from "./agent-instructions-tab";
 import { AgentMemoryTab } from "./agent-memory-tab";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { AgentScopeTab } from "./agent-scope-tab";
+import { AgentRunsTab } from "./agent-runs-tab";
 import { DeleteAgentDialog } from "./delete-agent-dialog";
 import { getProvider, buildAgentSetupPrompt } from "@/lib/agent-providers";
 import { getAgentTemplate } from "@/lib/agent-templates";
@@ -538,44 +539,9 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                     </div>
                 </TabsContent>
 
-                <TabsContent value="runs" className="mt-4">
-                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                            <IconRobot className="w-4 h-4 text-cyan-400" />
-                            <h3 className="text-sm font-medium text-zinc-200">Execution Runs</h3>
-                        </div>
-                        <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                            {runs.length === 0 && sessions.length === 0 ? (
-                                <EmptyState text="No execution runs or sessions recorded yet." />
-                            ) : (
-                                <>
-                                    {sessions.map(session => (
-                                        <div key={session.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                                            <div className="flex items-center justify-between gap-2 mb-1">
-                                                <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-400">session</span>
-                                                <span className="text-[10px] text-zinc-600">{new Date(session.startedAt).toLocaleString()}</span>
-                                            </div>
-                                            <div className="text-xs text-zinc-200">{session.status}</div>
-                                            {session.openclawSessionId && (
-                                                <div className="text-[10px] text-zinc-500 mt-1 font-mono truncate">{session.openclawSessionId}</div>
-                                            )}
-                                            {session.summary && <div className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{session.summary}</div>}
-                                        </div>
-                                    ))}
-                                    {runs.map(run => (
-                                        <div key={run.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                                            <div className="flex items-center justify-between gap-2 mb-1">
-                                                <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400">{run.kind}</span>
-                                                <span className="text-[10px] text-zinc-600">{new Date(run.startedAt).toLocaleString()}</span>
-                                            </div>
-                                            <div className="text-xs text-zinc-200">{run.status}</div>
-                                            {run.summary && <div className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{run.summary}</div>}
-                                        </div>
-                                    ))}
-                                </>
-                            )}
-                        </div>
-                    </div>
+                <TabsContent value="runs" className="mt-4 space-y-4">
+                    <AgentRunsTab agentId={agent.id} />
+                    <SessionsAndActions sessions={sessions} runs={runs} />
                 </TabsContent>
             </Tabs>
         </main>
@@ -617,6 +583,51 @@ function StatusDot({ status }: { status: string }) {
         offline: "bg-zinc-600",
     }[status] || "bg-zinc-600";
     return <span className={cn("h-2 w-2 rounded-full shrink-0", color)} />;
+}
+
+// Kept alongside the new Runs tab: agent sessions and action runs are live,
+// distinct from runtime turns. They are always rendered, so the Runs empty
+// state can never hide them.
+function SessionsAndActions({ sessions, runs }: { sessions: AgentDetailData["sessions"]; runs: AgentDetailData["runs"] }) {
+    return (
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+                <IconPlugConnected className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-sm font-medium text-zinc-200">Sessions and actions</h3>
+            </div>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {runs.length === 0 && sessions.length === 0 ? (
+                    <EmptyState text="No execution runs or sessions recorded yet." />
+                ) : (
+                    <>
+                        {sessions.map(session => (
+                            <div key={session.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-400">session</span>
+                                    <span className="text-[10px] text-zinc-600">{new Date(session.startedAt).toLocaleString()}</span>
+                                </div>
+                                <div className="text-xs text-zinc-200">{session.status}</div>
+                                {session.openclawSessionId && (
+                                    <div className="text-[10px] text-zinc-500 mt-1 font-mono truncate">{session.openclawSessionId}</div>
+                                )}
+                                {session.summary && <div className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{session.summary}</div>}
+                            </div>
+                        ))}
+                        {runs.map(run => (
+                            <div key={run.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400">{run.kind}</span>
+                                    <span className="text-[10px] text-zinc-600">{new Date(run.startedAt).toLocaleString()}</span>
+                                </div>
+                                <div className="text-xs text-zinc-200">{run.status}</div>
+                                {run.summary && <div className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{run.summary}</div>}
+                            </div>
+                        ))}
+                    </>
+                )}
+            </div>
+        </div>
+    );
 }
 
 function EmptyState({ text }: { text: string }) {

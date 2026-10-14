@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
 import { IconPaperclip, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
+import { DeliveryInspector } from "@/components/delivery-inspector";
+import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { RichMessageActionsContext } from "@/components/rich/rich-message-actions";
@@ -803,6 +805,11 @@ export function AgentDirectChat({
                                                 )}
                                                 {!isHuman && hasStoredReasoning(message) && (
                                                     <MessageReasoningDisclosure messageId={message.id} />
+                                                )}
+                                                {isPersistedUuid(message.id) && (message.senderType === "human" || message.senderType === "agent") && (
+                                                    <div className="mt-1.5">
+                                                        <DeliveryInspector messageId={message.id} tone={isHuman ? "light" : "dark"} />
+                                                    </div>
                                                 )}
                                                 {/* Timestamp — bottom-right of bubble, on every message */}
                                                 <div className={cn("text-[10px] mt-1.5 text-right opacity-50", isHuman ? "text-emerald-950" : "text-zinc-400")}>
