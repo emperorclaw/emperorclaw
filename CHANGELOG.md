@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.99] — 2026-10-14
+
+### Fixed
+- v0.8.98 failed to start: the startup migration imports the knowledge summary backfill, which was missing from the Docker image, so the container restarted in a loop. The image now includes it, and a test checks that every file the startup migration imports is copied into the image. Use this release instead of 0.8.98.
+
 ## [0.8.98] — 2026-10-14
 
 ### Added
