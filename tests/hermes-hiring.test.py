@@ -28,10 +28,44 @@ class HermesHiringTests(unittest.TestCase):
             self.assertIn(phrase, context)
 
     def test_bridge_turn_does_not_inject_operating_guide_twice(self):
-        with patch.dict(os.environ, {"EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE": "1"}):
+        with patch.dict(os.environ, {"EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE": "1"}, clear=False):
+            os.environ.pop("EMPEROR_CLAW_CONTEXT_MODE", None)
             context = plugin.emperor_context_hook()["context"]
         self.assertNotIn("Emperor minimum operating practices", context)
         self.assertIn("durable state", context)
+
+    def test_lean_mode_hook_injects_nothing(self):
+        with patch.dict(os.environ, {"EMPEROR_CLAW_CONTEXT_MODE": "lean"}), patch.object(plugin, "_request", side_effect=AssertionError("hook must not fetch")):
+            context = plugin.emperor_context_hook()["context"]
+        self.assertEqual(context, "")
+
+    def test_tier2_tools_hit_the_lean_endpoints(self):
+        with patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_get_manual({"section": "storage"})
+            plugin.emperor_get_knowledge_note({"id": "note-1"})
+            plugin.emperor_search_knowledge({"query": "invoice", "limit": 5})
+        calls = request.call_args_list
+        self.assertEqual(calls[0].args[:2], ("GET", "/manual"))
+        self.assertEqual(calls[0].kwargs["query"], {"section": "storage"})
+        self.assertEqual(calls[1].args[:2], ("GET", "/knowledge/note-1"))
+        self.assertEqual(calls[2].args[:2], ("GET", "/knowledge/search"))
+        self.assertEqual(calls[2].kwargs["query"]["q"], "invoice")
+        self.assertEqual(calls[2].kwargs["query"]["limit"], 5)
+
+    def test_tier2_tools_are_registered(self):
+        class Context:
+            tools = {}
+            def register_tool(self, name, toolset, schema, fn, **kwargs):
+                self.tools[name] = (schema, fn)
+            def register_skill(self, *args): pass
+            def register_hook(self, *args): pass
+        ctx = Context()
+        plugin.register(ctx)
+        for name in ("emperor_get_manual", "emperor_get_knowledge_note", "emperor_search_knowledge"):
+            self.assertIn(name, ctx.tools)
+        self.assertEqual(ctx.tools["emperor_get_manual"][0]["parameters"]["required"], [])
+        self.assertEqual(ctx.tools["emperor_get_knowledge_note"][0]["parameters"]["required"], ["id"])
+        self.assertEqual(ctx.tools["emperor_search_knowledge"][0]["parameters"]["required"], ["query"])
 
     def test_batch_upload_reports_partial_failures(self):
         responses = [json.dumps({"ok": True}), json.dumps({"ok": False, "error": "nope"})]

@@ -87,7 +87,24 @@ RICH_BLOCKS_CAPABILITY = "rich-blocks-v1"
 RUNS_CAPABILITY = "runs: 1"
 # Bridge release, reported to the run ledger (and in the User-Agent). Stays in
 # step with plugin.yaml; bump both together on release.
-BRIDGE_VERSION = "0.2.0"
+BRIDGE_VERSION = "0.3.0"
+# Context mode. `full` (default) keeps today's static block: the operating
+# guide, the lookup/storage/messaging rules, the rich-reply guide, and the
+# Company Brain bodies. `lean` swaps that pinned head for the server's Tier 0/1
+# payload (kernel + knowledge index + always-block + roster) — available on
+# demand, never always sent — but ONLY when the server advertises the
+# capability. An older server is never sent lean context: the bridge logs once
+# and stays on `full`.
+CONTEXT_MODE = os.environ.get("EMPEROR_CLAW_CONTEXT_MODE", "full").strip().lower()
+# Keep in step with the server's SERVER_CAPABILITIES (src/lib/rich-reply-guide.ts).
+LEAN_CONTEXT_CAPABILITY = "lean-context: 1"
+# The lean payload is fetched once per session and re-validated (If-None-Match)
+# at most this often, so the pinned head stays byte-stable between checks.
+LEAN_REVALIDATE_SECONDS = float(os.environ.get("EMPEROR_CLAW_LEAN_REVALIDATE_SECONDS", "600"))
+# The dispatch loop is sequential: a slow or failing lean fetch must not stall
+# every turn. Short timeout, and after a failure wait this long before retrying.
+LEAN_FETCH_TIMEOUT_SECONDS = 5
+LEAN_FAILURE_BACKOFF_SECONDS = 60
 # Re-run the /runtime/register handshake this often, so a server upgraded
 # after the bridge started is picked up without restarting the bridge.
 CAPABILITY_REFRESH_SECONDS = float(os.environ.get("EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS", "600"))
@@ -291,6 +308,13 @@ def _log_llm_guidance(provider: str) -> None:
 
 _server_capabilities: List[str] = []
 _reply_format_guide = ""
+# Lean context, cached per agent with the server's ETag. Fetched once and
+# re-validated at most every LEAN_REVALIDATE_SECONDS, so the lean content (and
+# therefore the static hash) changes only when the server's payload does — the
+# pinned first messages are not re-sent needlessly.
+_lean_cache: Dict[str, Any] = {"agentId": "", "etag": "", "payload": None, "checkedAt": 0.0}
+_lean_gate_logged = False
+_lean_failure_logged = False
 
 
 def ensure_runtime() -> None:
@@ -357,6 +381,119 @@ def server_supports_runs() -> bool:
     runs and makes zero extra ledger requests against it.
     """
     return RUNS_CAPABILITY in _server_capabilities
+
+
+def server_supports_lean() -> bool:
+    """True when the server advertised the lean-context capability."""
+    return LEAN_CONTEXT_CAPABILITY in _server_capabilities
+
+
+def lean_context_active() -> bool:
+    """True when the operator asked for lean AND the server advertises it.
+
+    A server that never sent the capability keeps today's full block; the
+    bridge logs the downgrade once instead of on every turn.
+    """
+    global _lean_gate_logged
+    if CONTEXT_MODE != "lean":
+        return False
+    if not server_supports_lean():
+        if not _lean_gate_logged:
+            log(
+                "EMPEROR_CLAW_CONTEXT_MODE=lean but the server does not advertise "
+                f"{LEAN_CONTEXT_CAPABILITY}; using full context"
+            )
+            _lean_gate_logged = True
+        return False
+    return True
+
+
+def _get_with_etag(path: str, query: Dict[str, Any] | None = None, etag: str = "") -> tuple[int, Any, str]:
+    """GET JSON with an optional If-None-Match, returning (status, payload, etag).
+
+    A 304 is not an error, but urllib surfaces it as an HTTPError; it is
+    returned as status 304 with no body so the caller can keep its cached
+    payload instead of re-priming the session.
+    """
+    if not API_TOKEN:
+        raise RuntimeError("EMPEROR_CLAW_API_TOKEN is required")
+    clean_path = "/" + path.lstrip("/")
+    if not clean_path.startswith("/api/"):
+        clean_path = "/api/mcp" + clean_path
+    url = API_URL + clean_path
+    if query:
+        pairs = {key: value for key, value in query.items() if value not in (None, "")}
+        if pairs:
+            url += "?" + urllib.parse.urlencode(pairs)
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Accept": "application/json",
+        "User-Agent": f"emperor-hermes-bridge/{BRIDGE_VERSION}",
+    }
+    if etag:
+        headers["If-None-Match"] = etag
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=LEAN_FETCH_TIMEOUT_SECONDS) as res:
+            text = res.read().decode("utf-8", errors="replace")
+            return res.status, (json.loads(text) if text else {}), (res.headers.get("ETag") or "")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 304:
+            return 304, None, (exc.headers.get("ETag") or etag)
+        text = exc.read().decode("utf-8", errors="replace")
+        raise ApiError(f"Emperor API GET {path} failed {exc.code}: {text[:500]}", exc.code) from exc
+
+
+def fetch_lean_context(force: bool = False) -> Dict[str, Any] | None:
+    """The cached lean payload for this agent, refreshed over ETag.
+
+    Fetched once and reused across turns, re-validated with If-None-Match at
+    most every LEAN_REVALIDATE_SECONDS. A 304 keeps the cached payload, so the
+    lean content — and therefore the static block's hash — changes only when it
+    really changed. On a fetch error the last payload is returned; with no
+    payload at all, None tells the caller to fall back to full mode this turn.
+    """
+    global _lean_failure_logged
+    now = time.time()
+    cached_agent = str(_lean_cache.get("agentId") or "")
+    cached_payload = _lean_cache.get("payload")
+    if (
+        not force
+        and cached_agent == AGENT_ID
+        and isinstance(cached_payload, dict)
+        and now - float(_lean_cache.get("checkedAt") or 0.0) < LEAN_REVALIDATE_SECONDS
+    ):
+        return cached_payload
+    # No payload yet and a recent failure: stay on full context until the
+    # backoff ends instead of retrying (and possibly blocking) on every turn.
+    if (
+        not force
+        and not isinstance(cached_payload, dict)
+        and now - float(_lean_cache.get("failedAt") or 0.0) < LEAN_FAILURE_BACKOFF_SECONDS
+    ):
+        return None
+
+    etag = str(_lean_cache.get("etag") or "") if cached_agent == AGENT_ID else ""
+    try:
+        status, payload, new_etag = _get_with_etag("/context/lean", query={"agentId": AGENT_ID}, etag=etag)
+    except Exception as exc:
+        if not _lean_failure_logged:
+            log(f"lean context fetch failed: {exc} — using the last cached payload or full context")
+            _lean_failure_logged = True
+        # Back off: count this attempt so the next turns don't each retry (and
+        # possibly block on DNS) until LEAN_FAILURE_BACKOFF_SECONDS have passed.
+        _lean_cache["checkedAt"] = now - max(0.0, LEAN_REVALIDATE_SECONDS - LEAN_FAILURE_BACKOFF_SECONDS)
+        _lean_cache["failedAt"] = now
+        return cached_payload if (cached_agent == AGENT_ID and isinstance(cached_payload, dict)) else None
+
+    _lean_failure_logged = False  # log the next outage too
+    if status == 304 and isinstance(cached_payload, dict):
+        _lean_cache["checkedAt"] = now
+        return cached_payload
+    if not isinstance(payload, dict):
+        return cached_payload if isinstance(cached_payload, dict) else None
+    _lean_cache.update({"agentId": AGENT_ID, "etag": new_etag, "payload": payload, "checkedAt": now})
+    return payload
 
 
 def format_reply_guidance() -> str:
@@ -1833,6 +1970,10 @@ def invoke_hermes(
     # The bridge already prepends operating-guide.md to this turn. Tell the
     # Hermes plugin context hook not to inject the same guide a second time.
     env["EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE"] = "1"
+    # In lean mode the kernel already carries the operating rules and the
+    # static block is deliberately minimal, so tell the plugin hook to inject
+    # NOTHING (it would otherwise re-add the full guide to every LLM call).
+    env["EMPEROR_CLAW_CONTEXT_MODE"] = "lean" if lean_context_active() else "full"
     # start_new_session puts Hermes (and any browser/tool children it spawns)
     # in their own process group, so a timeout can signal the whole tree.
     proc = subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, start_new_session=True)
@@ -2128,9 +2269,10 @@ def format_my_open_tasks() -> str:
         return ""
 
 
-def build_static_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
-    """The block that must not accumulate in session history: guide, rules,
-    roster, brain context, instructions, memory. Sent once per session."""
+def build_full_static_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+    """The default (full) block: guide, static rules, roster, brain context,
+    instructions, memory. Sent once per session and byte-identical to the
+    pre-lean behaviour."""
     roster_context = format_agent_roster(AGENT_ID)
     shared_context = format_company_brain_context(message)
     refresh_live_profile()
@@ -2178,6 +2320,56 @@ def build_static_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
         f"{roster_context}\n\n"
         + f"{shared_context}\n\n"
     )
+
+
+def build_lean_static_block(lean: Dict[str, Any]) -> str:
+    """The lean per-session head: header, instructions, memory, then the
+    kernel, the always-block, the knowledge index, and the roster from the
+    server's lean endpoint, plus one reply-formatting pointer.
+
+    It deliberately drops the operating guide, the static rules (where to look,
+    storage, messaging), the rich-reply guide, and the Company Brain bodies:
+    those are Tier 2, loaded on demand through the Emperor tools.
+    """
+    refresh_live_profile()
+    instructions = current_instructions()
+    kernel = str(lean.get("kernel") or "").strip()
+    always_block = str(lean.get("alwaysBlock") or "").strip()
+    knowledge_index = str(lean.get("knowledgeIndex") or "").strip()
+    roster = str(lean.get("roster") or "").strip()
+    parts = [
+        "You are replying from a Hermes Agent runtime connected to Emperor Claw.\n"
+        f"Agent name: {AGENT_NAME}\n"
+        f"Agent role: {AGENT_ROLE}\n"
+    ]
+    if instructions:
+        parts.append(f"Role instructions:\n{instructions}\n\n")
+    parts.append(format_memory_context())
+    if kernel:
+        parts.append(kernel + "\n\n")
+    if always_block:
+        parts.append(always_block + "\n\n")
+    if knowledge_index:
+        parts.append(
+            "Company knowledge index — load a note with emperor_get_knowledge_note, "
+            "search with emperor_search_knowledge\n" + knowledge_index + "\n\n"
+        )
+    if roster:
+        parts.append(roster + "\n\n")
+    parts.append("Formatting: plain markdown; for rich blocks load manual section reply-formatting\n")
+    return "".join(parts)
+
+
+def build_static_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:
+    """The block that must not accumulate in session history. Sent once per
+    session. In lean mode it is the server's kernel + knowledge index (cached
+    per session, reused across turns); a lean fetch failure with no cached
+    payload falls back to the full block for this turn, never an empty one."""
+    if lean_context_active():
+        lean = fetch_lean_context()
+        if isinstance(lean, dict):
+            return build_lean_static_block(lean)
+    return build_full_static_block(message, state)
 
 
 def build_dynamic_block(message: Dict[str, Any], state: Dict[str, Any]) -> str:

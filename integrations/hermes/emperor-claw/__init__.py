@@ -436,7 +436,32 @@ def emperor_update_objective(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("POST", "/objectives", body=body))
 
 
+def emperor_get_manual(args: Dict[str, Any], **_: Any) -> str:
+    section = str(args.get("section") or "").strip()
+    query: Dict[str, Any] = {"section": section} if section else {}
+    return _json(_request("GET", "/manual", query=query or None))
+
+
+def emperor_get_knowledge_note(args: Dict[str, Any], **_: Any) -> str:
+    note_id = str(args.get("id") or args.get("resourceId") or args.get("resource_id") or "").strip()
+    if not note_id:
+        return _json({"error": "id is required"})
+    return _json(_request("GET", f"/knowledge/{urllib.parse.quote(note_id)}"))
+
+
+def emperor_search_knowledge(args: Dict[str, Any], **_: Any) -> str:
+    query = str(args.get("query") or args.get("q") or "").strip()
+    if not query:
+        return _json({"error": "query is required"})
+    return _json(_request("GET", "/knowledge/search", query={"q": query, "limit": args.get("limit") or 10}))
+
+
 def emperor_context_hook(**_: Any) -> Dict[str, str]:
+    # Lean mode: the bridge's static block already carries the kernel plus the
+    # knowledge index, so injecting the operating guide again would re-add
+    # exactly what lean mode removed. Inject nothing.
+    if os.environ.get("EMPEROR_CLAW_CONTEXT_MODE", "").strip().lower() == "lean":
+        return {"context": ""}
     if os.environ.get("EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE") == "1":
         return {"context": "Emperor Claw tools are available for durable state and exact company data."}
     return {
@@ -942,5 +967,46 @@ def register(ctx: Any) -> None:
         check_fn=_available,
         requires_env=requires,
         description="Create local Hermes agent",
+    )
+    ctx.register_tool(
+        "emperor_get_manual",
+        TOOLSET,
+        _schema(
+            "Read the single, versioned Emperor operating manual. Call with no section for the whole manual (and the section list), or pass a section id for just that part. Use this instead of guessing how Emperor works. Section ids: overview, chat-and-mentions, tasks-and-projects, approvals, team-handoffs, knowledge, storage, reply-formatting, where-to-look.",
+            {"section": {"type": "string", "description": "Optional manual section id. Omit for the whole manual plus the section list."}},
+        ),
+        emperor_get_manual,
+        check_fn=_available,
+        requires_env=requires,
+        description="Read the Emperor operating manual",
+    )
+    ctx.register_tool(
+        "emperor_get_knowledge_note",
+        TOOLSET,
+        _schema(
+            "Load the full body of one Knowledge & Rules note by id (from the knowledge index or a search). Scope-checked and stripped of secret material. Same contract as GET /api/mcp/resources/{id}.",
+            {"id": {"type": "string", "description": "Knowledge note / resource id."}},
+            ["id"],
+        ),
+        emperor_get_knowledge_note,
+        check_fn=_available,
+        requires_env=requires,
+        description="Load one Emperor knowledge note",
+    )
+    ctx.register_tool(
+        "emperor_search_knowledge",
+        TOOLSET,
+        _schema(
+            "Search Knowledge & Rules by name and content. Returns compact index lines (title, summary, id), never bodies; load one with emperor_get_knowledge_note.",
+            {
+                "query": {"type": "string", "description": "Search text."},
+                "limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 20},
+            },
+            ["query"],
+        ),
+        emperor_search_knowledge,
+        check_fn=_available,
+        requires_env=requires,
+        description="Search Emperor knowledge notes",
     )
     ctx.register_hook("pre_llm_call", emperor_context_hook)

@@ -99,10 +99,14 @@ test("Hermes bridge and docs use Company Brain context resolver", () => {
   });
 
   const hermesSkill = read("integrations/hermes/emperor-claw/skills/emperor-claw/SKILL.md");
-  ["Company Brain Note Protocol", "frontmatter", "[[wikilinks]]", "status: active", "status: draft only", "POST /resources"].forEach((needle) => {
-    assertContains(hermesSkill, needle, `Hermes skill should teach agents ${needle}`);
+  // The Note Protocol is no longer duplicated in the skill: it lives in the
+  // single versioned manual (emperor_get_manual), and the skill points at it.
+  ["emperor_get_manual", "emperor_get_knowledge_note", "emperor_search_knowledge"].forEach((needle) => {
+    assertContains(hermesSkill, needle, `Hermes skill should point agents at ${needle}`);
   });
-  assert.equal(hermesSkill.includes("POST /resources/proposals"), false, "Hermes skill should not teach proposal queues as normal workflow");
+  ["Company Brain Note Protocol", "POST /resources/proposals"].forEach((needle) => {
+    assert.equal(hermesSkill.includes(needle), false, `Hermes skill should not duplicate the manual (${needle})`);
+  });
 });
 
 
