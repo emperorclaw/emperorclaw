@@ -1,326 +1,409 @@
-# EmperorClaw End-to-End Developer Tutorial
+# Build Your First EmperorClaw Agent in 15 Minutes
 
-A hands-on walkthrough for developers integrating an AI agent with EmperorClaw. Complete the full loop — register an agent, create a project, claim and complete a task with evidence, and verify in real time — in **under 15 minutes**.
+> **Your AI workforce needs a system of record, not just agents.**
+>
+> EmperorClaw is the open-source control plane that keeps your AI team's state durable,
+> tasks auditable, and deliverables verifiable — whether you run one agent or one hundred.
+>
+> **What you'll build here:** A complete task cycle — deploy the control plane, register an
+> agent via the MCP bridge, claim and complete a task, and land a deliverable artifact.
+> All in under 15 minutes.
+>
+> **Audience:** Developers adopting EmperorClaw for their own AI workforce. You know
+> Docker and basic REST APIs. No agent runtime experience needed.
+>
+> **Time:** 10–15 minutes (most of it waiting for Docker pull).
 
-You need: a terminal with `curl`, `jq`, and a free [EmperorClaw Cloud](https://emperorclaw.com) account.
+## Prerequisites
 
----
+- **Docker** installed ([get Docker](https://docs.docker.com/get-docker/))
+- **curl** available in your terminal
+- A text editor or terminal with copy-paste
 
-## 1. Get your API token
-
-1. Go to [emperorclaw.com](https://emperorclaw.com), sign in, and create a **Company Workspace**.
-2. Open **Settings → API Tokens** → **Generate New Token**.
-3. Copy the token. It starts with `ec-` and authenticates every API call.
-
-Set it in your shell so the rest of the tutorial works:
-
-```bash
-export EC_TOKEN="ec-your-token-here"
-export EC_BASE="https://brain.malecu.eu"
-```
-
-> [!TIP]
-> Keep the token secret. Anyone with it controls your workspace.
-
-### Verify your connection
-
-```bash
-curl -s -H "Authorization: Bearer $EC_TOKEN" "$EC_BASE/api/mcp/runtime/health" | jq .
-```
-
-Expected response (exact fields vary by your account):
-
-```json
-{
-  "ok": true,
-  "companyId": "uuid-of-your-company",
-  "serverTime": "2026-10-15T21:00:00.000Z",
-  "apiBaseUrl": "https://brain.malecu.eu",
-  "wsUrl": "wss://brain.malecu.eu/api/mcp/ws",
-  "emperorVersion": "0.8.65",
-  "docsUrl": "https://brain.malecu.eu/docs",
-  "capabilities": { "runtimeRegister": true, "sessions": true, "heartbeat": true }
-}
-```
+> See the [Prerequisites guide](https://emperorclaw.com/docs/getting-started/)
+> for a full checklist.
 
 ---
 
-## 2. Register your first agent
+## Step 1: Deploy the Control Plane
 
-Agents are registered runtimes — they don't need to be alive yet. Registration creates an identity record Emperor can assign tasks to.
+EmperorClaw runs as a self-hosted Docker stack. Open a terminal and run:
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/agents" \
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
+```
+
+This clones the repo, generates secrets, writes `.env`, and starts `docker compose up -d`.
+When it finishes, the control plane is running at **`http://localhost:3000`**.
+
+> **Already have a deployment?** Skip to [Step 3](#step-3-generate-an-api-token).
+
+### Verify
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+# Expected: 200
+```
+
+---
+
+## Step 2: Create Your Workspace
+
+1. Open `http://localhost:3000` in your browser.
+2. Click **Create Account** and fill in your email, name, and password.
+3. After signup, you'll be prompted to create a **Company Workspace** — this is your
+   team's top-level container. Name it after your company or project (e.g. "My Agency").
+4. You land on the dashboard. Take 30 seconds to explore:
+   - **Projects** — where goals and tasks live
+   - **Agents** — where you register runtimes
+   - **Storage** — where deliverables land
+   - **Knowledge** — shared rules and context
+
+### What you just did
+
+Every company workspace is a self-contained **system of record**: its own projects, agents,
+storage, and knowledge. Agents authenticate and operate entirely within this boundary.
+
+---
+
+## Step 3: Generate an API Token
+
+Your agent needs a token to authenticate with the MCP bridge.
+
+1. Go to **Settings > API Tokens** (gear icon in the sidebar).
+2. Click **Generate New Token**.
+3. Give it a label like `my-first-agent`.
+4. Copy the token. **You won't see it again.**
+
+> **Keep this token secret.** Anyone with it can act in your workspace.
+> In production, generate a dedicated token per agent and rotate periodically.
+
+---
+
+## Step 4: Register an Agent
+
+Now configure your first agent runtime. Open a terminal. Set your token and server URL:
+
+```bash
+EC_TOKEN="ec_<your-token-here>"
+EC_URL="http://localhost:3000"
+```
+
+Register the agent:
+
+```bash
+curl -X POST "$EC_URL/api/mcp/agents" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "name": "MyFirstAgent",
-    "role": "worker"
-  }' | jq .
+    "name": "my-first-worker",
+    "role": "worker",
+    "skillsJson": ["general"]
+  }'
 ```
 
-Response:
+**Expected response:**
 
 ```json
 {
   "message": "Agent registered",
   "agent": {
-    "id": "ec-agent-uuid-here",
-    "name": "MyFirstAgent",
-    "role": "worker"
+    "id": "...",
+    "name": "my-first-worker",
+    "role": "worker",
+    ...
   }
 }
 ```
 
-Save the returned `id` — that's your agent's permanent identity:
+Save the returned agent `id`:
 
 ```bash
-export AGENT_ID="<id-from-response>"
+EC_AGENT_ID="<returned-agent-id>"
 ```
 
-### List your agents
-
-```bash
-curl -s -H "Authorization: Bearer $EC_TOKEN" "$EC_BASE/api/mcp/agents" | jq '.agents | length'
-```
-
-You should see 1 registered agent.
+> **What's happening here?** The agent record becomes the durable identity for your
+> runtime — its lease, activity log, and role are tracked in the control plane, not in
+> a local config file. See the [Developer Guide](https://emperorclaw.com/docs/agents-and-mcp/)
+> for how a runtime bridge uses this identity.
 
 ---
 
-## 3. Create a project
+## Step 5: Check Runtime Health
 
-Projects are durable containers for goals, tasks, and memory.
+Verify the API is healthy and see what features are available:
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/projects" \
-  -H "Authorization: Bearer $EC_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
-  -d '{
-    "goal": "Complete the EmperorClaw end-to-end tutorial"
-  }' | jq .
+curl -s "$EC_URL/api/mcp/runtime/health" \
+  -H "Authorization: Bearer $EC_TOKEN" | jq .
 ```
 
-Save the project ID:
+**Expected response shape:**
 
-```bash
-export PROJECT_ID="<id-from-response>"
+```json
+{
+  "ok": true,
+  "companyId": "...",
+  "serverTime": "2026-10-15T...Z",
+  "emperorVersion": "0.8.65",
+  "capabilities": { ... }
+}
 ```
 
 ---
 
-## 4. Create, claim, and complete a task
+## Step 6: Create a Project with a Task
 
-This is the core loop — every unit of work in EmperorClaw follows this pattern.
+Work in EmperorClaw is organized into **projects** (durable goals) and **tasks**
+(individual units of work). This is your system of record at the work-item level.
 
-### 4a. Create a task
-
-`taskType` is required. Set `allowUnderspecified: true` for tutorial simplicity (in production, add `acceptanceCriteria` and `deliverables`).
+Create a project:
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/tasks" \
+curl -X POST "$EC_URL/api/mcp/projects" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "taskType": "tutorial",
-    "title": "Hello-world task",
-    "description": "A simple task to test the agent workflow loop",
-    "projectId": "'"$PROJECT_ID"'",
+    "goal": "Demonstrate a complete task cycle from agent registration to artifact delivery",
+    "maxActiveAgents": 3
+  }'
+```
+
+Save the project `id`:
+
+```bash
+EC_PROJECT_ID="<returned-project-id>"
+```
+
+Now create a task inside that project:
+
+```bash
+curl -X POST "$EC_URL/api/mcp/tasks" \
+  -H "Authorization: Bearer $EC_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{
+    "projectId": "'"$EC_PROJECT_ID"'",
+    "taskType": "generic",
+    "title": "Generate a welcome report",
+    "description": "Write a short markdown report saying hello and listing today'\''s date.",
     "allowUnderspecified": true
-  }' | jq .
+  }'
 ```
 
-Save the task ID:
+> **Why `allowUnderspecified: true`?** Production tasks typically require `taskType`,
+> `title`, `description`, `acceptanceCriteria` and `deliverables`. For a quick demo we
+> skip those to keep it simple. Your real agents should always specify them.
+
+Save the task `id`:
 
 ```bash
-export TASK_ID="<id-from-response>"
+EC_TASK_ID="<returned-task-id>"
 ```
 
-### 4b. Claim the task
+---
 
-Your agent atomically takes ownership of the **next available** task assigned to it (the per-task claim endpoint does not exist; Emperor selects the best match).
+## Step 7: Claim and Complete a Task (The Agent Loop)
+
+This is the core workflow your agents will run. Each step is an atomic API call
+against the control plane — no shared filesystem, no distributed locks.
+
+### 7a. Claim the next available task
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/tasks/claim" \
+curl -X POST "$EC_URL/api/mcp/tasks/claim" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "agentId": "'"$AGENT_ID"'",
-    "allowedRoles": []
-  }' | jq .
+    "agentId": "'"$EC_AGENT_ID"'"
+  }'
 ```
 
-If no tasks are available the response is `{"message":"No tasks available","task":null}` — not a 409. Claim does not use state transitions like `queued` → `running`.
+The task moves from `queued` to `running`. If no task is available, you'll get a
+404 response — create one more task first.
 
-### 4c. Send a heartbeat (renews lease)
+> **Per-task claim is not supported.** The API only returns the next available
+> task for an agent. Your agent loop should call `/claim` when ready for work,
+> not to grab a specific task.
+
+### 7b. Keep your lease alive with a heartbeat
+
+While working, send heartbeats every 60 seconds to renew the claim:
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/agents/heartbeat" \
+curl -X POST "$EC_URL/api/mcp/agents/heartbeat" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "agentId": "'"$AGENT_ID"'",
+    "agentId": "'"$EC_AGENT_ID"'",
     "currentLoad": 1
-  }' | jq .
+  }'
 ```
 
-### 4d. Add a progress note
+**Expected response:**
+
+```json
+{
+  "message": "Heartbeat acknowledged",
+  "lastSeenAt": "2026-10-15T...Z"
+}
+```
+
+### 7c. Log progress
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/tasks/$TASK_ID/notes" \
+curl -X POST "$EC_URL/api/mcp/tasks/$EC_TASK_ID/notes" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "note": "Starting work on the hello-world task. This is a test note.",
-    "agentId": "'"$AGENT_ID"'",
+    "agentId": "'"$EC_AGENT_ID"'",
+    "note": "Starting the welcome report",
     "kind": "progress"
-  }' | jq .
+  }'
 ```
 
-### 4e. Complete the task
+Every note is timestamped and attributed — this becomes your audit trail.
+
+### 7d. Complete the task
 
 ```bash
-curl -s -X POST "$EC_BASE/api/mcp/tasks/$TASK_ID/result" \
+curl -X POST "$EC_URL/api/mcp/tasks/$EC_TASK_ID/result" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
     "state": "done",
-    "agentId": "'"$AGENT_ID"'",
-    "comment": "Successfully completed the hello-world task",
-    "outputJson": {}
-  }' | jq .
+    "agentId": "'"$EC_AGENT_ID"'",
+    "comment": "Welcome report generated successfully",
+    "outputJson": {
+      "summary": "Report written to welcome-report.md"
+    }
+  }'
 ```
 
-The task transitions to `done`. Verify:
-
-```bash
-curl -s -H "Authorization: Bearer $EC_TOKEN" "$EC_BASE/api/mcp/tasks/$TASK_ID" | jq '.task.state'
-```
-
-Expected: `"done"`
+The task moves to `done`, and the output is recorded. A human can review it in the UI,
+reopen it, or approve it — all from the same system of record.
 
 ---
 
-## 5. Upload an artifact as evidence
+## Step 8: Land a Deliverable in Storage
 
-Deliverables go to Storage, not chat.
+Creating a task output is good. Landing a real file is better — this is what makes
+EmperorClaw a system of record rather than a todo list.
+
+Write a report file:
 
 ```bash
-# Create a sample deliverable
-echo "Hello from EmperorClaw!" > /tmp/tutorial-output.txt
+cat > /tmp/welcome.md << 'EOF'
+# Welcome to EmperorClaw
 
-# Upload it
-curl -s -X POST "$EC_BASE/api/mcp/artifacts/upload" \
-  -H "Authorization: Bearer $EC_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')" \
-  -F "file=@/tmp/tutorial-output.txt" \
-  -F "kind=deliverable" \
-  -F "title=tutorial-output.txt" \
-  -F "projectId=$PROJECT_ID" \
-  -F "taskId=$TASK_ID"
+This report was generated by my first EmperorClaw agent.
+
+- **Date:** $(date +%Y-%m-%d)
+- **Status:** Working
+- **Agent:** my-first-worker
+
+## Next Steps
+
+1. Deploy production with a PostgreSQL backup strategy
+2. Register specialized agents for each skill domain
+3. Set up human approval gates for sensitive work
+EOF
 ```
 
-Save the artifact ID:
+Upload it as an artifact:
 
 ```bash
-export ARTIFACT_ID="<id-from-response>"
+curl -X POST "$EC_URL/api/mcp/artifacts/upload" \
+  -H "Authorization: Bearer $EC_TOKEN" \
+  -F "file=@/tmp/welcome.md" \
+  -F "projectId=$EC_PROJECT_ID" \
+  -F "kind=report" \
+  -F "title=welcome-report.md"
+```
+
+**Expected response:**
+
+```json
+{
+  "message": "Artifact uploaded",
+  "artifact": {
+    "id": "...",
+    "path": "welcome-report.md",
+    "sha256": "...",
+    "sizeBytes": 1234
+  }
+}
+```
+
+Save the artifact `id`:
+
+```bash
+EC_ARTIFACT_ID="<returned-artifact-id>"
 ```
 
 ### Verify the artifact
 
 ```bash
-curl -s -H "Authorization: Bearer $EC_TOKEN" "$EC_BASE/api/mcp/artifacts/$ARTIFACT_ID/verify" | jq '{ok, artifactId, sha256}'
+curl -s "$EC_URL/api/mcp/artifacts/$EC_ARTIFACT_ID/verify" \
+  -H "Authorization: Bearer $EC_TOKEN" | jq .
 ```
 
-Expected: `{"ok":true,"artifactId":"<uuid>","sha256":"<hex>"}`
+Open **Storage** in the UI — the file is there, versioned, and shareable.
 
 ---
 
-## 6. Watch it happen in real time
+## Step 9: Verify the Full Cycle
 
-### 6a. Open the WebSocket feed
-
-```bash
-# Requires websocket-client
-pip install websocket-client 2>/dev/null
-python3 -c "
-import websocket, json, sys
-ws = websocket.WebSocket()
-ws.connect('$EC_BASE/api/mcp/ws', header=['Authorization: Bearer $EC_TOKEN'])
-ws.settimeout(10)
-# Listen for 2 events then exit
-for i in range(2):
-    try:
-        msg = json.loads(ws.recv())
-        print(json.dumps(msg, indent=2))
-    except:
-        break
-ws.close()
-"
-```
-
-If you repeat Part 4 in another terminal, the WebSocket delivers the events as they happen: `task_created`, `task_updated`, `task_note_added`.
-
-### 6b. Check the dashboard
-
-Open your browser to [emperorclaw.com](https://emperorclaw.com). You'll see:
-
-- Your agent listed in the workforce
-- The project with its task history
-- The artifact in Storage
-- Every event in the timeline
+| What to check | How |
+|---|---|
+| Task is done | `curl -s "$EC_URL/api/mcp/tasks/$EC_TASK_ID" -H "Authorization: Bearer $EC_TOKEN"` |
+| Progress note visible | UI: Open the task, check the notes timeline |
+| Artifact verified | `curl ... $EC_URL/api/mcp/artifacts/$EC_ARTIFACT_ID/verify` |
+| Agent activity | `curl -s "$EC_URL/api/mcp/agents" -H "Authorization: Bearer $EC_TOKEN"` |
 
 ---
 
-## 7. Clean up (optional)
+## 🎉 You Just Built a Working Agent Loop
 
-Delete resources you no longer need. **All mutating endpoints require `Idempotency-Key`**, including deletes.
+In 10–15 minutes you:
 
-```bash
-# Soft-delete the task
-curl -s -X DELETE "$EC_BASE/api/mcp/tasks/$TASK_ID" \
-  -H "Authorization: Bearer $EC_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')"
+1. **Deployed** the EmperorClaw control plane (self-hosted)
+2. **Checked runtime health** — verified the API is live with all capabilities
+3. **Registered an agent** — durable identity in the control plane
+4. **Created a project** — a durable goal with its own scope
+5. **Created a task** — a unit of work with a type and spec
+6. **Claimed the next available task** — atomic lease via `agentId` only
+7. **Sent a heartbeat** — kept the lease alive with `currentLoad`
+8. **Logged progress** — timestamped and attributed in the notes timeline
+9. **Completed the task** — `agentId` + `state` persisted
+10. **Uploaded and verified an artifact** — a verifiable file in storage
 
-# Soft-delete the agent
-curl -s -X DELETE "$EC_BASE/api/mcp/agents/$AGENT_ID" \
-  -H "Authorization: Bearer $EC_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen || python3 -c 'import uuid; print(uuid.uuid4())')"
-```
-
-> [!NOTE]
-> Projects are not deletable via the API — they are durable records. You can archive them from the dashboard.
-
----
-
-## What you just learned
-
-| Step | Concept | Emperor endpoint |
-|------|---------|-----------------|
-| 1 | Auth & health check | `GET /api/mcp/runtime/health` |
-| 2 | Agent registration | `POST /api/mcp/agents` |
-| 3 | Project creation | `POST /api/mcp/projects` |
-| 4a | Task creation | `POST /api/mcp/tasks` |
-| 4b | Task claiming | `POST /api/mcp/tasks/claim` |
-| 4c | Heartbeat (lease renew) | `POST /api/mcp/agents/heartbeat` |
-| 4d | Progress logging | `POST /api/mcp/tasks/{id}/notes` |
-| 4e | Task completion | `POST /api/mcp/tasks/{id}/result` |
-| 5 | Artifact upload | `POST /api/mcp/artifacts/upload` |
-| 6a | Real-time events | `wss://.../api/mcp/ws` |
-| 7 | Cleanup | `DELETE /api/mcp/tasks/{id}`, `DELETE /api/mcp/agents/{id}` |
+This is the same workflow your production agents will run — at scale, on a schedule,
+with human approvals and incident recovery. EmperorClaw is the **system of record**
+underneath: nothing is lost when agents restart, nothing depends on shared filesystems,
+and every action leaves a durable trace.
 
 ---
 
-## Next steps
+## Next Steps
 
-- Read the [Developer Guide](https://emperorclaw.com/docs/agents-and-mcp) for architecture and best practices.
-- Explore the [Getting Started](https://emperorclaw.com/docs/getting-started) guide for onboarding.
-- Learn about [Storage & Drive](https://emperorclaw.com/docs/storage-and-drive) for artifact workflows.
-- Set up the [Desk Display](https://emperorclaw.com/docs/desk-display) for an agent runtime.
-- Check the [Upgrading](https://emperorclaw.com/docs/upgrading) guide for version changes.
+Now you've seen the cycle, here's where to go deeper:
+
+| Goal | Resource |
+|---|---|
+| Understand the architecture | [How it Works](https://github.com/emperorclaw/emperorclaw/blob/main/public/emperor-claw-os/docs/HOW-IT-WORKS.md) |
+| Write a production agent | [Developer Guide](https://emperorclaw.com/docs/agents-and-mcp/) |
+| Install from scratch | [Prerequisites Guide](https://emperorclaw.com/docs/getting-started/) |
+| Troubleshoot common issues | [Troubleshooting Guide](https://github.com/emperorclaw/emperorclaw/blob/main/public/emperor-claw-os/docs/TROUBLESHOOTING.md) |
+| Community and support | [GitHub Discussions](https://github.com/emperorclaw/emperorclaw/discussions) |
+| Full API reference | [emperorclaw.com/docs](https://emperorclaw.com/docs/) |
+
+---
+
+*Found an issue with this tutorial? [Open an issue](https://github.com/emperorclaw/emperorclaw/issues).*
