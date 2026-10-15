@@ -321,6 +321,7 @@ Upload it as an artifact:
 ```bash
 curl -X POST "$EC_URL/api/mcp/artifacts/upload" \
   -H "Authorization: Bearer $EC_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -F "file=@/tmp/welcome.md" \
   -F "projectId=$EC_PROJECT_ID" \
   -F "kind=report" \
