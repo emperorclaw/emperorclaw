@@ -33,7 +33,7 @@ EmperorClaw runs as a self-hosted Docker stack. Open a terminal and run:
 curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
 ```
 
-This clones the repo, generates secrets, writes `.env`, and starts `docker compose up -d`.
+This downloads the deployment bundle, generates secrets, writes `.env`, and starts `docker compose up -d`.
 When it finishes, the control plane is running at **`http://localhost:3000`**.
 
 > **Already have a deployment?** Skip to [Step 3](#step-3-generate-an-api-token).
@@ -132,7 +132,7 @@ EC_AGENT_ID="<returned-agent-id>"
 
 ## Step 5: Check Runtime Health
 
-Verify the API is healthy and see what features are available:
+Verify the API is healthy and see what version and features are available:
 
 ```bash
 curl -s "$EC_URL/api/mcp/runtime/health" \
@@ -146,7 +146,7 @@ curl -s "$EC_URL/api/mcp/runtime/health" \
   "ok": true,
   "companyId": "...",
   "serverTime": "2026-10-15T...Z",
-  "emperorVersion": "0.8.65",
+  "emperorVersion": "0.8.101",
   "capabilities": { ... }
 }
 ```
