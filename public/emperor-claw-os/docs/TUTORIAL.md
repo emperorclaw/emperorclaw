@@ -95,7 +95,7 @@ Register the agent:
 curl -X POST "$EC_URL/api/mcp/agents" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "name": "my-first-worker",
     "role": "worker",
@@ -164,7 +164,7 @@ Create a project:
 curl -X POST "$EC_URL/api/mcp/projects" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "goal": "Demonstrate a complete task cycle from agent registration to artifact delivery",
     "maxActiveAgents": 3
@@ -183,7 +183,7 @@ Now create a task inside that project:
 curl -X POST "$EC_URL/api/mcp/tasks" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "projectId": "'"$EC_PROJECT_ID"'",
     "taskType": "generic",
@@ -216,13 +216,13 @@ against the control plane — no shared filesystem, no distributed locks.
 curl -X POST "$EC_URL/api/mcp/tasks/claim" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "agentId": "'"$EC_AGENT_ID"'"
   }'
 ```
 
-The task moves from `queued` to `running`. If no task is available, you'll get a
+The task moves from `inbox` to `in_progress`. If no task is available, you'll get a
 404 response — create one more task first.
 
 > **Per-task claim is not supported.** The API only returns the next available
@@ -237,7 +237,7 @@ While working, send heartbeats every 60 seconds to renew the claim:
 curl -X POST "$EC_URL/api/mcp/agents/heartbeat" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "agentId": "'"$EC_AGENT_ID"'",
     "currentLoad": 1
@@ -259,7 +259,7 @@ curl -X POST "$EC_URL/api/mcp/agents/heartbeat" \
 curl -X POST "$EC_URL/api/mcp/tasks/$EC_TASK_ID/notes" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "agentId": "'"$EC_AGENT_ID"'",
     "note": "Starting the welcome report",
@@ -275,7 +275,7 @@ Every note is timestamped and attributed — this becomes your audit trail.
 curl -X POST "$EC_URL/api/mcp/tasks/$EC_TASK_ID/result" \
   -H "Authorization: Bearer $EC_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Idempotency-Key: $(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')" \
   -d '{
     "state": "done",
     "agentId": "'"$EC_AGENT_ID"'",
@@ -341,17 +341,31 @@ curl -X POST "$EC_URL/api/mcp/artifacts/upload" \
 }
 ```
 
-Save the artifact `id`:
-
-```bash
-EC_ARTIFACT_ID="<returned-artifact-id>"
-```
-
 ### Verify the artifact
 
 ```bash
 curl -s "$EC_URL/api/mcp/artifacts/$EC_ARTIFACT_ID/verify" \
   -H "Authorization: Bearer $EC_TOKEN" | jq .
+```
+
+**Expected response:**
+
+```json
+{
+  "ok": true,
+  "artifactId": "...",
+  "sha256": "...",
+  "expectedSizeBytes": 1234,
+  "sizeBytes": 1234,
+  "expectedSha256": "...",
+  "error": null
+}
+```
+
+Save the artifact `id`:
+
+```bash
+EC_ARTIFACT_ID="<returned-artifact-id>"
 ```
 
 Open **Storage** in the UI — the file is there, versioned, and shareable.
@@ -402,7 +416,7 @@ Now you've seen the cycle, here's where to go deeper:
 | Install from scratch | [Prerequisites Guide](https://emperorclaw.com/docs/getting-started/) |
 | Troubleshoot common issues | [Troubleshooting Guide](https://github.com/emperorclaw/emperorclaw/blob/main/public/emperor-claw-os/docs/TROUBLESHOOTING.md) |
 | Community and support | [GitHub Discussions](https://github.com/emperorclaw/emperorclaw/discussions) |
-| Full API reference | [emperorclaw.com/docs](https://emperorclaw.com/docs/) |
+| Full API reference | [GitHub docs directory](https://github.com/emperorclaw/emperorclaw/tree/main/public/emperor-claw-os/docs) |
 
 ---
 
