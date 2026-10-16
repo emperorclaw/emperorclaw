@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.102] — 2026-10-16
+
+### Fixed
+- Give the signed-in app the full phone screen width, with a labeled navigation menu replacing the permanent sidebar on mobile.
+- Adapt the workspace height to the mobile browser toolbar, respect iPhone safe areas, and keep form fields readable without Safari zooming on focus.
+
 ## [0.8.101] — 2026-10-14
 
 ### Added

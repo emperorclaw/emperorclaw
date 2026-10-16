@@ -885,3 +885,18 @@
 @keyframes living-trail { 15% { opacity: .45; } 100% { opacity: 0; } }
 .living-still *, .living-still { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { .living-office * { animation: none !important; transition: none !important; } }
+
+/* Keep phone fields readable without Safari zooming the workspace on focus. */
+@media (max-width: 767px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .emperor-main {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+    padding-bottom: max(5rem, calc(1rem + env(safe-area-inset-bottom)));
+  }
+}

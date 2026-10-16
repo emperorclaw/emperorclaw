@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { createPortal } from "react-dom";
-import { IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconUsers } from "@tabler/icons-react";
+import { IconMenu2, IconLayoutDashboard, IconFolder, IconRobot, IconShieldCheck, IconKey, IconLogout, IconUser, IconDeviceSdCard, IconMessage, IconRosetteDiscountCheck, IconBook, IconFileText, IconGitBranch, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconUsers } from "@tabler/icons-react";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationBell } from "./notification-bell";
 import { clsx, type ClassValue } from "clsx";
@@ -18,6 +18,8 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -116,7 +118,31 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
 
     return (
         <>
-        <aside className={cn("flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar shadow-2xl shadow-black/10 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
+        <header className="flex shrink-0 items-center justify-between border-b border-border bg-sidebar px-4 py-2 md:hidden" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+            <Link href="/" className="flex min-h-11 items-center gap-2 text-sm font-semibold"><CustomLogo className="h-7 w-7" /> Emperor Claw</Link>
+            <Dialog>
+                <DialogTrigger asChild>
+                    <button aria-label="Open navigation" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border"><IconMenu2 className="h-5 w-5" /></button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[85dvh] overflow-y-auto">
+                    <DialogTitle>Navigation</DialogTitle>
+                    <DialogDescription>Switch between your company workspaces.</DialogDescription>
+                    <nav aria-label="Mobile navigation" className="space-y-3">
+                        {sections.map((section) => <div key={section.title || "system"}>
+                            {section.title && <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{section.title}</p>}
+                            {section.links.map((link) => <DialogClose asChild key={link.href}>
+                                <Link href={link.href} aria-current={activeHref === link.href ? "page" : undefined} className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm", activeHref === link.href ? "bg-primary/10 text-primary" : "text-foreground")}>
+                                    <link.icon className="h-5 w-5 shrink-0" />{link.name}
+                                    {!!link.badge && <span className="ml-auto rounded-full bg-rose-500 px-2 text-xs text-white">{link.badge}</span>}
+                                </Link>
+                            </DialogClose>)}
+                        </div>)}
+                    </nav>
+                    <div className="flex items-center justify-between border-t border-border pt-3"><ThemeToggle /><button onClick={() => signOut()} className="min-h-11 px-3 text-sm">Sign out</button></div>
+                </DialogContent>
+            </Dialog>
+        </header>
+        <aside className={cn("hidden md:flex h-full w-16 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar shadow-2xl shadow-black/10 backdrop-blur-2xl transition-[width] duration-300 ease-in-out sm:w-20", collapsed ? "md:w-20" : "md:w-64")}>
             <div className={cn("flex h-14 shrink-0 items-center border-b border-border", collapsed ? "justify-center px-2" : "px-3 sm:px-5")}>
                 {collapsed ? (
                     <CustomLogo className="h-7 w-7" />

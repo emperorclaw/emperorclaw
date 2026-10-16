@@ -23,11 +23,11 @@ export default async function AppLayout({
     }
 
     return (
-        <div className="emperor-app-shell flex h-screen overflow-hidden">
+        <div className="emperor-app-shell flex h-dvh flex-col overflow-hidden md:flex-row">
             <AutoRefresh intervalMs={15000} />
             <InteractiveTour />
             <AppSidebar isPlatformAdmin={platformAdmin?.isPlatformAdmin === true} isCompanyAdmin={isCompanyAdmin} appVersion={pkg.version} />
-            <main className="emperor-main flex-1 min-h-0 overflow-y-auto w-full px-3 py-4 pb-20 sm:px-5 sm:py-5 sm:pb-16 lg:px-8">
+            <main className="emperor-main flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto w-full px-3 py-4 pb-20 sm:px-5 sm:py-5 sm:pb-16 lg:px-8">
                 <div className="emperor-page-frame">
                     <UpdateBanner />
                     {children}
