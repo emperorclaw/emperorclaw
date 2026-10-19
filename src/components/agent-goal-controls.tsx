@@ -1,5 +1,7 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { IconTarget } from '@tabler/icons-react';
+import { cn } from '@/lib/utils';
 
 type Objective = {
     id: string;
@@ -48,6 +50,28 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
     const [error, setError] = useState<string | null>(null);
     const [text, setText] = useState('');
     const [cadenceMinutes, setCadenceMinutes] = useState(60);
+    const detailsRef = useRef<HTMLDetailsElement>(null);
+
+    // Behave like a popover: close on outside click or Escape.
+    useEffect(() => {
+        function close(event: Event) {
+            const details = detailsRef.current;
+            if (!details?.open) return;
+            if (event instanceof KeyboardEvent) {
+                if (event.key !== 'Escape') return;
+                details.open = false;
+                details.querySelector('summary')?.focus();
+            } else if (!details.contains(event.target as Node)) {
+                details.open = false;
+            }
+        }
+        document.addEventListener('pointerdown', close);
+        document.addEventListener('keydown', close);
+        return () => {
+            document.removeEventListener('pointerdown', close);
+            document.removeEventListener('keydown', close);
+        };
+    }, []);
 
     const load = useCallback(async () => {
         try {
@@ -86,11 +110,23 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
     }
 
     const live = objective && (objective.status === 'active' || objective.status === 'paused' || objective.status === 'blocked');
-    const button = 'min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 disabled:opacity-40';
+    const button = 'min-h-9 rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 disabled:opacity-40';
     return (
-        <details className="mx-2 my-2 rounded-xl border border-zinc-800 bg-zinc-950/50 text-zinc-200 sm:mx-4">
-            <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium">Objective{statusLabel(objective, pending)}</summary>
-            <div className="max-h-[45dvh] space-y-3 overflow-y-auto border-t border-zinc-800 p-3 sm:max-h-80">
+        <details ref={detailsRef} className="group">
+            <summary
+                title="Give the agent an objective with scheduled check-ins"
+                className={cn(
+                    'flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors [&::-webkit-details-marker]:hidden',
+                    live || pending
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:border-emerald-500/50'
+                        : 'border-transparent text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+                )}
+            >
+                <IconTarget className="h-3.5 w-3.5" />
+                <span className="sr-only sm:not-sr-only">Objective{statusLabel(objective, pending)}</span>
+            </summary>
+            <div className="absolute inset-x-0 bottom-full z-30 mb-2 text-zinc-200">
+            <div className="max-h-[60dvh] space-y-3 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl shadow-black/50 sm:max-h-96">
                 {objective && (
                     <div className="space-y-1">
                         <p className="max-h-28 overflow-y-auto break-words text-sm">{restricted ? (objective.message ?? 'Managed in another private conversation.') : objective.objective}</p>
@@ -108,20 +144,21 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
                 ) : (
                     <form onSubmit={(event) => { event.preventDefault(); void act({ action: 'start', objective: text, cadenceMinutes }); }} className="space-y-3">
                         <label className="block text-xs text-zinc-400">What should the agent finish?
-                            <textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} rows={3} required className="mt-1 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-base text-zinc-100" placeholder={'Describe the outcome and how to verify it.'} />
+                            <textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} rows={3} required className="mt-1 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 p-2.5 text-base text-zinc-100 sm:text-sm" placeholder={'Describe the outcome and how to verify it.'} />
                         </label>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <label className="flex items-center gap-2 text-xs text-zinc-400">Check-in cadence
-                                <select aria-label="Check-in cadence" value={cadenceMinutes} onChange={(event) => setCadenceMinutes(Number(event.target.value))} className="min-h-11 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
+                                <select aria-label="Check-in cadence" value={cadenceMinutes} onChange={(event) => setCadenceMinutes(Number(event.target.value))} className="min-h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
                                     {CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                                 </select>
                             </label>
                             <button type="submit" disabled={busy || !text.trim()} className={button}>{busy ? 'Starting…' : 'Start objective'}</button>
                         </div>
-                        <p className="text-xs leading-relaxed text-zinc-500">Emperor sends the agent a private check-in on this cadence and stops automatically when the objective completes, blocks, stops, or reaches its check-in budget. Works with every runtime.</p>
+                        <p className="text-xs leading-relaxed text-zinc-500">Check-ins stop when the objective completes, blocks, is stopped, or uses its budget.</p>
                     </form>
                 )}
                 {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+            </div>
             </div>
         </details>
     );

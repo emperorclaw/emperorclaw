@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
-import { IconPaperclip, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
+import { IconArrowUp, IconPaperclip, IconPlayerStop, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
 import { DeliveryInspector } from "@/components/delivery-inspector";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,8 @@ import { MessageReasoningDisclosure } from "@/components/message-reasoning-discl
 import { queuePromptPreview } from "@/lib/queue-prompt-preview";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceLabel } from "@/lib/request-label";
+
+const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:opacity-50";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -891,7 +893,6 @@ export function AgentDirectChat({
                 </button>
             )}
 
-            {canSend && <AgentGoalControls agentId={agentId} />}
             {canSend && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
                 {(hasQueueBacklog || showCancelledHistory) && (
                     <details key={showCancelledHistory ? "history" : "pending"} open={showCancelledHistory ? true : undefined} aria-label="Agent message queue" className="rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs">
@@ -947,19 +948,6 @@ export function AgentDirectChat({
                         {recentlyCancelledItems.length} recently cancelled · Review or retry
                     </button>
                 )}
-                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                    <button type="button" onClick={stopAgent} disabled={isSending}
-                        className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300 hover:bg-red-500/10 disabled:opacity-50">
-                        Stop &amp; clear queue
-                    </button>
-                    <label className="flex items-center gap-2">Next prompt
-                        <select aria-label="Next prompt behavior" value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
-                            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2">
-                            <option value="queue">Queue after current work</option>
-                            <option value="replace">Stop &amp; replace current work</option>
-                        </select>
-                    </label>
-                </div>
                 {controlError && <p role="alert" className="text-xs text-red-300">{controlError}</p>}
                 {micError && (
                     <div className="flex items-start gap-2 rounded-lg bg-red-900/40 border border-red-700/40 px-3 py-2 text-xs text-red-300">
@@ -1035,7 +1023,7 @@ export function AgentDirectChat({
                         )}
                     </div>
                 )}
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="relative rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors focus-within:border-zinc-600">
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -1053,41 +1041,55 @@ export function AgentDirectChat({
                                 event.currentTarget.form?.requestSubmit();
                             }
                         }}
-                        placeholder="Message…"
+                        placeholder={`Message ${agentName}…`}
                         aria-label={`Message ${agentName}`}
                         aria-describedby="direct-message-shortcut"
                         rows={1}
-                        className="max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-base leading-5 text-zinc-200 sm:text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 sm:px-4"
+                        className="block max-h-40 min-h-11 w-full resize-none overflow-y-auto bg-transparent px-3 pt-3 pb-1 text-base leading-5 text-zinc-200 placeholder:text-zinc-600 focus:outline-none sm:px-4 sm:text-sm"
                     />
-                    <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        title="Attach files"
-                        aria-label="Attach files"
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 sm:rounded-full"
-                    >
-                        <IconPaperclip className="h-4 w-4" />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={startRecording}
-                        title="Record voice message"
-                        aria-label="Record voice message"
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-400 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 sm:rounded-full"
-                    >
-                        <IconMicrophone className="w-4 h-4" />
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
-                        aria-label="Send message"
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:gap-2 sm:rounded-full sm:px-4"
-                    >
-                        <IconSend className="w-4 h-4" />
-                        <span className="hidden sm:inline">{isSending ? "Sending" : "Send"}</span>
-                    </button>
+                    <div className="flex items-center gap-1 px-1.5 pb-1.5 sm:px-2 sm:pb-2">
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            title="Attach files"
+                            aria-label="Attach files"
+                            className={composerIconButton}
+                        >
+                            <IconPaperclip className="h-4 w-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={startRecording}
+                            title="Record voice message"
+                            aria-label="Record voice message"
+                            className={composerIconButton}
+                        >
+                            <IconMicrophone className="h-4 w-4" />
+                        </button>
+                        <AgentGoalControls agentId={agentId} />
+                        <select aria-label="Next prompt behavior" title="What happens when the agent is busy" value={sendMode} onChange={e => setSendMode(e.target.value as "queue" | "replace")}
+                            className="h-8 min-w-0 max-w-[7rem] cursor-pointer sm:max-w-[9.5rem] truncate rounded-full border border-transparent bg-transparent px-2 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70">
+                            <option value="queue">Queue after current</option>
+                            <option value="replace">Replace current work</option>
+                        </select>
+                        <div className="ml-auto flex items-center gap-1.5">
+                            <button type="button" onClick={stopAgent} disabled={isSending}
+                                title="Stop the agent and clear its queue" aria-label="Stop agent and clear queue"
+                                className={cn(composerIconButton, activeQueueItem ? "text-red-300 hover:bg-red-500/10 hover:text-red-200" : "")}>
+                                <IconPlayerStop className="h-4 w-4" />
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={(!draft.trim() && pendingAttachments.length === 0) || isSending}
+                                aria-label={isSending ? "Sending message" : "Send message"}
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-emerald-950 transition-colors hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+                            >
+                                <IconArrowUp className="h-4 w-4" stroke={2.5} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <p id="direct-message-shortcut" className="mt-1.5 px-1 text-[10px] text-zinc-600">
+                <p id="direct-message-shortcut" className="mt-1.5 hidden px-1 text-center text-[10px] text-zinc-600 sm:block">
                     Enter to send · Shift+Enter for a new line · /kill · /queue prompt · /replace prompt
                 </p>
             </form>

@@ -452,7 +452,23 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
 
     useEffect(() => {
         const id = linkedArtifactId;
-        if (id && /^[0-9a-f-]{36}$/i.test(id)) setSelectedEntry({ type: "artifact", id });
+        if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return;
+        // A deep link (e.g. from a chat message) opens the file itself, not just the root folder.
+        setSelectedEntry({ type: "artifact", id });
+        setInspectorTab("preview");
+        setIsInspectorOpen(true);
+        let cancelled = false;
+        void fetch(`/api/ui/artifacts/${id}`, { cache: "no-store" })
+            .then((response) => response.ok ? response.json() as Promise<{ artifact: ArtifactDetail }> : null)
+            .then((payload) => {
+                const folderId = payload?.artifact.folderId;
+                if (cancelled || !folderId) return;
+                setCurrentFolderId(folderId);
+                void reloadWorkspace(folderId).catch(() => undefined);
+            })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [linkedArtifactId]);
 
     async function fetchArtifactDetail(artifactId: string) {
