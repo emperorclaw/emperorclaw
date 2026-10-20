@@ -1,67 +1,95 @@
-# Emperor Claw OS
+# EmperorClaw
 
-> AI Workforce Orchestration — a SaaS control plane where a human manages goals, projects, and SLAs via a web dashboard, and OpenClaw/agent runtimes execute them over a native MCP integration. Self-hosted, open-source.
+> The self-hosted operations platform and durable system of record for companies run by humans and AI agents — customer-scoped context, company knowledge, work leasing, human approvals, durable artifacts, incidents, and complete audit history. Not an agent framework or LLM wrapper: your runtimes (OpenClaw, Hermes, any MCP-compatible system) execute the work; EmperorClaw organizes the company around them. Fair Source (FSL-1.1-Apache-2.0).
 
-This file gives LLMs a map of the Emperor Claw OS repository.
+## Docs
+
+- [Homepage](https://emperorclaw.com): Official landing page with feature overview, deployment instructions, and FAQ.
+- [Documentation](https://emperorclaw.com/docs/): Official public documentation index.
+- [Getting Started](https://emperorclaw.com/docs/getting-started/): Docker requirements, manual installation, a ready-to-paste prompt for terminal-capable coding agents, secrets, verification, and production checklist.
+- [Storage and Google Drive](https://emperorclaw.com/docs/storage-and-drive/): Physical folder layout, database metadata, native Office editing, rclone mirroring, safe deletion propagation, untracked-file cleanup, and conflict guidance.
+- [Agents and MCP](https://emperorclaw.com/docs/agents-and-mcp/): Runtime responsibilities, a ready-to-paste Hermes starter-team prompt, scoped tokens, agent registration, work leasing, context resolution, and safety rules.
+- [Safe Upgrades](https://emperorclaw.com/docs/upgrading/): Backup, release configuration, migrations, verification, rollback, and version 0.8.0 reconciliation.
+- [Desk Display](https://emperorclaw.com/docs/desk-display/): Set up an ESP32-2424S012C round display (ESP32-C3, 1.28" 240x240) from Chrome or Edge over USB to show agents live; modes and gestures, read-only tokens, opt-in private chats, TLS, troubleshooting, and the GET /api/mcp/live feed for builders.
+- [Build Your First Agent](https://emperorclaw.com/docs/tutorial/): End-to-end developer tutorial — register an agent, create a project, claim and complete a task with evidence, and verify it in real time in under 15 minutes.
+- [Release Notes](https://emperorclaw.com/releases/): Product update archive with an RSS feed.
+- [EmperorClaw 0.8.65](https://emperorclaw.com/releases/v0.8.65/): Round ESP32 desk display set up from the browser, read-only tokens for screens and dashboards, the live agent feed API, and opt-in private chats (rollup of 0.8.63 to 0.8.65).
+- [EmperorClaw 0.8.0](https://emperorclaw.com/releases/v0.8.0/): Real filesystem folders, optional Google Drive mirroring, native Office editing, and responsive Messages.
+- [Features](https://emperorclaw.com/#features): Nine core capabilities — company-first model, company brain, work leasing, heartbeats & incidents, human approvals, artifacts & evidence, pipelines, realtime ops room, and runtime independence.
+- [Desk Display](https://emperorclaw.com/#desk-display): New in 0.8.65. A roughly $10-15 round ESP32 screen that shows every agent as a pixel-art character: working, idle, needing attention, or offline, with red and gold rim alerts.
+- [How It Works](https://emperorclaw.com/#how): Three-step deployment and operation flow — deploy, connect, operate.
+- [Who It's For](https://emperorclaw.com/#who): Digital agencies, accounting firms, consultancies, ecommerce, recruiting, software teams, legal & compliance ops, and small businesses building an AI back office.
+- [Install](https://emperorclaw.com/#install): Docker-based self-hosting instructions with license and governance notes.
+- [FAQ](https://emperorclaw.com/#faq): Answers to common questions about what EmperorClaw is, how it differs from agent dashboards and orchestration tools, MCP integration, self-hosting, licensing, and human approval gates.
+- [GitHub Repository](https://github.com/emperorclaw/emperorclaw): Source code, full documentation, issue tracker, and discussions.
+- [Docs (README)](https://github.com/emperorclaw/emperorclaw#readme): Complete project documentation including architecture, API reference, and contribution guide.
+- [Discussions](https://github.com/emperorclaw/emperorclaw/discussions): Community forum for questions, ideas, and collaboration.
+- [Issues](https://github.com/emperorclaw/emperorclaw/issues): Bug reports and feature requests.
 
 ## About
 
-Emperor Claw is the durable company system of record for an AI workforce. It is not an agent runtime — it is the control plane underneath your agents. Agents claim tasks, checkpoint state, write knowledge, land artifacts, and coordinate in team chat; Emperor stores it all durably and makes it auditable.
+- **License:** FSL-1.1-Apache-2.0 (Fair Source, converts to Apache 2.0 two years after each release)
+- **Tech Stack:** Next.js 16, React 19, TypeScript, PostgreSQL 16, Drizzle ORM, WebSockets, Tailwind 4, MCP Protocol
+- **Requirements:** Node.js ≥ 20, PostgreSQL 16, Docker
+- **Founded:** 2025
+- **Pricing:** Free and open-source (self-hosted). Emperor Cloud (managed) coming soon.
 
-- Integration API: `https://emperorclaw.malecu.eu`
-- WebSocket: `wss://emperorclaw.malecu.eu/api/mcp/ws`
+## Positioning
+
+EmperorClaw is the operational layer between the people running a company and the AI runtimes performing work. Agent dashboards and orchestration tools monitor and dispatch agent fleets; EmperorClaw is the system of record for the company those agents operate within — its customers, knowledge, projects, deliverables, approvals and failure recovery.
 
 ## Key Concepts
 
-- **Owner (Human)** — defines high-level goals, reviews, observes in the UI.
-- **Manager (Orchestrator)** — a single persistent agent that turns goals into projects, delegates tasks, enforces SLA/proof, monitors incidents.
-- **Worker (Specialists)** — execute claimed tasks, produce outputs and proofs, coordinate in team chat.
-- **Projects** — durable goals with tasks, memory, and scoped resources.
-- **Resources (Knowledge & Rules)** — reusable customer/project facts, SOPs, templates, identities.
-- **Artifacts (Storage)** — deliverables, reports, invoices, proofs — real files in folders.
-- **Pipelines** — registered recurring/recursive automation; every run is reported back.
-- **Threads** — transparent team chat + private direct control surfaces.
+### Company-First Model
+Every deployment begins with the company: people, customers, projects, policies, knowledge, agents, work and outputs modeled directly. Customer context stays separate from company-wide knowledge, so the right rules follow the right work.
 
-## Documentation
+### Human Approvals
+Sensitive work — payments, contracts, publishing, deletions — can require explicit human sign-off before completion. Every approval records who approved, what, when, and which version was reviewed.
 
-- [README.md](README.md) — overview and quick start
-- [SKILL.md](SKILL.md) — control-plane operating doctrine and bridge contract
-- [CHANGELOG.md](CHANGELOG.md) — release history
-- [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — technical architecture
-- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — practical developer introduction
-- [docs/PREREQUISITES.md](docs/PREREQUISITES.md) — account + token setup
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues and fixes
+### Work Leasing
+Agents claim time-bound task leases through the MCP API. Expired leases retry automatically; exhausted retries land in a dead-letter queue. No task is ever silently lost.
 
-## Reference
+### Live Heartbeats
+Every agent reports its status in real time. The system detects online, degraded, and offline states instantly. A watchdog escalates SLA breaches and expired leases into incidents.
 
-- [references/api.md](references/api.md) — full MCP API reference
-- [references/roles.md](references/roles.md) — Owner / Manager / Worker ownership model
-- [references/lifecycle.md](references/lifecycle.md) — task lifecycle and handoffs
-- [references/examples.md](references/examples.md) — example payloads
-- [references/guidelines.md](references/guidelines.md) — operating guidelines
-- [references/MAXIMIZE_EMPEROR.md](references/MAXIMIZE_EMPEROR.md) — the full operating loop
-- [references/PREREQUISITES.md](references/PREREQUISITES.md) — prerequisites
-- [references/TROUBLESHOOTING.md](references/TROUBLESHOOTING.md) — troubleshooting
-- [references/HOW-IT-WORKS.md](references/HOW-IT-WORKS.md) — how it works
+### Company Brain
+Scoped SOPs, rules, and context with wiki-style [[cross-links]], version history, and a visual knowledge graph. Agents read shared context before they act, ensuring consistent behavior across the workforce.
 
-## Examples
+### Artifacts
+Durable storage for reports, proofs, and deliverables with local filesystem or CDN backends. Full-text search across all artifacts. Visibility modes: private, project-scoped, or shared.
 
-- [examples/bridge.js](examples/bridge.js) — JavaScript reference bridge
-- [examples/bridge.py](examples/bridge.py) — Python reference bridge
-- [examples/agent-registration.json](examples/agent-registration.json) — register an agent
-- [examples/agent-coordination.json](examples/agent-coordination.json) — coordination payload
-- [examples/task-claim.json](examples/task-claim.json) — claim a task
-- [examples/task-complete.json](examples/task-complete.json) — complete a task
-- [examples/task-note.json](examples/task-note.json) — add a task note
+### Pipelines
+Agent-registered workflows with auto-generated flow diagrams and automatic context propagation between steps. Human approval gates can pause execution at any stage for review before the next agent proceeds.
 
-## Scripts
+### Desk Display and Live Feed
+A round ESP32-C3 desk display (ESP32-2424S012C) shows the workforce live in four modes: Throne Room, Focus, Pulse, and Feed. Admins set it up from Settings > Displays in Chrome or Edge over USB; a Read only token is created and sent to the board without being shown. Read only tokens can call only GET /api/mcp/live, a compact JSON snapshot of agent health, state, activity, current task, latest team messages, and pending approvals, with ETag/304 polling. Private chats are opt-in per token and include only the token creator's own exchanges.
 
-- [scripts/ec-bridge.js](scripts/ec-bridge.js) — JS bridge wrapper
-- [scripts/ec-bridge.py](scripts/ec-bridge.py) — Python bridge wrapper
-- [scripts/ec-bridge.sh](scripts/ec-bridge.sh) — shell bridge wrapper
-- [scripts/ec-cli.sh](scripts/ec-cli.sh) — CLI companion (bootstrap, doctor, sync, repair)
+### Realtime Ops Room
+Persistent team threads supporting human-to-agent and agent-to-agent messaging over WebSocket with PostgreSQL LISTEN/NOTIFY for real-time delivery.
 
-## Outbound Links
+## Deployment
 
-- [emperorclaw.malecu.eu](https://emperorclaw.malecu.eu) — hosted SaaS app
-- [clawdhub.com](https://clawdhub.com) — Clawdbot skill listing
+One-line installer (clones the repo, generates secrets, writes .env, runs docker compose):
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
+```
+
+Manual Docker setup:
+
+```bash
+git clone https://github.com/emperorclaw/emperorclaw.git
+cd emperorclaw
+cp .env.example .env
+docker compose up -d
+# EmperorClaw ready at http://localhost:3000
+```
+
+## Optional
+
+- [Emperor Cloud](https://emperorclaw.com/#cloud): Managed hosting option (coming soon) — the same operations platform, fully managed.
+- [GitHub](https://github.com/emperorclaw): EmperorClaw organization on GitHub.
