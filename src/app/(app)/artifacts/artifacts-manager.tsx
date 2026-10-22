@@ -216,6 +216,8 @@ type PreviewState =
     | { state: "unsupported"; message: string };
 
 const ROOT_ID = "root";
+/** File browser columns: name + actions on phones; context, size and date join from md. */
+const BROWSER_GRID = "grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_80px]";
 
 const DEFAULT_ARTIFACT_DRAFT: ArtifactDraft = {
     title: "",
@@ -1575,7 +1577,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                     setTaskFilter("");
                                 }
                             }}
-                            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                            className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 sm:w-auto"
                         >
                             <option value="">All customers</option>
                             {customers.map((customer) => (
@@ -1595,7 +1597,7 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                                     setTaskFilter("");
                                 }
                             }}
-                            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+                            className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 sm:w-auto"
                         >
                             <option value="">All projects</option>
                             {projects.map((project) => (
@@ -1644,13 +1646,14 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                 </div>
             </div>
 
-            <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_1fr]">
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
                 <Card className="min-h-0 border-zinc-800/80 bg-zinc-950/70 py-0">
                     <CardHeader className="border-b border-zinc-800/80 py-4">
                         <CardTitle className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">Folders</CardTitle>
                     </CardHeader>
                     <CardContent className="min-h-0 px-0">
-                        <ScrollArea className="h-[calc(100vh-18rem)]">
+                        {/* Phones stack the tree above the files: cap it so the files stay in reach. */}
+                        <ScrollArea className="h-64 lg:h-[calc(100vh-18rem)]">
                             <div className="space-y-1 px-3 py-3">
                                 <TreeFolderRow
                                     folder={{ id: ROOT_ID, name: "Root", path: "", projectId: null, customerId: null }}
@@ -1719,11 +1722,11 @@ export default function ArtifactsManager({ projects, tasks, customers }: Props) 
                         </div>
                     </CardHeader>
                     <CardContent className="min-h-0 px-0">
-                        <div className="grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_80px] border-b border-zinc-800/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                        <div className={cn(BROWSER_GRID, "border-b border-zinc-800/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500")}>
                             <span>Name</span>
-                            <span>Context</span>
-                            <span>Size</span>
-                            <span>Updated</span>
+                            <span className="hidden md:block">Context</span>
+                            <span className="hidden md:block">Size</span>
+                            <span className="hidden md:block">Updated</span>
                             <span />
                         </div>
                         <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -2205,7 +2208,7 @@ function BrowserRow(props: {
             onDoubleClick={props.onDoubleClick}
             onContextMenu={props.onContextMenu}
             className={cn(
-                "grid cursor-default grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_120px_140px_80px] items-center rounded-xl px-2 py-1.5 transition",
+                BROWSER_GRID, "cursor-default items-center rounded-xl px-2 py-1.5 transition",
                 props.selected ? "bg-zinc-900" : "hover:bg-zinc-900/70"
             )}
         >
@@ -2216,9 +2219,9 @@ function BrowserRow(props: {
                     <div className="truncate text-xs text-zinc-500">{props.subtitle}</div>
                 </div>
             </div>
-            <div className="truncate px-2 text-sm text-zinc-400">{props.context}</div>
-            <div className="px-2 text-sm text-zinc-400">{props.sizeLabel}</div>
-            <div className="px-2 text-sm text-zinc-400">{props.dateLabel}</div>
+            <div className="hidden truncate px-2 text-sm text-zinc-400 md:block">{props.context}</div>
+            <div className="hidden px-2 text-sm text-zinc-400 md:block">{props.sizeLabel}</div>
+            <div className="hidden px-2 text-sm text-zinc-400 md:block">{props.dateLabel}</div>
             <div className="flex items-center justify-end">
                 {props.onInspect && (
                     <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); props.onInspect?.(); }} className="text-zinc-400 hover:text-zinc-100">

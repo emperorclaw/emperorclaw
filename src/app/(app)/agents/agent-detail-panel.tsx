@@ -224,7 +224,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
         <main className="emperor-panel rounded-2xl overflow-hidden">
             {/* Header */}
             <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5 border-b border-zinc-800/80">
-                <div className="flex items-center gap-3 sm:gap-4">
+                <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                     <AvatarPicker
                         agentId={agent.id}
                         agentName={agent.name}
@@ -233,9 +233,9 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                         className="h-14 w-14"
                         onSaved={(avatarAppearance, avatarUrl) => setData((prev) => prev ? { ...prev, agent: { ...prev.agent, avatarAppearance, avatarUrl } } : prev)}
                     />
-                    <div>
+                    <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100">{agent.name}</h2>
+                            <h2 className="min-w-0 break-words text-xl sm:text-2xl font-semibold text-zinc-100">{agent.name}</h2>
                             <span className="rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                                 {agent.role || "operator"}
                             </span>
@@ -257,7 +257,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                     {agent.containerId && (
                         <ContainerNameDisplay containerName={agent.containerName ?? null} containerId={agent.containerId} />
                     )}
@@ -481,14 +481,17 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
 
             {/* Tabs */}
             <Tabs defaultValue="memory" className="p-4 sm:p-5">
-                <TabsList className="bg-zinc-900 border border-zinc-800">
-                    <TabsTrigger value="memory">Memory</TabsTrigger>
-                    <TabsTrigger value="instructions">Instructions</TabsTrigger>
-                    <TabsTrigger value="scope">Scope</TabsTrigger>
-                    <TabsTrigger value="chat">Direct Chat</TabsTrigger>
-                    <TabsTrigger value="threads">Threads</TabsTrigger>
-                    <TabsTrigger value="runs">Runs</TabsTrigger>
-                </TabsList>
+                {/* Six tabs outgrow a phone: the strip scrolls sideways instead of overflowing the panel. */}
+                <div className="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
+                    <TabsList className="w-max bg-zinc-900 border border-zinc-800">
+                        <TabsTrigger value="memory">Memory</TabsTrigger>
+                        <TabsTrigger value="instructions">Instructions</TabsTrigger>
+                        <TabsTrigger value="scope">Scope</TabsTrigger>
+                        <TabsTrigger value="chat">Direct Chat</TabsTrigger>
+                        <TabsTrigger value="threads">Threads</TabsTrigger>
+                        <TabsTrigger value="runs">Runs</TabsTrigger>
+                    </TabsList>
+                </div>
 
                 <TabsContent value="memory" className="mt-4">
                     <AgentMemoryTab agentId={agent.id} agentName={agent.name} />

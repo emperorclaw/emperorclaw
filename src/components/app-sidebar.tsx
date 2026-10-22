@@ -11,6 +11,7 @@ import { NotificationBell } from "./notification-bell";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { CustomLogo } from "./custom-logo";
+import { useNavBadges } from "./use-nav-badges";
 import { signOut } from "next-auth/react";
 import {
     DropdownMenu,
@@ -33,8 +34,7 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
     const pathname = usePathname();
     const { data: session } = useSession();
     const [collapsed, setCollapsed] = useState(false);
-    const [unreadMessages, setUnreadMessages] = useState(0);
-    const [pendingApprovals, setPendingApprovals] = useState(0);
+    const { unreadMessages, pendingApprovals } = useNavBadges();
     const [hoveredNav, setHoveredNav] = useState<string | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -45,26 +45,6 @@ export function AppSidebar({ isPlatformAdmin = false, isCompanyAdmin = false, ap
         // eslint-disable-next-line react-hooks/set-state-in-effect
         if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1") setCollapsed(true);
     }, []);
-
-    useEffect(() => {
-        let cancelled = false;
-        const poll = async () => {
-            try {
-                const [res, approvalsRes] = await Promise.all([fetch("/api/chat/unread-count"), fetch("/api/approvals/pending-count")]);
-                if (cancelled) return;
-                if (res.ok) setUnreadMessages((await res.json()).count || 0);
-                if (approvalsRes.ok) setPendingApprovals((await approvalsRes.json()).count || 0);
-            } catch {
-                // Non-critical — badge just stays at its last known value.
-            }
-        };
-        void poll();
-        const interval = setInterval(poll, 20000);
-        return () => {
-            cancelled = true;
-            clearInterval(interval);
-        };
-    }, [pathname]);
 
     function toggleCollapsed() {
         setCollapsed((current) => {

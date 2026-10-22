@@ -109,6 +109,11 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
         }
     }
 
+    async function startObjective() {
+        if (busy || !text.trim()) return;
+        await act({ action: 'start', objective: text, cadenceMinutes });
+    }
+
     const live = objective && (objective.status === 'active' || objective.status === 'paused' || objective.status === 'blocked');
     const button = 'min-h-9 rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 disabled:opacity-40';
     return (
@@ -142,9 +147,9 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
                         <button type="button" className={button} disabled={busy} onClick={() => void act({ action: 'stop' })}>Stop</button>
                     </div>
                 ) : (
-                    <form onSubmit={(event) => { event.preventDefault(); void act({ action: 'start', objective: text, cadenceMinutes }); }} className="space-y-3">
+                    <div className="space-y-3">
                         <label className="block text-xs text-zinc-400">What should the agent finish?
-                            <textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} rows={3} required className="mt-1 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 p-2.5 text-base text-zinc-100 sm:text-sm" placeholder={'Describe the outcome and how to verify it.'} />
+                            <textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} rows={3} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void startObjective(); } }} className="mt-1 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 p-2.5 text-base text-zinc-100 sm:text-sm" placeholder={'Describe the outcome and how to verify it.'} />
                         </label>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <label className="flex items-center gap-2 text-xs text-zinc-400">Check-in cadence
@@ -152,10 +157,10 @@ export function AgentGoalControls({ agentId }: { agentId: string }) {
                                     {CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                                 </select>
                             </label>
-                            <button type="submit" disabled={busy || !text.trim()} className={button}>{busy ? 'Starting…' : 'Start objective'}</button>
+                            <button type="button" onClick={() => void startObjective()} disabled={busy || !text.trim()} className={button}>{busy ? 'Starting…' : 'Start objective'}</button>
                         </div>
                         <p className="text-xs leading-relaxed text-zinc-500">Check-ins stop when the objective completes, blocks, is stopped, or uses its budget.</p>
-                    </form>
+                    </div>
                 )}
                 {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
             </div>

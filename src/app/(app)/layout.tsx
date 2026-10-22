@@ -2,6 +2,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { OpenClawChat } from "@/components/openclaw-chat";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { InteractiveTour } from "@/components/interactive-tour";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { UpdateBanner } from "@/components/update-banner";
 import { getCompanyId } from "@/lib/auth";
 import { getPlatformAdminSession } from "@/lib/platform-admin";
@@ -27,13 +28,14 @@ export default async function AppLayout({
             <AutoRefresh intervalMs={15000} />
             <InteractiveTour />
             <AppSidebar isPlatformAdmin={platformAdmin?.isPlatformAdmin === true} isCompanyAdmin={isCompanyAdmin} appVersion={pkg.version} />
-            <main className="emperor-main flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto w-full px-3 py-4 pb-20 sm:px-5 sm:py-5 sm:pb-16 lg:px-8">
+            <main className="emperor-main flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto w-full px-3 py-4 pb-8 sm:px-5 sm:py-5 md:pb-16 lg:px-8">
                 <div className="emperor-page-frame">
                     <UpdateBanner />
                     {children}
                 </div>
                 <OpenClawChat />
             </main>
+            <MobileTabBar />
         </div>
     );
 }

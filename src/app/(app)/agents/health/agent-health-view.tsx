@@ -154,13 +154,13 @@ export function AgentHealthView({ initial }: { initial: CompanyHealth }) {
                     <ul className="divide-y divide-zinc-800/80">
                         {health.attention.map((item) => (
                             <li key={`${item.kind}:${item.agentId}:${item.messageId}`}>
-                                <Link href={item.link} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-900">
+                                <Link href={item.link} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-900">
                                     <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", item.kind === "failed" ? STATUS.down.className : STATUS.attention.className)}>
                                         {item.kind === "failed" ? "Failed" : "Unanswered"}
                                     </span>
-                                    <span className="w-28 shrink-0 truncate text-xs font-medium text-zinc-300">{item.agentName}</span>
-                                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">{item.text || "(attachment)"}</span>
-                                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-zinc-500"><IconClockHour4 className="h-3 w-3" />{ago(item.since)}</span>
+                                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-300 sm:w-28 sm:flex-none sm:shrink-0">{item.agentName}</span>
+                                    <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 sm:order-last sm:ml-0"><IconClockHour4 className="h-3 w-3" />{ago(item.since)}</span>
+                                    <span className="basis-full text-xs text-zinc-400 line-clamp-2 sm:min-w-0 sm:flex-1 sm:line-clamp-1">{item.text || "(attachment)"}</span>
                                 </Link>
                             </li>
                         ))}

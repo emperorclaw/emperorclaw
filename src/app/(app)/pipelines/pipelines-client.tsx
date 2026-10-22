@@ -163,8 +163,8 @@ function runEvidence(run: RunRow) {
 }
 
 function triggerText(pipeline: PipelineRow) {
-  if (pipeline.trigger === "schedule" && pipeline.triggerConfig?.cron) return `Schedule: ${String(pipeline.triggerConfig.cron)}`;
-  if (pipeline.trigger === "webhook") return "Webhook event";
+  if (pipeline.trigger === "cron") return pipeline.triggerConfig?.cron ? `Schedule: ${String(pipeline.triggerConfig.cron)}` : "Schedule";
+  if (pipeline.trigger === "event") return "Event trigger";
   if (pipeline.trigger === "manual") return "Manual run";
   return pipeline.trigger || "Agent trigger";
 }

@@ -298,7 +298,8 @@ export function OpenClawChat() {
             <button
                 onClick={() => setIsOpen(true)}
                 className={cn(
-                    "fixed bottom-6 right-6 p-4 rounded-full shadow-2xl bg-cyan-500 hover:bg-cyan-400 text-white transition-all transform hover:scale-105 z-50",
+                    // Phones reach chat from the Messages tab; the bubble would cover content.
+                    "fixed bottom-6 right-6 hidden md:block p-4 rounded-full shadow-2xl bg-cyan-500 hover:bg-cyan-400 text-white transition-all transform hover:scale-105 z-50",
                     isOpen && "opacity-0 pointer-events-none scale-90"
                 )}
             >

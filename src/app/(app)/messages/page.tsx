@@ -164,7 +164,7 @@ export default async function MessagesPage() {
         .map((u) => ({ id: u.id, name: u.displayName || u.email }));
 
     return (
-        <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-[1800px] flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 sm:h-[calc(100dvh-2.5rem)]">
+        <div className="mx-auto flex h-[calc(100dvh-10.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] max-w-[1800px] flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 md:h-[calc(100dvh-2.5rem)]">
             <div className="hidden shrink-0 items-end justify-between gap-6 sm:flex">
                 <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-300">Messages</p>

@@ -4,7 +4,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { IconAlertTriangle, IconArchive, IconBrain, IconCircleCheck, IconChevronRight, IconPencil, IconFilter, IconHistory, IconInbox, IconDots, IconPlus, IconRepeat, IconRotate, IconSearch, IconSend, IconTrash, IconCircleX } from "@tabler/icons-react";
 import { toast } from "sonner";
@@ -168,7 +168,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [hideCompletedProjects, setHideCompletedProjects] = useState(true); // default: hide completed; localStorage overrides in useEffect
     const [completingProject, setCompletingProject] = useState<string | null>(null);
     const [draggingTask, setDraggingTask] = useState<any | null>(null);
-    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    );
     const searchParams = useSearchParams();
     const [showAttentionOnly, setShowAttentionOnly] = useState(searchParams.get("attention") === "1");
     const [filtersHydrated, setFiltersHydrated] = useState(false);
@@ -835,6 +838,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             options={customerOptions}
                             placeholder="All Customers"
                             searchPlaceholder="Search customers..."
+                            className="w-full sm:w-auto"
                             onChange={(nextCustomerId) => {
                                 setCustomerFilter(nextCustomerId);
                                 if (
@@ -852,7 +856,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
                             placeholder="All Projects"
                             searchPlaceholder="Search projects..."
                             onChange={setProjectFilter}
-                            className="min-w-[280px]"
+                            className="w-full min-w-[280px] sm:w-auto"
                         />
                         {hasBoardFilters && (
                             <button
@@ -1322,15 +1326,23 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
         return () => window.removeEventListener("click", close);
     }, [contextMenu]);
     return (
-        <button
+        <div
             ref={overlay ? undefined : draggable.setNodeRef}
             style={style}
             {...(overlay ? {} : draggable.listeners)}
             {...(overlay ? {} : draggable.attributes)}
+            role="button"
+            tabIndex={0}
             onClick={onClick}
             onContextMenu={handleContextMenu}
+            onKeyDown={(event) => {
+                if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    onClick();
+                }
+            }}
             className={cn(
-                "w-full cursor-grab touch-none rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80 active:cursor-grabbing",
+                "w-full cursor-grab rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80 active:cursor-grabbing",
                 border,
                 draggable.isDragging && "opacity-40",
                 overlay && "cursor-grabbing shadow-2xl shadow-black/50",
@@ -1375,7 +1387,7 @@ function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recur
                     ))}
                 </div>
             )}
-        </button>
+        </div>
     );
 }
 

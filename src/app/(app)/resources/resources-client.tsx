@@ -159,6 +159,7 @@ export default function ResourcesClient({
     }
   }, [requestedResource, initialResources]);
   const [selectedResourceId, setSelectedResourceId] = useState(initialResources[0]?.id || null);
+  const [mobilePane, setMobilePane] = useState<"list" | "note">("list");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "shared" | "drafts">("all");
   const [draftTitle, setDraftTitle] = useState(initialResources[0]?.displayName || initialResources[0]?.name || "");
@@ -424,9 +425,9 @@ export default function ResourcesClient({
       <ContextMenu key={note.id}>
         <ContextMenuTrigger asChild>
           <button
-            onClick={() => setSelectedResourceId(note.id)}
+            onClick={() => { setSelectedResourceId(note.id); setMobilePane("note"); }}
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
-            className={cn("group flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm transition-colors", selectedResourceId === note.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}
+            className={cn("group flex min-h-10 w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm transition-colors lg:min-h-0", selectedResourceId === note.id ? "bg-cyan-400/10 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}
           >
             <IconFileText className={cn("h-3.5 w-3.5 shrink-0", selectedResourceId === note.id ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-400")} />
             <span className="min-w-0 flex-1 truncate">{note.displayName || note.name}</span>
@@ -435,7 +436,7 @@ export default function ResourcesClient({
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-          <ContextMenuItem onClick={() => setSelectedResourceId(note.id)}>
+          <ContextMenuItem onClick={() => { setSelectedResourceId(note.id); setMobilePane("note"); }}>
             <IconFileText className="h-3.5 w-3.5" /> Open
           </ContextMenuItem>
           <ContextMenuItem variant="destructive" onClick={() => setDeleteDialogTarget(note)}>
@@ -459,7 +460,7 @@ export default function ResourcesClient({
               onClick={() => toggleFolder(group.key, node.path)}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleFolder(group.key, node.path); } }}
               style={{ paddingLeft: `${depth * 12 + 8}px` }}
-              className="group flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
+              className="group flex min-h-10 w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100 lg:min-h-0"
             >
               <span className="rounded p-0.5 text-zinc-500">
                 {isCollapsed ? <IconChevronRight className="h-3 w-3" /> : <IconChevronDown className="h-3 w-3" />}
@@ -517,6 +518,7 @@ export default function ResourcesClient({
     if (!response.ok) return toast.error(body.error || "Failed to create rule");
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
+    setMobilePane("note");
     // The folder is now real, so drop its pending placeholder and reveal it.
     setPendingFolders((current) => current.filter((pf) => !(pf.scopeKey === scopeKey && pf.path === cleanPath)));
     setExpandedScopes((current) => { const next = new Set(current); next.add(scopeKey); return next; });
@@ -549,6 +551,7 @@ export default function ResourcesClient({
     if (!response.ok) return toast.error(body.error || "Failed to create linked note");
     setResources((current) => [body.resource, ...current]);
     setSelectedResourceId(body.resource.id);
+    setMobilePane("note");
     toast.success("Linked note created");
   }
 
@@ -674,31 +677,32 @@ export default function ResourcesClient({
   const newFolderLocation = [newFolderScopeLabel, newFolderParentPath].filter(Boolean).join(" / ");
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-6rem)] sm:h-[calc(100vh-8rem)] max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500">
+    <div className="mx-auto flex min-h-0 max-w-[1800px] flex-col gap-4 animate-in fade-in duration-500 lg:h-[calc(100vh-8rem)]">
       <PageHeader
         eyebrow="Knowledge base"
         title="Knowledge & Rules"
         description="Durable notes, SOPs, and instructions your agents read before they act."
       />
-      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20">
-      <div className="flex h-full min-h-[360px] sm:min-h-[500px] flex-col">
-        <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
-          <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r">
+      <div className="min-h-0 flex-1 overflow-visible rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/20 lg:overflow-hidden">
+      <div className="flex min-h-[360px] sm:min-h-[500px] flex-col lg:h-full">
+        {/* Three panes need ~1280px of content; on narrower desktops the graph and properties sit under the editor. */}
+        <div className="grid grid-cols-1 border-b border-zinc-800 bg-zinc-950/95 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_360px]">
+          <div className={cn("h-11 items-center justify-between border-b border-zinc-800 px-3 lg:border-b-0 lg:border-r", mobilePane === "note" ? "hidden lg:flex" : "flex")}>
             <div className="flex items-center gap-1.5 text-zinc-500">
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note" aria-label="New note" onClick={() => void createResource("company", "")}><IconFileText className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New folder" aria-label="New folder" onClick={() => openNewFolderDialog("company", "")}><IconFolderPlus className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><IconPlus className="h-4 w-4" /></button>
-              <button className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-200" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><IconRefresh className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="New note" aria-label="New note" onClick={() => void createResource("company", "")}><IconFileText className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="New folder" aria-label="New folder" onClick={() => openNewFolderDialog("company", "")}><IconFolderPlus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="New note linked to this one" aria-label="New linked note" onClick={createLinkedResource}><IconPlus className="h-4 w-4" /></button>
+              <button className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-200 lg:p-1" title="Refresh vault" aria-label="Refresh vault" onClick={refreshResources}><IconRefresh className="h-4 w-4" /></button>
             </div>
-            <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300")}>
+            <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-0", isDeleteArmed ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300")}>
               <IconTrash className="h-3.5 w-3.5" /> {isDeleteArmed ? "Click again to confirm" : "Delete note"}
             </button>
           </div>
-          <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r">
+          <div className={cn("h-11 items-center justify-between border-b border-zinc-800 px-4 lg:border-b-0 lg:border-r", mobilePane === "list" ? "hidden lg:flex" : "flex")}>
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex items-center gap-1 text-zinc-600">
-                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Previous note" aria-label="Previous note"><IconArrowLeft className="h-4 w-4" /></button>
-                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-1 transition-colors hover:bg-zinc-900 hover:text-zinc-300" title="Next note" aria-label="Next note"><IconArrowRight className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("previous")} className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-300 lg:p-1" title="Previous note" aria-label="Previous note"><IconArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => selectAdjacentResource("next")} className="cursor-pointer rounded p-2.5 transition-colors hover:bg-zinc-900 hover:text-zinc-300 lg:p-1" title="Next note" aria-label="Next note"><IconArrowRight className="h-4 w-4" /></button>
               </div>
               <div className="min-w-0 truncate text-xs text-zinc-500">
                 <span>Knowledge & Rules</span>
@@ -707,16 +711,16 @@ export default function ResourcesClient({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 text-zinc-500">
-              <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
+              <button onClick={() => void updatePublicationStatus(publicationStatus === "draft" ? "active" : "draft")} disabled={!selectedResource || isSaving} className={cn("inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-0", publicationStatus === "draft" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "border-amber-400/25 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15")}>
                 <IconCheck className="h-3.5 w-3.5" /> {publicationStatus === "draft" ? "Publish" : "Move to draft"}
               </button>
-              <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50">
+              <button onClick={saveSelectedResource} disabled={!selectedResource || isSaving} className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-0">
                 <IconCheck className="h-3.5 w-3.5" /> {isSaving ? "Saving" : "Save"}
               </button>
-              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? "Click again to confirm delete" : "Delete note"} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><IconTrash className="h-4 w-4" /></button>
+              <button onClick={archiveSelectedResource} disabled={!selectedResource} className={cn("cursor-pointer rounded p-2.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 lg:p-1", isDeleteArmed ? "bg-red-500/10 text-red-300" : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300")} title={isDeleteArmed ? "Click again to confirm delete" : "Delete note"} aria-label={isDeleteArmed ? "Click again to confirm delete" : "Delete note"}><IconTrash className="h-4 w-4" /></button>
             </div>
           </div>
-          <div className="hidden h-11 items-center border-zinc-800 px-4 lg:flex">
+          <div className="hidden h-11 items-center border-zinc-800 px-4 xl:flex">
             <div className="min-w-0 truncate text-xs text-zinc-500">
               Knowledge graph
               {selectedResource && <span className="text-zinc-700"> / </span>}
@@ -725,17 +729,17 @@ export default function ResourcesClient({
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
-          <aside className="flex min-h-0 flex-col border-b border-zinc-800 bg-zinc-950 lg:border-b-0 lg:border-r">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_minmax(0,38%)] xl:grid-cols-[300px_minmax(0,1fr)_360px] xl:grid-rows-1">
+          <aside className={cn("flex-col border-b border-zinc-800 bg-zinc-950 min-h-[60dvh] lg:row-span-2 lg:min-h-0 lg:border-b-0 lg:border-r xl:row-span-1", mobilePane === "note" ? "hidden lg:flex" : "flex")}>
             <div className="border-b border-zinc-800 p-3">
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Vault explorer</div>
               <div className="relative">
                 <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/60" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes..." className="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/60 lg:h-9" />
               </div>
               <div className="mt-3 flex items-center gap-2">
                 {(["all", "shared", "drafts"] as const).map((item) => (
-                  <button key={item} onClick={() => setFilter(item)} className={cn("cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
+                  <button key={item} onClick={() => setFilter(item)} className={cn("min-h-9 cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors lg:min-h-0", filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300")}>{item}</button>
                 ))}
                 <span className="ml-auto text-[11px] text-zinc-600">{filteredResources.length} notes</span>
               </div>
@@ -763,7 +767,7 @@ export default function ResourcesClient({
                               type="button"
                               aria-label={`New folder in ${group.label}`}
                               onClick={(event) => { event.stopPropagation(); openNewFolderDialog(group.key, ""); }}
-                              className="rounded p-0.5 text-zinc-600 opacity-0 transition-opacity hover:bg-zinc-800 hover:text-zinc-200 group-hover:opacity-100"
+                              className="rounded p-0.5 text-zinc-600 opacity-100 transition-opacity hover:bg-zinc-800 hover:text-zinc-200 lg:opacity-0 lg:group-hover:opacity-100"
                             >
                               <IconFolderPlus className="h-3.5 w-3.5" />
                             </button>
@@ -794,7 +798,14 @@ export default function ResourcesClient({
             </div>
           </aside>
 
-          <main className="flex min-h-0 flex-col bg-zinc-950">
+          <main className={cn("flex min-h-0 flex-col bg-zinc-950", mobilePane === "list" ? "hidden lg:flex" : "flex")}>
+            <button
+              type="button"
+              onClick={() => setMobilePane("list")}
+              className="flex min-h-11 w-full cursor-pointer items-center gap-2 border-b border-zinc-800 px-4 text-sm text-zinc-300 transition-colors hover:bg-zinc-900 lg:hidden"
+            >
+              <IconArrowLeft className="h-4 w-4" /> All notes
+            </button>
             {selectedResource ? (
               <>
                 <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-2">
@@ -820,7 +831,7 @@ export default function ResourcesClient({
             )}
           </main>
 
-          <aside className="flex min-h-0 flex-col overflow-y-auto border-t border-zinc-800 bg-zinc-950 lg:border-l lg:border-t-0">
+          <aside className={cn("flex min-h-0 flex-col overflow-y-auto border-t border-zinc-800 bg-zinc-950 lg:col-start-2 xl:col-start-auto xl:border-l xl:border-t-0", mobilePane === "list" ? "hidden lg:flex" : "flex")}>
             {selectedResource && (
               <>
                 <div className="shrink-0 border-b border-zinc-800">
