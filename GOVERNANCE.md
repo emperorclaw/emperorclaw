@@ -1,6 +1,6 @@
 # Governance
 
-Emperor Claw is maintained by its creator, Jose Zuma (Malecu OU), who acts as
+Emperor Claw is maintained by its creator, Jose Zuniga (Malecu OU), who acts as
 the project's [BDFL](https://en.wikipedia.org/wiki/Benevolent_dictator_for_life):
 final decisions on roadmap, releases, licensing, and what gets merged rest
 with the maintainer.

@@ -4,7 +4,7 @@
   "private": false,
   "type": "module",
   "description": "Native OpenClaw plugin for Emperor bridge installation and agent lifecycle management",
-  "author": "Jose Zuma",
+  "author": "Jose Zuniga",
   "homepage": "https://github.com/josezuma/emperorclaw/tree/main/clawhub/plugin/emperor-claw-os",
   "repository": {
     "type": "git",
