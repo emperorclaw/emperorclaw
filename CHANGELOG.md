@@ -9,6 +9,28 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.8.103] — 2026-10-22
+
+### Added
+- **Right now** on every agent: live state, the step it's on, how long the current run has taken, the task it holds, its last run (duration, tokens, cost, tool calls) and its last message. Private threads you are not part of stay private.
+- A steady status row in chat while an agent works — its name, a running timer and the current step — that no longer blinks out when a refresh is late.
+- Phone navigation: a bottom tab bar (home, messages, projects, approvals, agents), list-then-detail on Agents and Knowledge base, and every page fits a phone screen.
+- Shared files open directly from chat, and the chat composer is a single compact card.
+- A "Build your first agent" tutorial.
+
+### Changed
+- Hermes agents answer faster: compact tool results (task lists ~95% smaller, task writes return short receipts), a cached instruction block, concurrent pre-dispatch calls, and per-turn timing in the bridge log.
+- New Hermes workers start with responsive defaults: compression at 80k tokens, idle compaction off, single-query approvals and Emperor tools loaded directly.
+- Agents may post one short acknowledgement before long work; it no longer hides later mentions or blocks retries.
+
+### Fixed
+- Pending approvals show the same number in the sidebar, the dashboard and the Approvals page, and one card lists every task an approval covers.
+- Agents count as "working" only when their runtime is online; offline agents holding work show under "Inspect connection".
+- A network drop no longer loses a Hermes reply or cancels your message: the reply is kept and delivered when the connection returns, without duplicates.
+- The Knowledge base editor is usable on laptops narrower than ~1300px.
+- Projects task cards scroll on touch screens, and the objective field accepts new lines.
+- Cron pipelines show their schedule.
+
 ## [0.8.102] — 2026-10-16
 
 ### Fixed
