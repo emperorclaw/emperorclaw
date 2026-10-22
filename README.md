@@ -10,6 +10,19 @@ When one AI assistant becomes a team of agents doing real work — sales, suppor
 
 [emperorclaw.com](https://emperorclaw.com) · [Docs](https://github.com/emperorclaw/emperorclaw) · [Discussions](https://github.com/emperorclaw/emperorclaw/discussions)
 
+### What you get on day one
+
+| You want to… | EmperorClaw gives you |
+|---|---|
+| **Know what every agent is doing** | A live "right now" view per agent: what it's working on, for how long, its current step, its last run and what it cost. |
+| **Never lose a request** | Every message and task has an owner and a state. Stalled work is retried, then escalated to a human — nothing fails silently. |
+| **Stay in control** | Approvals before work is closed, notifications when an agent needs you, and a full audit trail of every decision. |
+| **Keep costs predictable** | Token usage and cost per run and per agent, with monthly budgets that warn early and pause an agent at its limit. |
+| **Give agents your know-how** | A company knowledge base your agents read before they act — scoped per company, customer, project, or agent. |
+| **Start in minutes** | Hire a ready-made worker (team lead, SEO, QA, growth, content, accounting, data…) and Emperor sets up its runtime for you. |
+| **Use the agents you already have** | Hermes, OpenClaw, or any MCP client — including Claude — through one API with 38 tools. |
+| **Run it anywhere** | Self-hosted on your own server, works on your phone, and your data never leaves your infrastructure. |
+
 <p align="center">
   <img src="public/emperor-claw-os/assets/branding/logo.png" alt="EmperorClaw" height="80" />
 </p>
@@ -62,7 +75,7 @@ Under the hood it's one self-hosted application: a web dashboard for the humans,
 
 ## Who it's for
 
-If you run — or want to run — AI agents to get real work done, and you need that work to be organized, trusted, and auditable, EmperorClaw is for you. It's used by:
+If you run — or want to run — AI agents to get real work done, and you need that work to be organized, trusted, and auditable, EmperorClaw is for you. It's built for:
 
 - **Agencies** — managing many clients, each with separate context, deliverables, approvals, and reusable playbooks.
 - **Accounting and bookkeeping firms** — document collection, classification, reconciliation, and client reporting with audit history.
@@ -78,8 +91,17 @@ If you run — or want to run — AI agents to get real work done, and you need 
 ### One place for all your work
 Projects organized like a kanban board. Tasks assigned to a person, an agent, or left open. Every task has a clear owner and a clear state — so nothing is ever "maybe someone is on it."
 
+### See what every agent is doing, right now
+Each agent shows its live state — working, replying, idle, or offline — with the task it holds, how long the current run has taken, the step it's on, and its last message. In chat, a steady status row tells you the agent is on it while it works, so a long job never looks like silence.
+
 ### Agents that don't vanish
 Every agent registers itself, reports its status, and sends regular heartbeats. If an agent goes quiet or a task's lease expires, EmperorClaw detects it, retries automatically, and — if that fails — flags it as an incident for a human. Work doesn't disappear silently.
+
+### Costs you can see and cap
+Every run is recorded with its duration, tool calls, tokens, and cost. Set a monthly budget per agent: EmperorClaw warns you at 80% and pauses the agent when it's used up, so a runaway loop can't run up your bill.
+
+### Hire a worker in a few clicks
+Pick a role or a ready-made team, paste a model key, and EmperorClaw installs and connects the Hermes runtime for you — with fast, compact defaults so agents stay responsive as their history grows.
 
 ### A knowledge base your agents actually read
 The **Company Brain** stores your rules, procedures, and know-how, scoped to the right place — company-wide, per-customer, per-project, or per-agent. Agents read the relevant knowledge before they act, so they don't forget instructions or make wrong assumptions. You edit it like a wiki, with links between notes and a visual map of how everything connects.
@@ -98,6 +120,12 @@ Persistent team chat for everyone, **group chats** for standing teams (say, your
 
 ### Control over who can do what
 Invite-only signup, roles with granular permissions, and per-company API tokens. You decide who — human or agent — can see and do what.
+
+### Works from your phone
+The whole app adapts to small screens, with bottom navigation for the places you check all day — home, messages, projects, approvals, and agents. Approve work, answer an agent, or check who's stuck from anywhere. You can even send voice messages.
+
+### Plug in the AI tools you already use
+EmperorClaw is an MCP server with 38 tools (agents, tasks, projects, approvals, knowledge, storage, messaging). Connect Claude or any MCP client with OAuth and it can read and run your company's work. A live feed also drives physical desk displays.
 
 ### Your data, your infrastructure
 Self-hosted on PostgreSQL. One command to install. No cloud lock-in. Runs on a VPS, VM, or dedicated server you control.
@@ -228,11 +256,10 @@ For the full technical reference — including the detailed architecture, storag
 
 ## Project leadership
 
-EmperorClaw was created by [Jose Zuma](https://josezuma.com), and is owned and maintained by [Malecu s.r.o.](https://malecu.eu).
+EmperorClaw was created by [Jose Zuniga](https://josezuma.com), and is owned and maintained by [Malecu s.r.o.](https://malecu.eu).
 
-- **Creator and lead maintainer:** [Jose Zuma](https://josezuma.com)
+- **Creator and lead maintainer:** [Jose Zuniga](https://josezuma.com)
 - **Legal owner and maintainer:** [Malecu s.r.o.](https://malecu.eu)
-- **Launch and visibility support:** [BrandVirality](https://brandvirality.com)
 
 ---
 
