@@ -109,6 +109,18 @@ fi
 echo "[entrypoint] enabling tool-loop guardrail hard stop"
 hermes -p "$PROFILE_NAME" config set tool_loop_guardrails.hard_stop_enabled true || true
 
+# Profile defaults Emperor passes in (src/lib/hermes-profile-defaults.ts), one
+# key=value per line: compression limits, single-query approvals and direct
+# (non tool-search) Emperor tools. `config set` overwrites, so re-applying on
+# every start is safe and keeps an older profile in line with the server.
+if [ -n "${EMPEROR_CLAW_HERMES_CONFIG_DEFAULTS:-}" ]; then
+    echo "[entrypoint] applying Emperor profile defaults"
+    printf '%s\n' "$EMPEROR_CLAW_HERMES_CONFIG_DEFAULTS" | while IFS='=' read -r key value; do
+        # </dev/null: hermes must not read the remaining key=value lines.
+        [ -n "$key" ] && hermes -p "$PROFILE_NAME" config set "$key" "$value" </dev/null || true
+    done
+fi
+
 # `hermes chat -q` runs under Hermes' CLI platform hint, which tells the model
 # "Markdown does NOT render — write plain text". Emperor's chat renders
 # Markdown (and, on servers that advertise it, charts/tabs/widgets — the bridge

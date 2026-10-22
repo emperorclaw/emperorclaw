@@ -15,6 +15,7 @@ import { MessageReasoningDisclosure } from "@/components/message-reasoning-discl
 import { queuePromptPreview } from "@/lib/queue-prompt-preview";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceLabel } from "@/lib/request-label";
+import { LiveStatusRow } from "@/components/live-status-row";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:opacity-50";
 
@@ -651,6 +652,8 @@ export function AgentDirectChat({
     // A single active turn is already represented in the transcript and typing
     // indicator. The separate panel is useful only when it explains a backlog.
     const hasQueueBacklog = queueItems.length >= 2;
+    // The live row covers the whole turn, not just the bridge's typing window.
+    const liveActive = isAgentTyping || Boolean(activeQueueItem);
     const recentlyCancelledItems = useMemo(() => messages
         .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
         .slice(-3).reverse(), [messages]);
@@ -849,36 +852,19 @@ export function AgentDirectChat({
                             );
                         })}
                         </div>
-                        {isAgentTyping && (
-                            <div className="flex justify-start mt-3 animate-in fade-in slide-in-from-left-2 duration-300">
-                                {/* max-w matches the message bubbles: the activity line now carries a
-                                    full sentence of reasoning, and without a bound this shrink-to-fit
-                                    bubble would stretch past the column instead of letting the text
-                                    truncate. */}
-                                <div className="flex min-w-0 max-w-[88%] items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 sm:max-w-[80%]">
-                                    <div className="flex shrink-0 gap-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]" />
-                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]" />
-                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
-                                    </div>
-                                    {agentActivity ? (
-                                        // Real activity is a sentence — the model's own reasoning —
-                                        // so it keeps its own case. Uppercasing it shouts it and
-                                        // makes it markedly harder to read. The uppercase treatment
-                                        // was written for terse labels like "working (42s)" and now
-                                        // only applies to the bare "is typing" fallback.
-                                        <span className="min-w-0 truncate text-[11px] text-zinc-400" title={agentActivity}>
-                                            <span className="font-bold text-zinc-500">{agentName}:</span>{" "}
-                                            {agentActivity}
-                                        </span>
-                                    ) : (
-                                        <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                                            {agentName} is typing
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                        {/* One steady row for the whole turn: shown while the viewer's prompt
+                            is being handled OR the runtime reports typing, so a late bridge
+                            refresh no longer drops it back to a bare "Being handled" pill.
+                            Always mounted so its live region is ready before work starts. */}
+                        <LiveStatusRow
+                            active={liveActive}
+                            activityKey={activeQueueItem?.id ?? null}
+                            activity={agentActivity}
+                            label={agentName}
+                            idleVerb="is working"
+                            fallbackText="Working"
+                            variant="direct"
+                        />
                     </div>
                 )}
             </div>

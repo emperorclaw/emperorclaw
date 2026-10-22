@@ -14,6 +14,7 @@ import { DeliveryInspector } from "@/components/delivery-inspector";
 import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
+import { LiveStatusRow } from "@/components/live-status-row";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -32,6 +33,7 @@ type TeamMessage = {
     text: string;
     createdAt: string | Date;
     metadataJson?: unknown;
+    deliveryState?: string | null;
 };
 
 function getMessageAttachments(message: TeamMessage): AttachmentRef[] {
@@ -423,6 +425,22 @@ export function AgentTeamChat({
     // Only show the detail when a single agent is working: concatenating two
     // agents' reasoning would produce an unreadable wall in a one-line strip.
     const soloTypingActivity = typingAgents.length === 1 ? typingAgents[0].activity : null;
+    // The live row covers the whole turn: the viewer's own prompt being handled
+    // keeps it up even when a bridge typing refresh arrives late.
+    let ownActingMessageId: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.senderType === "human" && m.deliveryState === "acting" && (m.fromUserId || m.senderId) === currentUserId) {
+            ownActingMessageId = m.id;
+            break;
+        }
+    }
+    const liveActive = typingAgents.length > 0 || ownActingMessageId !== null;
+    const liveLabel = typingAgents.length === 0
+        ? null
+        : typingAgents.length === 1
+            ? typingAgents[0].name
+            : `${typingAgents.slice(0, -1).map((a) => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name}`;
 
     const agentReadTimes: Record<string, number> = {};
     const onlineAgents = agents.filter(a => a.status === "online");
@@ -651,31 +669,16 @@ export function AgentTeamChat({
                 )}
             </div>
 
-            {typingAgents.length > 0 && (
-                <div className="flex items-center gap-2 border-t border-zinc-800/60 px-4 py-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                    <div className="flex shrink-0 gap-1">
-                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.3s]" />
-                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:-0.15s]" />
-                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-bounce" />
-                    </div>
-                    {soloTypingActivity ? (
-                        // Real activity is a sentence, so it stays in its own
-                        // case — uppercasing a model's reasoning shouts it and
-                        // makes it markedly harder to read. Only the bare
-                        // "is typing" label keeps the uppercase treatment.
-                        <span className="min-w-0 truncate text-[11px] text-zinc-400" title={soloTypingActivity}>
-                            <span className="font-bold text-zinc-500">{typingAgents[0].name}:</span>{" "}
-                            {soloTypingActivity}
-                        </span>
-                    ) : (
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                            {typingAgents.length === 1
-                                ? `${typingAgents[0].name} is typing`
-                                : `${typingAgents.slice(0, -1).map((a: { name: string }) => a.name).join(", ")} and ${typingAgents[typingAgents.length - 1].name} are typing`}
-                        </span>
-                    )}
-                </div>
-            )}
+            {/* Always mounted so its live region is ready before work starts. */}
+            <LiveStatusRow
+                active={liveActive}
+                activityKey={ownActingMessageId}
+                activity={soloTypingActivity}
+                label={liveLabel}
+                idleVerb={typingAgents.length > 1 ? "are working" : "is working"}
+                fallbackText="Working on your message"
+                variant="team"
+            />
 
             {sendable ? (
                 <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-2 sm:p-3">

@@ -162,6 +162,24 @@ test("Local agent provisioning allows long turns and bounds inactive ones", () =
   assert.ok(provisioning.includes("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS=3"));
 });
 
+test("Provisioning hands the Hermes profile config defaults to the runtime", () => {
+  const provisioning = read("src/lib/hermes-provisioning.ts");
+  assert.ok(
+    provisioning.includes("${HERMES_CONFIG_DEFAULTS_ENV}=${hermesConfigDefaultsEnvValue()}"),
+    "every provisioned container should receive the profile config defaults env var",
+  );
+  const defaults = read("src/lib/hermes-profile-defaults.ts");
+  for (const pair of [
+    '["compression.threshold_tokens", "80000"]',
+    '["compression.proactive_prune_tokens", "48000"]',
+    '["compression.idle_compact_after_seconds", "0"]',
+    '["approvals.single_query_mode", "approve"]',
+    '["tools.tool_search.enabled", "off"]',
+  ]) {
+    assert.ok(defaults.includes(pair), `missing profile default ${pair}`);
+  }
+});
+
 test("The Hermes image pull gets a generous timeout", () => {
   const docker = read("src/lib/docker.ts");
   assert.ok(docker.includes("IMAGE_PULL_TIMEOUT_MS"), "the pull timeout should be a named constant");

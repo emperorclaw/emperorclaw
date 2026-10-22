@@ -6,6 +6,15 @@ import { markMessageFailedByRuntime, updateAgentThreadParticipant, updateThreadE
 import { notifyRuntimeFailure } from "@/lib/notifications";
 import { touchAgentLiveness } from "@/lib/lifecycle";
 
+// How long one typing=true keeps the agent shown as working. The Hermes bridge
+// refreshes every ~3 s while a turn runs; a 5 s window lapsed on any late beat
+// (flaky network, busy bridge thread, long tool call) and the chat looked stuck.
+// 20 s rides out several missed refreshes. The window is not what ends the
+// indicator: the runtime sends typing=false on every turn exit (resolved,
+// failed, requeued, cancelled), which clears typingUntil and the activity line
+// immediately below.
+const AGENT_TYPING_TTL_MS = 20_000;
+
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
     if (auth.error) {
@@ -27,7 +36,7 @@ export async function POST(req: NextRequest) {
         const updates: { lastReadAt?: Date; typingUntil?: Date | null; currentActivity?: string | null } = {};
         if (markRead) updates.lastReadAt = new Date();
         if (typeof typing === 'boolean') {
-            updates.typingUntil = typing ? new Date(Date.now() + 5000) : null;
+            updates.typingUntil = typing ? new Date(Date.now() + AGENT_TYPING_TTL_MS) : null;
             // Clear stale activity text the instant typing stops, so a leftover
             // "working (42s)" never lingers after the turn actually ends.
             updates.currentActivity = typing && typeof activity === "string" && activity.trim()

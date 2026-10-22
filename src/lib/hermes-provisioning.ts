@@ -5,6 +5,7 @@ import { agents, companyTokens } from "@/db/schema";
 import { decryptSecretPayload } from "@/lib/secrets";
 import { hermesContainerName, hermesSafeName, hermesVolumeName } from "@/lib/hermes-names";
 import { buildAgentInstructions } from "@/lib/agent-instructions";
+import { HERMES_CONFIG_DEFAULTS_ENV, hermesConfigDefaultsEnvValue } from "@/lib/hermes-profile-defaults";
 import {
     createContainer,
     dockerPull,
@@ -174,6 +175,12 @@ export async function provisionHermesContainer(
             `EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS=3`,
             `HERMES_BIN=hermes`,
             `HERMES_TOOLSETS=emperor-claw,web,terminal,code_execution`,
+            // Profile config.yaml defaults (context compression, single-query
+            // approvals, no tool_search indirection). entrypoint.sh applies each
+            // `key=value` line with `hermes -p <profile> config set` on every
+            // start, so recreates re-apply them idempotently. See
+            // hermes-profile-defaults.ts for why each key is set.
+            `${HERMES_CONFIG_DEFAULTS_ENV}=${hermesConfigDefaultsEnvValue()}`,
         ];
         const agentInstructions = buildAgentInstructions(agent.doctrineJson);
         if (agentInstructions) {
