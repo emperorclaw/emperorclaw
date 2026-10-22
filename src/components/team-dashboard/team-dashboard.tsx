@@ -76,6 +76,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const freshness = snapshotFreshness(data.generatedAt, now, online);
     const actions = useMemo(() => data.attention.filter(requiresHumanAction), [data.attention]);
     const watchlist = useMemo(() => data.attention.filter((entry) => !requiresHumanAction(entry)), [data.attention]);
+    // The throne's "decisions waiting" is approvals only (same definition as the
+    // sidebar badge and the Approvals page); "actions required" counts the rest.
+    const pendingDecisions = useMemo(() => actions.filter((entry) => entry.kind === "approval").length, [actions]);
     const actionMembers = useMemo(() => new Set(actions.flatMap((entry) => entry.memberKey ? [entry.memberKey] : [])), [actions]);
 
     const observedData = useMemo(() => freshness === "current" ? data : { ...data, members: data.members.map((member) => ({ ...member, activity: null, runtimeOnline: false })) }, [data, freshness]);
@@ -193,17 +196,17 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                     <p className="text-xs text-muted-foreground">{`${agents.length} agents · refreshes every 15s · work and connection shown separately`}</p>
                                 </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <div role="tablist" aria-label="Workspace view" className="grid grid-cols-2 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex dark:bg-white/[0.03]">
+                            <div className="flex w-full items-center gap-2 sm:w-auto">
+                                <div role="tablist" aria-label="Workspace view" className="grid flex-1 grid-cols-3 rounded-xl border border-border bg-muted/40 p-0.5 sm:flex sm:flex-none dark:bg-white/[0.03]">
                                     {([["scene", "Scene", IconBox], ["pulse", "Pulse", IconRadar], ["list", "List", IconLayoutList]] as const).map(([id, label, Icon]) => (
                                         <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
-                                            className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+                                            className={cn("inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                                                 view === id ? "bg-cyan-500/15 text-cyan-700 ring-1 ring-inset ring-cyan-500/40 dark:text-cyan-200" : "text-muted-foreground hover:text-foreground")}>
                                             <Icon className="h-4 w-4" stroke={1.8} />{label}
                                         </button>
                                     ))}
                                 </div>
-                                <Link href="/agents/organization" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-3 text-sm text-muted-foreground hover:text-foreground"><IconHierarchy2 className="h-4 w-4" />Organization</Link>
+                                <Link href="/agents/organization" className="hidden min-h-11 items-center sm:inline-flex gap-1.5 rounded-xl border border-border px-3 text-sm text-muted-foreground hover:text-foreground"><IconHierarchy2 className="h-4 w-4" />Organization</Link>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <button type="button" aria-label="Workspace options" className="grid h-11 w-11 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><IconDotsVertical className="h-4 w-4" /></button>
@@ -211,6 +214,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                     <DropdownMenuContent align="end" className="w-52">
                                         <DropdownMenuCheckboxItem checked={motionPaused} onCheckedChange={setMotionPaused}>Pause motion</DropdownMenuCheckboxItem>
                                         <DropdownMenuSeparator />
+                                        <DropdownMenuItem asChild className="sm:hidden"><Link href="/agents/organization">Organization</Link></DropdownMenuItem>
                                         <DropdownMenuItem asChild><Link href="/agents">Manage agents</Link></DropdownMenuItem>
                                         <DropdownMenuItem asChild><Link href="/agents/health">Agent health</Link></DropdownMenuItem>
                                         <DropdownMenuItem asChild><Link href="/projects">Open projects board</Link></DropdownMenuItem>
@@ -236,7 +240,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
 
                         {view === "scene" ? (
                             <TeamObservatory agents={agents.filter(isActive)} teams={data.teams ?? []} communications={data.communications ?? []} thoughts={data.thoughts ?? []} liveEvents={data.liveEvents ?? []}
-                                pendingActions={actions.length} actionKeys={actionMembers} selectedKey={selectedKey} onSelect={selectMember} onOpenInbox={openInbox} onShowAll={() => setView("list")}
+                                pendingActions={pendingDecisions} actionKeys={actionMembers} selectedKey={selectedKey} onSelect={selectMember} onOpenInbox={openInbox} onShowAll={() => setView("list")}
                                 leader={leader} leaderAgent={leaderAgent}
                                 now={now} reducedMotion={reducedMotion} fresh={freshness === "current"} />
                         ) : view === "pulse" ? (

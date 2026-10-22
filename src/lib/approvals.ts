@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, desc, eq, inArray, isNull, lt, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, notExists, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { approvalTaskLinks, approvals, projects, taskEvents, tasks } from "@/db/schema";
 import { broadcastMcpEvent } from "./pubsub";
@@ -12,6 +12,7 @@ import {
   EXTERNAL_APPROVAL_TTL_MS,
   EXTERNAL_ACTION_TYPES,
   resolutionTaskState,
+  selectPendingDecisions,
 } from "./approval-status";
 
 export async function createApprovalRequest(input: {
@@ -219,6 +220,50 @@ export async function expireStaleApprovals(now = new Date()): Promise<number> {
   }
 
   return expired;
+}
+
+/**
+ * Every decision waiting on a human in a company (see selectPendingDecisions
+ * for the definition). The sidebar badge, the dashboard and the Approvals page
+ * all read this, so their counts always agree.
+ */
+export async function listPendingDecisions(companyId: string) {
+  const pending = await db.select().from(approvals)
+    .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending")))
+    .orderBy(desc(approvals.requestedAt));
+  const links = pending.length > 0
+    ? await db.select({ approvalId: approvalTaskLinks.approvalId, taskId: approvalTaskLinks.taskId }).from(approvalTaskLinks)
+      .where(and(eq(approvalTaskLinks.companyId, companyId), inArray(approvalTaskLinks.approvalId, pending.map((a) => a.id))))
+    : [];
+  const linkedTaskIds = [...new Set(links.map((l) => l.taskId))];
+
+  const [liveLinked, approvalRequired] = await Promise.all([
+    linkedTaskIds.length > 0
+      ? db.select({ task: tasks }).from(tasks)
+        .innerJoin(projects, eq(projects.id, tasks.projectId))
+        .where(and(eq(tasks.companyId, companyId), inArray(tasks.id, linkedTaskIds), isNull(tasks.deletedAt), isNull(projects.deletedAt)))
+      : Promise.resolve([]),
+    db.select({ task: tasks }).from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .where(and(
+        eq(tasks.companyId, companyId),
+        eq(tasks.humanApprovalRequired, true),
+        ne(tasks.state, TASK_STATES.done),
+        isNull(tasks.deletedAt),
+        isNull(projects.deletedAt),
+        // Never asked about: a task with any approval (even a resolved one) is
+        // tracked through that approval, not as an implicit decision.
+        notExists(db.select({ one: sql`1` }).from(approvalTaskLinks).where(eq(approvalTaskLinks.taskId, tasks.id))),
+      ))
+      .orderBy(tasks.updatedAt),
+  ]);
+
+  return selectPendingDecisions({
+    pending,
+    links,
+    liveLinkedTasks: liveLinked.map((r) => r.task),
+    approvalRequiredTasks: approvalRequired.map((r) => r.task),
+  });
 }
 
 export async function listApprovalsForCompany(companyId: string) {

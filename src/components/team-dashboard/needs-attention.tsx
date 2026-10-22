@@ -207,6 +207,8 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
 
     switch (entry.kind) {
         case "approval":
+            // A task that requires approval but has no request yet is decided on the Approvals page.
+            if (!entry.approvalId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Review"}</Link>;
             if (confirming) {
                 return (
                     <span role="alertdialog" aria-label="Confirm approving a stale request" className="relative z-10 flex flex-col gap-1.5 rounded-lg border border-amber-500/40 bg-amber-400/10 p-2 text-left dark:bg-amber-300/[0.07]">

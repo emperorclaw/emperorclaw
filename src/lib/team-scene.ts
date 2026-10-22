@@ -387,11 +387,15 @@ export function sceneStatus(member: DashboardMember, attention?: AttentionEntry 
     // Fresh runtime evidence wins over the slower health scan.
     if (member.activity) return "working";
     if (member.health === "down") return "offline";
+    // An in-progress task is only being worked on while the runtime is
+    // connected (heartbeat or open run); an offline agent merely holds it.
+    const connected = member.kind !== "agent" || member.runtimeOnline !== false;
     // A problem in one task does not stop unrelated work assigned to this agent.
     const unaffectedWork = member.working.some((task) =>
         attention?.kind !== "incident" || (Boolean(attention.taskId) && task.id !== attention.taskId));
-    if (unaffectedWork) return "working";
+    if (connected && unaffectedWork) return "working";
     if (attention && isBlockingAttention(attention.kind)) return "blocked";
+    if (!connected && member.working.length > 0) return "offline";
     if (member.waiting.length > 0 || attention?.kind === "approval") return "waiting";
     return "idle";
 }

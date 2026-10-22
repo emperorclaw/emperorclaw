@@ -23,6 +23,8 @@ export type ApprovalItem = {
     resolverName: string | null;
     requester: { id: string; name: string; avatarUrl: string | null } | null;
     task: { id: string; projectId: string; title: string; description: string | null; state: string; assignee: string | null };
+    /** Every live task this approval covers (deciding it resolves them all); the card's task is the first. */
+    linkedTasks: { id: string; projectId: string; title: string }[];
     projectName: string | null;
     customerName: string | null;
 };
@@ -88,6 +90,18 @@ function PendingCard({ item, onDecide, busy }: { item: ApprovalItem; onDecide: (
                         <span className="truncate">{item.task.title}</span>
                         <IconArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-300" />
                     </Link>
+                    {item.linkedTasks.length > 1 && (
+                        <div className="mt-1.5 text-xs text-zinc-400">
+                            <p className="font-medium text-amber-200">Covers {item.linkedTasks.length} tasks</p>
+                            <ul className="mt-1 space-y-0.5">
+                                {item.linkedTasks.map((linked) => (
+                                    <li key={linked.id} className="truncate">
+                                        <Link href={`/projects?project=${linked.projectId}&task=${linked.id}`} className="hover:text-zinc-200">· {linked.title}</Link>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                     <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-zinc-500">
                         {item.projectName && <span>{item.projectName}</span>}
                         {item.customerName && <span>· {item.customerName}</span>}
@@ -187,7 +201,7 @@ export default function ApprovalsClient({ items }: { items: ApprovalItem[] }) {
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return items;
-        return items.filter((i) => [i.task.title, i.task.description, i.rationale, i.projectName, i.customerName, i.requester?.name, i.task.assignee]
+        return items.filter((i) => [i.task.title, ...i.linkedTasks.map((t) => t.title), i.task.description, i.rationale, i.projectName, i.customerName, i.requester?.name, i.task.assignee]
             .filter(Boolean).join(" ").toLowerCase().includes(q));
     }, [items, query]);
     const pending = filtered.filter((i) => i.status === "pending").sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));

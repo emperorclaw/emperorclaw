@@ -127,3 +127,58 @@ export function approvalDecisionMessage(input: {
         deliveryState: "queued",
     };
 }
+
+/**
+ * "Decisions waiting on a human": the single definition behind the sidebar
+ * badge, the dashboard throne/Action inbox and the Approvals page's "Waiting on
+ * you". It is exactly what the Approvals page can show and act on:
+ *
+ * - a pending approval with at least one live linked task (not deleted, in a
+ *   live project). One approval is one decision, however many tasks it covers.
+ *   A pending approval whose tasks are all gone (or that never had any) has
+ *   nothing to show or decide, so it does not count;
+ * - an "implicit" decision: an open task flagged human-approval-required that
+ *   no approval request covers yet (the caller only passes tasks never linked
+ *   to any approval; tasks covered by a counted approval are dropped here).
+ *
+ * Stale external approvals still count until the sweep expires them: the page
+ * shows them and asks for a second look before approving.
+ */
+export function selectPendingDecisions<A extends { id: string }, T extends { id: string }>(input: {
+    /** Pending approvals, in display order. */
+    pending: A[];
+    links: { approvalId: string; taskId: string }[];
+    /** Live (not deleted, live project) tasks linked to the pending approvals. */
+    liveLinkedTasks: T[];
+    /** Live open tasks that require approval and have no approval request. */
+    approvalRequiredTasks: T[];
+}): { approvals: { approval: A; tasks: T[] }[]; implicit: T[]; count: number } {
+    const liveById = new Map(input.liveLinkedTasks.map((t) => [t.id, t]));
+    const taskIdsByApproval = new Map<string, string[]>();
+    for (const link of input.links) {
+        const list = taskIdsByApproval.get(link.approvalId) ?? [];
+        if (!list.includes(link.taskId)) list.push(link.taskId);
+        taskIdsByApproval.set(link.approvalId, list);
+    }
+
+    const covered = new Set<string>();
+    const approvals: { approval: A; tasks: T[] }[] = [];
+    const seen = new Set<string>();
+    for (const approval of input.pending) {
+        if (seen.has(approval.id)) continue;
+        seen.add(approval.id);
+        const tasks = (taskIdsByApproval.get(approval.id) ?? []).flatMap((id) => liveById.get(id) ?? []);
+        if (tasks.length === 0) continue;
+        for (const t of tasks) covered.add(t.id);
+        approvals.push({ approval, tasks });
+    }
+
+    const implicit: T[] = [];
+    for (const task of input.approvalRequiredTasks) {
+        if (covered.has(task.id)) continue;
+        covered.add(task.id);
+        implicit.push(task);
+    }
+
+    return { approvals, implicit, count: approvals.length + implicit.length };
+}

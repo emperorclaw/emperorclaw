@@ -10,6 +10,7 @@ import {
     isStaleApproval,
     mayProceed,
     resolutionTaskState,
+    selectPendingDecisions,
 } from "../../src/lib/approval-status";
 
 const H = 3_600_000;
@@ -83,4 +84,27 @@ test("approvalDecisionMessage: approved task_done resolves; other approvals queu
     const action = approvalDecisionMessage({ status: "approved", actionType: "send_email", refs: "x", note: "go" });
     assert.equal(action.deliveryState, "queued");
     assert.match(action.text, /Approval granted for x: "go"/);
+});
+
+test("pending decisions: one per approval with a live task, plus uncovered approval-required tasks", () => {
+    const t = (id: string) => ({ id });
+    const result = selectPendingDecisions({
+        pending: [{ id: "multi" }, { id: "orphan" }, { id: "dead" }, { id: "multi" }],
+        links: [
+            { approvalId: "multi", taskId: "t1" }, { approvalId: "multi", taskId: "t2" },
+            { approvalId: "dead", taskId: "deleted-task" },
+        ],
+        // "deleted-task" is soft-deleted, so the loader never returns it.
+        liveLinkedTasks: [t("t1"), t("t2")],
+        approvalRequiredTasks: [t("t2"), t("flagged"), t("flagged")],
+    });
+    assert.deepEqual(result.approvals.map((a) => [a.approval.id, a.tasks.map((x) => x.id)]), [["multi", ["t1", "t2"]]],
+        "a two-task approval is one decision; taskless and dead-task approvals cannot be shown or decided");
+    assert.deepEqual(result.implicit.map((x) => x.id), ["flagged"], "covered and duplicate tasks are not implicit decisions");
+    assert.equal(result.count, 2);
+});
+
+test("pending decisions: nothing waiting is zero", () => {
+    const result = selectPendingDecisions({ pending: [{ id: "orphan" }], links: [], liveLinkedTasks: [], approvalRequiredTasks: [] });
+    assert.equal(result.count, 0);
 });

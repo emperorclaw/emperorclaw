@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-    agents, approvals, approvalTaskLinks, companies, companyMembers, incidents, messageThreads, projects, taskEvents, tasks, threadMessages, threadParticipants, tokenUsageLog, users,
+    agentRuns, agents, companies, companyMembers, incidents, messageThreads, projects, taskEvents, tasks, threadMessages, threadParticipants, tokenUsageLog, users,
 } from "@/db/schema";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { computeCompanyHealth } from "@/lib/agent-health";
+import { computeCompanyHealth, OFFLINE_AFTER_MS } from "@/lib/agent-health";
+import { listPendingDecisions } from "@/lib/approvals";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
 import { AGENT_PAIR_DESCRIPTION, isAgentPairThread, listGroups } from "@/lib/groups";
 import { SetupWizard } from "@/components/setup-wizard";
@@ -67,7 +68,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const usageSince = new Date(Math.min(monthStart.getTime(), dayAgo.getTime()));
-    const [[company], [currentUser], members, agentRows, openTasks, pendingApprovals, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount] = await Promise.all([
+    const [[company], [currentUser], members, agentRows, openTasks, decisions, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount, openRuns] = await Promise.all([
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         userId
             ? db.select({ onboardingCompletedAt: users.onboardingCompletedAt, onboardingDismissedAt: users.onboardingDismissedAt }).from(users).where(eq(users.id, userId)).limit(1)
@@ -81,11 +82,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, processingStartedAt: tasks.processingStartedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt)))
             .orderBy(desc(tasks.priority), tasks.createdAt),
-        db.select({ id: approvals.id, requestedAt: approvals.requestedAt, actionType: approvals.actionType, rationale: approvals.rationale, projectId: approvals.projectId, requesterAgentId: approvals.requesterAgentId, taskInput: tasks.inputJson, taskType: tasks.taskType })
-            .from(approvals)
-            .leftJoin(approvalTaskLinks, eq(approvalTaskLinks.approvalId, approvals.id))
-            .leftJoin(tasks, and(eq(tasks.id, approvalTaskLinks.taskId), eq(tasks.companyId, companyId)))
-            .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending"))).orderBy(desc(approvals.requestedAt)),
+        // Same definition as the sidebar badge and the Approvals page.
+        listPendingDecisions(companyId),
         db.select({ id: incidents.id, summary: incidents.summary, severity: incidents.severity, projectId: incidents.projectId, taskId: incidents.taskId, reasonCode: incidents.reasonCode, createdAt: incidents.createdAt, taskState: tasks.state, taskDeletedAt: tasks.deletedAt, taskType: tasks.taskType, inputJson: tasks.inputJson, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(incidents).leftJoin(tasks, and(eq(tasks.id, incidents.taskId), eq(tasks.companyId, companyId)))
             .where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(50),
@@ -101,7 +99,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             .from(tokenUsageLog).where(and(eq(tokenUsageLog.companyId, companyId), gte(tokenUsageLog.reportedAt, usageSince)))
             .groupBy(tokenUsageLog.agentId),
         db.select({ count: sql<number>`COUNT(*)::int` }).from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [TASK_STATES.failed, TASK_STATES.deadLetter]), isNull(tasks.deletedAt))),
+        // A freshly opened run is live evidence too, like in agent-activity.ts:
+        // an open run counts when the runtime is online (already covered by
+        // health) or the run started within the offline window. An older open
+        // run on a silent runtime is almost surely dead, so it must not mask
+        // the "offline with work in progress" alert.
+        db.selectDistinct({ agentId: agentRuns.agentId }).from(agentRuns)
+            .where(and(eq(agentRuns.companyId, companyId), eq(agentRuns.status, "running"), gte(agentRuns.startedAt, new Date(now.getTime() - OFFLINE_AFTER_MS)), isNotNull(agentRuns.agentId))),
     ]);
+    const pendingApprovals = decisions.approvals.map(({ approval, tasks: linked }) => ({
+        id: approval.id, requestedAt: approval.requestedAt, actionType: approval.actionType, rationale: approval.rationale, projectId: approval.projectId,
+        requesterAgentId: approval.requesterAgentId, taskInput: linked[0].inputJson as unknown, taskType: linked[0].taskType as string | null,
+    }));
+    const agentsWithOpenRun = new Set(openRuns.flatMap((r) => r.agentId ? [r.agentId] : []));
 
     // Done metrics as unbounded SQL aggregates — never a capped row fetch — so
     // "done today / this week", the per-member done count and the median cycle
@@ -280,7 +290,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             spendTodayCents: spendTodayByAgent.get(a.id) ?? 0,
             monthlyCostCents: monthSpend(a),
             monthlyBudgetCents: a.monthlyBudgetCents,
-            lastActivityAt: h?.lastSeenAt ?? null, runtimeOnline: h?.online ?? false, canRestartRuntime: a.provider === "hermes" && a.deploymentMode === "local",
+            lastActivityAt: h?.lastSeenAt ?? null, runtimeOnline: (h?.online ?? false) || agentsWithOpenRun.has(a.id), canRestartRuntime: a.provider === "hermes" && a.deploymentMode === "local",
             ...workFor(`agent:${a.id}`),
         });
     }
@@ -329,9 +339,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             });
         }
     }
-    for (const a of health.agents.filter((h) => h.status === "down" && !activityByAgent.has(h.id))) {
+    // Offline agents with work waiting: unanswered messages (health "down") or
+    // in-progress tasks they hold but cannot be working on.
+    const holdsInProgress = (agentId: string) => openTasks.some((t) => t.assignedAgentId === agentId && t.state === TASK_STATES.inProgress);
+    for (const a of health.agents.filter((h) => !activityByAgent.has(h.id)
+        && (h.status === "down" || (!h.online && !agentsWithOpenRun.has(h.id) && holdsInProgress(h.id))))) {
         attention.push({
-            id: `agent:${a.id}`, kind: "agent", title: `${a.name} has no recent connection with work waiting`, memberKey: `agent:${a.id}`, memberName: a.name,
+            id: `agent:${a.id}`, kind: "agent", title: a.status === "down" ? `${a.name} has no recent connection with work waiting` : `${a.name} is offline with work in progress`, memberKey: `agent:${a.id}`, memberName: a.name,
             area: a.role, at: a.lastSeenAt ?? now.toISOString(), actionLabel: "Inspect connection", href: `/agents?agent=${a.id}`,
             agentId: a.id, canRestartRuntime: agentRows.some((agent) => agent.id === a.id && agent.provider === "hermes" && agent.deploymentMode === "local"),
         });
@@ -347,6 +361,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null, area: projectName.get(a.projectId) ?? null,
             at: a.requestedAt.toISOString(), actionLabel: a.actionType === "task_done" ? "Review work" : "Review request", href: "/approvals",
             approvalId: a.id,
+        });
+    }
+    // Tasks that require approval and have no request yet: decided on the Approvals page.
+    for (const t of decisions.implicit) {
+        const key = assigneeKey(t);
+        attention.push({
+            id: `approval:task:${t.id}`, kind: "approval", title: `Approve ${excerpt(taskTitle(t.inputJson, t.taskType), 52)}`,
+            memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null, area: projectName.get(t.projectId) ?? null,
+            at: t.updatedAt.toISOString(), actionLabel: "Review work", href: "/approvals", taskId: t.id,
         });
     }
     for (const item of health.attention) {

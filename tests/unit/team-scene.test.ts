@@ -175,6 +175,25 @@ test("kpis, filters and default selection follow real status", () => {
     assert.equal(matchesKpi(null, idle, "idle"), true);
 });
 
+test("an offline agent holding in-progress tasks is not working", () => {
+    const held = member({ runtimeOnline: false, health: "idle", working: [task("in_progress")] });
+    assert.equal(sceneStatus(held), "offline", "no heartbeat, typing or open run: the task is held, not worked");
+    assert.equal(sceneStatus({ ...held, activity: "typing…" }), "working", "live typing is runtime evidence");
+    assert.equal(sceneStatus({ ...held, runtimeOnline: true }), "working");
+    assert.equal(sceneStatus(member({ working: [task("in_progress")] })), "working", "unknown connection keeps the old behavior");
+    const checkIn: AttentionEntry = { ...approval("agent:a1"), id: "agent:a1", kind: "agent", title: "Growth is offline with work in progress" };
+    assert.equal(sceneStatus(held, checkIn), "blocked", "the inbox check-in surfaces it as needing attention");
+    assert.equal(sceneStatus(member({ kind: "human", key: "human:h1", runtimeOnline: false, working: [task("in_progress")] })), "working", "people have no runtime");
+
+    const data = { board: { inbox: [], inProgress: [], review: [], done: [] }, attention: [] } as unknown as Parameters<typeof kpiCounts>[1];
+    const agents: SceneAgent[] = Array.from({ length: 3 }, (_, i) => {
+        const m = member({ key: `agent:o${i}`, id: `o${i}`, runtimeOnline: false, health: "idle", working: [task("in_progress")] });
+        const s = sceneStatus(m);
+        return { member: m, status: s, activity: activityText(m, s), zone: "lounge", behavior: { kind: "nap", caption: "", variant: 0 }, isNew: false } as SceneAgent;
+    });
+    assert.equal(kpiCounts(agents, data).working, 0, "all offline: zero agents working");
+});
+
 test("task steps, time and ticker copy", () => {
     assert.deepEqual(taskStep("in_progress"), { step: 2, total: 4 });
     assert.deepEqual(taskStep("done"), { step: 4, total: 4 });
