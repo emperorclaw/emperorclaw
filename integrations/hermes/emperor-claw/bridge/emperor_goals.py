@@ -156,7 +156,9 @@ def run_next(bridge, state):
         text = goal['objective'] if goal.get('firstTurn') else goal.get('prompt') or status.get('prompt')
         if not text:
             raise RuntimeError('Native objective has no continuation prompt')
-        message = {'id':goal.get('sourceMessageId', goal['commandId']),'threadId':goal['threadId'],'threadType':'direct','senderType':'human','senderId':goal.get('senderId'),'text':text}
+        # goalTurn: an objective step, not a human waiting on a reply. The bridge
+        # skips the acknowledge-first reminder and exports no trigger message id.
+        message = {'id':goal.get('sourceMessageId', goal['commandId']),'threadId':goal['threadId'],'threadType':'direct','senderType':'human','senderId':goal.get('senderId'),'text':text,'goalTurn':True}
         bridge.send_heartbeat(1)
         reply = bridge.run_hermes(message, state)
         goal['pendingEvaluation'] = reply[:24000]

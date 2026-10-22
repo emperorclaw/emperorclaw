@@ -136,6 +136,8 @@ export async function GET(req: NextRequest) {
                                 threadId: threadMessages.threadId,
                                 createdAt: threadMessages.createdAt,
                                 replyToId: sql<string | null>`${threadMessages.metadataJson}->>'replyToMessageId'`,
+                                // Acknowledgements answer nothing; see answeredCutoffByThread.
+                                isAck: sql<boolean>`coalesce(${threadMessages.metadataJson}->>'ack' = 'true', false)`,
                             })
                             .from(threadMessages)
                             .where(and(

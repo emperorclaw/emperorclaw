@@ -92,6 +92,11 @@ export async function sendThreadMessageFromMcp(input: {
   replyToMessageId?: string | null;
   // Explicit opt-out of team-first peer messaging: force the private pair thread.
   private?: boolean;
+  // Server-validated metadata flags for the stored message (never raw caller
+  // metadata): `ack` marks an "acknowledge first" post, `idempotencyKey` lets a
+  // retried reply be recognised instead of stored twice.
+  ack?: boolean;
+  idempotencyKey?: string | null;
 }) {
   const senderId = input.fromUserId || input.agentId || null;
   const resolvedSenderId = senderId
@@ -218,6 +223,8 @@ export async function sendThreadMessageFromMcp(input: {
       chatId: input.chatId || null,
       threadType: isGroup ? GROUP_THREAD_TYPE : input.threadType || null,
       ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
+      ...(input.ack ? { ack: true } : {}),
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     },
     mirrorToLegacyChat: !effectiveTargetAgentId && !isGroup,
   });

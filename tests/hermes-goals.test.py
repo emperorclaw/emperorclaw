@@ -6,6 +6,13 @@ from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent/'integrations/hermes/emperor-claw/bridge'))
 import emperor_goals as goals
 
+def _load_bridge():
+    import os
+    os.environ.setdefault('EMPEROR_CLAW_API_TOKEN','test-token')
+    os.environ.setdefault('EMPEROR_CLAW_AGENT_ID','test-agent-id')
+    import emperor_hermes_bridge
+    return emperor_hermes_bridge
+
 class GoalsTests(unittest.TestCase):
     def setUp(self):
         self.bridge=SimpleNamespace(AGENT_ID='agent',AGENT_NAME='Ada',api=Mock(return_value={'commands':[]}),save_state=Mock(),log=Mock(),check_budget=Mock(return_value=True),send_heartbeat=Mock(),run_hermes=Mock(return_value='Verified deliverable'),report_token_usage=Mock(),send_reply=Mock(),update_chat_status=Mock(),TurnInterrupted=type('TurnInterrupted',(Exception,),{}))
@@ -95,6 +102,13 @@ class GoalsTests(unittest.TestCase):
         self.assertEqual(native.call_args.args[0]['previousSession'],'old')
         self.bridge.run_hermes.assert_not_called()
         self.assertEqual(self.goal['status'],'done')
+    def test_goal_step_is_marked_so_no_ack_reminder_or_trigger_id(self):
+        with patch.object(goals,'native_goal',side_effect=[{'status':'active','waiting':False},{'status':'done','sessionId':'session'}]):
+            goals.run_next(self.bridge,self.state)
+        message=self.bridge.run_hermes.call_args.args[0]
+        self.assertIs(message.get('goalTurn'),True)
+        bridge=_load_bridge()
+        self.assertEqual(bridge.ack_first_reminder(message),'')
     def test_other_conversation_does_not_affect_objective(self):
         with patch.object(goals,'native_goal') as native:goals.record_external_turn(self.bridge,{'threadId':'other'},'Other work',self.state)
         native.assert_not_called()

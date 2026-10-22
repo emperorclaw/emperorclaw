@@ -444,8 +444,8 @@ class TestBudgetGuard(unittest.TestCase):
         self.api_patch = patch.object(bridge, "api")
         self.api = self.api_patch.start()
         self.addCleanup(self.api_patch.stop)
-        bridge._pending_input_chars = 0
-        bridge._pending_output_chars = 0
+        bridge._pending_input_tokens = 0
+        bridge._pending_output_tokens = 0
 
     def test_denies_paused_malformed_and_failed_checks(self):
         for payload in [{}, {"agent": {"executionAllowed": False, "budgetStatus": "paused"}}]:
@@ -489,11 +489,177 @@ class TestBudgetGuard(unittest.TestCase):
         self.api.side_effect = None
         self.api.return_value = {"agent": {"executionAllowed": True, "budgetStatus": "active"}}
         self.assertTrue(bridge.check_budget())
-        self.assertEqual(bridge._pending_input_chars, 0)
+        self.assertEqual(bridge._pending_input_tokens, 0)
         self.assertEqual(self.api.call_args_list[-2].args[0], "POST")
         self.assertEqual(self.api.call_args_list[-1].args[0], "GET")
         bridge.report_token_usage(400, 200)
         self.assertEqual(self.api.call_args.args[0], "POST")
+
+
+class TestRealUsageAndProviderFailures(unittest.TestCase):
+    """report-usage bills what Hermes actually sent, and an out-of-credits
+    provider shows up as a named failure instead of a silent stall.
+
+    Regression for 2026-10-18: the chars/4 estimate showed ~$0.03/month per
+    agent while OpenRouter billed ~$27/week on one key, and the account ran
+    dry with nothing in Emperor saying why.
+    """
+
+    # Real lines from malecu-hermes-1 (agent.log, Hermes v0.20.x).
+    LOG = (
+        "2026-10-16 00:52:00,001 INFO [s1] agent.conversation_loop: API call #1: model=deepseek/deepseek-v4-flash provider=openrouter in=1000 out=50 total=1050 latency=1.0s id=gen-old upstream=Baidu\n"
+        "2026-10-16 00:52:59,770 INFO [s1] agent.conversation_loop: API call #1: model=deepseek/deepseek-v4-flash provider=openrouter in=43413 out=176 total=43589 latency=3.6s cache=36864/43413 (85%) id=gen-1 upstream=Baidu\n"
+        "2026-10-16 00:53:05,001 INFO [s1] agent.tool_executor: tool web_search completed (0.20s, 10 chars)\n"
+        "2026-10-16 00:53:59,088 INFO [s1] agent.conversation_loop: API call #2: model=deepseek/deepseek-v4-flash provider=openrouter in=44737 out=82 total=44819 latency=3.8s cache=40960/44737 (92%) id=gen-2 upstream=Baidu\n"
+    )
+    REAL_402 = (
+        "Billing or credits exhausted: HTTP 402: Insufficient credits. Add more using "
+        "https://openrouter.ai/settings/credits  OpenRouter reported that billing, credits, "
+        "or account entitlement is exhausted"
+    )
+
+    def setUp(self):
+        import time as _time
+        self.since = _time.mktime(_time.strptime("2026-10-16 00:52:30", "%Y-%m-%d %H:%M:%S"))
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.log = Path(self.tmp.name) / "agent.log"
+        self.log.write_text(self.LOG, encoding="utf-8")
+        self.api_patch = patch.object(bridge, "api")
+        self.api = self.api_patch.start()
+        self.addCleanup(self.api_patch.stop)
+        bridge._pending_input_tokens = 0
+        bridge._pending_output_tokens = 0
+
+    def test_usage_reports_real_hermes_tokens_not_the_char_estimate(self):
+        with patch.object(bridge, "_agent_log_path", return_value=self.log):
+            bridge.report_token_usage(400, 200, since_ts=self.since, session_id="s1")
+        body = self.api.call_args.kwargs["body"]
+        # Both calls of this turn (with their full re-sent context), not 400/4.
+        self.assertEqual(body["inputTokens"], 43413 + 44737)
+        self.assertEqual(body["outputTokens"], 176 + 82)
+        self.assertEqual(self.api.call_args.args[:2], ("POST", "/agents/report-usage"))
+
+    def test_usage_falls_back_to_char_estimate_without_log(self):
+        with patch.object(bridge, "_agent_log_path", return_value=None):
+            bridge.report_token_usage(400, 200, since_ts=self.since)
+        body = self.api.call_args.kwargs["body"]
+        self.assertEqual((body["inputTokens"], body["outputTokens"]), (100, 50))
+
+    def test_usage_falls_back_when_turn_logged_no_call(self):
+        with patch.object(bridge, "_agent_log_path", return_value=self.log):
+            bridge.report_token_usage(400, 200, since_ts=self.since + 3600, session_id="s1")
+        self.assertEqual(self.api.call_args.kwargs["body"]["inputTokens"], 100)
+
+    def test_usage_without_a_session_id_falls_back_to_the_estimate(self):
+        # agent.log is shared by every process on the profile: with no session
+        # id nothing can be attributed to this turn, so never over-bill.
+        with patch.object(bridge, "_agent_log_path", return_value=self.log):
+            bridge.report_token_usage(400, 200, since_ts=self.since)
+        self.assertEqual(self.api.call_args.kwargs["body"]["inputTokens"], 100)
+
+    def test_usage_ignores_other_sessions_on_the_same_profile(self):
+        other = "2026-10-16 00:53:30,001 INFO [cli-other] agent.conversation_loop: API call #1: model=m provider=p in=99999 out=999 total=1\n"
+        self.log.write_text(self.LOG + other, encoding="utf-8")
+        with patch.object(bridge, "_agent_log_path", return_value=self.log):
+            self.assertEqual(bridge.sum_api_usage(self.since, session_id="s1"), (43413 + 44737, 176 + 82))
+            self.assertEqual(bridge.sum_api_usage(self.since, session_id="cli-other"), (99999, 999))
+            self.assertIsNone(bridge.sum_api_usage(self.since, session_id=None))
+
+    def test_failed_real_sample_is_retained_as_tokens(self):
+        self.api.side_effect = RuntimeError("offline")
+        with patch.object(bridge, "_agent_log_path", return_value=self.log):
+            with self.assertRaises(RuntimeError):
+                bridge.report_token_usage(400, 200, since_ts=self.since, session_id="s1")
+        self.assertEqual(bridge._pending_input_tokens, 43413 + 44737)
+        self.api.side_effect = None
+        bridge.report_token_usage(0, 0)
+        self.assertEqual(self.api.call_args.kwargs["body"]["inputTokens"], 43413 + 44737)
+        self.assertEqual(bridge._pending_input_tokens, 0)
+
+    def test_empty_failed_turn_reports_nothing(self):
+        with patch.object(bridge, "_agent_log_path", return_value=None):
+            bridge.report_token_usage(0, 0, since_ts=self.since)
+        self.api.assert_not_called()
+
+    def test_402_is_classified_with_a_fixed_reason(self):
+        reason = bridge.provider_failure_reason(RuntimeError(self.REAL_402))
+        self.assertEqual(reason, bridge.PROVIDER_CREDITS_REASON)
+        self.assertIn("out of credits", reason)
+        self.assertNotIn("openrouter.ai", reason)
+        self.assertEqual(bridge.ledger_error_message(RuntimeError(self.REAL_402)), "provider_credits_exhausted: HTTP 402")
+
+    def test_other_failures_carry_no_reason(self):
+        import subprocess
+        for exc in (
+            RuntimeError("tool crashed: key=sk-live-123"),
+            RuntimeError("HTTP 4021 bytes read"),
+            subprocess.CalledProcessError(1, ["hermes", "chat", "-q", "Insufficient credits in prompt text"]),
+            subprocess.TimeoutExpired(["hermes", "-q", "HTTP 402"], 5),
+        ):
+            self.assertIsNone(bridge.provider_failure_reason(exc), exc)
+
+    def test_status_update_sends_bounded_reason(self):
+        bridge.update_chat_status({"id": "m1", "threadId": "t1"}, execution_state="cancelled", reason="x" * 500)
+        body = self.api.call_args.kwargs["body"]
+        self.assertEqual(body["executionState"], "cancelled")
+        self.assertEqual(len(body["reason"]), 300)
+        bridge.update_chat_status({"id": "m1", "threadId": "t1"}, execution_state="cancelled")
+        self.assertNotIn("reason", self.api.call_args.kwargs["body"])
+
+    def _run_failing_turn(self, exc, attempts, *, spawned=True):
+        from contextlib import ExitStack
+
+        def failing_turn(message, state):
+            bridge._turn_timing.clear()
+            if spawned:
+                bridge._turn_timing["spawnedAt"] = 1.0
+                bridge._turn_session_id = "sess-402"
+            raise exc
+
+        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
+        message = {"id": "msg-402", "text": "hello", "senderType": "human", "threadId": "t1",
+                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
+        with ExitStack() as stack:
+            for name in ["ensure_runtime", "send_heartbeat", "save_state"]:
+                stack.enter_context(patch.object(bridge, name))
+            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
+            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
+            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
+            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
+            stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
+            stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
+            stack.enter_context(patch.object(bridge, "server_supports_runs", return_value=False))
+            stack.enter_context(patch.object(bridge, "schedule_retry", return_value=attempts))
+            stack.enter_context(patch.object(bridge, "run_hermes", side_effect=failing_turn))
+            stack.enter_context(patch.object(bridge, "flush_outbox", return_value=0))
+            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
+            status = stack.enter_context(patch.object(bridge, "update_chat_status"))
+            usage = stack.enter_context(patch.object(bridge, "report_token_usage"))
+            with self.assertRaises(KeyboardInterrupt):
+                bridge.main()
+        return status, usage
+
+    def test_exhausted_402_turn_is_cancelled_with_credits_reason(self):
+        status, usage = self._run_failing_turn(RuntimeError(self.REAL_402), bridge.MAX_RETRY_ATTEMPTS)
+        cancelled = [c for c in status.call_args_list if c.kwargs.get("execution_state") == "cancelled"]
+        self.assertEqual(len(cancelled), 1)
+        self.assertEqual(cancelled[0].kwargs["reason"], bridge.PROVIDER_CREDITS_REASON)
+        # The failed turn still bills whatever Hermes logged, never an estimate.
+        self.assertEqual(usage.call_args.args[:2], (0, 0))
+        self.assertIn("since_ts", usage.call_args.kwargs)
+        self.assertEqual(usage.call_args.kwargs["session_id"], "sess-402")
+
+    def test_turn_that_never_spawned_hermes_reports_no_usage(self):
+        # SessionBusy before spawn: no model call was made, nothing to bill.
+        _, usage = self._run_failing_turn(bridge.SessionBusy("SESSION_NOT_OWNED"), 1, spawned=False)
+        usage.assert_not_called()
+
+    def test_exhausted_generic_failure_sends_no_reason(self):
+        status, _ = self._run_failing_turn(RuntimeError("boom: secret reply text"), bridge.MAX_RETRY_ATTEMPTS)
+        cancelled = [c for c in status.call_args_list if c.kwargs.get("execution_state") == "cancelled"]
+        self.assertEqual(len(cancelled), 1)
+        self.assertIsNone(cancelled[0].kwargs["reason"])
 
 
 class TestIsDirectThread(unittest.TestCase):
@@ -1641,6 +1807,10 @@ class TestPromptEconomics(unittest.TestCase):
     def test_reprimes_when_static_block_changes(self):
         state = {}
         self._run(state)
+        # A resumed turn reuses its primed hash instead of rebuilding the block
+        # (see the static-block cache); a known change is signalled explicitly,
+        # otherwise the background refresh picks it up within its window.
+        bridge.invalidate_static_block()
         cmd = self._run(state, roster="ROSTER-V2")
         prompt = cmd[cmd.index("-q") + 1]
         self.assertIn("ROSTER-V2", prompt)

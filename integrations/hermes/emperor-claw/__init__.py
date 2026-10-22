@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import re
 import uuid
 import urllib.error
 import urllib.parse
@@ -34,8 +35,211 @@ def _available() -> bool:
     return bool(_token())
 
 
+DEFAULT_TOOL_RESULT_MAX_CHARS = 12000
+TRUNCATION_HINT = "narrow with filters/limit or fetch one item by id"
+# Shrink passes, mildest first: (max string chars, max list items). Strings
+# lose their tails before lists lose items.
+_FIT_STEPS: tuple[tuple[int, int | None], ...] = (
+    (2000, None), (1000, None), (500, None),
+    (500, 50), (500, 30), (500, 20), (500, 10),
+    (300, 10), (300, 5), (160, 5), (160, 3), (160, 1),
+)
+# Lists under these keys are oldest-first (thread messages, task events), so
+# a shortened one keeps its newest items. Every other list keeps its first.
+CHRONOLOGICAL_KEYS = frozenset({"messages", "events", "history", "timeline"})
+# Errors are never dropped; they are only bounded by these (strings, list items).
+_ERROR_FIT_STEPS: tuple[tuple[int, int], ...] = ((4000, 50), (1000, 20))
+_DROP_MIN_CHARS = 256
+_DROP_MAX_ROUNDS = 8
+_STUB_SCALAR_MAX_CHARS = 200
+
+
+def _compact(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def _tool_result_budget() -> int:
+    raw = os.environ.get("EMPEROR_CLAW_TOOL_RESULT_MAX_CHARS", "").strip()
+    if not raw:
+        return DEFAULT_TOOL_RESULT_MAX_CHARS
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        return DEFAULT_TOOL_RESULT_MAX_CHARS
+
+
+def _cut_string(value: str, cap: int) -> str:
+    if len(value) <= cap:
+        return value
+    return value[:cap] + f"…[+{len(value) - cap} chars]"
+
+
+def _shrink(node: Any, str_cap: int, list_cap: int | None) -> Any:
+    """Return a copy with long strings cut and long lists shortened.
+
+    A shortened list keeps valid JSON and says so: inside an object the list
+    stays at its key and the object gains `_truncated` {key: {returned, total}}
+    plus `_hint`, merged into any `_truncated` already there so an earlier
+    total survives; a list directly inside a list (or at the top) is wrapped
+    as {items, truncated, returned, total, hint}. Lists under
+    CHRONOLOGICAL_KEYS keep their newest (last) items.
+    """
+    if isinstance(node, str):
+        return _cut_string(node, str_cap)
+    if isinstance(node, list):
+        items, total = _shrink_list(node, str_cap, list_cap, newest=False)
+        if total > len(items):
+            return {"items": items, "truncated": True, "returned": len(items), "total": total, "hint": TRUNCATION_HINT}
+        return items
+    if isinstance(node, dict):
+        out: Dict[str, Any] = {}
+        cut: Dict[str, Any] = {}
+        for key, value in node.items():
+            if key in ("_truncated", "_hint"):
+                continue
+            if isinstance(value, list):
+                newest = key in CHRONOLOGICAL_KEYS
+                items, total = _shrink_list(value, str_cap, list_cap, newest=newest)
+                out[key] = items
+                if total > len(items):
+                    cut[key] = {"returned": len(items), "total": total}
+                    if newest:
+                        cut[key]["kept"] = "newest"
+            else:
+                out[key] = _shrink(value, str_cap, list_cap)
+        earlier = node.get("_truncated") if isinstance(node.get("_truncated"), dict) else {}
+        if earlier or cut:
+            merged: Dict[str, Any] = dict(earlier)
+            for key, entry in cut.items():
+                prior = earlier.get(key) if isinstance(earlier.get(key), dict) else {}
+                total = max(int(prior.get("total") or 0), entry["total"])
+                merged[key] = {**prior, **entry, "total": total}
+            out["_truncated"] = merged
+            out["_hint"] = node.get("_hint") or TRUNCATION_HINT
+        return out
+    return node
+
+
+def _shrink_list(items: list, str_cap: int, list_cap: int | None, newest: bool) -> tuple[list, int]:
+    if list_cap is None or len(items) <= list_cap:
+        kept = items
+    else:
+        kept = items[-list_cap:] if newest else items[:list_cap]
+    return [_shrink(item, str_cap, list_cap) for item in kept], len(items)
+
+
+def _measure(node: Any, depth: int, parent: Any, key: Any, found: list) -> int:
+    """Compact-JSON length of `node`, computed in a single pass.
+
+    Appends to `found` every bulky container (at least _DROP_MIN_CHARS) that
+    holds no bulky container itself, as (size, depth, parent, key).
+    """
+    if isinstance(node, dict):
+        size = 2 + max(len(node) - 1, 0)
+        has_bulky_child = False
+        for k, value in node.items():
+            child = _measure(value, depth + 1, node, k, found)
+            size += len(_compact(str(k))) + 1 + child
+            has_bulky_child = has_bulky_child or (isinstance(value, (dict, list)) and child >= _DROP_MIN_CHARS)
+    elif isinstance(node, list):
+        size = 2 + max(len(node) - 1, 0)
+        has_bulky_child = False
+        for index, value in enumerate(node):
+            child = _measure(value, depth + 1, node, index, found)
+            size += child
+            has_bulky_child = has_bulky_child or (isinstance(value, (dict, list)) and child >= _DROP_MIN_CHARS)
+    else:
+        return len(_compact(node))
+    if parent is not None and size >= _DROP_MIN_CHARS and not has_bulky_child:
+        found.append((size, depth, parent, key))
+    return size
+
+
+def _drop_bulky(node: Any, budget: int) -> Any:
+    """Last resort: replace bulky containers with a size marker.
+
+    Each round measures the tree once and drops the largest innermost bulky
+    containers until the result fits; their parents become candidates in the
+    next round. After _DROP_MAX_ROUNDS the payload collapses to a stub that
+    keeps only short top-level scalars.
+    """
+    for _ in range(_DROP_MAX_ROUNDS):
+        found: list = []
+        total = _measure(node, 0, None, None, found)
+        if total <= budget:
+            return node
+        if not found:
+            break
+        # Largest first; ties resolve by depth, then by tree order.
+        order = sorted(range(len(found)), key=lambda i: (-found[i][0], found[i][1], i))
+        for index in order:
+            size, _, parent, key = found[index]
+            stub = f"…[omitted {size} chars; {TRUNCATION_HINT}]"
+            parent[key] = stub
+            total -= size - len(_compact(stub))
+            if total <= budget:
+                return node
+    size = len(_compact(node))
+    if size <= budget:
+        return node
+    stub = f"…[omitted {size} chars; {TRUNCATION_HINT}]"
+    if isinstance(node, dict):
+        kept = {
+            k: v for k, v in node.items()
+            if v is None or isinstance(v, (bool, int, float))
+            or (isinstance(v, str) and len(v) <= _STUB_SCALAR_MAX_CHARS)
+        }
+        kept["_omitted"] = stub
+        return kept
+    return stub
+
+
+def _fit_error(error: Any, budget_chars: int) -> Any:
+    """Bound an error without ever dropping it: only strings and lists shrink."""
+    fitted = error
+    for str_cap, list_cap in _ERROR_FIT_STEPS:
+        fitted = _shrink(error, str_cap, list_cap)
+        if len(_compact(fitted)) <= budget_chars:
+            break
+    return fitted
+
+
+def _fit(data: Any, budget_chars: int) -> str:
+    """Serialize a tool result compactly and bound it to `budget_chars`.
+
+    Deterministic: the same input and budget always give the same output. A
+    result that already fits is returned unchanged. A top-level `error` is
+    never dropped, only bounded, so a failure stays readable.
+    """
+    text = _compact(data)
+    if budget_chars <= 0 or len(text) <= budget_chars:
+        return text
+
+    error_key = isinstance(data, dict) and "error" in data
+    error_value = _fit_error(data["error"], budget_chars) if error_key else None
+    rest = {k: v for k, v in data.items() if k != "error"} if error_key else data
+
+    def assemble(body: Any) -> Any:
+        if not error_key:
+            return body
+        out = dict(body) if isinstance(body, dict) else {"data": body}
+        out["error"] = error_value
+        return out
+
+    candidate: Any = rest
+    for str_cap, list_cap in _FIT_STEPS:
+        candidate = _shrink(rest, str_cap, list_cap)
+        text = _compact(assemble(candidate))
+        if len(text) <= budget_chars:
+            return text
+
+    reserve = len(_compact(assemble({}))) if error_key else 0
+    candidate = _drop_bulky(candidate, max(budget_chars - reserve, 0))
+    return _compact(assemble(candidate))
+
+
 def _json(data: Any) -> str:
-    return json.dumps(data, ensure_ascii=False)
+    return _fit(data, _tool_result_budget())
 
 
 def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[str, Any] | None = None, timeout: int = 30) -> Dict[str, Any]:
@@ -148,7 +352,117 @@ def emperor_request(args: Dict[str, Any], **_: Any) -> str:
         return _json({"error": "body must be an object when provided"})
     if query is not None and not isinstance(query, dict):
         return _json({"error": "query must be an object when provided"})
-    return _json(_request(method, path, body=body, query=query))
+    # Agents often inline the query string in the path ("/artifacts?kind=x").
+    # Split it so defaults merge in and the URL never gets a second "?".
+    if "?" in path:
+        path, _, inline = path.partition("?")
+        merged: Dict[str, Any] = dict(urllib.parse.parse_qsl(inline, keep_blank_values=False))
+        merged.update(query or {})
+        query = merged
+    route = "/" + path.strip("/").removeprefix("api/mcp/")
+    if method == "GET" and _ARTIFACT_LIST_PATH.match(route) and not (query or {}).get("limit"):
+        # GET /api/mcp/artifacts honors `limit` (server default 100).
+        query = {**(query or {}), "limit": DEFAULT_ARTIFACT_LIST_LIMIT}
+    result = _request(method, path, body=body, query=query)
+    if method == "GET" and _TASK_NOTES_PATH.match(route):
+        result = _tail_task_notes(result, (query or {}).get("limit"))
+    if (method in _WRITE_METHODS and _TASK_WRITE_PATH.match(route)
+            and not _TASK_WORK_SPEC_PATH.match(route) and not args.get("full")):
+        result = _task_write_receipt(result)
+    return _json(result)
+
+
+_WRITE_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
+_TASK_WRITE_PATH = re.compile(r"^/tasks(/.*)?$")
+# Writes whose answer is the work spec the agent must act on next: claiming
+# hands over a task (POST /tasks/claim, POST /tasks/{id}/assign mode=claim).
+_TASK_WORK_SPEC_PATH = re.compile(r"^/tasks/(claim|[^/]+/assign|[^/]+/context)$")
+RECEIPT_TEXT_MAX_CHARS = 160
+_RECEIPT_SCALAR_MAX_CHARS = 200
+
+
+def _record_receipt(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep a record's short scalar fields; summarize or drop nested bodies.
+
+    Task write routes answer {message, task} ({message, event, memory} for
+    notes); the task row carries title/description inside inputJson and the
+    result inside outputJson.
+    """
+    out: Dict[str, Any] = {}
+    for key, value in record.items():
+        if value is None or isinstance(value, (bool, int, float)):
+            out[key] = value
+        elif isinstance(value, str):
+            if len(value) <= _RECEIPT_SCALAR_MAX_CHARS:
+                out[key] = value
+        elif key == "assignee" and isinstance(value, dict):
+            out[key] = {k: value.get(k) for k in ("type", "id", "name") if value.get(k)}
+        elif key == "blockedByTaskIds" and isinstance(value, list):
+            out["blockers"] = len(value)
+    for key in ("inputJson", "payloadJson"):
+        spec = record.get(key)
+        if not isinstance(spec, dict):
+            continue
+        title = _one_line(spec.get("title"), RECEIPT_TEXT_MAX_CHARS)
+        summary = _one_line(
+            spec.get("description") or spec.get("note") or spec.get("summary") or spec.get("goal"),
+            RECEIPT_TEXT_MAX_CHARS,
+        )
+        if title and "title" not in out:
+            out["title"] = title
+        if summary and "summary" not in out:
+            out["summary"] = summary
+        if isinstance(spec.get("kind"), str) and "kind" not in out:
+            out["kind"] = spec["kind"]
+    return out
+
+
+def _task_write_receipt(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact receipt for a successful task write; failures pass through."""
+    data = result.get("data") if isinstance(result, dict) else None
+    if not result.get("ok") or not isinstance(data, dict):
+        return result
+    compact: Dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            compact[key] = _record_receipt(value)
+        elif value is None or isinstance(value, (bool, int, float)):
+            compact[key] = value
+        elif isinstance(value, str):
+            compact[key] = _cut_string(value, _RECEIPT_SCALAR_MAX_CHARS)
+        # Lists (notes, history) are dropped from write receipts.
+    return {**result, "data": compact}
+
+
+DEFAULT_ARTIFACT_LIST_LIMIT = 30
+DEFAULT_TASK_NOTES_LIMIT = 20
+_ARTIFACT_LIST_PATH = re.compile(r"^/artifacts$")
+_TASK_NOTES_PATH = re.compile(r"^/tasks/[^/]+/notes$")
+
+
+def _tail_task_notes(result: Dict[str, Any], limit: Any) -> Dict[str, Any]:
+    """Keep only the newest task events.
+
+    GET /tasks/{id}/notes takes no limit and returns the whole history oldest
+    first, so the bound is applied here: the latest `limit` events (default 20).
+    """
+    data = result.get("data") if isinstance(result, dict) else None
+    events = data.get("events") if isinstance(data, dict) else None
+    if not isinstance(events, list):
+        return result
+    try:
+        keep = max(int(limit), 1) if limit not in (None, "") else DEFAULT_TASK_NOTES_LIMIT
+    except (TypeError, ValueError):
+        keep = DEFAULT_TASK_NOTES_LIMIT
+    if len(events) <= keep:
+        return result
+    trimmed = {
+        **data,
+        "events": events[-keep:],
+        "_truncated": {"events": {"returned": keep, "total": len(events), "kept": "newest"}},
+        "_hint": "pass query.limit for more of the newest events",
+    }
+    return {**result, "data": trimmed}
 
 
 def emperor_list_projects(args: Dict[str, Any], **_: Any) -> str:
@@ -169,13 +483,83 @@ def emperor_create_project(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("POST", "/projects", body=body))
 
 
+def _bounded_int(value: Any, default: int, maximum: int) -> int:
+    try:
+        number = int(value) if value not in (None, "") else default
+    except (TypeError, ValueError):
+        number = default
+    return min(max(number, 1), maximum)
+
+
+def _one_line(value: Any, cap: int) -> str | None:
+    if isinstance(value, list):
+        value = "; ".join(str(item) for item in value if isinstance(item, (str, int, float)))
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.split())
+    if not text:
+        return None
+    return text if len(text) <= cap else text[: cap - 1].rstrip() + "…"
+
+
+def _task_summary(task: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact board row for one task from GET /tasks (raw row + assignee).
+
+    Title, description and acceptance criteria live in inputJson; the row has
+    no project or assignee names, so those appear only when the server sends them.
+    """
+    spec = task.get("inputJson") if isinstance(task.get("inputJson"), dict) else {}
+    blockers = task.get("blockedByTaskIds") if isinstance(task.get("blockedByTaskIds"), list) else []
+    assignee = task.get("assignee") if isinstance(task.get("assignee"), dict) else None
+    if assignee is not None:
+        assignee = {k: assignee.get(k) for k in ("type", "id", "name") if assignee.get(k)}
+        name = task.get("assigneeName") or task.get("assignedAgentName")
+        if name and "name" not in assignee:
+            assignee["name"] = name
+    project = task.get("project") if isinstance(task.get("project"), dict) else {}
+    approvals = task.get("approvalSummary") if isinstance(task.get("approvalSummary"), dict) else {}
+    row = {
+        "id": task.get("id"),
+        "code": task.get("code") or task.get("shortCode") or spec.get("code"),
+        "title": _one_line(spec.get("title") or task.get("title"), 160) or task.get("taskType"),
+        "state": task.get("state"),
+        "priority": task.get("priority"),
+        "assignee": assignee or None,
+        "projectId": task.get("projectId"),
+        "projectName": task.get("projectName") or project.get("name") or project.get("goal"),
+        "updatedAt": task.get("updatedAt"),
+        "slaDueAt": task.get("slaDueAt"),
+        "blocked": task.get("state") == "blocked" or bool(blockers) or None,
+        "blockers": len(blockers) or None,
+        "blockedReason": _one_line(spec.get("blockedReason"), 160),
+        "pendingApprovals": approvals.get("pending") or None,
+        "summary": _one_line(
+            spec.get("description") or spec.get("acceptanceCriteria") or spec.get("definitionOfDone") or spec.get("goal"),
+            160,
+        ),
+    }
+    return {k: v for k, v in row.items() if v not in (None, "", [], {})}
+
+
 def emperor_list_tasks(args: Dict[str, Any], **_: Any) -> str:
     query = {
         "projectId": args.get("projectId"),
         "state": args.get("state"),
-        "limit": args.get("limit") or 20,
+        "limit": _bounded_int(args.get("limit"), 20, 50),
     }
-    return _json(_request("GET", "/tasks", query=query))
+    result = _request("GET", "/tasks", query=query)
+    data = result.get("data") if isinstance(result, dict) else None
+    if args.get("detail") or not isinstance(data, dict) or not isinstance(data.get("tasks"), list):
+        return _json(result)
+    tasks = [_task_summary(task) for task in data["tasks"] if isinstance(task, dict)]
+    return _json({
+        **result,
+        "data": {
+            "tasks": tasks,
+            "returned": len(tasks),
+            "hint": "compact rows; GET /tasks/{id} or detail=true for full fields",
+        },
+    })
 
 
 def emperor_get_task_overview(args: Dict[str, Any], **_: Any) -> str:
@@ -222,7 +606,13 @@ def emperor_remember(args: Dict[str, Any], **_: Any) -> str:
     if not agent:
         return _json({"error": "EMPEROR_CLAW_AGENT_ID is not set"})
     body = {"kind": kind, "content": content[:1000], "summary": str(args.get("summary") or "").strip()[:200] or None}
-    return _json(_request("POST", f"/agents/{urllib.parse.quote(agent)}/memory", body=body))
+    result = _request("POST", f"/agents/{urllib.parse.quote(agent)}/memory", body=body)
+    data = result.get("data") if isinstance(result, dict) else None
+    if not result.get("ok") or not isinstance(data, dict):
+        return _json(result)
+    # The server answers {entry, snapshot}; the snapshot can be the whole memory.
+    entry = data.get("entry") if isinstance(data.get("entry"), dict) else data
+    return _json(_confirmation(result, {"id": entry.get("id"), "kind": entry.get("kind") or kind}))
 
 
 def emperor_list_groups(args: Dict[str, Any], **_: Any) -> str:
@@ -270,10 +660,43 @@ def emperor_get_thread_messages(args: Dict[str, Any], **_: Any) -> str:
     if not thread_id:
         return _json({"error": "threadId is required"})
     query = {
-        "limit": args.get("limit") or 100,
+        "limit": _bounded_int(args.get("limit"), 30, 100),
         "since": args.get("since"),
     }
-    return _json(_request("GET", f"/threads/{urllib.parse.quote(thread_id)}/messages", query=query))
+    result = _request("GET", f"/threads/{urllib.parse.quote(thread_id)}/messages", query=query)
+    data = result.get("data") if isinstance(result, dict) else None
+    if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
+        return _json(result)
+    thread = data.get("thread") if isinstance(data.get("thread"), dict) else {}
+    compact: Dict[str, Any] = {
+        "thread": {k: thread.get(k) for k in ("id", "type", "title") if thread.get(k)} or None,
+        # The route returns oldest-first; with `since` it is unbounded, so keep
+        # the newest `limit` messages here.
+        "messages": [_message_summary(m) for m in data["messages"][-query["limit"]:] if isinstance(m, dict)],
+        "hasMore": data.get("hasMore") or len(data["messages"]) > query["limit"] or None,
+    }
+    return _json({**result, "data": {k: v for k, v in compact.items() if v is not None}})
+
+
+MESSAGE_TEXT_MAX_CHARS = 1500
+
+
+def _message_summary(message: Dict[str, Any]) -> Dict[str, Any]:
+    meta = message.get("metadataJson") if isinstance(message.get("metadataJson"), dict) else {}
+    sender = {
+        "type": message.get("senderType"),
+        "id": message.get("senderId"),
+        "name": message.get("senderName") or meta.get("senderName") or meta.get("agentName"),
+    }
+    text = message.get("text")
+    row = {
+        "id": message.get("id"),
+        "sender": {k: v for k, v in sender.items() if v},
+        "createdAt": message.get("createdAt"),
+        "text": _cut_string(text, MESSAGE_TEXT_MAX_CHARS) if isinstance(text, str) else text,
+        "replyToMessageId": message.get("replyToMessageId") or meta.get("replyToMessageId"),
+    }
+    return {k: v for k, v in row.items() if v not in (None, "", {})}
 
 
 def emperor_create_folder(args: Dict[str, Any], **_: Any) -> str:
@@ -317,7 +740,7 @@ def emperor_upload_artifact(args: Dict[str, Any], **_: Any) -> str:
     if "visibility" not in fields:
         fields["visibility"] = "private"
     url = _api_url() + "/api/mcp/artifacts/upload"
-    return _json(_multipart_upload(url, _token(), file_path, fields))
+    return _json(_artifact_receipt(_multipart_upload(url, _token(), file_path, fields)))
 
 
 def emperor_upload_artifacts(args: Dict[str, Any], **_: Any) -> str:
@@ -372,7 +795,7 @@ def emperor_replace_artifact(args: Dict[str, Any], **_: Any) -> str:
         if value not in (None, ""):
             fields[key] = str(value)
     url = _api_url() + "/api/mcp/artifacts/" + urllib.parse.quote(artifact_id) + "/replace"
-    return _json(_multipart_upload(url, _token(), file_path, fields, method="PATCH"))
+    return _json(_artifact_receipt(_multipart_upload(url, _token(), file_path, fields, method="PATCH")))
 
 
 def emperor_verify_artifact(args: Dict[str, Any], **_: Any) -> str:
@@ -393,21 +816,78 @@ def emperor_add_task_note(args: Dict[str, Any], **_: Any) -> str:
     if isinstance(args.get("handoff"), dict):
         body["handoff"] = args["handoff"]
     body["agentId"] = args.get("agentId") or _agent_ref()
-    return _json(_request("POST", f"/tasks/{urllib.parse.quote(task_id)}/notes", body=body))
+    result = _request("POST", f"/tasks/{urllib.parse.quote(task_id)}/notes", body=body)
+    data = result.get("data") if isinstance(result, dict) else None
+    if not result.get("ok") or not isinstance(data, dict):
+        return _json(result)
+    event = data.get("event") if isinstance(data.get("event"), dict) else {}
+    memory = data.get("memory") if isinstance(data.get("memory"), dict) else {}
+    payload = event.get("payloadJson") if isinstance(event.get("payloadJson"), dict) else {}
+    return _json(_confirmation(result, {
+        "id": event.get("id"),
+        "taskId": event.get("taskId") or task_id,
+        "kind": payload.get("kind") or body.get("kind"),
+        "memoryId": memory.get("id"),
+    }))
+
+
+def _confirmation(result: Dict[str, Any], fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Small write receipt instead of echoing the stored record back."""
+    out: Dict[str, Any] = {"ok": result.get("ok"), "status": result.get("status")}
+    out.update({k: v for k, v in fields.items() if v not in (None, "")})
+    return out
+
+
+ARTIFACT_RECEIPT_FIELDS = (
+    "id", "title", "originalFilename", "path", "kind", "contentType", "sizeBytes",
+    "sha256", "visibility", "folderId", "projectId", "taskId", "customerId",
+)
+
+
+def _artifact_receipt(result: Dict[str, Any]) -> Dict[str, Any]:
+    data = result.get("data") if isinstance(result, dict) else None
+    artifact = data.get("artifact") if isinstance(data, dict) else None
+    if not result.get("ok") or not isinstance(artifact, dict):
+        return result
+    receipt = {k: artifact.get(k) for k in ARTIFACT_RECEIPT_FIELDS if artifact.get(k) not in (None, "")}
+    return _confirmation(result, {"artifact": receipt})
 
 
 def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
     text = str(args.get("text") or "").strip()
     if not text:
         return _json({"error": "text is required"})
+    # The bridge exports the message this turn answers. A post into that same
+    # thread (the one allowed "acknowledge first" message) must say which
+    # message it answers: without replyToMessageId the server marks the thread
+    # answered up to the ack's own instant and drops @mentions that arrive
+    # while the agent is still working.
+    turn_thread = os.environ.get("EMPEROR_CLAW_TURN_THREAD_ID") or None
+    turn_message = os.environ.get("EMPEROR_CLAW_TURN_MESSAGE_ID") or None
+    thread_id = args.get("threadId") or args.get("thread_id")
+    thread_type = args.get("threadType") or args.get("thread_type")
+    acknowledge = bool(args.get("acknowledge"))
+    if acknowledge:
+        # An ack only means something inside a bridge turn answering a real
+        # message: without one it would fall through to the team channel.
+        if not turn_thread or not turn_message:
+            return _json({"error": "acknowledge is only available inside a bridge turn"})
+        if thread_id and thread_id != turn_thread:
+            return _json({"error": "acknowledge posts only into the thread of the message you are answering"})
+        thread_id = turn_thread
+        thread_type = thread_type or os.environ.get("EMPEROR_CLAW_TURN_THREAD_TYPE") or None
+    reply_to = turn_message if turn_thread and thread_id == turn_thread else None
     body = {
         "text": text,
         "agentId": args.get("agentId") or args.get("agent_id") or _agent_ref(),
-        "thread_id": args.get("threadId") or args.get("thread_id"),
-        "thread_type": args.get("threadType") or args.get("thread_type") or "team",
+        "thread_id": thread_id,
+        "thread_type": thread_type or "team",
         "chat_id": args.get("chatId") or args.get("chat_id"),
         "targetAgentId": args.get("targetAgentId") or args.get("target_agent_id"),
         "private": args.get("private"),
+        "replyToMessageId": reply_to,
+        # Tells the server this post answers nothing (see answeredCutoffByThread).
+        "ack": True if acknowledge else None,
     }
     body = {k: v for k, v in body.items() if v not in (None, "")}
     return _json(_request("POST", "/messages/send", body=body))
@@ -543,12 +1023,13 @@ def register(ctx: Any) -> None:
         "emperor_request",
         TOOLSET,
         _schema(
-            "Call an Emperor MCP REST endpoint. Paths may be full /api/mcp paths or short MCP paths such as /projects.",
+            "Call an Emperor MCP REST endpoint. Paths may be full /api/mcp paths or short MCP paths such as /projects. Prefer filtered reads (one id, query filters, limit). GET /artifacts defaults to limit 30 and GET /tasks/{id}/notes returns the newest 20 events unless query.limit is set. Large results are shortened and marked _truncated. Task writes (POST/PATCH/PUT/DELETE on /tasks...) return a compact receipt (ids, state, title, summary) unless full=true.",
             {
                 "method": {"type": "string", "enum": ["GET", "POST", "PATCH", "PUT", "DELETE"]},
                 "path": {"type": "string"},
                 "query": {"type": "object"},
                 "body": {"type": "object"},
+                "full": {"type": "boolean", "description": "Return the full echoed record for a task write instead of the compact receipt."},
             },
             ["path"],
         ),
@@ -589,11 +1070,12 @@ def register(ctx: Any) -> None:
         "emperor_list_tasks",
         TOOLSET,
         _schema(
-            "List Emperor tasks, optionally filtered by project or state.",
+            "List Emperor tasks, optionally filtered by project or state. Returns compact rows (id, title, state, priority, assignee, project, dates, blockers, one-line summary); fetch one task with GET /tasks/{id} for full fields.",
             {
                 "projectId": {"type": "string"},
                 "state": {"type": "string"},
-                "limit": {"type": "integer", "default": 50},
+                "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50},
+                "detail": {"type": "boolean", "description": "Return full task objects instead of compact rows. Use only when you need fields the rows omit."},
             },
         ),
         emperor_list_tasks,
@@ -640,7 +1122,7 @@ def register(ctx: Any) -> None:
             "Read exact message history for an Emperor thread.",
             {
                 "threadId": {"type": "string"},
-                "limit": {"type": "integer", "default": 100},
+                "limit": {"type": "integer", "default": 30, "minimum": 1, "maximum": 100},
                 "since": {"type": "string", "description": "Optional ISO timestamp. Only newer messages are returned."},
             },
             ["threadId"],
@@ -806,7 +1288,7 @@ def register(ctx: Any) -> None:
         "emperor_send_message",
         TOOLSET,
         _schema(
-            "Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. To message a sibling: pass targetAgentId; Emperor posts in the work-team chat you both share and @mentions them (only they are woken). If you share several team chats you must pass threadId (or private=true). Set private=true only when the message must not be seen by the team. If you share no team, it falls back to a private two-agent thread.",
+            "Send a message into an Emperor thread OTHER than the one you are answering. Your reply to the current message is delivered automatically by the runtime — do NOT call this tool to answer it, or the thread gets a duplicate. One exception: before long work on a human's request, set acknowledge=true (no threadId) to post ONE short acknowledgement in the current thread. To message a sibling: pass targetAgentId; Emperor posts in the work-team chat you both share and @mentions them (only they are woken). If you share several team chats you must pass threadId (or private=true). Set private=true only when the message must not be seen by the team. If you share no team, it falls back to a private two-agent thread.",
             {
                 "text": {"type": "string"},
                 "agentId": {"type": "string", "description": "Optional sender Emperor agent id/name. Defaults to this Hermes profile's configured agent."},
@@ -815,6 +1297,7 @@ def register(ctx: Any) -> None:
                 "chatId": {"type": "string"},
                 "targetAgentId": {"type": "string", "description": "Recipient Emperor agent id/name. With no threadId, the shared team chat is preferred."},
                 "private": {"type": "boolean", "description": "Force a private two-agent thread instead of the shared team chat."},
+                "acknowledge": {"type": "boolean", "description": "Post a short acknowledgement in the thread you are answering (once per request, before long work)."},
             },
             ["text"],
         ),

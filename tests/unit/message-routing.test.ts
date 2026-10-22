@@ -355,6 +355,41 @@ test("answeredCutoffByThread falls back to the reply instant without a reported 
     assert.equal(cutoff.get("g1")!.toISOString(), reply.toISOString());
 });
 
+test("answeredCutoffByThread ignores acknowledgements, so a failed turn's trigger stays pending", () => {
+    // The agent answered an earlier mention, then acknowledged a new @mention
+    // (ack carries replyToMessageId = trigger) and the turn failed. The trigger
+    // must still be delivered on the next sync.
+    const earlier = new Date("2026-10-22T09:00:00Z");
+    const earlierReply = new Date("2026-10-22T09:01:00Z");
+    const trigger = new Date("2026-10-22T09:05:00Z");
+    const ack = new Date("2026-10-22T09:05:10Z");
+
+    const cutoff = answeredCutoffByThread(
+        [
+            { threadId: "g1", createdAt: earlierReply, replyToId: "earlier", isAck: false },
+            { threadId: "g1", createdAt: ack, replyToId: "trigger", isAck: true },
+        ],
+        new Map([["earlier", earlier], ["trigger", trigger]]),
+    );
+    assert.equal(cutoff.get("g1")!.toISOString(), earlier.toISOString(), "the ack does not move the cutoff");
+
+    const messages = [
+        { threadId: "g1", senderType: "human", targetAgentId: null, deliveryState: "queued", createdAt: trigger, text: "@me do the thing" },
+    ];
+    assert.deepEqual(filterAnsweredMessages(messages, cutoff, "me").map((m) => m.text), ["@me do the thing"]);
+
+    // A thread with only an ack has nothing answered yet.
+    const onlyAck = answeredCutoffByThread(
+        [{ threadId: "g2", createdAt: ack, replyToId: "trigger", isAck: true }],
+        new Map([["trigger", trigger]]),
+    );
+    assert.equal(onlyAck.has("g2"), false);
+});
+
+test("stripReservedMetadata drops caller-supplied ack and idempotencyKey", () => {
+    assert.deepEqual(stripReservedMetadata({ ack: true, idempotencyKey: "k-123456789", note: "x" }), { note: "x" });
+});
+
 // ── Loop guard: only messages that wake another agent count ────────────────
 
 const team = [

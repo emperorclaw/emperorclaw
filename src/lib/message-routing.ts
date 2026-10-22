@@ -52,7 +52,7 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * message-post route) so a runtime cannot forge a task wake, a stall nudge, or
  * otherwise bypass the loop guard.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey"] as const;
 
 /**
  * A "Resume" marker resets the loop streak. It is a system message with this
@@ -524,11 +524,16 @@ export interface AnsweredFilterMessage {
  * message it answered.
  */
 export function answeredCutoffByThread(
-    replies: { threadId: string; createdAt: Date | string; replyToId: string | null }[],
+    replies: { threadId: string; createdAt: Date | string; replyToId: string | null; isAck?: boolean | null }[],
     answeredAtById: Map<string, Date | string>,
 ): Map<string, Date> {
     const latest = new Map<string, { createdAt: Date; replyToId: string | null }>();
     for (const reply of replies) {
+        // An "acknowledge first" post answers nothing: it carries the trigger's
+        // id only to stay anchored in the thread. Counting it would mark the
+        // trigger answered, so a turn that then fails and is requeued would be
+        // filtered out of every later sync in a team/group room.
+        if (reply.isAck) continue;
         const at = new Date(reply.createdAt);
         const prev = latest.get(reply.threadId);
         if (!prev || at > prev.createdAt) latest.set(reply.threadId, { createdAt: at, replyToId: reply.replyToId });

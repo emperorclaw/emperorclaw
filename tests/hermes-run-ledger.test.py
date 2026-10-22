@@ -391,8 +391,9 @@ class TestLedgerPrivacyAndUsage(unittest.TestCase):
             )
             since = __import__("time").mktime(__import__("time").strptime("2026-10-13 10:04:00", "%Y-%m-%d %H:%M:%S"))
             with patch.object(bridge, "_agent_log_path", return_value=log):
-                self.assertEqual(bridge.sum_api_usage(since), (161000, 420))
-                self.assertIsNone(bridge.sum_api_usage(since + 3600))
+                self.assertEqual(bridge.sum_api_usage(since, session_id="s1"), (161000, 420))
+                self.assertIsNone(bridge.sum_api_usage(since + 3600, session_id="s1"))
+                self.assertIsNone(bridge.sum_api_usage(since), "no session id: no attribution")
 
 
 if __name__ == "__main__":

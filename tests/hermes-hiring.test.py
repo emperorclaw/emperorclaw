@@ -144,5 +144,54 @@ class HermesHiringTests(unittest.TestCase):
         request.assert_not_called()
 
 
+class AcknowledgeTests(unittest.TestCase):
+    TURN = {
+        "EMPEROR_CLAW_TURN_THREAD_ID": "thread-1",
+        "EMPEROR_CLAW_TURN_MESSAGE_ID": "msg-1",
+        "EMPEROR_CLAW_TURN_THREAD_TYPE": "group",
+    }
+
+    def _clean_env(self):
+        return {k: v for k, v in os.environ.items() if not k.startswith("EMPEROR_CLAW_TURN_")}
+
+    def test_ack_outside_a_bridge_turn_posts_nothing(self):
+        with patch.dict(os.environ, self._clean_env(), clear=True), \
+             patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            result = json.loads(plugin.emperor_send_message({"text": "On it", "acknowledge": True}))
+        self.assertEqual(result, {"error": "acknowledge is only available inside a bridge turn"})
+        request.assert_not_called()
+
+    def test_ack_in_a_goal_turn_posts_nothing(self):
+        # A goal step exports the thread but no trigger message id.
+        env = {**self._clean_env(), "EMPEROR_CLAW_TURN_THREAD_ID": "thread-1"}
+        with patch.dict(os.environ, env, clear=True), \
+             patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            result = json.loads(plugin.emperor_send_message({"text": "On it", "acknowledge": True}))
+        self.assertIn("error", result)
+        request.assert_not_called()
+
+    def test_ack_inside_a_turn_is_flagged_and_anchored(self):
+        with patch.dict(os.environ, {**self._clean_env(), **self.TURN}, clear=True), \
+             patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_send_message({"text": "On it", "acknowledge": True})
+        body = request.call_args.kwargs["body"]
+        self.assertEqual(body["thread_id"], "thread-1")
+        self.assertEqual(body["replyToMessageId"], "msg-1")
+        self.assertIs(body["ack"], True)
+
+    def test_ack_into_another_thread_is_refused(self):
+        with patch.dict(os.environ, {**self._clean_env(), **self.TURN}, clear=True), \
+             patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            result = json.loads(plugin.emperor_send_message({"text": "On it", "acknowledge": True, "threadId": "other"}))
+        self.assertIn("error", result)
+        request.assert_not_called()
+
+    def test_ordinary_post_is_not_an_ack(self):
+        with patch.dict(os.environ, {**self._clean_env(), **self.TURN}, clear=True), \
+             patch.object(plugin, "_request", return_value={"ok": True}) as request:
+            plugin.emperor_send_message({"text": "handoff", "threadId": "team-x"})
+        self.assertNotIn("ack", request.call_args.kwargs["body"])
+
+
 if __name__ == "__main__":
     unittest.main()
