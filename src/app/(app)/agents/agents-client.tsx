@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { IconHierarchy2, IconHeartbeat, IconLoader2, IconRobot, IconSearch, IconWallet } from "@tabler/icons-react";
+import { IconArrowLeft, IconHierarchy2, IconHeartbeat, IconLoader2, IconRobot, IconSearch, IconWallet } from "@tabler/icons-react";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
+import { AgentNowCard, formatDuration } from "./agent-now-card";
+import { useAgentActivity } from "./use-agent-activity";
 import { PageHeader } from "@/components/page-header";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
+import type { AgentNow } from "@/lib/agent-activity";
 
 type AgentDirectoryItem = {
     id: string;
@@ -31,6 +34,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const searchParams = useSearchParams();
     const linkedId = searchParams.get("agent");
     const [selectedId, setSelectedId] = useState((linkedId && agents.some((a) => a.id === linkedId) ? linkedId : agents[0]?.id) || "");
+    const [mobileView, setMobileView] = useState<"list" | "detail">(linkedId ? "detail" : "list");
     const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
     const router = useRouter();
     // A freshly hired agent is not instantly reachable: the runtime has to boot
@@ -39,6 +43,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     const [pendingId, setPendingId] = useState<string | null>(null);
     const [pendingStalled, setPendingStalled] = useState(false);
     const [pendingRetrying, setPendingRetrying] = useState(false);
+    const activity = useAgentActivity();
 
     const handleAgentCreated = (id: string) => {
         setSelectedId(id);
@@ -104,14 +109,14 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                         <Link href="/agents/organization" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 text-sm text-cyan-400 hover:bg-cyan-500/10"><IconHierarchy2 className="h-4 w-4" />Organization</Link>
                         <Link
                             href="/agents/health"
-                            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
                         >
                             <IconHeartbeat className="h-4 w-4" />
                             Health
                         </Link>
                         <Link
                             href="/budgets"
-                            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-sm text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100"
                         >
                             <IconWallet className="h-4 w-4" />
                             Budgets
@@ -147,22 +152,22 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                     <p className="text-sm text-zinc-500">Click Hire an Agent, choose a role, and connect your LLM provider. Emperor starts Hermes for you.</p>
                 </div>
             ) : (
-                <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-                    <aside className="emperor-panel rounded-2xl p-3 sm:p-4">
-                        <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <aside className={cn("emperor-panel min-w-0 overflow-hidden rounded-2xl p-3 sm:p-4", mobileView === "detail" ? "hidden lg:block" : "")}>
+                        <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
                             <IconSearch className="h-4 w-4" />
                             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" className="w-full bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500" />
                         </label>
-                        <div className="mt-3 flex gap-2">
+                        <div className="mt-3 flex flex-wrap gap-2">
                             {["all", "online", "degraded", "offline"].map((item) => (
-                                <button key={item} type="button" onClick={() => setStatus(item)} className={cn("rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors", status === item ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100")}>
+                                <button key={item} type="button" onClick={() => setStatus(item)} className={cn("inline-flex min-h-9 items-center rounded-full border px-3.5 text-xs font-medium capitalize lg:min-h-8 lg:px-2.5 transition-colors", status === item ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100")}>
                                     {item}
                                 </button>
                             ))}
                         </div>
                         <div className="mt-4 space-y-2">
                             {filteredAgents.map((agent) => (
-                                <button key={agent.id} type="button" onClick={() => setSelectedId(agent.id)} className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors", selectedAgent?.id === agent.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
+                                <button key={agent.id} type="button" onClick={() => { setSelectedId(agent.id); setMobileView("detail"); window.scrollTo({ top: 0 }); document.querySelector("main")?.scrollTo({ top: 0 }); }} className={cn("flex min-w-0 w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors", selectedAgent?.id === agent.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700")}>
                                     <AgentAvatar agent={agent} size="sm" />
                                     <span className="min-w-0 flex-1">
                                         <span className="flex items-center gap-2 truncate font-medium text-zinc-100">
@@ -173,9 +178,9 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                                 </span>
                                             )}
                                         </span>
-                                        <span className="block truncate text-xs text-zinc-500">{agent.role}{agent.tasksCompleted > 0 ? ` · ${agent.tasksCompleted} done` : ""}</span>
+                                        <AgentSubtitle agent={agent} now={activity[agent.id]} />
                                     </span>
-                                    <StatusDot status={agent.status} />
+                                    <LiveStatusDot agent={agent} now={activity[agent.id]} />
                                 </button>
                             ))}
                             {filteredAgents.length === 0 ? <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">No agents match that search.</div> : null}
@@ -183,7 +188,14 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                     </aside>
 
                     {selectedAgent ? (
-                        <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} />
+                        <div className={cn("min-w-0 space-y-4", mobileView === "list" ? "hidden lg:block" : "")}>
+                            <button type="button" onClick={() => setMobileView("list")} className="lg:hidden inline-flex min-h-11 items-center gap-1.5 text-sm text-zinc-300 hover:text-zinc-100">
+                                <IconArrowLeft className="h-4 w-4" />
+                                All agents
+                            </button>
+                            <AgentNowCard now={activity[selectedAgent.id]} />
+                            <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} />
+                        </div>
                     ) : (
                         <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">
                             <div className="text-center text-zinc-500">
@@ -198,13 +210,45 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     );
 }
 
-function StatusDot({ status }: { status: string }) {
-    const statusColor = {
-        online: "bg-emerald-500",
-        degraded: "bg-amber-500",
-        offline: "bg-zinc-600",
-    }[status] || "bg-zinc-600";
-    return <span className={cn("h-2 w-2 rounded-full", statusColor)} />;
+function AgentSubtitle({ agent, now }: { agent: AgentDirectoryItem; now: AgentNow | undefined }) {
+    if (now && (now.state === "working" || now.state === "typing")) {
+        const text = now.activity || now.task?.title || "";
+        return (
+            <span className="block truncate text-xs text-cyan-300">
+                {now.run ? <RunElapsed startedAt={now.run.startedAt} /> : null}
+                {now.run && text ? " · " : null}
+                {text || (now.run ? null : "Active")}
+            </span>
+        );
+    }
+    return <span className="block truncate text-xs text-zinc-500">{agent.role}{agent.tasksCompleted > 0 ? ` · ${agent.tasksCompleted} done` : ""}</span>;
+}
+
+/** Elapsed time of an open run, ticking every second from its own clock. */
+function RunElapsed({ startedAt }: { startedAt: string }) {
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+        return () => window.clearInterval(id);
+    }, []);
+    return <>{formatDuration(nowMs - Date.parse(startedAt))}</>;
+}
+
+function LiveStatusDot({ agent, now }: { agent: AgentDirectoryItem; now: AgentNow | undefined }) {
+    let color: string;
+    if (now) {
+        if (now.state === "working" || now.state === "typing") color = "bg-cyan-400 animate-pulse";
+        else if (agent.status === "degraded") color = "bg-amber-500";
+        else if (now.state === "idle") color = "bg-emerald-500";
+        else color = "bg-zinc-600";
+    } else {
+        color = {
+            online: "bg-emerald-500",
+            degraded: "bg-amber-500",
+            offline: "bg-zinc-600",
+        }[agent.status] || "bg-zinc-600";
+    }
+    return <span className={cn("h-2 w-2 rounded-full", color)} />;
 }
 
 function AgentAvatar({ agent, size = "lg" }: { agent: AgentDirectoryItem; size?: "sm" | "lg" }) {
