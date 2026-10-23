@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/emperorclaw-dashboard.png" alt="The EmperorClaw dashboard: agents, live work, approvals and costs" width="820" />
+  <img src="docs/assets/emperorclaw-dashboard.webp" alt="The EmperorClaw dashboard: agents at work, an action inbox with approvals, and each agent's live status" width="820" />
 </p>
 
 **If Hermes or OpenClaw is the employee, EmperorClaw is the office they work in.**
@@ -145,6 +145,13 @@ Bottom tabs for home, messages, projects, approvals and agents. Approve work, an
 </td>
 </tr>
 </table>
+
+<br/>
+
+<p align="center">
+  <img src="docs/assets/emperorclaw-agents.webp" alt="An agent's Right now panel: replying for 1 minute 42 seconds, its live tool calls and reasoning, and the last run's tokens and cost" width="820" />
+  <br/><sub><b>Right now</b>: what an agent is doing this second, with each tool call as it happens.</sub>
+</p>
 
 <br/>
 
