@@ -267,6 +267,9 @@ class TurnRunnerFixtureTest(unittest.IsolatedAsyncioTestCase):
     async def test_recover_after_bridge_restart(self) -> None:
         # First process: submit, then "crash" before message.complete is processed.
         h = Harness("reconnect_replay", self.home)
+        # The first recorded connection drops mid-turn. Offer only that one, so the first
+        # process cannot reconnect and finish the turn before the simulated crash.
+        h.gw.segments = h.gw.segments[:1]
         async with h:
             turn = h.turn("fx-replay")
             task = asyncio.create_task(h.runner.run(turn))

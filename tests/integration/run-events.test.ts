@@ -231,7 +231,11 @@ maybe("finish stores run-usage v2 fields; a 0.3-style finish still works", async
 maybe("a coalesced reply resolves the other queued messages in the same thread", async () => {
     const { companyId, agent, token, thread } = await setup();
     const { appendThreadMessage } = await import("@/lib/control-plane");
-    const human = (text: string) => appendThreadMessage({ companyId, threadId: thread.id, senderType: "human", targetAgentId: agent.id, text });
+    // Spaced timestamps: only strictly older messages are resolved, and back-to-back
+    // inserts can share a millisecond.
+    const base = Date.now() - 60_000;
+    let seq = 0;
+    const human = (text: string) => appendThreadMessage({ companyId, threadId: thread.id, senderType: "human", targetAgentId: agent.id, text, createdAt: new Date(base + 1000 * seq++) });
     const m1 = await human("first");
     const m2 = await human("second");
     const m3 = await human("third");
