@@ -38,7 +38,7 @@ Requirements: Linux with systemd, `curl`, `git`, `tar`, `python3`, and a user ac
 
    ```bash
    mkdir -p ~/.local/bin
-   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.1/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.2/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
    chmod +x ~/.local/bin/emperor-hermes
    ```
 
@@ -252,6 +252,8 @@ Common causes: a missing model key in the profile `.env`, or a broken profile `c
 
 Only one runtime per agent may run. `emperor-hermes status` prints `DUPLICATE` if a 0.3 bridge unit or a stray 0.3 bridge process still serves the profile. Stop it: `systemctl --user disable --now emperor-hermes-bridge-<p>`.
 
+If a timer, service or cron job you (or an agent) wrote keeps re-enabling the 0.3 bridge, the installer detects it and refuses to migrate until you remove it or pass `--disable-watchdogs`; a full `rollback --all` restores it.
+
 ### Shared mode: the bridge refuses to dispatch
 
 Emperor reported `sharedHostOk: false`: the agents on this host belong to different companies. Shared mode needs one company, one operator and one OS user. Switch each agent to standalone (`emperor-hermes install --profile <p> --gateway standalone`) or move it to another host.
@@ -299,7 +301,7 @@ I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce co
 
 Repository & docs: https://github.com/emperorclaw/emperorclaw
 Hermes runtime docs: docs/v1.1/hermes-runtime.md in that repository
-Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.1/emperor-hermes.sh
+Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.2/emperor-hermes.sh
 
 My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 

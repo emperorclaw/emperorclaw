@@ -15,7 +15,7 @@
 set -Eeuo pipefail
 umask 077
 
-readonly EMPEROR_HERMES_VERSION="0.9.1"
+readonly EMPEROR_HERMES_VERSION="0.9.2"
 readonly HERMES_REF="v0.22.4"
 readonly HERMES_SHA="4d04303818b61bf3aa09278af48356315515965b"
 readonly HERMES_CODE_VERSION="${HERMES_REF#v}"
@@ -63,6 +63,7 @@ OPT_SHARED=0
 OPT_PURGE=0
 OPT_BRIDGE_ONLY=0
 OPT_RESTART_GATEWAYS=0
+OPT_DISABLE_WATCHDOGS=0
 OPT_MAX_PARALLEL=""
 OPT_DELTA_MIB="${EMPEROR_HERMES_SHARED_DELTA_MIB:-40}"
 OPT_TIMEOUT=900
@@ -147,6 +148,8 @@ Options
   --force              Override the memory plan and the duplicate-runtime guard.
   --take-over-gateway  Stop and disable Hermes gateways emperor-hermes did not start (for example
                        hermes-gateway-<profile>.service) that serve the same profiles. Rollback restores them.
+  --disable-watchdogs  Stop and disable self-made systemd timers/services and comment out crontab lines
+                       that would restart the 0.3 bridges (creating duplicate runtimes). Rollback restores them.
 EOF
 }
 
@@ -156,6 +159,14 @@ have() { command -v "$1" >/dev/null 2>&1; }
 sc() { systemctl --user "$@"; }
 unit_active() { systemctl --user is-active --quiet "$1" 2>/dev/null; }
 unit_enabled() { systemctl --user is-enabled --quiet "$1" 2>/dev/null; }
+unit_truly_enabled() { # unit -> 0 only when is-enabled reports a real "enabled" (static/indirect/generated/transient do not count)
+    local out
+    out=$(systemctl --user is-enabled "$1" 2>/dev/null) || return 1
+    case "$out" in
+        enabled | enabled-runtime | linked | linked-runtime | alias) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 
 valid_profile() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$ ]]; }
 profile_home() { printf '%s/%s\n' "$PROFILES_ROOT" "$1"; }
@@ -413,13 +424,59 @@ legacy_env_files() { # unit name -> EnvironmentFile paths
         sed "s#%h#$HOME#g" || true
 }
 
+legacy_env_dir() { # unit name -> dir of its EnvironmentFile ("" when unknown)
+    local envfile
+    envfile=$(legacy_env_files "$1" | head -n1)
+    [ -n "$envfile" ] || return 0
+    printf '%s\n' "$(dirname "$envfile")"
+}
+
+# Retiring a 0.3 unit (moving its file out of $UNIT_DIR) is stronger than disable --now: nothing
+# can `systemctl enable` it again and it does not come back on reboot. Only the dash-form
+# emperor-hermes-bridge-<name>.service units are retired; the @ template, the shared bridge and the
+# logrotate units are never touched.
+
+readonly HOLD_FILE=".emperor-hermes-hold"
+readonly HOLD_MARKER="Migrated to bridge 0.9 by emperor-hermes"
+
+retire_legacy_unit() { # unit profile -> move the 0.3 unit file to retired-units and hold its env dir
+    local u=$1 p=$2 envdir
+    case "$u" in emperor-hermes-bridge-*.service) ;; *) return 0 ;; esac
+    case "$u" in *@* | emperor-hermes-bridge-shared.service | emperor-hermes-logrotate.service | emperor-hermes-logrotate.timer) return 0 ;; esac
+    [ -f "$UNIT_DIR/$u" ] || return 0
+    envdir=$(legacy_env_dir "$u")
+    mkdir -p "$BACKUP_ROOT/retired-units"
+    mv -f "$UNIT_DIR/$u" "$BACKUP_ROOT/retired-units/$u"
+    [ ! -d "$UNIT_DIR/$u.d" ] || mv -f "$UNIT_DIR/$u.d" "$BACKUP_ROOT/retired-units/$u.d"
+    log "  $p: retired $u (moved to $BACKUP_ROOT/retired-units/)"
+    if [ -n "$envdir" ] && [ -d "$envdir" ] && [ "$envdir" != "$HOME" ] && [ ! -e "$envdir/$HOLD_FILE" ]; then
+        printf '%s (%s): runs as emperor-hermes-gateway@%s + emperor-hermes-bridge@%s. Do not start the 0.3 unit: it creates a duplicate runtime.\n' \
+            "$HOLD_MARKER" "$(date -u +%Y-%m-%d)" "$p" "$p" >"$envdir/$HOLD_FILE"
+    fi
+}
+
+restore_retired_unit() { # unit profile -> move the unit back from retired-units and remove our hold; 0 when restored
+    local u=$1 p=$2 envdir first
+    [ -e "$BACKUP_ROOT/retired-units/$u" ] || return 1
+    mkdir -p "$UNIT_DIR"
+    mv -f "$BACKUP_ROOT/retired-units/$u" "$UNIT_DIR/$u"
+    [ ! -e "$BACKUP_ROOT/retired-units/$u.d" ] || mv -f "$BACKUP_ROOT/retired-units/$u.d" "$UNIT_DIR/$u.d"
+    log "  $p: restored $u from retired-units"
+    envdir=$(legacy_env_dir "$u")
+    if [ -n "$envdir" ] && [ -f "$envdir/$HOLD_FILE" ]; then
+        first=$(head -n1 "$envdir/$HOLD_FILE" 2>/dev/null || true)
+        case "$first" in "$HOLD_MARKER"*) rm -f "$envdir/$HOLD_FILE" ;; esac
+    fi
+    return 0
+}
+
 legacy_procs_for() { # profile -> pids of 0.3 bridge processes serving it
     local p=$1 dir pid cmd envp home
     for dir in /proc/[0-9]*; do
         pid=${dir#/proc/}
-        cmd=$(tr '\0' ' ' <"$dir/cmdline" 2>/dev/null || true)
+        cmd=$(tr '\0' ' ' 2>/dev/null <"$dir/cmdline" || true)
         case "$cmd" in *emperor_hermes_bridge.py*) ;; *) continue ;; esac
-        envp=$(tr '\0' '\n' <"$dir/environ" 2>/dev/null || true)
+        envp=$(tr '\0' '\n' 2>/dev/null <"$dir/environ" || true)
         home=$(printf '%s\n' "$envp" | sed -n 's/^HERMES_HOME=//p' | tail -n 1)
         if [[ $'\n'"$envp"$'\n' == *$'\n'"HERMES_PROFILE=$p"$'\n'* ]] || [ "${home%/}" = "$PROFILES_ROOT/$p" ]; then
             printf '%s\n' "$pid"
@@ -454,7 +511,7 @@ guard_no_duplicate() { # profile
 
 gateway_proc_home() { # pid -> home a `hermes ... gateway run` process serves ("" when not a gateway)
     local pid=$1 args=() i prof="" home="" envp
-    mapfile -d '' -t args <"/proc/$pid/cmdline" 2>/dev/null || return 0
+    mapfile -d '' -t args 2>/dev/null <"/proc/$pid/cmdline" || return 0
     local is_gw=0 has_hermes=0
     for ((i = 0; i < ${#args[@]}; i++)); do
         case "${args[$i]}" in
@@ -467,7 +524,7 @@ gateway_proc_home() { # pid -> home a `hermes ... gateway run` process serves ("
     if [ -n "$prof" ]; then
         home=$(profile_home "$prof")
     else
-        envp=$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null || true)
+        envp=$(tr '\0' '\n' 2>/dev/null <"/proc/$pid/environ" || true)
         home=$(printf '%s\n' "$envp" | sed -n 's/^HERMES_HOME=//p' | tail -n 1)
         home=${home%/}
         home=${home:-$HERMES_ROOT}
@@ -976,6 +1033,296 @@ legacy_active() { # 0 when any 0.3 bridge unit is still running
     return 1
 }
 
+# ── self-made bridge watchdogs ───────────────────────────────────────────────────────────────
+# An agent (or a hand-written timer) may have created its own systemd timer/service or cron job
+# that re-enables/restarts the 0.3 bridges. Left alone it brings the 0.3 runtimes back next to the
+# 0.9 ones (duplicate runtimes answering the same messages), so it must be caught and stopped first.
+
+own_unit() { # unit name -> 0 when it is ours (0.9 units) or a 0.3 bridge unit, never a watchdog
+    case "$1" in
+        emperor-hermes-gateway@* | emperor-hermes-gateway-shared.service | \
+        emperor-hermes-bridge@* | emperor-hermes-bridge-*.service | \
+        emperor-hermes-logrotate.service | emperor-hermes-logrotate.timer) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+readonly START_VERB_RE='(^|[^[:alnum:]_])(start|restart|enable|reenable|reload-or-restart|try-restart)($|[^[:alnum:]_])'
+
+has_start_verb() { # text -> 0 when it names a systemctl action that starts/restarts/enables
+    printf '%s\n' "$1" | grep -Eq 'systemctl' &&
+        printf '%s\n' "$1" | grep -Eq "$START_VERB_RE"
+}
+
+expand_path_word() { # word -> path with %h / $HOME / ${HOME} resolved
+    local w=$1
+    w=${w//'%h'/$HOME}
+    w=${w//"\${HOME}"/$HOME}
+    w=${w//"\$HOME"/$HOME}
+    printf '%s\n' "$w"
+}
+
+watchdog_refs() { # text -> 0 when it would start/restart/enable a 0.3 bridge
+    local text=$1
+    printf '%s\n' "$text" | grep -Eq 'emperor_hermes_bridge\.py' && return 0
+    printf '%s\n' "$text" | grep -Eq 'emperor-hermes-bridge-' || return 1
+    has_start_verb "$text"
+}
+
+script_enables_bridge() { # path -> 0 when the readable script would start/restart/enable 0.3 bridges
+    local path=$1
+    [ -n "$path" ] || return 1
+    path=${path/#\~/$HOME}
+    case "$path" in
+        "$HOME"/*) ;;
+        *) return 1 ;;
+    esac
+    case "$path" in
+        */emperor-hermes | */emperor-hermes.sh | "$BRIDGE_ROOT/releases"/*) return 1 ;;
+    esac
+    [ -f "$path" ] && [ -r "$path" ] || return 1
+    [ "$(stat -c %s "$path" 2>/dev/null || printf 0)" -le 524288 ] || return 1
+    if grep -Iq 'emperor_hermes_bridge\.py' "$path" 2>/dev/null; then return 0; fi
+    grep -Iq 'emperor-hermes-bridge-' "$path" 2>/dev/null &&
+        grep -Iq 'systemctl' "$path" 2>/dev/null &&
+        grep -IqE "$START_VERB_RE" "$path" 2>/dev/null
+}
+
+candidate_units() { # -> user service/timer names that are neither ours nor 0.3 bridge units
+    local f u
+    for f in "$UNIT_DIR"/*.service "$UNIT_DIR"/*.timer; do
+        [ -e "$f" ] || continue
+        u=${f##*/}
+        own_unit "$u" || printf '%s\n' "$u"
+    done
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        own_unit "$u" || printf '%s\n' "$u"
+    done < <(sc list-units --all --type=service,timer --no-legend --plain 2>/dev/null | awk '$1 ~ /\.(service|timer)$/ { print $1 }')
+    return 0
+}
+
+triggered_by() { # unit -> space-separated timers that trigger it ("" when none)
+    systemctl --user show -p TriggeredBy --value "$1" 2>/dev/null || true
+}
+
+watchdog_timers_for() { # service -> timers that trigger it (one per line, de-duped)
+    local svc=$1 timers t seen=","
+    timers=$(triggered_by "$svc")
+    [ -n "$timers" ] || timers="${svc%.service}.timer"
+    for t in $timers; do
+        case "$seen" in *",$t,"*) continue ;; esac
+        seen="$seen$t,"
+        printf '%s\n' "$t"
+    done
+}
+
+unit_live() { # unit -> 0 when active, truly enabled, or (static and a triggering timer is enabled/active)
+    local u=$1 en t
+    unit_active "$u" && return 0
+    unit_truly_enabled "$u" && return 0
+    en=$(systemctl --user is-enabled "$u" 2>/dev/null || true)
+    [ "$en" = static ] || return 1
+    while IFS= read -r t; do
+        [ -n "$t" ] || continue
+        unit_active "$t" && return 0
+        unit_truly_enabled "$t" && return 0
+    done < <(watchdog_timers_for "$u")
+    return 1
+}
+
+watchdog_units() { # -> unit names whose ExecStart* would bring the 0.3 bridges back (and are live)
+    local u content word seen="," wd
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        case "$seen" in *",$u,"*) continue ;; esac
+        seen="$seen$u,"
+        unit_live "$u" || continue
+        content=$(sc cat "$u" 2>/dev/null || true)
+        if watchdog_refs "$content"; then
+            printf '%s\n' "$u"
+            continue
+        fi
+        wd=$(sc show -p WorkingDirectory --value "$u" 2>/dev/null || true)
+        while IFS= read -r word; do
+            word=${word#\"}; word=${word%\"}
+            [ -n "$word" ] || continue
+            word=$(expand_path_word "$word")
+            case "$word" in
+                /* | ~/*) ;;
+                *)
+                    if [ -n "$wd" ]; then
+                        word="$wd/$word"
+                    else
+                        continue
+                    fi
+                    ;;
+            esac
+            if script_enables_bridge "$word"; then printf '%s\n' "$u"; break; fi
+        done < <(printf '%s\n' "$content" |
+            sed -n -e 's/^[[:space:]]*ExecStartPre=-\?//p' -e 's/^[[:space:]]*ExecStart=-\?//p' |
+            tr ' ' '\n' | sed '/^[[:space:]]*$/d')
+    done < <(candidate_units)
+    return 0
+}
+
+watchdog_crons() { # -> crontab lines that would bring the 0.3 bridges back
+    local line word words=()
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        case "$line" in \#*) continue ;; esac
+        if watchdog_refs "$line"; then printf '%s\n' "$line"; continue; fi
+        read -ra words <<<"$line"
+        for word in "${words[@]}"; do
+            word=${word#\"}; word=${word%\"}
+            [ -n "$word" ] || continue
+            word=$(expand_path_word "$word")
+            case "$word" in
+                /* | ~/*) ;;
+                *) continue ;;
+            esac
+            if script_enables_bridge "$word"; then printf '%s\n' "$line"; break; fi
+        done
+    done < <(crontab -l 2>/dev/null || true)
+    return 0
+}
+
+watchdog_cron_is() { # line crons(nl-separated) -> 0 when line is one of the detected crons
+    local line=$1 c
+    while IFS= read -r c; do
+        [ -n "$c" ] && [ "$c" = "$line" ] && return 0
+    done <<<"$2"
+    return 1
+}
+
+crontab_read() { # -> current crontab lines; "" when none; die on real read errors
+    local out
+    if ! out=$(crontab -l 2>&1); then
+        if printf '%s\n' "$out" | grep -Eqi 'no crontab for'; then return 0; fi
+        die "cannot read the current crontab: ${out:-crontab -l failed}"
+    fi
+    printf '%s\n' "$out"
+}
+
+disable_watchdogs() { # units crons -> stop/disables them and records the state for rollback
+    local units=$1 crons=$2 u key timer crontab_text crontab_backup tmp line
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        key="watchdog_unit_${u//[^A-Za-z0-9_]/_}"
+        if [ -z "$(env_get "$HOST_STATE" "$key")" ]; then
+            env_set "$HOST_STATE" "$key" "$u:$(unit_truly_enabled "$u" && printf enabled || printf disabled):$(unit_active "$u" && printf active || printf inactive)"
+        fi
+        sc disable --now "$u" >/dev/null 2>&1 || sc stop "$u" || true
+        log "  disabled watchdog $u"
+        if [ "${u%.service}" != "$u" ]; then
+            while IFS= read -r timer; do
+                [ -n "$timer" ] || continue
+                if [ -f "$UNIT_DIR/$timer" ] || sc list-unit-files --type=timer --no-legend --plain "$timer" 2>/dev/null | grep -q "$timer"; then
+                    key="watchdog_unit_${timer//[^A-Za-z0-9_]/_}"
+                    if [ -z "$(env_get "$HOST_STATE" "$key")" ]; then
+                        env_set "$HOST_STATE" "$key" "$timer:$(unit_truly_enabled "$timer" && printf enabled || printf disabled):$(unit_active "$timer" && printf active || printf inactive)"
+                    fi
+                    sc disable --now "$timer" >/dev/null 2>&1 || true
+                    log "  disabled watchdog timer $timer"
+                fi
+            done < <(watchdog_timers_for "$u")
+        fi
+    done <<<"$units"
+    if [ -n "$crons" ]; then
+        crontab_text=$(crontab_read)
+        if [ -z "$(env_get "$HOST_STATE" watchdog_crontab)" ]; then
+            mkdir -p "$BACKUP_ROOT"
+            crontab_backup="$BACKUP_ROOT/crontab.$(date -u +%Y%m%dT%H%M%SZ)"
+            printf '%s\n' "$crontab_text" >"$crontab_backup"
+            env_set "$HOST_STATE" watchdog_crontab "$crontab_backup"
+        else
+            crontab_backup=$(env_get "$HOST_STATE" watchdog_crontab)
+        fi
+        ensure_tmp
+        tmp="$TMP_ROOT/crontab.new"
+        : >"$tmp"
+        while IFS= read -r line; do
+            if watchdog_cron_is "$line" "$crons"; then
+                printf '# disabled by emperor-hermes: %s\n' "$line"
+            else
+                printf '%s\n' "$line"
+            fi
+        done <<<"$crontab_text" >"$tmp"
+        if [ -n "$crontab_text" ] && [ ! -s "$tmp" ]; then
+            die "refusing to install an empty crontab"
+        fi
+        crontab "$tmp" || die "cannot write the new crontab"
+        if [ -n "$(watchdog_crons)" ]; then
+            die "crontab rewrite did not take effect: watchdog cron lines are still live"
+        fi
+        log "  commented out watchdog crontab lines (backup: $crontab_backup)"
+    fi
+}
+
+guard_watchdogs() { # before touching anything: refuse unless --disable-watchdogs
+    local units crons u
+    units=$(watchdog_units)
+    crons=$(watchdog_crons)
+    [ -n "$units$crons" ] || return 0
+    if [ "$OPT_DISABLE_WATCHDOGS" = 1 ]; then
+        step "Disabling self-made 0.3 bridge watchdogs"
+        disable_watchdogs "$units" "$crons"
+        return 0
+    fi
+    log "Self-made 0.3 bridge watchdogs detected. They would restart the 0.3 bridges and create duplicate runtimes:"
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        log "  - unit/timer $u (script: $(sc cat "$u" 2>/dev/null | sed -n 's/^[[:space:]]*ExecStart\(Pre\)\?=-\?//p' | head -n1))"
+    done <<<"$units"
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        log "  - cron: $u"
+    done <<<"$crons"
+    die "it would restart the 0.3 bridges and create duplicate runtimes; rerun with --disable-watchdogs to stop it, or remove it yourself"
+}
+
+restore_watchdogs() { # after a full rollback: re-enable timers/services and un-comment the watchdog crontab lines
+    local key val u en ac current line tmp
+    [ -f "$HOST_STATE" ] || return 0
+    while IFS= read -r key; do
+        val=$(env_get "$HOST_STATE" "$key")
+        [ -n "$val" ] || continue
+        u=${val%%:*}
+        en=${val#*:}; en=${en%%:*}
+        ac=${val##*:}
+        if [ "$en" = enabled ]; then sc enable "$u" >/dev/null 2>&1 || true; fi
+        if [ "$ac" = active ]; then sc start "$u" || warn "could not restart watchdog $u"; fi
+        log "  restored watchdog $u ($en, $ac)"
+        env_unset "$HOST_STATE" "$key"
+    done < <(sed -n 's/^\(watchdog_unit_[A-Za-z0-9_]*\)=.*/\1/p' "$HOST_STATE")
+    if [ -n "$(env_get "$HOST_STATE" watchdog_crontab)" ]; then
+        if current=$(crontab -l 2>/dev/null) && printf '%s\n' "$current" | grep -q '^# disabled by emperor-hermes: '; then
+            ensure_tmp
+            tmp="$TMP_ROOT/crontab.restore"
+            : >"$tmp"
+            while IFS= read -r line; do
+                case "$line" in
+                    "# disabled by emperor-hermes: "*) printf '%s\n' "${line#"# disabled by emperor-hermes: "}" ;;
+                    *) printf '%s\n' "$line" ;;
+                esac
+            done <<<"$current" >"$tmp"
+            if crontab "$tmp" 2>/dev/null; then log "  restored the watchdog crontab lines"; else warn "could not write the restored crontab"; fi
+        fi
+        env_unset "$HOST_STATE" watchdog_crontab
+    fi
+}
+
+report_watchdogs() { # -> prints detected watchdogs; 0 when any were found
+    local units crons u
+    units=$(watchdog_units)
+    crons=$(watchdog_crons)
+    [ -n "$units" ] || [ -n "$crons" ] || return 1
+    printf 'Self-made 0.3 bridge watchdogs detected (they would restart the 0.3 bridges and create duplicate runtimes):\n'
+    while IFS= read -r u; do [ -n "$u" ] && printf '  - unit/timer %s\n' "$u"; done <<<"$units"
+    while IFS= read -r u; do [ -n "$u" ] && printf '  - cron %s\n' "$u"; done <<<"$crons"
+    return 0
+}
+
 # ── gateway identify ────────────────────────────────────────────────────────────────────────
 
 identify() { # control_home -> "state code_version pid served_homes" or "down <reason>"
@@ -1152,7 +1499,7 @@ default_topology() { # profiles... -> recorded topology when they all agree, els
 }
 
 cmd_install() { # topology from --gateway, profiles from --profile/--all
-    local topo p u unit shared_csv pids switched=0
+    local topo p u unit shared_csv pids switched=0 retired_any=0
     local profiles=() shared_new=()
     mapfile -t profiles < <(target_profiles)
     [ "${#profiles[@]}" -gt 0 ] || die "no profiles: pass --profile p[,q] or --all"
@@ -1177,6 +1524,7 @@ cmd_install() { # topology from --gateway, profiles from --profile/--all
     done
     if [ "$topo" = shared ]; then confirm_shared "${profiles[@]}"; fi
     guard_foreign_gateways "$topo" "${profiles[@]}"
+    guard_watchdogs
 
     step "Hermes $HERMES_REF"
     ensure_hermes "${profiles[@]}"
@@ -1216,8 +1564,10 @@ cmd_install() { # topology from --gateway, profiles from --profile/--all
             sc disable --now "$u" >/dev/null 2>&1 || sc stop "$u"
             log "  $p: stopped and disabled $u"
         fi
+        if [ -n "$u" ]; then retire_legacy_unit "$u" "$p" && retired_any=1; fi
         if [ "$topo" = shared ]; then stop_new_units_for "$p"; fi
     done
+    if [ "$retired_any" = 1 ]; then sc daemon-reload; fi
     if [ "$switched" = 1 ]; then
         sc stop emperor-hermes-bridge-shared.service emperor-hermes-gateway-shared.service >/dev/null 2>&1 || true
         log "  shared gateway stopped while profiles move to standalone"
@@ -1421,7 +1771,7 @@ cmd_rollback() {
         cmd_rollback_bridge
         return
     fi
-    local p u state touched_shared=0 remaining
+    local p u state touched_shared=0 remaining restored_any=0
     local profiles=() keep=()
     mapfile -t profiles < <(if [ "$OPT_ALL" = 1 ]; then recorded_profiles; fi; split_csv "$OPT_PROFILES")
     mapfile -t profiles < <(printf '%s\n' "${profiles[@]}" | awk 'NF && !seen[$0]++')
@@ -1470,6 +1820,13 @@ cmd_rollback() {
     fi
 
     restore_global_plugin
+    step "Restoring 0.3 unit files"
+    for p in "${profiles[@]}"; do
+        u=$(rec_get "$p" legacy_unit)
+        [ -n "$u" ] || continue
+        restore_retired_unit "$u" "$p" && restored_any=1
+    done
+    if [ "$restored_any" = 1 ]; then sc daemon-reload; fi
     step "Starting 0.3 bridges"
     for p in "${profiles[@]}"; do
         u=$(rec_get "$p" legacy_unit)
@@ -1486,6 +1843,7 @@ cmd_rollback() {
     done
     if [ -z "$(managed_profiles)" ]; then
         restore_foreign_gateways
+        restore_watchdogs
         if [ -d "$BACKUP_ROOT/host/plugin-emperor-claw.pre-0.9" ]; then
             mv "$BACKUP_ROOT/host/plugin-emperor-claw.pre-0.9" "$BACKUP_ROOT/host/plugin-emperor-claw.rolled-back-$(date -u +%Y%m%dT%H%M%SZ)-$$"
         fi
@@ -1621,6 +1979,7 @@ cmd_status() {
     [ -x "$STABLE_PYTHON" ] || bad=1
     printf '  bridge:   %s\n' "$(bridge_version)"
     printf '  finalized: %s\n' "$( [ "$(host_state finalized)" = 1 ] && printf yes || printf no)"
+    if report_watchdogs; then bad=1; fi
     if [ -n "$(shared_list)" ]; then
         out=$(identify "$HERMES_ROOT")
         printf '  shared gateway: %s, %s\n' "$(sc is-active emperor-hermes-gateway-shared.service 2>/dev/null || true)" "$out"
@@ -1646,6 +2005,8 @@ cmd_status() {
         if [ -n "$u" ] && [ -f "$UNIT_DIR/$u" ]; then
             printf '  0.3 unit %s: %s/%s\n' "$u" "$(sc is-active "$u" 2>/dev/null || true)" "$(sc is-enabled "$u" 2>/dev/null || true)"
             if unit_active "$u"; then printf '  DUPLICATE: the 0.3 unit is running too\n'; bad=1; fi
+        elif [ -n "$u" ] && [ -e "$BACKUP_ROOT/retired-units/$u" ]; then
+            printf '  0.3 unit %s: retired\n' "$u"
         fi
         pids=$(legacy_procs_for "$p" | tr '\n' ' ')
         if [ -n "${pids// /}" ]; then printf '  DUPLICATE: 0.3 bridge process(es) %s\n' "$pids"; bad=1; fi
@@ -1722,6 +2083,7 @@ cmd_doctor() {
         printf 'Hermes gateways not started by emperor-hermes (install refuses unless --take-over-gateway):\n'
         printf '%s\n' "$foreign" | sed 's/^/  /'
     fi
+    report_watchdogs || true
     if [ -e "$STABLE_PYTHON" ]; then printf 'Bridge python: %s\n' "$(python_target)"; fi
 }
 
@@ -1752,6 +2114,7 @@ parse_args() {
             --purge) OPT_PURGE=1 ;;
             --bridge-only) OPT_BRIDGE_ONLY=1 ;;
             --restart-gateways) OPT_RESTART_GATEWAYS=1 ;;
+            --disable-watchdogs) OPT_DISABLE_WATCHDOGS=1 ;;
             -h | --help) usage; exit 0 ;;
             *) die "unknown option: $1 (see emperor-hermes help)" ;;
         esac

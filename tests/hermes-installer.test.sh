@@ -32,7 +32,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus dbus-user-session python3 git curl ca-certificates \
-      shellcheck logrotate procps \
+      shellcheck logrotate procps cron \
  && rm -rf /var/lib/apt/lists/* \
  && systemctl mask getty.target console-getty.service systemd-udevd.service \
       systemd-networkd-wait-online.service 2>/dev/null || true \
@@ -42,7 +42,7 @@ STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
 DOCKERFILE
 
-    # shellcheck disable=SC2317 # invoked by the EXIT trap
+    # shellcheck disable=SC2317,SC2329 # invoked by the EXIT trap
     cleanup() {
         if [ "${KEEP:-0}" = 1 ]; then echo "kept container $name"; else docker rm -f "$name" >/dev/null 2>&1 || true; fi
     }
@@ -389,6 +389,13 @@ inside_main() {
     check "install qa" eh install --profile qa --bundle "$bundle" --hermes-dir "$HOME/.hermes/hermes-agent-v0.22.4"
     check "courier (qa) 0.3 unit stopped" bash -c '! systemctl --user is-active --quiet emperor-hermes-bridge-courier'
     check_not "courier (qa) 0.3 unit disabled" enabled emperor-hermes-bridge-courier
+    check "courier 0.3 unit file retired" test -f "$HOME/.hermes/backups/emperor-hermes/retired-units/emperor-hermes-bridge-courier.service"
+    check ".emperor-hermes-hold written in the 0.3 bridge dir" test -f "$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold"
+    check_not "courier unit gone from systemd" bash -c "systemctl --user cat emperor-hermes-bridge-courier.service"
+    check "gateway@ template untouched" test -f "$HOME/.config/systemd/user/emperor-hermes-gateway@.service"
+    check "bridge@ template untouched" test -f "$HOME/.config/systemd/user/emperor-hermes-bridge@.service"
+    check "bridge-shared unit untouched" test -f "$HOME/.config/systemd/user/emperor-hermes-bridge-shared.service"
+    check "gateway-shared unit untouched" test -f "$HOME/.config/systemd/user/emperor-hermes-gateway-shared.service"
     check "viktor 0.3 unit untouched" active emperor-hermes-bridge-viktor
     check "growth 0.3 unit untouched" active emperor-hermes-bridge-growth
     check "gateway@qa active" active emperor-hermes-gateway@qa
@@ -426,6 +433,7 @@ inside_main() {
     eq "bridge sees HERMES_CHECKOUT" "$(json_get "$HOME/.hermes/profiles/qa/emperor/health.json" checkout)" "$HOME/.hermes/hermes-agent-v0.22.4"
     if out=$(eh status --profile qa); then ok "status --profile qa exits 0"; else bad "status --profile qa exits 0"; fi
     check "status shows a ready 0.22.4 gateway" grep -q 'ready 0.22.4' <<<"$out"
+    check "status says the 0.3 unit is retired" grep -q '0.3 unit emperor-hermes-bridge-courier.service: retired' <<<"$out"
     check "logrotate timer enabled" enabled emperor-hermes-logrotate.timer
     check "logrotate config points at this home" contains "$HOME/.config/emperor-hermes/logrotate.conf" "$HOME/.hermes/profiles/*/bridge.log"
     check "logrotate config parses" logrotate -d -s "$F/lr.state" "$HOME/.config/emperor-hermes/logrotate.conf"
@@ -570,7 +578,7 @@ EOF
     check "finalize" eh finalize
     eq "local bin hermes -> v0.22.4 launcher" "$(readlink "$HOME/.local/bin/hermes")" "$HOME/.hermes/hermes-agent-v0.22.4/.hermes/bin/hermes"
     check_not "0.3 unit files retired" test -e "$HOME/.config/systemd/user/emperor-hermes-bridge-courier.service"
-    check "0.3 unit files kept in backups" test -f "$HOME/.hermes/backups/emperor-hermes/host/units/emperor-hermes-bridge-courier.service"
+    check "0.3 unit file kept in retired-units" test -f "$HOME/.hermes/backups/emperor-hermes/retired-units/emperor-hermes-bridge-courier.service"
     check_not "old checkout moved away" test -d "$HOME/.hermes/hermes-agent"
     check "old checkout archived" test -d "$HOME/.hermes/backups/emperor-hermes/host/hermes-agent-legacy"
     check_not "0.3 bridge file retired" test -e "$HOME/.hermes/emperor-bridge/emperor_hermes_bridge.py"
@@ -593,9 +601,205 @@ EOF
     check "viktor 0.3 unit enabled as before" enabled emperor-hermes-bridge-viktor
     check "foreign gateway restored (enabled)" enabled hermes-gateway-viktor
     check "foreign gateway restored (running)" active hermes-gateway-viktor
+    # shellcheck disable=SC2016 # the pattern is the literal ${HERMES_SHA} text the installer must contain
     check "Hermes install.sh fetched by the pinned commit" grep -q 'hermes-agent/${HERMES_SHA}/scripts/install.sh' "$EH"
     eq "no temp dirs leaked" "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'emperor-hermes.*' | wc -l)" 0
     eq "no 0.9 unit left running" "$(systemctl --user list-units --state=active --no-legend --plain 'emperor-hermes-gateway*' 'emperor-hermes-bridge@*' 'emperor-hermes-bridge-shared*' | wc -l)" 0
+
+    section "self-made bridge watchdogs"
+    cat >"$F/bridge_watchdog.py" <<'PY'
+import subprocess, time
+while True:
+    subprocess.run(["systemctl", "--user", "enable", "--now", "emperor-hermes-bridge-courier.service"])
+    time.sleep(300)
+PY
+    cat >"$HOME/.config/systemd/user/bridge-watchdog.service" <<EOF
+[Unit]
+Description=Agent-made bridge watchdog (0.3)
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 $F/bridge_watchdog.py
+Restart=always
+[Install]
+WantedBy=default.target
+EOF
+    cat >"$HOME/.config/systemd/user/bridge-watchdog.timer" <<EOF
+[Unit]
+Description=Agent-made bridge watchdog timer (0.3)
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=bridge-watchdog.service
+[Install]
+WantedBy=timers.target
+EOF
+    crontab - <<EOF
+*/5 * * * * systemctl --user restart emperor-hermes-bridge-courier.service
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now bridge-watchdog.service bridge-watchdog.timer >/dev/null 2>&1
+    check "watchdog service runs" active bridge-watchdog
+    check "watchdog timer runs" active bridge-watchdog.timer
+    out_rc=0
+    out=$(eh install --profile qa --gateway standalone --bundle "$bundle" 2>&1) || out_rc=$?
+    check_not "install refuses while a watchdog is present" test "$out_rc" = 0
+    check "refusal names --disable-watchdogs" grep -q -- '--disable-watchdogs' <<<"$out"
+    check "watchdog service still enabled after the refusal" enabled bridge-watchdog.service
+    check "0.3 units untouched by the refusal" legacy_units_active
+    check "cron line untouched by the refusal" bash -c "crontab -l | grep -q 'emperor-hermes-bridge-courier'"
+
+    check "install with --disable-watchdogs" eh install --profile qa --gateway standalone --bundle "$bundle" --disable-watchdogs
+    check_not "watchdog service stopped" active bridge-watchdog
+    check_not "watchdog service disabled" enabled bridge-watchdog.service
+    check_not "watchdog timer stopped" active bridge-watchdog.timer
+    check_not "watchdog timer disabled" enabled bridge-watchdog.timer
+    check "cron line commented out" bash -c "crontab -l | grep -q '^# disabled by emperor-hermes: .*emperor-hermes-bridge-courier'"
+    check_not "no active cron watchdog line remains" bash -c "crontab -l | grep -v '^#' | grep -q 'emperor-hermes-bridge-courier'"
+    check "courier 0.3 unit retired" test -f "$HOME/.hermes/backups/emperor-hermes/retired-units/emperor-hermes-bridge-courier.service"
+    check ".emperor-hermes-hold written" test -f "$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold"
+    (crontab -l 2>/dev/null; printf '0 3 * * * echo added-after-migration\n') | crontab -
+    check "user adds a cron line after migration" bash -c "crontab -l | grep -q 'added-after-migration'"
+
+    check "rollback --all re-enables the watchdog" eh rollback --all
+    check "watchdog service re-enabled" enabled bridge-watchdog.service
+    check "watchdog timer re-enabled" enabled bridge-watchdog.timer
+    check "cron line restored" bash -c "crontab -l | grep -q 'emperor-hermes-bridge-courier'"
+    check_not "cron line no longer commented" bash -c "crontab -l | grep -q '^# disabled by emperor-hermes'"
+    check "user's new cron line survives rollback" bash -c "crontab -l | grep -q 'added-after-migration'"
+    check "courier 0.3 unit file restored" test -f "$HOME/.config/systemd/user/emperor-hermes-bridge-courier.service"
+    check_not ".emperor-hermes-hold removed" test -e "$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold"
+    check "courier 0.3 unit running again" active emperor-hermes-bridge-courier
+    crontab -r 2>/dev/null || true
+    systemctl --user disable --now bridge-watchdog.service bridge-watchdog.timer >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/bridge-watchdog.service" "$HOME/.config/systemd/user/bridge-watchdog.timer"
+    systemctl --user daemon-reload
+
+    section "safe crontab rewrite"
+    crontab - <<'EOF'
+*/5 * * * * systemctl --user restart emperor-hermes-bridge-courier.service
+EOF
+    mkdir -p "$F/bin"
+    cat >"$F/bin/crontab" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-l" ]; then
+    /usr/bin/crontab -l 2>/dev/null || true
+    exit 0
+fi
+echo "crontab: cannot write the new crontab (fake failure)" >&2
+exit 1
+EOF
+    chmod +x "$F/bin/crontab"
+    out_rc=0
+    out=$(PATH="$F/bin:$PATH" eh install --profile qa --gateway standalone --bundle "$bundle" --disable-watchdogs 2>&1) || out_rc=$?
+    check_not "install dies when the crontab write fails" test "$out_rc" = 0
+    check "the failure names the crontab write" grep -q 'cannot write the new crontab' <<<"$out"
+    check "0.3 units untouched by the failed crontab write" legacy_units_active
+    check "the live crontab is unchanged" bash -c "crontab -l | grep -q 'emperor-hermes-bridge-courier'"
+    crontab -r 2>/dev/null || true
+    sed -i '/^watchdog_crontab=/d' "$HOME/.local/share/emperor-hermes/host.state" 2>/dev/null || true
+
+    section "static service watchdogs (TriggeredBy) and hold handling"
+    mkdir -p "$HOME/.hermes/emperor-bridge/qa"
+    printf 'pre-existing user file, not ours\n' >"$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold"
+    cat >"$HOME/.config/systemd/user/static-bridge-watchdog.service" <<EOF
+[Unit]
+Description=Static bridge watchdog (0.3)
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 $F/bridge_watchdog.py
+EOF
+    cat >"$HOME/.config/systemd/user/static-bridge-watchdog.timer" <<'EOF'
+[Unit]
+Description=Static bridge watchdog timer
+[Timer]
+OnCalendar=*:0/7
+Unit=static-bridge-watchdog.service
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now static-bridge-watchdog.timer >/dev/null 2>&1
+    out=$(eh doctor)
+    check "static service flagged while its timer is enabled" grep -q 'static-bridge-watchdog.service' <<<"$out"
+    check "install --disable-watchdogs disables the static timer" eh install --profile qa --gateway standalone --bundle "$bundle" --disable-watchdogs
+    check_not "static watchdog timer disabled" enabled static-bridge-watchdog.timer
+    check_not "static watchdog timer stopped" active static-bridge-watchdog.timer
+    check "pre-existing hold not overwritten" bash -c "grep -q 'pre-existing user file' '$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold'"
+    out=$(eh doctor)
+    check_not "static service not flagged after its timer is disabled" grep -q 'static-bridge-watchdog.service' <<<"$out"
+    check "rollback restores the static watchdog timer" eh rollback --all
+    check "static watchdog timer re-enabled" enabled static-bridge-watchdog.timer
+    check "non-marker hold not removed on rollback" bash -c "test -f '$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold' && grep -q 'pre-existing user file' '$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold'"
+    systemctl --user disable --now static-bridge-watchdog.timer >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/static-bridge-watchdog.service" "$HOME/.config/systemd/user/static-bridge-watchdog.timer"
+    systemctl --user daemon-reload
+    rm -f "$HOME/.hermes/emperor-bridge/qa/.emperor-hermes-hold"
+
+    section "watchdog detection refinements"
+    crontab - <<'EOF'
+*/5 * * * * systemctl --user status emperor-hermes-bridge-qa.service
+EOF
+    cat >"$HOME/.config/systemd/user/hermes-status.service" <<EOF
+[Unit]
+Description=Hermes status check (not a watchdog)
+[Service]
+ExecStart=$HOME/.local/bin/emperor-hermes status
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable hermes-status.service >/dev/null 2>&1
+    out=$(eh doctor)
+    check_not "read-only status cron is not flagged" grep -q 'systemctl --user status emperor-hermes-bridge-qa' <<<"$out"
+    check_not "installer status unit is not flagged" grep -q 'hermes-status.service' <<<"$out"
+    crontab - <<'EOF'
+*/5 * * * * systemctl --user restart emperor-hermes-bridge-qa.service
+EOF
+    out=$(eh doctor)
+    check "restart cron is flagged" grep -q 'systemctl --user restart emperor-hermes-bridge-qa' <<<"$out"
+    crontab -r 2>/dev/null || true
+    systemctl --user disable hermes-status.service >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/hermes-status.service"
+    systemctl --user daemon-reload
+
+    mkdir -p "$HOME/.hermes/profiles/builder/scripts"
+    cat >"$HOME/.hermes/profiles/builder/scripts/w.py" <<'PY'
+#!/usr/bin/env python3
+# would run: systemctl --user restart emperor-hermes-bridge-qa.service
+pass
+PY
+    chmod +x "$HOME/.hermes/profiles/builder/scripts/w.py"
+    cat >"$HOME/.config/systemd/user/builder-watchdog.service" <<'EOF'
+[Unit]
+Description=Builder watchdog
+[Service]
+ExecStart=/usr/bin/python3 %h/.hermes/profiles/builder/scripts/w.py
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable builder-watchdog.service >/dev/null 2>&1
+    out=$(eh doctor)
+    check "%h ExecStart path is detected" grep -q 'builder-watchdog.service' <<<"$out"
+    systemctl --user disable builder-watchdog.service >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/builder-watchdog.service"
+    systemctl --user daemon-reload
+    rm -rf "$HOME/.hermes/profiles/builder"
+
+    mkdir -p "$F/globs"
+    : >"$F/globs/a"
+    : >"$F/globs/b"
+    crontab - <<'EOF'
+* * * * * systemctl --user restart emperor-hermes-bridge-qa.service
+EOF
+    out=$(cd "$F/globs" && eh doctor 2>&1)
+    check "a '* * * * *' cron is detected in a directory with files" grep -q 'restart emperor-hermes-bridge-qa.service' <<<"$out"
+    crontab -r 2>/dev/null || true
+    rm -rf "$F/globs"
+
+    section "/proc scan noise"
+    out=$( { tr '\0' ' ' 2>/dev/null <"/proc/99999999/cmdline"; tr '\0' '\n' 2>/dev/null <"/proc/99999999/environ"; } 2>&1 || true)
+    check_not "a vanished process is skipped silently (no 'No such file or directory')" grep -q 'No such file or directory' <<<"$out"
 
     printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
     [ "$FAIL" = 0 ]

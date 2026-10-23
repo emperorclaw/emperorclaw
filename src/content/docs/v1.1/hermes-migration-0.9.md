@@ -37,7 +37,7 @@ Your agents keep their Hermes profiles, memory and skills. Each Emperor thread s
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.1/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.2/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
 chmod +x ~/.local/bin/emperor-hermes
 
 emperor-hermes doctor --plan        # does this host fit every agent?
@@ -57,6 +57,25 @@ For each agent, `migrate` does the following, in this order:
 It finds agents from your existing `emperor-hermes-bridge-*` units, including units whose name differs from the profile. Running it again is safe.
 
 **Several agents on one host?** Migrate one first (`install --profile <agent>`), check it in Emperor for a day, then run `migrate --all`.
+
+### Self-made 0.3 bridge watchdogs
+
+If an agent (or you) wrote a systemd timer, service or cron job that re-enables or restarts the 0.3 bridge units, `emperor-hermes` detects it before stopping anything and refuses to migrate — it would restart the 0.3 bridges next to the 0.9 ones and create duplicate runtimes:
+
+```text
+Self-made 0.3 bridge watchdogs detected. They would restart the 0.3 bridges and create duplicate runtimes:
+  - unit/timer bridge-watchdog.service (script: /usr/bin/python3 ~/.hermes/profiles/builder/scripts/bridge_watchdog.py)
+  - cron: */5 * * * * systemctl --user restart emperor-hermes-bridge-builder.service
+error: it would restart the 0.3 bridges and create duplicate runtimes; rerun with --disable-watchdogs to stop it, or remove it yourself
+```
+
+Remove the watchdog yourself, or let the installer stop it:
+
+```bash
+emperor-hermes migrate --all --disable-watchdogs
+```
+
+`--disable-watchdogs` stops and disables the matching timers/services and comments out the matching crontab lines (the crontab is backed up once to `~/.hermes/backups/emperor-hermes/crontab.<time>`). A full `rollback --all` re-enables the timers and un-comments those crontab lines, leaving any crontab lines you added in the meantime untouched.
 
 ## Manual path
 
@@ -80,7 +99,7 @@ If you prefer to see each step, do per agent what the installer does:
    ```
 
    Use a wrapper script, not a symlink: Python finds its venv from the path it was started with, so a symlink starts the bare interpreter without the venv's packages.
-3. Unpack the bridge bundle (`emperor-hermes-bridge-0.9.1.tar.gz` from the release) to `~/.hermes/emperor-bridge/releases/0.9.1` and link `~/.hermes/emperor-bridge/current` to it.
+3. Unpack the bridge bundle (`emperor-hermes-bridge-0.9.2.tar.gz` from the release) to `~/.hermes/emperor-bridge/releases/0.9.2` and link `~/.hermes/emperor-bridge/current` to it.
 4. Write `~/.config/emperor-hermes/host.env`:
 
    ```bash
@@ -191,5 +210,7 @@ It points `~/.local/bin/hermes` at v0.22.4, removes the 0.3 units and bridge fil
 **`doctor --plan` says `move`. What now?** Run the listed agents on another host, or keep them on 0.3 until the host has more memory. `install --force` overrides the plan, at the risk of running out of memory.
 
 **I already run my own Hermes gateway (for example `hermes-gateway-<profile>.service` for messaging).** The installer never replaces a gateway it did not start: `doctor` lists them and `install`/`migrate` refuse. Stop them yourself, or pass `--take-over-gateway` to have the installer stop and disable them. A full rollback restores them as they were.
+
+**`install`/`migrate` refuses with "Self-made 0.3 bridge watchdogs detected".** Some agent or an old script re-enables the 0.3 bridge units, which would create duplicate runtimes. Remove it yourself, or re-run with `--disable-watchdogs` (see [Self-made 0.3 bridge watchdogs](#self-made-03-bridge-watchdogs)); a full `rollback --all` restores it later.
 
 **Does the installer need sudo?** No. Everything runs as your user. Enabling lingering may need an administrator once.
