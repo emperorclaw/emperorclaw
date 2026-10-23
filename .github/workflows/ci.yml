@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # Release tags run the full gate, incl. the Hermes image contract (design 0.9 §11.2 gate 4).
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -56,21 +58,193 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      # The Hermes bridge is a production runtime shipped as its own image, but
-      # its safety logic (loop/cold-start guards, routing, state persistence) is
-      # Python and had no CI coverage.
-      - name: Bridge tests (Hermes Python bridge)
-        run: npm run test:bridge
+      # The Python suites (bridge, plugin) moved to the `python-suites` matrix job
+      # below: bridge 0.9 runs on Hermes' own Python 3.14 (design 0.9 D17).
 
       # The image is only otherwise built on release tags, so a broken
       # Dockerfile/dependency change would not surface until release time.
       - name: Build Docker image (no push)
         run: docker build -t emperorclaw:ci .
+
+  # Every Python suite (tests/*.test.py + tests/bridge/), discovered by
+  # tests/contract/hermes/python_suites.py so a new suite cannot be left out.
+  # 3.14 = the Hermes venv the bridge runs on (D17); 3.13 = forward guard;
+  # 3.11 = the plugin only (it also runs outside a Hermes venv). Design 0.9 §9.3.
+  python-suites:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # The Hermes venv ships websockets 15.0.1 (S-15); the bridge client is built on it.
+      - name: Install the pinned bridge dependency
+        run: python -m pip install "websockets==15.0.1"
+
+      # STRICT: a missing expected suite (plugin-context, tests/bridge) fails the job.
+      - name: Python suites (all, bridge on ${{ matrix.python }})
+        if: matrix.python != '3.11'
+        env:
+          PYTHON_SUITES_STRICT: "1"
+        run: npm run test:bridge
+
+      - name: Plugin suites only (outside a Hermes venv)
+        if: matrix.python == '3.11'
+        env:
+          PYTHON_SUITES_STRICT: "1"
+        run: npm run test:bridge:plugin
+
+  # Path filter for the Docker-heavy Hermes jobs: on PRs they run only when the
+  # Hermes runtime, its tests or this workflow change; on main and tags always.
+  hermes-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.filter.outputs.runtime }}
+      installer: ${{ steps.filter.outputs.installer }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect Hermes changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            runtime:
+              - "integrations/hermes/**"
+              - "integrations/hermes/install/**"
+              - "integrations/hermes/systemd/**"
+              - "tests/contract/hermes/**"
+              - "tests/fixtures/hermes-v0224/**"
+              - "src/lib/hermes-profile-defaults.ts"
+              - "src/lib/hermes-provisioning.ts"
+              - "scripts/package-hermes-bridge.sh"
+              - ".gitattributes"
+              - ".github/workflows/ci.yml"
+            installer:
+              - "integrations/hermes/install/**"
+              - "integrations/hermes/systemd/**"
+              - "integrations/hermes/emperor-claw/**"
+              - "scripts/package-hermes-bridge.sh"
+              - "tests/hermes-installer.test.sh"
+              - ".gitattributes"
+              - ".github/workflows/ci.yml"
+
+  # The Hermes contract on the SHIPPED image (design 0.9 §9.1, §9.3, release gate 4):
+  # build integrations/hermes as emperorclaw-hermes:ci, layer the harness on it
+  # (tests/contract/hermes/Dockerfile, BASE_IMAGE=emperorclaw-hermes:ci) and run
+  # CONTRACT_SUITE=all: gateway_probe.py (protocol, incl. R-2/R-3/R-4) +
+  # bridge_contract.py (bridge 0.9 vs real gateways and the fake Emperor).
+  # Serial by design: the suites restart their gateways. No real model keys.
+  hermes-image-contract:
+    needs: hermes-changes
+    if: github.event_name == 'push' || needs.hermes-changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Shellcheck the harness scripts
+        run: shellcheck tests/contract/hermes/*.sh
+
+      # run.sh builds the shipped image, checks its Hermes pin, builds the harness
+      # on top and runs both suites. A missing bridge package fails (no skips).
+      - name: Contract suites on the shipped image (CONTRACT_SUITE=all)
+        env:
+          HERMES_BASE: shipped
+          SHIPPED_IMAGE: emperorclaw-hermes:ci
+          HERMES_CONTRACT_IMAGE: emperor-hermes-contract:ci
+          BRIDGE_CONTRACT_REQUIRE: "1"
+          PROBE_LATENCY_RUNS: "3"
+        run: bash tests/contract/hermes/run.sh all
+
+      - name: Upload contract results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-contract-results
+          path: tests/contract/hermes/results/
+          retention-days: 14
+
+  # Installer + systemd units (design 0.9 §8, §9.3): shellcheck, unit verification
+  # and the standalone/shared layouts in a systemd container (W7's test script).
+  hermes-installer:
+    needs: hermes-changes
+    if: github.event_name == 'push' || needs.hermes-changes.outputs.installer == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Installer end-to-end (systemd container)
+        run: bash tests/hermes-installer.test.sh
+
+  # Remote-mode release assets (design 0.9 §8.1, §9.3). The installer downloads
+  #   <release>/v<ver>/emperor-hermes-bridge-<ver>.tar.gz (+ .sha256)
+  # and the docs fetch <release>/v<ver>/emperor-hermes.sh (+ .sha256). Tags only,
+  # and only after the Python suites and the shipped-image contract passed.
+  release-hermes-assets:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [python-suites, hermes-image-contract, hermes-installer]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The tag, the bridge package and the installer must agree on the version.
+      - name: Check versions
+        id: ver
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          installer=$(sed -nE 's/^readonly EMPEROR_HERMES_VERSION="([^"]+)".*/\1/p' integrations/hermes/install/emperor-hermes.sh)
+          bridge=$(sed -nE "s/^BRIDGE_VERSION[[:space:]]*(:[^=]*)?=[[:space:]]*[\"']([^\"']+)[\"'].*/\2/p" \
+            integrations/hermes/emperor-claw/bridge/emperor_bridge/version.py | head -n 1)
+          echo "tag=$tag installer=$installer bridge=$bridge"
+          if [ "$tag" != "$installer" ] || [ "$tag" != "$bridge" ]; then
+            echo "::error::version mismatch: tag v$tag, installer $installer, bridge $bridge"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Package the bridge bundle
+        run: bash scripts/package-hermes-bridge.sh --version "${{ steps.ver.outputs.version }}" --out dist/hermes-bridge
+
+      # A CRLF script or unit breaks on the Pi (bash: $'\r': command not found).
+      - name: Refuse CRLF in packaged text files
+        run: |
+          set -euo pipefail
+          check=$(mktemp -d)
+          tar -xzf "dist/hermes-bridge/emperor-hermes-bridge-${{ steps.ver.outputs.version }}.tar.gz" -C "$check"
+          cp dist/hermes-bridge/emperor-hermes.sh "$check/"
+          bad=$(grep -rlI $'\r' "$check" || true)
+          if [ -n "$bad" ]; then
+            echo "::error::CR line endings in packaged files:"; echo "$bad"; exit 1
+          fi
+          (cd dist/hermes-bridge && sha256sum -c ./*.sha256)
+
+      - name: Upload to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG" --notes "See CHANGELOG.md."
+          cd dist/hermes-bridge
+          gh release upload "$TAG" --clobber \
+            "emperor-hermes-bridge-$VER.tar.gz" "emperor-hermes-bridge-$VER.tar.gz.sha256" \
+            emperor-hermes.sh emperor-hermes.sh.sha256
 
   integration:
     runs-on: ubuntu-latest

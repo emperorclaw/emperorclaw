@@ -10,7 +10,36 @@ env:
   IMAGE_NAME: ${{ github.repository }}-hermes
 
 jobs:
+  # Release gate (design 0.9 §11.2 gate 4): nothing is pushed unless the contract suites pass on
+  # exactly the image this tag builds. Same invocation as ci.yml's hermes-image-contract job.
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Contract suites on the release image (CONTRACT_SUITE=all)
+        env:
+          HERMES_BASE: shipped
+          SHIPPED_IMAGE: emperorclaw-hermes:ci
+          HERMES_CONTRACT_IMAGE: emperor-hermes-contract:ci
+          BRIDGE_CONTRACT_REQUIRE: "1"
+          PROBE_LATENCY_RUNS: "3"
+        run: bash tests/contract/hermes/run.sh all
+
+      - name: Upload contract results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-contract-results-${{ github.ref_name }}
+          path: tests/contract/hermes/results/
+          retention-days: 30
+
   build-and-push:
+    needs: contract
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,6 +65,11 @@ jobs:
           # forget.)
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Managed runtimes are pinned to the app release that provisions them
+      # (src/lib/hermes-provisioning.ts: `emperorclaw-hermes:v<app version>`).
+      # `latest` is deliberately no longer published: it stays frozen at the
+      # last 0.8 image, so 0.8.x servers (which still pull `:latest`) and
+      # Watchtower never move a 0.3 bridge container onto the 0.9 runtime.
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -43,8 +77,46 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=tag
-            type=raw,value=latest
             type=sha,prefix=
+          labels: |
+            org.emperorclaw.hermes-version=v0.22.4
+
+      # Build once into the local daemon and smoke-test it before anything is
+      # pushed: pinned Hermes commit, venv wrapper, supervisor, entrypoint.
+      - name: Build (local)
+        uses: docker/build-push-action@v6
+        with:
+          context: integrations/hermes
+          load: true
+          tags: emperorclaw-hermes:smoke
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test runtime image
+        run: |
+          set -eux
+          img=emperorclaw-hermes:smoke
+          docker run --rm --entrypoint sh "$img" -c '
+            set -e
+            test "$(git -C "$HERMES_CHECKOUT" rev-parse HEAD)" = 4d04303818b61bf3aa09278af48356315515965b
+            hermes --version | grep -q "v0.22.4"
+            "$HERMES_PYTHON" -c "import sys, websockets; assert sys.version_info >= (3, 14)"
+            "$HERMES_PYTHON" -c "import emperor_bridge.supervisor"
+            test -x /usr/bin/tini'
+          # The bridge entry point (python -m emperor_bridge) must be in the image.
+          docker run --rm --entrypoint sh "$img" -c '"$HERMES_PYTHON" -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec(\"emperor_bridge.__main__\") else 1)"'
+          # Boot the supervised gateway alone and wait for it to be ready.
+          docker run -d --name hermes-smoke -e EMPEROR_CLAW_AGENT_NAME=smoke -e EMPEROR_HERMES_ENTRY=gateway-only "$img"
+          ok=0
+          for _ in $(seq 1 60); do
+            if docker exec hermes-smoke sh -c '"$HERMES_PYTHON" -m emperor_bridge.supervisor healthcheck'; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs hermes-smoke 2>&1 | grep -E "^\[(entrypoint|supervisor)\]" || true
+          docker rm -f hermes-smoke
+          test "$ok" = 1
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -54,6 +126,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+          cache-from: type=gha
 
       # GHCR packages can be private even when the repository is public. New
       # installs have no GitHub credentials, so verify anonymous access too.
