@@ -44,3 +44,12 @@ test("selectSyncPage: nextSince points at the end of a full page, null otherwise
     assert.equal(selectSyncPage(rows, { since: SINCE, limit: 2 }).nextSince, "2026-10-22T10:00:02.000Z");
     assert.equal(selectSyncPage(rows, { since: SINCE, limit: 5 }).nextSince, null);
 });
+
+test("selectSyncPage: known rows in the cursor's millisecond do not end the poll, an unseen sibling does", () => {
+    const cursorRow = row("running", "2026-10-22T10:00:00.000Z");
+    const sibling = row("sibling", "2026-10-22T10:00:00.000Z");
+    assert.equal(selectSyncPage([cursorRow], { since: SINCE }).hasNew, true, "old bridges: slack rows count as new");
+    assert.equal(selectSyncPage([cursorRow], { since: SINCE, knownIds: ["running"] }).hasNew, false);
+    assert.equal(selectSyncPage([cursorRow, sibling], { since: SINCE, knownIds: ["running"] }).hasNew, true,
+        "a same-millisecond message the runtime has not seen goes out at once");
+});

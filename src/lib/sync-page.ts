@@ -22,7 +22,7 @@ export type SyncPage<T> = { page: T[]; hasMore: boolean; hasNew: boolean; nextSi
 
 export function selectSyncPage<T extends SyncRow>(
     rows: T[],
-    options: { since: Date | null; retryIds?: Iterable<string>; limit?: number },
+    options: { since: Date | null; retryIds?: Iterable<string>; knownIds?: Iterable<string>; limit?: number },
 ): SyncPage<T> {
     const limit = options.limit ?? SYNC_PAGE_SIZE;
     const ordered = [...rows].sort((a, b) => {
@@ -31,8 +31,14 @@ export function selectSyncPage<T extends SyncRow>(
     });
     const page = ordered.slice(0, limit);
     const retry = new Set(options.retryIds ?? []);
+    // Ids the runtime already holds (running/queued, or recently seen). The cursor slack re-returns
+    // the rows of the cursor's own millisecond; those must not end the long poll, or every sync
+    // during a running turn returns at once. A same-millisecond sibling the runtime has not seen
+    // is still new and goes out immediately (no message is held back).
+    const known = new Set(options.knownIds ?? []);
     const cursor = options.since ? options.since.getTime() - SYNC_CURSOR_SLACK_MS : null;
-    const hasNew = page.some((row) => cursor === null || new Date(row.createdAt).getTime() > cursor || retry.has(row.id));
+    const hasNew = page.some((row) => !known.has(row.id)
+        && (cursor === null || new Date(row.createdAt).getTime() > cursor || retry.has(row.id)));
     const hasMore = ordered.length > limit;
     // With more rows waiting, the runtime advances its cursor to the end of this page even when
     // every row on it was filtered out (already answered): otherwise it would ask for the same

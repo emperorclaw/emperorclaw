@@ -19,6 +19,8 @@ from .scheduler import InboundMessage
 POLL_PAUSE_S = 0.3
 IDLE_BACKOFF_MAX_S = 5.0
 LONG_POLL_HELD_S = 5.0
+KNOWN_SEEN_TAIL = 50
+KNOWN_IDS_MAX = 200
 REPEAT_REASONS = frozenset({"seen", "retry-not-due", "reply-in-outbox"})
 
 
@@ -39,6 +41,12 @@ def due_retry_ids(rt: Any, now: float) -> list[str]:
             if m not in rt._accepted and float((e or {}).get("nextRetryAt") or 0) <= now]
 
 
+def known_ids(rt: Any) -> list[str]:
+    """Ids this runtime already holds: running/queued here, and the most recently seen ones."""
+    ids = list(dict.fromkeys([*rt._accepted, *list(rt.state.data.get("seen") or [])[-KNOWN_SEEN_TAIL:]]))
+    return ids[-KNOWN_IDS_MAX:]
+
+
 async def sync_loop(rt: Any, sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep) -> None:
     error_backoff, idle_backoff = 1.0, POLL_PAUSE_S
     while not rt._stopping:
@@ -48,7 +56,8 @@ async def sync_loop(rt: Any, sleep: Callable[[float], Awaitable[Any]] = asyncio.
         data = rt.state.data
         started = time.monotonic()
         try:
-            payload = await rt.client.sync(data.get("lastSeenAt"), due_retry_ids(rt, time.time()))
+            payload = await rt.client.sync(data.get("lastSeenAt"), due_retry_ids(rt, time.time()),
+                                           known_ids=known_ids(rt))
             error_backoff = 1.0
         except Exception as exc:
             rt._set_error(f"message sync failed: {exc}")

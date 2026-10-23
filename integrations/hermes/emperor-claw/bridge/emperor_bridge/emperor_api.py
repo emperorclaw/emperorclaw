@@ -198,10 +198,13 @@ class EmperorClient:
         await self.request("POST", "/agents/heartbeat", {"agentId": self.agent_id, "currentLoad": current_load,
                                                          "runtimeId": runtime_id}, timeout=15)
 
-    async def sync(self, since: Optional[str], retry_ids: Sequence[str]) -> Mapping[str, Any]:
+    async def sync(self, since: Optional[str], retry_ids: Sequence[str],
+                   known_ids: Sequence[str] = ()) -> Mapping[str, Any]:
         query = self._agent_query(mode="all", since=since)
         if retry_ids:
             query["retryMessageIds"] = ",".join(list(retry_ids)[-100:])
+        if known_ids:  # ids we hold: they alone never end the server's long poll
+            query["knownIds"] = ",".join(list(known_ids)[-200:])
         _status, payload, _headers = await asyncio.get_running_loop().run_in_executor(
             self._longpoll, functools.partial(self.request_sync, "GET", "/messages/sync", None, query, timeout=45))
         return payload or {}

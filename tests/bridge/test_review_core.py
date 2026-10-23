@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import logging
 import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -445,6 +447,42 @@ class Round2Tests(unittest.TestCase):
         self.assertEqual(data["retries"]["g"]["nextRetryAt"], 30)
         schedule_retry(data, "o", base_s=15, max_s=300, environment=True, now=0)
         self.assertEqual(data["retries"]["o"]["nextRetryAt"], 45)
+
+
+class FakeEmperorSyncTests(unittest.TestCase):
+    """The contract's fake Emperor must follow the real sync rules (release coalesce failure)."""
+
+    def test_same_millisecond_messages_are_both_returned_and_known_ids_wait(self):
+        import http.server
+        import importlib.util as iu
+        import urllib.request as ur
+        spec = iu.spec_from_file_location("emperor_echo_fake", REPO / "tests/contract/hermes/emperor_echo.py")
+        echo = iu.module_from_spec(spec)
+        spec.loader.exec_module(echo)
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), echo.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+
+        def call(path, body=None):
+            data = None if body is None else json.dumps(body).encode()
+            req = ur.Request(base + path, data=data, method="POST" if body is not None else "GET",
+                             headers={"Content-Type": "application/json", "Authorization": "Bearer tok"})
+            with ur.urlopen(req, timeout=10) as res:
+                return json.loads(res.read() or b"null")
+        try:
+            call("/__fake/agents", {"agents": [{"token": "tok", "agentId": "ag"}]})
+            stamp = "2026-10-23T10:12:09.480Z"
+            ids = [call("/__fake/messages", {"agentId": "ag", "threadId": "t", "text": t, "extra": {"createdAt": stamp}})["id"]
+                   for t in ("second", "third")]
+            got = call(f"/api/mcp/messages/sync?agentId=ag&since={stamp}")["messages"]
+            self.assertEqual(sorted(m["id"] for m in got), sorted(ids), "the cursor's millisecond is re-returned")
+            started = time.monotonic()
+            call(f"/api/mcp/messages/sync?agentId=ag&since={stamp}&knownIds={','.join(ids)}")
+            self.assertGreaterEqual(time.monotonic() - started, echo.SYNC_WAIT_S * 0.8,
+                                    "known rows alone do not end the long poll")
+        finally:
+            server.shutdown()
 
 
 if __name__ == "__main__":

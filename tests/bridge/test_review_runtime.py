@@ -89,7 +89,7 @@ class H2RecoveryTests(Harness):
             rt.runner.recover = recover
             syncs = []
 
-            async def sync(since, retry_ids):
+            async def sync(since, retry_ids, known_ids=()):
                 syncs.append(time.monotonic())
                 return {"messages": []}
 
@@ -210,7 +210,7 @@ class H3IntakeTests(Harness):
             calls, pauses = [], []
             real_sleep = asyncio.sleep
 
-            async def sync(since, retry_ids):
+            async def sync(since, retry_ids, known_ids=()):
                 calls.append(retry_ids)
                 return {"messages": [message("m9")]}
 
@@ -246,7 +246,7 @@ class M7PagingTests(Harness):
             stamps, pauses = [], []
             real_sleep = asyncio.sleep
 
-            async def sync(since, retry_ids):
+            async def sync(since, retry_ids, known_ids=()):
                 stamps.append(since)
                 return pages.pop(0) if pages else {"messages": []}
 
@@ -267,7 +267,7 @@ class M7PagingTests(Harness):
             rt.state.data["lastSeenAt"] = "2026-10-22T10:00:00.000Z"
             seen = []
 
-            async def sync(since, retry_ids):
+            async def sync(since, retry_ids, known_ids=()):
                 seen.append(since)
                 if len(seen) == 1:
                     return {"messages": [], "hasMore": True, "nextSince": "2026-10-22T10:05:00.000Z"}
@@ -407,6 +407,55 @@ class Low1StandbyTests(Harness):
         self.assertEqual(rt.client.sent, [])
         self.assertTrue(rt.outbox.has_parked("m0"))
         self.assertFalse(any(s.get("execution_state") == "cancelled" for s in rt.client.statuses))
+
+
+class SameMillisecondCoalesceTests(Harness):
+    """v0.9.0 release contract `coalesce`: `second` and `third` were created in the same millisecond
+    while `first` ran. The bridge set its cursor to `second`'s createdAt and the fake Emperor used a
+    strict `createdAt > since`, so `third` was never returned. The real server (and now the fake)
+    re-returns the cursor's millisecond (10 ms slack) and the bridge reports the ids it holds."""
+
+    def test_a_same_millisecond_follow_up_is_picked_up_and_coalesced(self):
+        from emperor_bridge.emperor_api import parse_iso
+
+        async def go():
+            rt = await self.runtime()
+            store = [message("first", created="2026-10-23T10:12:08.671Z")]
+            release = asyncio.Event()
+
+            async def run_turn(turn):
+                self.ran.append(turn)
+                if "first" in turn.message_ids:
+                    await release.wait()
+                return result()
+            rt.runner.run = run_turn
+            asked_known = []
+
+            async def sync(since, retry_ids, known_ids=()):
+                asked_known.append(list(known_ids))
+                cursor = (parse_iso(since) or 0) - 0.010  # the server's cursor slack
+                await asyncio.sleep(0)
+                return {"messages": [m for m in store if parse_iso(m["createdAt"]) > cursor or m["id"] in retry_ids]}
+
+            async def fast_sleep(_seconds):
+                await asyncio.sleep(0.001)
+            rt.client.sync = sync
+            rt.state.data["lastSeenAt"] = "2026-10-23T10:12:00.000Z"
+            task = asyncio.create_task(intake.sync_loop(rt, sleep=fast_sleep))
+            await wait_until(lambda: self.ran, what="first running")
+            store.append(message("second", created="2026-10-23T10:12:09.480Z"))
+            await wait_until(lambda: "second" in rt._accepted, what="second accepted")
+            store.append(message("third", created="2026-10-23T10:12:09.480Z"))  # same millisecond
+            await wait_until(lambda: "third" in rt._accepted, what="third accepted")
+            release.set()
+            await wait_until(lambda: len(self.ran) >= 2, what="follow-up turn")
+            await stop(rt, [task])
+            return self.ran[1], asked_known
+
+        follow_up, asked_known = asyncio.run(go())
+        self.assertEqual(follow_up.message_ids, ("second", "third"), "the follow-ups are coalesced")
+        self.assertEqual(follow_up.submission_id, "emp-third")
+        self.assertTrue(any("first" in ids for ids in asked_known), "the running message is reported as known")
 
 
 if __name__ == "__main__":

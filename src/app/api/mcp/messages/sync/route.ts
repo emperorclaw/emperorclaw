@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
     const agentId = searchParams.get('agentId'); // agent requesting sync — used for dedup + scoping
     const retryMessageIds = (searchParams.get('retryMessageIds') || '')
         .split(',').filter(id => UUID_RE.test(id)).slice(0, 100);
+    // Bridge 0.9: ids it already holds; they never end the long poll by themselves (lib/sync-page.ts).
+    const knownIds = (searchParams.get('knownIds') || '')
+        .split(',').filter(id => UUID_RE.test(id)).slice(0, 200);
 
     const sinceDate = since ? new Date(since) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
@@ -118,6 +121,7 @@ export async function GET(req: NextRequest) {
             const { page: messages, hasMore, hasNew, nextSince } = selectSyncPage(rows, {
                 since: isValidSince ? sinceDate : null,
                 retryIds: retryMessageIds,
+                knownIds,
             });
 
             if (messages.length > 0) {

@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 LOG_PATH = os.environ.get("EMPEROR_ECHO_LOG", "/tmp/emperor_echo_requests.jsonl")
 SYNC_WAIT_S = float(os.environ.get("FAKE_EMPEROR_SYNC_WAIT_S", "1.0"))
 MAX_EVENTS_PER_BATCH = 200
+SYNC_CURSOR_SLACK_S = 0.010
 MAX_EVENTS_BYTES = 128 * 1024
 
 SERVER_CAPABILITIES = ["rich-blocks", "run-events: 1", "run-usage: 2", "coalesced-replies: 1", "runtime-control: 1"]
@@ -297,8 +298,12 @@ class Handler(BaseHTTPRequestHandler):
                      "sharedHostOk": shared_ok}, None, None
 
     def _sync(self, agent: Dict[str, Any], query: Dict[str, str]):
-        since = parse_iso(query["since"]) if query.get("since") else 0.0
+        # Same rules as src/app/api/mcp/messages/sync/route.ts + src/lib/sync-page.ts: the cursor
+        # has a 10 ms slack (two messages can share a millisecond: the old strict `>` lost the
+        # second one), and rows the bridge already holds (`knownIds`) never end the long poll.
+        since = parse_iso(query["since"]) - SYNC_CURSOR_SLACK_S if query.get("since") else 0.0
         retry = set(filter(None, (query.get("retryMessageIds") or "").split(",")))
+        known = set(filter(None, (query.get("knownIds") or "").split(",")))
         deadline = time.time() + SYNC_WAIT_S
 
         def pick() -> List[Dict[str, Any]]:
@@ -307,7 +312,7 @@ class Handler(BaseHTTPRequestHandler):
 
         with STORE.lock:
             msgs = pick()
-            while not msgs and time.time() < deadline:
+            while not any(m["id"] not in known for m in msgs) and time.time() < deadline:
                 STORE.lock.wait(max(0.01, deadline - time.time()))
                 msgs = pick()
             out = [{k: v for k, v in m.items() if k != "_t"} for m in msgs]
