@@ -9,6 +9,20 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.10.0] — 2026-10-24
+
+### Added
+- **Inbox.** One page for everything that needs you: approvals (one card even when it covers several tasks), blocked or failing work, stalled agents ("No progress for 14 min") and decisions agents ask for in chat, most urgent first, with approve/reject inline and keyboard shortcuts (j/k, Enter, a/r). The badge, the page and the dashboard's "Needs you" panel always show the same number.
+- **New navigation.** Home, Inbox and Messages first, then Work, Clients & Knowledge, Team and a collapsible Admin section; a New task button; phone tabs Home / Inbox / Messages / Projects / Agents.
+- **Command palette.** ⌘K / Ctrl+K jumps to any page, agent, project, customer or open task; `g` + a letter jumps between sections and `?` lists every shortcut.
+- **Task page.** Every task has a full page that tells its whole story: notes, approvals, files, messages and every agent run, grouped by day, with the live run pinned on top. Each run shows a clear outcome (Done, Needs you, Failed, Stopped), its duration, tokens and cost, and links to its reply.
+
+### Security
+- Viewers can no longer create, edit or delete anything (they were treated as members).
+- An agent's restrictions (customers, projects, knowledge) now apply on every route, tool and live event, including when a request does not name the agent; agent tokens can no longer act as another agent, edit other agents' budgets, scope or model, create agents, or delete agents.
+- Restricted members' permissions are read on every request (changes apply at once; an empty list means no access) and apply everywhere: dashboard, inbox, search, files, knowledge (including proposals and the link graph), approvals, groups, notifications and screens.
+- Removing a member signs them out and revokes their tokens; deleting an agent revokes its tokens. Only owners can make someone an admin, the last owner cannot step down, and model pricing can only be changed by admins.
+
 ## [0.9.3] — 2026-10-23
 
 ### Added
