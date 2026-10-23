@@ -26,6 +26,12 @@ export async function register() {
         const { startLifecycleMonitor } = await import('./lib/lifecycle');
         startWatchdog();
         startLifecycleMonitor();
+        // Managed Hermes runtimes follow the app's release: the new server
+        // recreates out-of-date containers in the background after boot.
+        const { startManagedHermesReconciler, startHermesImagePrefetch } = await import('./lib/hermes-provisioning');
+        startManagedHermesReconciler();
+        // Download the runtime image now, so the first hire does not wait on it.
+        startHermesImagePrefetch();
         // Schema management lives in Drizzle migrations (npm run db:migrate);
         // the former runtime DDL was folded into migration 0023.
     }

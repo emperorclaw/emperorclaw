@@ -1,7 +1,16 @@
 # Works from a downloaded file or Invoke-RestMethod ... | Invoke-Expression.
-param([string]$Domain = "", [string]$AdminEmail = "", [string]$InstallDir = "$HOME\emperorclaw", [switch]$NoBrowser)
+param([string]$Domain = "", [string]$AdminEmail = "", [string]$InstallDir = "$HOME\emperorclaw", [switch]$NoBrowser, [switch]$NoPrompt)
 $ErrorActionPreference = "Stop"
-if ($Domain -and $Domain -notmatch '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z0-9.-]+$') { throw "Use a domain such as claw.example.com, without https:// or a path." }
+$domainPattern = '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z0-9.-]+$'
+if ($Domain -and $Domain -notmatch $domainPattern) { throw "Use a domain such as claw.example.com, without https:// or a path." }
+# Ask for a domain only when someone can answer; blank keeps the local setup.
+if (-not $Domain -and -not $NoPrompt -and $env:EMPEROR_INSTALL_NONINTERACTIVE -ne '1' -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+    while ($true) {
+        try { $answer = "$(Read-Host 'Domain for HTTPS (leave blank for local only)')".Trim() } catch { $answer = '' }
+        if (-not $answer -or $answer -match $domainPattern) { $Domain = $answer; break }
+        Write-Host 'Use a domain such as claw.example.com, without https:// or a path.' -ForegroundColor Yellow
+    }
+}
 if ($AdminEmail -and $AdminEmail -notmatch '^[^\s=]+@[^\s=]+\.[^\s=]+$') { throw "Use the email address you will register with." }
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -9,17 +18,38 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         & winget install --exact --id Docker.DockerDesktop --accept-source-agreements
         if ($LASTEXITCODE -ne 0) { throw "Docker Desktop installation did not finish. Complete setup and retry." }
         $env:Path += ";$env:ProgramFiles\Docker\Docker\resources\bin"
-        if (Test-Path "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe") { Start-Process "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe" }
     } else {
         Start-Process 'https://docs.docker.com/desktop/setup/install/windows-install/'
         throw "Install Docker Desktop from the page that opened, start it, then rerun. No Git, Node.js or PostgreSQL is needed."
     }
 }
 
-& docker info *> $null
-if ($LASTEXITCODE -ne 0) { throw "Docker is not ready. Start Docker Desktop, wait for Engine running, then retry. Use Linux containers." }
-& docker compose version *> $null
-if ($LASTEXITCODE -ne 0) { throw "Update Docker Desktop to include Docker Compose v2." }
+# Windows PowerShell turns a native command's redirected stderr into a
+# terminating error under "Stop"; probes judge success by exit code only.
+function Test-DockerCommand([string[]]$Arguments) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = 1
+    try { & docker @Arguments *> $null } catch { $global:LASTEXITCODE = 1 } finally { $ErrorActionPreference = $previous }
+    return ($LASTEXITCODE -eq 0)
+}
+# Docker Desktop takes a while to start its engine; wait instead of failing.
+if (-not (Test-DockerCommand @('info'))) {
+    $dockerDesktop = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+    if ((Test-Path $dockerDesktop) -and -not (Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue)) { Start-Process $dockerDesktop }
+    $waitSeconds = 180
+    if ($env:EMPEROR_INSTALL_DOCKER_WAIT -match '^\d+$') { $waitSeconds = [int]$env:EMPEROR_INSTALL_DOCKER_WAIT }
+    $waited = 0
+    while ($waited -lt $waitSeconds) {
+        Write-Host -NoNewline "`rWaiting for Docker to start... ${waited}s "
+        Start-Sleep -Seconds 3
+        $waited += 3
+        if (Test-DockerCommand @('info')) { break }
+    }
+    if ($waited -gt 0) { Write-Host '' }
+    if (-not (Test-DockerCommand @('info'))) { throw "Docker is not ready. Start Docker Desktop, wait for Engine running, then retry. Use Linux containers." }
+}
+if (-not (Test-DockerCommand @('compose', 'version'))) { throw "Update Docker Desktop to include Docker Compose v2." }
 if (-not $PSBoundParameters.ContainsKey("InstallDir") -and $PSScriptRoot -and (Test-Path "$PSScriptRoot\docker-compose.yml") -and (Test-Path "$PSScriptRoot\package.json")) { $InstallDir = $PSScriptRoot }
 New-Item -ItemType Directory -Force "$InstallDir\scripts" | Out-Null
 Set-Location $InstallDir
@@ -63,13 +93,30 @@ Write-Host 'Checking local agent provisioning...'
 $socketGid = & docker run --rm --entrypoint stat -v /var/run/docker.sock:/socket postgres:16-alpine -c '%g' /socket
 if ($LASTEXITCODE -ne 0 -or "$socketGid" -notmatch '^\d+$') { throw "Cannot mount Docker's socket. Use Docker Desktop's default Linux container engine." }
 Set-EnvValue 'DOCKER_GID' "$socketGid"
+# A port held by another program makes compose fail with a cryptic bind error.
+# A rerun is fine: the ports then belong to this installation's containers.
+function Test-PortInUse([int]$Port) {
+    $client = New-Object Net.Sockets.TcpClient
+    try { $attempt = $client.BeginConnect('127.0.0.1', $Port, $null, $null); return ($attempt.AsyncWaitHandle.WaitOne(500) -and $client.Connected) }
+    catch { return $false }
+    finally { $client.Close() }
+}
+$ErrorActionPreference = 'Continue'
+$running = & docker compose ps -q 2>$null
+$ErrorActionPreference = 'Stop'
+if (-not $running) {
+    $ports = @(3000)
+    if (Get-Content '.env' | Where-Object { $_ -match '^EMPEROR_DOMAIN=.+' }) { $ports += 80, 443 }
+    foreach ($port in $ports) {
+        if (Test-PortInUse $port) { Write-Host "Warning: port $port is already in use by another program. Stop it, or EmperorClaw may fail to start." -ForegroundColor Yellow }
+    }
+}
 Write-Host 'Starting app and database. First startup can take a few minutes...'
 & docker compose up -d
 if ($LASTEXITCODE -ne 0) { throw "Startup failed. Check docker compose logs --tail=100 app postgres. Files and data are preserved." }
 $ready = $false
 for ($attempt = 0; $attempt -lt 90; $attempt++) {
-    & docker compose exec -T app wget -qO- http://127.0.0.1:3000/api/health *> $null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+    if (Test-DockerCommand @('compose', 'exec', '-T', 'app', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health')) { $ready = $true; break }
     Start-Sleep -Seconds 2
 }
 if (-not $ready) { & docker compose ps; throw "Startup did not become ready. Run docker compose logs --tail=100 app postgres. Your data is preserved." }
@@ -87,7 +134,7 @@ if ($publicUrl -ne 'http://localhost:3000') {
     if (-not $publicReady) { throw "App is ready locally but public URL is not ready. Check DNS, ports 80/443 and docker compose logs --tail=50 caddy. Open $publicUrl/signup after DNS is ready." }
 }
 Write-Host "Ready! Open $publicUrl/signup and create your admin account." -ForegroundColor Green
-Write-Host 'Then choose Create your first Hermes agent, select a role, and enter your LLM API key.'
-Write-Host 'Hermes, plugin, token and connection are configured automatically.'
+Write-Host 'Emperor setup then walks you through your company, your AI model key, and your first team.'
+Write-Host 'Agent runtimes are downloaded and connected automatically.'
 Write-Host "Install folder: $InstallDir. Update: .\scripts\update.ps1 -Docker"
 if (-not $NoBrowser) { Start-Process "$publicUrl/signup" }

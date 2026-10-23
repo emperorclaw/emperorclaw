@@ -7,6 +7,9 @@ const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'install.sh'), 'utf8');
 
+// These cases spawn /bin/bash with POSIX fakes on PATH.
+const needsBash = process.platform === 'win32' && 'requires /bin/bash';
+
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'emperor-install-test-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -15,7 +18,11 @@ function fixture(t) {
   const script = (name, body) => fs.writeFileSync(path.join(bin, name), `#!${process.execPath}\n${body}`, { mode: 0o755 });
   script('docker', `
 const fs=require('node:fs');const args=process.argv.slice(2);fs.appendFileSync(process.env.TEST_DOCKER_LOG, args.join(' ')+'\\n');
-if(args[0]==='info') process.exit(process.env.TEST_DOCKER_OFFLINE==='1'?1:0);
+if(args[0]==='info') {
+  // TEST_DOCKER_STARTING=N: the engine answers only from the Nth probe on.
+  const counter=process.env.TEST_DOCKER_LOG+'.info';const probes=(fs.existsSync(counter)?Number(fs.readFileSync(counter,'utf8')):0)+1;fs.writeFileSync(counter,String(probes));
+  process.exit(process.env.TEST_DOCKER_OFFLINE==='1'||probes<Number(process.env.TEST_DOCKER_STARTING||0)?1:0);
+}
 if(args[0]==='run') { console.log('123');process.exit(0); }
 if(args.includes('wget')) process.exit(process.env.TEST_READY_FAILURE==='1'?1:0);
 if(args.includes('node')) process.exit(process.env.TEST_SOCKET_FAILURE==='1'?1:0);
@@ -31,10 +38,10 @@ process.exit(0);
   const installDir = path.join(dir, 'server');
   const run = (extra = [], env = {}) => spawnSync('/bin/bash', ['-s', '--', '--dir', installDir, '--no-browser', ...extra], {
     input: source, encoding: 'utf8', timeout: 15000,
-    env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, TEST_DOCKER_LOG: log, TEST_BUNDLE_ROOT: root, EMPEROR_INSTALL_READY_ATTEMPTS: '1', EMPEROR_INSTALL_PUBLIC_ATTEMPTS: '1', ...env },
+    env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, TEST_DOCKER_LOG: log, TEST_BUNDLE_ROOT: root, EMPEROR_INSTALL_READY_ATTEMPTS: '1', EMPEROR_INSTALL_PUBLIC_ATTEMPTS: '1', EMPEROR_INSTALL_DOCKER_WAIT: '0', EMPEROR_INSTALL_NONINTERACTIVE: '1', ...env },
     cwd: dir,
   });
-  return { run, installDir, log };
+  return { run, installDir, log, dir };
 }
 
 test('piped installer creates secrets and verifies health and app socket access without Git', t => {
@@ -98,4 +105,42 @@ test('public installers match server entry points', () => {
 test('unreachable public domain does not claim the installation is ready', t => {
   const f = fixture(t); const result = f.run(['--domain', 'claw.example.com'], { TEST_PUBLIC_FAILURE: '1' });
   assert.notEqual(result.status, 0); assert.match(result.stdout, /Check DNS/); assert.doesNotMatch(result.stdout, /Ready!/);
+});
+
+test('installer waits for Docker Desktop to finish starting', { skip: needsBash }, t => {
+  const f = fixture(t); const result = f.run([], { TEST_DOCKER_STARTING: '3', EMPEROR_INSTALL_DOCKER_WAIT: '12' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Waiting for Docker to start\.\.\. \d+s/); assert.match(result.stdout, /Ready!/);
+});
+
+test('installer gives up after the Docker wait without reporting ready', { skip: needsBash }, t => {
+  const f = fixture(t); const result = f.run([], { TEST_DOCKER_OFFLINE: '1', EMPEROR_INSTALL_DOCKER_WAIT: '3' });
+  assert.notEqual(result.status, 0); assert.match(result.stdout, /Waiting for Docker to start/); assert.match(result.stdout, /Docker is not ready/);
+});
+
+test('domain prompt answer on the terminal enables HTTPS', { skip: needsBash }, t => {
+  const f = fixture(t); const tty = path.join(f.dir, 'tty'); fs.writeFileSync(tty, ' claw.example.com\n');
+  const result = f.run([], { EMPEROR_INSTALL_NONINTERACTIVE: '', EMPEROR_INSTALL_TTY: tty });
+  assert.equal(result.status, 0, result.stderr); assert.match(result.stderr, /Domain for HTTPS \(leave blank for local only\)/);
+  assert.match(fs.readFileSync(path.join(f.installDir, '.env'), 'utf8'), /^APP_URL=https:\/\/claw.example.com$/m);
+});
+
+test('blank prompt answer, --no-prompt, and no terminal keep the local setup', { skip: needsBash }, t => {
+  const f = fixture(t); const tty = path.join(f.dir, 'tty'); fs.writeFileSync(tty, '\n');
+  assert.equal(f.run([], { EMPEROR_INSTALL_NONINTERACTIVE: '', EMPEROR_INSTALL_TTY: tty }).status, 0);
+  fs.writeFileSync(tty, 'claw.example.com\n');
+  const skipped = f.run(['--no-prompt'], { EMPEROR_INSTALL_NONINTERACTIVE: '', EMPEROR_INSTALL_TTY: tty });
+  assert.equal(skipped.status, 0); assert.doesNotMatch(skipped.stderr, /Domain for HTTPS/);
+  const noTerminal = f.run([], { EMPEROR_INSTALL_NONINTERACTIVE: '', EMPEROR_INSTALL_TTY: path.join(f.dir, 'missing') });
+  assert.equal(noTerminal.status, 0); assert.doesNotMatch(noTerminal.stderr, /Domain for HTTPS/);
+  assert.doesNotMatch(fs.readFileSync(path.join(f.installDir, '.env'), 'utf8'), /^APP_URL=https/m);
+});
+
+test('closing message matches the first-run setup wizard', () => {
+  for (const file of ['install.sh', 'install.ps1']) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    assert.match(text, /walks you through your company, your AI model key, and your first team/);
+    assert.doesNotMatch(text, /Create your first Hermes agent/);
+  }
+  assert.match(fs.readFileSync(path.join(root, 'install.ps1'), 'utf8'), /\[switch\]\$NoPrompt/);
 });

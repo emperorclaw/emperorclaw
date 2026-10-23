@@ -11,3 +11,10 @@ test("malformed or empty error responses cannot escape the promise handler", () 
     assert.throws(() => parseDockerPullResponse(503, 'unavailable'), /HTTP 503/);
     assert.equal(parseDockerPullResponse(200, '{"status":"Downloaded newer image"}\n'), 'Downloaded newer image');
 });
+test("a pinned runtime tag that was never published names the missing manifest", () => {
+    // Managed runtimes pull `emperorclaw-hermes:v<app version>`; a dev build has no such tag.
+    assert.throws(
+        () => parseDockerPullResponse(404, JSON.stringify({ message: "manifest for ghcr.io/emperorclaw/emperorclaw-hermes:v0.9.0-dev not found: manifest unknown" })),
+        /HTTP 404.*emperorclaw-hermes:v0\.9\.0-dev.*manifest unknown/,
+    );
+});

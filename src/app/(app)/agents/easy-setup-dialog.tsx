@@ -6,6 +6,7 @@ import { createClientRequestId } from "@/lib/client-request-id";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { HermesImageProgress } from "@/components/hermes-image-progress";
 import { RoleTemplatePicker } from "./role-template-picker";
 import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
 import { getAgentTemplate } from "@/lib/agent-templates";
@@ -456,6 +457,7 @@ export function EasySetupDialog({
                     <div className="flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground">
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-cyan-400" />
                         <span className="text-sm">Provisioning {specs.length} agent{specs.length === 1 ? "" : "s"}…</span>
+                        <HermesImageProgress active className="w-full max-w-sm" />
                     </div>
                 )}
 

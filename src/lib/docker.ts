@@ -10,7 +10,7 @@ import { parseDockerPullResponse } from "./docker-pull-response";
 
 export const DOCKER_SOCKET = "/var/run/docker.sock";
 
-// The Hermes runtime image is ~2.8 GB. A 5-minute ceiling made the first-ever
+// The Hermes runtime image is ~3.8 GB. A 5-minute ceiling made the first-ever
 // hire fail on ordinary connections — the pull timed out mid-download, leaving
 // a half-created, permanently "offline" agent behind, while a second attempt
 // succeeded instantly from the now-cached layers. 30 minutes is the ceiling for
@@ -53,7 +53,12 @@ export function dockerCall(method: string, path: string, body?: unknown): Promis
     });
 }
 
-export async function dockerPull(image: string, platform?: string): Promise<string> {
+/**
+ * Pull an image. `onRecord` receives each parsed NDJSON progress record as it
+ * streams in (layer id, status, progressDetail), for progress reporting; the
+ * result and error semantics are the same with or without it.
+ */
+export async function dockerPull(image: string, platform?: string, onRecord?: (record: Record<string, unknown>) => void): Promise<string> {
     return new Promise((resolve, reject) => {
         const req = http.request({
             socketPath: DOCKER_SOCKET,
@@ -63,7 +68,19 @@ export async function dockerPull(image: string, platform?: string): Promise<stri
             agent: false,
         }, (res) => {
             const chunks: Buffer[] = [];
-            res.on("data", (c: Buffer) => chunks.push(c));
+            let pending = "";
+            res.on("data", (c: Buffer) => {
+                chunks.push(c);
+                if (!onRecord) return;
+                pending += c.toString("utf-8");
+                const lines = pending.split("\n");
+                pending = lines.pop() ?? "";
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try { onRecord(JSON.parse(line) as Record<string, unknown>); }
+                    catch { /* a non-JSON line is reported by parseDockerPullResponse */ }
+                }
+            });
             res.on("end", () => {
                 try {
                     resolve(parseDockerPullResponse(res.statusCode ?? 500, Buffer.concat(chunks).toString("utf-8")));

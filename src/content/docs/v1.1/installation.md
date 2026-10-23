@@ -11,7 +11,7 @@ or Hermes installation is needed on your computer.
 - **Mac:** install [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) for your machine and open it.
 - **Linux/server:** follow [Docker Engine installation](https://docs.docker.com/engine/install/) for your distribution and install its Compose plugin. Start Docker and ensure your account can run `docker info`.
 
-The installer can install Docker Engine on Ubuntu/Debian using Docker’s official repository (sudo may ask for your password), Docker Desktop through Homebrew on Mac when available, or winget on Windows. Otherwise it opens or prints the matching install guide. Finish any OS prompts, start Docker, and rerun the installer if it asks. Wait until Docker reports its engine is running. This is a one-time prerequisite.
+The installer can install Docker Engine on Ubuntu/Debian using Docker’s official repository (sudo may ask for your password), Docker Desktop through Homebrew on Mac when available, or winget on Windows. Otherwise it opens or prints the matching install guide. Finish any OS prompts. If Docker Desktop is installed but not running, the installer starts it and waits up to three minutes for its engine (`Waiting for Docker to start... 45s`) before asking you to start it and rerun. This is a one-time prerequisite.
 Use a machine that stays on while agents are working. The current images target
 amd64; Apple Silicon requires Docker Desktop's amd64 emulation.
 
@@ -28,6 +28,12 @@ On Windows, open PowerShell and paste:
 ```powershell
 irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
 ```
+
+When run from a terminal, the installer first asks **Domain for HTTPS (leave
+blank for local only)**. Press Enter for a local install, or type a domain to set
+up HTTPS as described [below](#optional-your-own-domain-with-automatic-https).
+Before starting the app it warns if port 3000 (and 80/443 with a domain) is
+already used by another program.
 
 Wait for **Ready!**. The installer checks app/database readiness and verifies
 Docker access for local worker creation. It opens your browser when supported;
@@ -46,13 +52,19 @@ Then open localhost:3000 on your laptop while the tunnel is connected.
 
 ## 3. Create your first Hermes worker
 
-After you create your account, **Emperor setup** opens on the dashboard: tell it
+After you create your account, **Emperor setup** opens on the dashboard and walks
+you through your company, your AI model key, and your first team: tell it
 about your company, paste a model API key (OpenRouter is recommended and starts on
 a free model; the key is checked before anything starts), pick a suggested team,
 and launch. Hermes, the plugin, an agent-bound token, and the connection are
 configured automatically. Your provider supplies the model and bills API usage;
 the key is the one external credential you supply. Your lead agent then documents
 the company in Knowledge & Rules while you watch.
+
+The agent runtime image is a one-time download of about 3.8 GB. The server starts
+it in the background as soon as it boots, so it is often finished before you
+reach the last step; if not, setup shows its download progress. Set
+`EMPEROR_HERMES_PREFETCH=0` in `.env` to download it only on the first hire.
 
 When your lead is online, open its direct chat and say hello. Then create a short project, add a
 bounded task, and assign it to the worker. In team chat use the @ picker to
@@ -66,19 +78,21 @@ ports **80 and 443**, and ensure another web server is not already using them.
 The installer configures Caddy to obtain and renew certificates automatically.
 You do not need to write reverse-proxy configuration yourself.
 
-Download and run the installer with your domain:
+Answer the installer's domain question, or pass the domain up front:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh -o emperor-install.sh
-bash emperor-install.sh --domain claw.example.com
+curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash -s -- --domain claw.example.com
 ```
 
-On Windows:
+On Windows (works under the default execution policy):
 
 ```powershell
-irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 -OutFile emperor-install.ps1
-.\emperor-install.ps1 -Domain claw.example.com
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1))) -Domain claw.example.com
 ```
+
+For unattended installs (cloud-init, CI), skip the question with `--no-prompt`
+(`-NoPrompt` on Windows) or `EMPEROR_INSTALL_NONINTERACTIVE=1`; without a domain
+the install stays local. Without a terminal the question is skipped automatically.
 
 Once ready, open **https://claw.example.com/signup**. Domain settings also work
 when rerunning the installer; existing secrets and data are kept. Public DNS and

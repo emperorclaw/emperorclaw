@@ -9,6 +9,7 @@ import {
     IconExternalLink, IconKey, IconLoader2, IconMessage, IconRocket, IconSparkles, IconUsersGroup, IconAlertTriangle, IconX,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { HermesImageProgress } from "@/components/hermes-image-progress";
 import { Input } from "@/components/ui/input";
 import { agentRoleTemplates, getAgentTemplate } from "@/lib/agent-templates";
 import { BUSINESS_TYPES, COMFORTABLE_AGENT_COUNT, DEFAULT_AGENT_NAMES, TEAM_TEMPLATES, planTeam, suggestedTeams, teamPlanProblem, type PlannedGroup } from "@/lib/onboarding-shared";
@@ -615,7 +616,11 @@ export function SetupWizard({ initialCompanyName, initialBusinessType = "", prof
                                         {launching ? "Creating your agents…" : online ? "Talk to your lead in its private chat, or give it a project." : "The first start downloads and connects each agent. This can take a minute or two."}
                                     </p>
                                 </header>
-                                {launching && <p className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="h-4 w-4 animate-spin" />Creating {team.length} agent{team.length === 1 ? "" : "s"}…</p>}
+                                {/* The first hire waits on the one-time runtime download; show it when one is running. */}
+                                <HermesImageProgress
+                                    active={launching}
+                                    fallback={launching && <p className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="h-4 w-4 animate-spin" />Creating {team.length} agent{team.length === 1 ? "" : "s"}…</p>}
+                                />
                                 {created && (
                                     <ul className="space-y-2">
                                         {created.map((r) => {

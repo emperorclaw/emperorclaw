@@ -6,6 +6,8 @@ DOMAIN=""
 ADMIN_EMAIL=""
 INSTALL_DIR="${EMPEROR_INSTALL_DIR:-$HOME/emperorclaw}"
 OPEN_BROWSER=1
+PROMPT=1
+[ "${EMPEROR_INSTALL_NONINTERACTIVE:-}" != 1 ] || PROMPT=0
 INSTALL_DIR_EXPLICIT=0
 [ -z "${EMPEROR_INSTALL_DIR:-}" ] || INSTALL_DIR_EXPLICIT=1
 while [ "$#" -gt 0 ]; do
@@ -17,11 +19,26 @@ while [ "$#" -gt 0 ]; do
         --domain=*) DOMAIN="${1#*=}"; shift;;
         --admin-email=*) ADMIN_EMAIL="${1#*=}"; shift;;
         --no-browser) OPEN_BROWSER=0; shift;;
+        --no-prompt) PROMPT=0; shift;;
         *) echo "Unknown option: $1" >&2; exit 1;;
     esac
 done
-if [ -n "$DOMAIN" ] && ! [[ "$DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ && "$DOMAIN" == *.* ]]; then
+valid_domain() { [[ "$1" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ && "$1" == *.* ]]; }
+if [ -n "$DOMAIN" ] && ! valid_domain "$DOMAIN"; then
     echo "Use a domain name such as claw.example.com, without https:// or a path." >&2; exit 1
+fi
+# With curl ... | bash, stdin is this script, so ask on the terminal instead.
+# No terminal (CI, cloud-init) means no question: blank keeps the local setup.
+TTY="${EMPEROR_INSTALL_TTY:-/dev/tty}"
+if [ -z "$DOMAIN" ] && [ "$PROMPT" = 1 ] && (: < "$TTY") 2>/dev/null; then
+    while :; do
+        printf 'Domain for HTTPS (leave blank for local only): ' >&2
+        ANSWER=""
+        IFS= read -r ANSWER < "$TTY" || true
+        ANSWER="$(printf '%s' "$ANSWER" | tr -d '[:space:]')"
+        if [ -z "$ANSWER" ] || valid_domain "$ANSWER"; then DOMAIN="$ANSWER"; break; fi
+        echo "Use a domain name such as claw.example.com, without https:// or a path." >&2
+    done
 fi
 if [ -n "$ADMIN_EMAIL" ] && ! [[ "$ADMIN_EMAIL" =~ ^[^[:space:]=]+@[^[:space:]=]+\.[^[:space:]=]+$ ]]; then
     echo "Use the email address you will register with." >&2; exit 1
@@ -49,11 +66,29 @@ if ! command -v docker >/dev/null; then
         *) echo "Install Docker Desktop first: https://docs.docker.com/desktop/" >&2; exit 1;;
     esac
 fi
-# A new Linux installation may need sudo until account permissions are set.
-if ! "${DOCKER[@]}" info >/dev/null 2>&1 && [ "$(uname -s)" = Linux ] && command -v sudo >/dev/null && sudo -n docker info >/dev/null 2>&1; then DOCKER=(sudo docker); fi
-
-if ! "${DOCKER[@]}" info >/dev/null 2>&1; then
+docker_ready() {
+    "${DOCKER[@]}" info >/dev/null 2>&1 && return 0
+    # A new Linux installation may need sudo until account permissions are set.
+    if [ "$(uname -s)" = Linux ] && command -v sudo >/dev/null && sudo -n docker info >/dev/null 2>&1; then DOCKER=(sudo docker); return 0; fi
+    return 1
+}
+# Docker Desktop takes a while to start its engine; wait instead of failing.
+if ! docker_ready; then
     if [ "$(uname -s)" = Darwin ]; then open -a Docker >/dev/null 2>&1 || true; fi
+    DOCKER_WAIT="${EMPEROR_INSTALL_DOCKER_WAIT:-180}"
+    WAITED=0
+    while [ "$WAITED" -lt "$DOCKER_WAIT" ]; do
+        # Waiting cannot fix a permission error on Linux.
+        DOCKER_INFO=$("${DOCKER[@]}" info 2>&1 || true)
+        case "$DOCKER_INFO" in *[Pp]ermission\ denied*) break;; esac
+        printf '\rWaiting for Docker to start... %ss ' "$WAITED"
+        sleep 3
+        WAITED=$((WAITED + 3))
+        if docker_ready; then break; fi
+    done
+    [ "$WAITED" = 0 ] || echo
+fi
+if ! docker_ready; then
     echo "Docker is not ready. Start Docker Desktop and wait for 'Engine running', then retry."
     echo "On Linux, start the Docker service and check permission to use docker info (or run this installer with sudo)."
     exit 1
@@ -119,6 +154,16 @@ SOCKET_GID=$("${DOCKER[@]}" run --rm --entrypoint stat -v /var/run/docker.sock:/
 }
 [[ "$SOCKET_GID" =~ ^[0-9]+$ ]] || { echo "Cannot determine Docker socket group." >&2; exit 1; }
 set_env DOCKER_GID "$SOCKET_GID"
+# A port held by another program makes compose fail with a cryptic bind error.
+# A rerun is fine: the ports then belong to this installation's containers.
+port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+if [ -z "$("${DOCKER[@]}" compose ps -q 2>/dev/null)" ]; then
+    PORTS="3000"
+    if awk -F= '$1 == "EMPEROR_DOMAIN" && $2 != "" { found=1 } END { exit !found }' .env; then PORTS="3000 80 443"; fi
+    for port in $PORTS; do
+        if port_in_use "$port"; then echo "Warning: port $port is already in use by another program. Stop it, or EmperorClaw may fail to start." >&2; fi
+    done
+fi
 echo "Starting the app and database. First startup can take a few minutes..."
 "${DOCKER[@]}" compose up -d
 
@@ -155,8 +200,8 @@ if [ "$PUBLIC_URL" != "http://localhost:3000" ]; then
     fi
 fi
 echo "Ready! Open $PUBLIC_URL/signup and create your admin account."
-echo "Then choose Create your first Hermes agent, select a role, and enter your LLM API key."
-echo "Hermes, its plugin, access token, and connection are configured automatically."
+echo "Emperor setup then walks you through your company, your AI model key, and your first team."
+echo "Agent runtimes are downloaded and connected automatically."
 echo "Install folder: $INSTALL_DIR"
 echo "Stop: ${DOCKER[*]} compose down (keeps data). Update: bash scripts/update.sh --docker"
 if [ "$OPEN_BROWSER" = 1 ]; then
