@@ -9,6 +9,16 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.9.2] — 2026-10-23
+
+### Changed
+- `emperor-hermes install` detects self-made watchdogs (systemd timers, services or cron jobs) that restart 0.3 bridges, and refuses to migrate until you remove them or pass `--disable-watchdogs`. `doctor` and `status` report them too. Rollback restores what it disabled.
+- Migrated 0.3 bridge units are retired (moved to `~/.hermes/backups/emperor-hermes/retired-units/`, with an `.emperor-hermes-hold` note) instead of only disabled, so nothing can bring an old bridge back after a migration or a reboot. Rollback puts them back.
+
+### Fixed
+- On servers that do not run in UTC, live runs were marked lost about a minute after they started, and other raw timestamp comparisons were off by the server's offset. Timestamps are now always written and read as UTC. Docker installs were not affected.
+- The installer no longer prints `/proc/<pid>/cmdline: No such file or directory` when a process exits while it scans.
+
 ## [0.9.1] — 2026-10-23
 
 ### Fixed
