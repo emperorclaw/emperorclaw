@@ -5,7 +5,7 @@ import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
-import { markThreadRead, updateThreadExecutionState } from "@/lib/control-plane";
+import { canUseDirectThread, markThreadRead, updateThreadExecutionState } from "@/lib/control-plane";
 import { isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 
 export async function POST(req: NextRequest) {
@@ -16,6 +16,15 @@ export async function POST(req: NextRequest) {
     try {
         const { threadId, typing, markRead, executionState } = await req.json();
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
+
+        // Someone else's private direct thread: no read, typing or state changes.
+        const [privateThread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
+            .from(messageThreads)
+            .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
+            .limit(1);
+        if (privateThread && !canUseDirectThread(privateThread, userId)) {
+            return NextResponse.json({ error: "Access denied: that conversation is private" }, { status: 403 });
+        }
 
         let markedReadAt: Date | undefined;
         if (markRead) {

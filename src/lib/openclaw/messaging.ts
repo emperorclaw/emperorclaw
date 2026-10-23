@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
@@ -86,6 +87,9 @@ export async function sendThreadMessageFromMcp(input: {
   threadId?: string | null;
   fromUserId?: string | null;
   agentId?: string | null;
+  // The agent the caller's token is bound to (null/omitted: a company-wide
+  // token). Gates private direct threads: only their own agent's token.
+  callerAgentId?: string | null;
   targetAgentId?: string | null;
   threadType?: string | null;
   // The message this one answers (runtimes send it); lets a request find its reply.
@@ -134,7 +138,9 @@ export async function sendThreadMessageFromMcp(input: {
       eq(messageThreads.companyId, input.companyId),
     )).limit(1);
 
-    if (!existingThread) {
+    // A person's private direct thread reads as missing to anyone but its own agent.
+    if (!existingThread || !agentTokenMayUseThread(existingThread, input.callerAgentId)
+      || (isPrivateDirectThread(existingThread) && resolvedSenderId && resolvedSenderId !== existingThread.directAgentId)) {
       throw new Error("Thread not found");
     }
 

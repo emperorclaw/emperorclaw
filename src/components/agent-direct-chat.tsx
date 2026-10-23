@@ -103,10 +103,13 @@ export function AgentDirectChat({
     hideHeader = false,
     canSend = true,
     onAgentReply,
+    directThreadId = null,
 }: {
     agentId: string;
     agentName: string;
     hideHeader?: boolean;
+    /** A specific direct thread of this agent (e.g. its Operations thread); default: the viewer's own. */
+    directThreadId?: string | null;
     canSend?: boolean;
     onAgentReply?: (message: { text: string; createdAt: string }) => void;
 }) {
@@ -173,6 +176,7 @@ export function AgentDirectChat({
 
     const loadMessages = useCallback(async ({ since, before }: { since?: string | null; before?: string | null } = {}) => {
         const params = new URLSearchParams({ targetAgentId: agentId });
+        if (directThreadId) params.set("directThreadId", directThreadId);
         params.set("limit", String(CHAT_PAGE_SIZE));
         if (since) params.set("since", since);
         if (before) params.set("before", before);
@@ -257,7 +261,7 @@ export function AgentDirectChat({
         if (!since) {
             setHasOlderMessages(Boolean(data.hasMore));
         }
-    }, [agentId]);
+    }, [agentId, directThreadId]);
 
     const loadOlderMessages = useCallback(async () => {
         if (isLoadingOlder || !hasOlderMessages || messages.length === 0) return;
@@ -496,7 +500,7 @@ export function AgentDirectChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, targetAgentId: agentId, attachments: [voiceArtifact.id] }),
+                body: JSON.stringify({ text, targetAgentId: agentId, directThreadId, attachments: [voiceArtifact.id] }),
             });
             if (!res.ok) {
                 let errMsg = "Failed to send message";
@@ -562,7 +566,7 @@ export function AgentDirectChat({
         try {
             const res = await fetch(`/api/agents/${agentId}/control`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "kill" }),
+                body: JSON.stringify({ action: "kill", directThreadId }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Could not stop agent");
@@ -607,7 +611,7 @@ export function AgentDirectChat({
             const res = await fetch(replacing ? `/api/agents/${agentId}/control` : "/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(replacing ? { action: "replace", prompt: text } : { text, targetAgentId: agentId, attachments: pendingAttachments.map((a) => a.id) }),
+                body: JSON.stringify(replacing ? { action: "replace", prompt: text, directThreadId } : { text, targetAgentId: agentId, directThreadId, attachments: pendingAttachments.map((a) => a.id) }),
             });
 
             if (!res.ok) {
@@ -668,7 +672,7 @@ export function AgentDirectChat({
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: prompt, targetAgentId: agentId, attachments: [] }),
+                body: JSON.stringify({ text: prompt, targetAgentId: agentId, directThreadId, attachments: [] }),
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
@@ -686,7 +690,7 @@ export function AgentDirectChat({
             setControlError(error instanceof Error ? error.message : "Failed to send message");
             return false;
         }
-    }, [agentId, loadMessages, canSend]);
+    }, [agentId, directThreadId, loadMessages, canSend]);
     const richActions = useMemo(() => canSend ? { sendPrompt: sendWidgetPrompt } : {}, [sendWidgetPrompt, canSend]);
     const queueItems = useMemo(() => messages.filter((message) => (
         message.senderType === "human" && ["queued", "seen", "acting"].includes(message.deliveryState || "")

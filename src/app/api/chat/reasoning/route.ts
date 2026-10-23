@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId } from "@/lib/auth";
-import { getThreadMessageReasoning } from "@/lib/control-plane";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { messageThreads, threadMessages } from "@/db/schema";
+import { getCompanyId, getUserId } from "@/lib/auth";
+import { canUseDirectThread, getThreadMessageReasoning } from "@/lib/control-plane";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * GET /api/chat/reasoning?messageId=... — the reasoning transcript for one
@@ -12,12 +17,23 @@ import { getThreadMessageReasoning } from "@/lib/control-plane";
  */
 export async function GET(req: NextRequest) {
     const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = await getUserId();
+    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const messageId = new URL(req.url).searchParams.get("messageId");
     if (!messageId) return NextResponse.json({ error: "messageId is required" }, { status: 400 });
+    if (!UUID_RE.test(messageId)) return NextResponse.json({ error: "messageId must be a UUID" }, { status: 400 });
 
     try {
+        // Someone else's private direct thread: answer as if there were no reasoning,
+        // so the endpoint does not confirm the message exists.
+        const [thread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
+            .from(threadMessages)
+            .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
+            .where(and(eq(threadMessages.id, messageId), eq(threadMessages.companyId, companyId)))
+            .limit(1);
+        if (thread && !canUseDirectThread(thread, userId)) return NextResponse.json({ messageId, reasoning: null });
+
         const row = await getThreadMessageReasoning(companyId, messageId);
         if (!row) return NextResponse.json({ messageId, reasoning: null });
         return NextResponse.json({

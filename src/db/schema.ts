@@ -56,6 +56,12 @@ export const companies = pgTable("companies", {
     // starter note's text (lib/starter-knowledge.ts), so an upgrade can tell an
     // untouched note from one the company edited.
     starterDoctrineJson: jsonb("starter_doctrine_json").$type<{ version?: number; hashes?: Record<string, string>; name?: string }>(),
+    // Direct chats with agents (lib/direct-chat-mode.ts): 'shared' = one thread
+    // per agent for the whole company; 'private' = one thread per (person,
+    // agent), plus one shared "Operations" thread per agent for system traffic.
+    // New companies start private; companies that existed before the setting
+    // were backfilled to 'shared' so nothing changed for them.
+    directChatMode: text("direct_chat_mode").default("private").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
 });
@@ -846,10 +852,24 @@ export const messageThreads = pgTable("message_threads", {
     incidentId: uuid("incident_id").references(() => incidents.id, { onDelete: 'set null' }),
     createdByType: text("created_by_type").default('system').notNull(),
     createdById: uuid("created_by_id"),
+    // Direct threads only: the agent the thread is with (mirrors its agent
+    // participant row) and, in private mode, the one person it belongs to.
+    // owner_user_id NULL = the agent's shared thread (the "Operations" thread
+    // once the company is private).
+    directAgentId: uuid("direct_agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: 'set null' }),
+    // A person's private direct thread. Stays true when the owner is deleted
+    // (owner_user_id then reads NULL), so an orphaned private thread is never
+    // mistaken for the shared/Operations one and never opens up to everyone.
+    isPrivate: boolean("is_private").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     archivedAt: timestamp("archived_at"),
 }, (table) => ({
     companyTypeIdx: index("message_threads_company_type_idx").on(table.companyId, table.type),
+    // One live private direct thread per (company, person, agent).
+    privateDirectUnique: uniqueIndex("message_threads_private_direct_unique")
+        .on(table.companyId, table.ownerUserId, table.directAgentId)
+        .where(sql`${table.type} = 'direct' AND ${table.ownerUserId} IS NOT NULL AND ${table.archivedAt} IS NULL`),
 }));
 
 export const threadParticipants = pgTable("thread_participants", {

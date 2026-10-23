@@ -13,6 +13,7 @@ import { UpdateSettingsTab } from "@/components/update-settings-tab";
 import MembersClient from "./members/members-client";
 import { NotificationSettingsTab } from "./notification-settings-tab";
 import { RoutineSettingsTab } from "./routine-settings-tab";
+import { DirectChatSettingsTab } from "./direct-chat-settings-tab";
 import { DisplaysTab } from "./displays-tab";
 
 type SettingsToken = {
@@ -283,6 +284,10 @@ export default function SettingsClient({
 
             {activeTab === "routines" && (
                 <RoutineSettingsTab isAdmin={instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin"} />
+            )}
+
+            {activeTab === "direct-chats" && isAdmin && (
+                <DirectChatSettingsTab isAdmin={isAdmin} />
             )}
 
             {activeTab === "notifications" && (

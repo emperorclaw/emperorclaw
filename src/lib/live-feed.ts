@@ -308,11 +308,12 @@ export function clearLiveFeedCache() {
 /**
  * The token creator's exchanges in each agent's direct chat, in ONE query.
  *
- * "An agent's direct chat" is resolved exactly as the app's chat does
- * (ensureDirectThread in control-plane.ts): the oldest non-archived thread of
- * type "direct" in this company that has the agent as a participant. That
- * channel is SHARED by every company member (one thread per agent, not per
- * user), so the thread as a whole is never sent. Only these messages are:
+ * "An agent's direct chat" is resolved as the app's chat does for the creator
+ * (ensureDirectThread in control-plane.ts): in private direct-chat mode, the
+ * creator's own thread with the agent (none yet: no `dm`); in shared mode, the
+ * agent's shared thread, never anyone's private one. A shared channel is seen
+ * by every company member, so the thread as a whole is never sent. Only these
+ * messages are:
  *  - human messages whose sender is the creator (me: true);
  *  - that agent's replies to the creator: a reply naming one of the creator's
  *    messages (metadata.replyToMessageId), or, when it names none, an agent
@@ -329,15 +330,16 @@ async function loadCreatorDirectChats(companyId: string, userId: string) {
     type Row = { agent_id: string; thread_id: string; creator_turn: boolean | null; messages: { id: string; me: boolean; text: string | null; ms: number | string }[] | null };
     const result = await db.execute<Row>(sql`
         with direct as (
-            select distinct on (tp.participant_id) tp.participant_id as agent_id, t.id as thread_id
-              from thread_participants tp
-              join message_threads t on t.id = tp.thread_id
-             where tp.company_id = ${companyId}
-               and tp.participant_type = 'agent'
-               and t.company_id = ${companyId}
+            select distinct on (t.direct_agent_id) t.direct_agent_id as agent_id, t.id as thread_id
+              from message_threads t
+             where t.company_id = ${companyId}
                and t.type = 'direct'
                and t.archived_at is null
-             order by tp.participant_id, t.created_at
+               and t.direct_agent_id is not null
+               and case when (select c.direct_chat_mode from companies c where c.id = ${companyId}) = 'private'
+                        then t.owner_user_id = ${userId}
+                        else not t.is_private and t.owner_user_id is null end
+             order by t.direct_agent_id, t.created_at
         )
         select d.agent_id, d.thread_id,
             (select h.sender_type = 'human' and h.sender_id = ${userId}

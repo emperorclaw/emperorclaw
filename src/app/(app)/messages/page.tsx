@@ -4,9 +4,10 @@ import { db } from "@/db";
 import { agents, companyMembers, messageThreads, threadMessages, threadParticipants, users } from "@/db/schema";
 import { and, count, eq, gt, inArray, isNull } from "drizzle-orm";
 import { MessagingHub } from "@/components/messaging-hub";
-import { ensureTeamThread, getThreadMessages } from "@/lib/control-plane";
+import { ensureTeamThread, getDirectChatMode, getThreadMessages } from "@/lib/control-plane";
 import { listGroupsForUser } from "@/lib/groups";
 import { isMissingSchemaError } from "@/lib/schema-compat";
+import { userMayUseThread } from "@/lib/direct-chat-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,8 @@ type DirectThreadSummary = {
     unreadCount: number;
     lastMessageText: string | null;
     lastMessageAt: string | null;
+    /** Secondary threads only: "operations" (the agent's shared thread in private mode) or "private" (your own, kept from private mode). */
+    kind?: "operations" | "private";
 };
 
 export default async function MessagesPage() {
@@ -28,6 +31,7 @@ export default async function MessagesPage() {
     if (!companyId) redirect("/login");
     if (!userId) redirect("/login");
 
+    const directChatMode = await getDirectChatMode(companyId);
     const allAgents = await db.select().from(agents).where(
         and(eq(agents.companyId, companyId), isNull(agents.deletedAt))
     );
@@ -59,6 +63,9 @@ export default async function MessagesPage() {
     }
 
     const directThreadByAgentId = new Map<string, DirectThreadSummary>();
+    // Besides the one conversation per agent in the main list: in private mode
+    // the agent's Operations thread; in shared mode your earlier private ones.
+    const secondaryThreads: DirectThreadSummary[] = [];
     const userThreads = directThreads.filter((thread) => {
         const participants = participantMap.get(thread.id) || [];
         return participants.some((participant) =>
@@ -92,22 +99,31 @@ export default async function MessagesPage() {
         const [unreadRow] = await db.select({ value: count() }).from(threadMessages).where(and(...unreadConditions));
         const unreadCount = unreadRow?.value || 0;
 
+        const summary: DirectThreadSummary = {
+            agentId: agent.id,
+            threadId: thread.id,
+            agentName: agent.name,
+            agentRole: agent.role,
+            avatarUrl: agent.avatarUrl,
+            status: agent.status,
+            unreadCount,
+            lastMessageText: latestMessage?.text || null,
+            lastMessageAt: latestMessage ? new Date(latestMessage.createdAt).toISOString() : null,
+        };
+        // Someone else's private thread is never listed, even with a stray row.
+        if (!userMayUseThread(thread, userId)) continue;
+        const primary = directChatMode === "private" ? thread.ownerUserId === userId : !thread.isPrivate && !thread.ownerUserId;
+        if (!primary) {
+            secondaryThreads.push({ ...summary, kind: thread.ownerUserId ? "private" : "operations" });
+            continue;
+        }
+
         const current = directThreadByAgentId.get(agent.id);
         const latestTime = latestMessage ? new Date(latestMessage.createdAt).getTime() : 0;
         const currentTime = current?.lastMessageAt ? new Date(current.lastMessageAt).getTime() : 0;
 
         if (!current || latestTime >= currentTime) {
-            directThreadByAgentId.set(agent.id, {
-                agentId: agent.id,
-                threadId: thread.id,
-                agentName: agent.name,
-                agentRole: agent.role,
-                avatarUrl: agent.avatarUrl,
-                status: agent.status,
-                unreadCount,
-                lastMessageText: latestMessage?.text || null,
-                lastMessageAt: latestMessage ? new Date(latestMessage.createdAt).toISOString() : null,
-            });
+            directThreadByAgentId.set(agent.id, summary);
         }
     }
 
@@ -178,6 +194,7 @@ export default async function MessagesPage() {
                 <MessagingHub
                     agents={allAgents}
                     directThreads={directThreadSummaries}
+                    secondaryDirectThreads={secondaryThreads.sort((a, b) => a.agentName.localeCompare(b.agentName))}
                     initialTeamMessages={teamMessages}
                     initialTeamHasMore={initialTeamHasMore}
                     teamThreadId={teamThread.id}

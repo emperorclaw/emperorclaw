@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { and, eq, lt, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { agentRunDaily, agentRuns, messageRoutes } from "@/db/schema";
+import { agentRunDaily, agentRuns, messageRoutes, threadMessages } from "@/db/schema";
 import { redactSensitive } from "@/lib/live-feed-v2";
 import type { RouteReason } from "@/lib/message-routing";
 
@@ -134,6 +134,15 @@ export function finishUsageColumns(input: FinishRunInput) {
  * POST having landed first.
  */
 export async function insertRunStart(companyId: string, agentId: string, input: StartRunInput) {
+    // The trigger message's own thread wins over a missing or different
+    // caller-supplied threadId, so a run is never filed under (and judged
+    // visible by) the wrong thread.
+    let threadId = input.threadId ?? null;
+    if (input.triggerMessageId) {
+        const [trigger] = await db.select({ threadId: threadMessages.threadId }).from(threadMessages)
+            .where(and(eq(threadMessages.id, input.triggerMessageId), eq(threadMessages.companyId, companyId))).limit(1);
+        if (trigger) threadId = trigger.threadId;
+    }
     await db
         .insert(agentRuns)
         .values({
@@ -145,7 +154,7 @@ export async function insertRunStart(companyId: string, agentId: string, input: 
             bridgeVersion: input.bridgeVersion ?? null,
             triggerKind: input.triggerKind ?? "other",
             triggerMessageId: input.triggerMessageId ?? null,
-            threadId: input.threadId ?? null,
+            threadId,
             taskId: input.taskId ?? null,
             status: "running",
             // Clamped to [now − 48h, now + 5min]; an out-of-range start falls back to now.

@@ -73,9 +73,18 @@ maybe("a runtime failure is recorded, counted, and the sender is notified", asyn
     const { appendThreadMessage, ensureDirectThread } = await import("@/lib/control-plane");
     const thread = await ensureDirectThread(companyId, agent.id, person.userId);
     const msg = await appendThreadMessage({ companyId, threadId: thread.id, senderType: "human", senderId: person.userId, targetAgentId: agent.id, text: "Draft the outreach email" });
+    // Claire's chat is private (new companies default to private direct chats):
+    // only a token bound to Viktor may report on it, as a real runtime does.
+    const { companyTokens } = await getSchema();
+    const { createHash } = await import("node:crypto");
+    const agentToken = `ec_test_${crypto.randomUUID().replace(/-/g, "")}`;
+    await (await getDb()).insert(companyTokens).values({
+        companyId, agentId: agent.id, tokenHash: createHash("sha256").update(agentToken).digest("hex"), name: "viktor", scope: "mcp_full",
+    });
+    void rawToken;
     const status = await import("@/app/api/mcp/chat/status/route");
     const post = (body: Record<string, unknown>) => status.POST(makeRequest("http://localhost/api/mcp/chat/status", {
-        method: "POST", headers: { authorization: `Bearer ${rawToken}` }, body: { threadId: thread.id, agentId: agent.id, messageId: msg.id, ...body },
+        method: "POST", headers: { authorization: `Bearer ${agentToken}` }, body: { threadId: thread.id, agentId: agent.id, messageId: msg.id, ...body },
     }));
     // Two failed attempts, then the runtime gives up.
     for (let i = 0; i < 2; i++) {

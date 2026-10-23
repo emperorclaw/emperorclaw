@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, projects, tasks } from "@/db/schema";
+import { agents, projects, taskEvents, tasks } from "@/db/schema";
+import { singleHumanOwner } from "@/lib/direct-chat-mode";
 import { appendThreadMessage, ensureDirectThread } from "@/lib/control-plane";
 import { getAgentScope, getAllowedProjectIds } from "@/lib/agent-scope";
 import { SLA_TRACKED_TASK_STATES } from "@/lib/task-state";
@@ -153,8 +154,30 @@ function readAgentWakeState(metadataJson: unknown): AgentWakeState | null {
     return { lastWakeAt: candidate.lastWakeAt, pending: candidate.pending as WakeTaskSummary[] };
 }
 
+/**
+ * The person behind each task: the first human who acted on it (normally its
+ * creator). Tasks no human touched map to null.
+ */
+async function taskHumanOwners(companyId: string, taskIds: string[]): Promise<(string | null)[]> {
+    if (taskIds.length === 0) return [];
+    const rows = await db.selectDistinctOn([taskEvents.taskId], { taskId: taskEvents.taskId, actorId: taskEvents.actorId })
+        .from(taskEvents)
+        .where(and(
+            eq(taskEvents.companyId, companyId),
+            inArray(taskEvents.taskId, taskIds),
+            eq(taskEvents.actorType, "human"),
+            sql`${taskEvents.actorId} IS NOT NULL`,
+        ))
+        .orderBy(taskEvents.taskId, taskEvents.createdAt);
+    const byTask = new Map(rows.map((r) => [r.taskId, r.actorId]));
+    return taskIds.map((id) => byTask.get(id) ?? null);
+}
+
 async function postWakeMessage(companyId: string, agentId: string, items: WakeTaskSummary[], reason: WakeReason): Promise<void> {
-    const thread = await ensureDirectThread(companyId, agentId, null);
+    // Private direct chats: a batch that all comes from one person lands in that
+    // person's thread with the agent; anything else in its Operations thread.
+    const owner = singleHumanOwner(await taskHumanOwners(companyId, items.map((i) => i.id)).catch(() => []));
+    const thread = await ensureDirectThread(companyId, agentId, owner);
     await appendThreadMessage({
         companyId,
         threadId: thread.id,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mcpTokenMayStartRun } from "@/lib/thread-access";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { insertRunStart, startRunSchema, payloadTooLarge } from "@/lib/run-ledger";
@@ -43,6 +44,12 @@ export async function POST(req: NextRequest) {
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Access denied";
         return NextResponse.json({ error: msg }, { status: msg.startsWith("Access denied") ? 403 : 404 });
+    }
+
+    // A run may only point at a private direct thread from that thread's own agent's token.
+    const boundAgentId = auth.companyToken!.agentId ?? null;
+    if (!(await mcpTokenMayStartRun(companyId, boundAgentId, input))) {
+        return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
     const limit = consumeRateLimit({

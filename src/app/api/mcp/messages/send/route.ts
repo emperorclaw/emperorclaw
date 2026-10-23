@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { sendThreadMessageFromMcp } from "@/lib/openclaw/messaging";
+import { mcpTokenMayUseMessageId, mcpTokenMayUseThreadId } from "@/lib/thread-access";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
@@ -133,6 +134,14 @@ export async function POST(req: NextRequest) {
         // A token bound to an agent may only send as that agent.
         const effectiveAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, agentId || null);
 
+        // A person's private direct thread (named directly or via the message
+        // being answered) is only for a token bound to that thread's agent.
+        const boundAgentId = auth.companyToken!.agentId ?? null;
+        if (!(await mcpTokenMayUseThreadId(companyId, boundAgentId, thread_id))
+            || !(await mcpTokenMayUseMessageId(companyId, boundAgentId, replyToMessageId))) {
+            return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+        }
+
         // Deduplicate: reject if this agent already sent the exact same
         // text in this thread within the last 2 minutes. This is a real fix —
         // it prevents token-wasting duplicate messages from being stored at all.
@@ -150,6 +159,7 @@ export async function POST(req: NextRequest) {
             threadId: thread_id || null,
             fromUserId: from_user_id || null,
             agentId: effectiveAgentId,
+            callerAgentId: auth.companyToken!.agentId ?? null,
             targetAgentId: targetAgentId || target_agent_id || null,
             threadType: thread_type || null,
             replyToMessageId: replyToMessageId || null,

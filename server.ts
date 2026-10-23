@@ -7,6 +7,7 @@ import { Pool, PoolClient } from 'pg';
 import { UTC_SESSION_OPTIONS } from "./src/db/pg-utc";
 import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
 import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
+import { parseRealtimeNotification, socketReceives } from './src/lib/realtime-delivery';
 
 const dev = process.env.NODE_ENV === 'development';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
@@ -43,7 +44,8 @@ function resolveClientIp(req: IncomingMessage): string {
   return first ? normalizeIp(first) : peer;
 }
 
-type CompanySocket = WebSocket & { companyId?: string };
+// agentId: the agent the token is bound to (null for a company-wide token).
+type CompanySocket = WebSocket & { companyId?: string; agentId?: string | null };
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -96,6 +98,7 @@ app.prepare().then(() => {
             wss.handleUpgrade(request, socket, head, (ws) => {
                 const companySocket = ws as CompanySocket;
                 companySocket.companyId = auth.companyToken.companyId;
+                companySocket.agentId = auth.companyToken.agentId ?? null;
                 wss.emit('connection', companySocket, request);
             });
         } catch(e) {
@@ -181,14 +184,15 @@ app.prepare().then(() => {
       client.on('notification', (msg) => {
         if (!msg.payload) return;
         try {
-          const data = JSON.parse(msg.payload);
-          const targetCompanyId = data.companyId;
-          const payload = data.payload;
+          const notification = parseRealtimeNotification(msg.payload);
+          if (!notification) return;
 
+          // Events about a private direct thread carry an audience (its agent):
+          // only sockets bound to that agent receive them, never the company.
           wss.clients.forEach((client) => {
             const companySocket = client as CompanySocket;
-            if (companySocket.readyState === WebSocket.OPEN && companySocket.companyId === targetCompanyId) {
-              companySocket.send(JSON.stringify(payload));
+            if (companySocket.readyState === WebSocket.OPEN && socketReceives(notification, companySocket)) {
+              companySocket.send(notification.message);
             }
           });
         } catch (e) {

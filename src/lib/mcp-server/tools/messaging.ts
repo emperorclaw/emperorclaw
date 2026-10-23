@@ -19,6 +19,7 @@ import {
     type GroupActor,
 } from "@/lib/groups";
 import { resolveAgentId } from "@/lib/mcp";
+import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
 
 /**
  * Private agent pair threads are a two-agent handoff. They must not leak into
@@ -58,7 +59,7 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
         },
     }, async ({ text, threadId, agentId, targetAgentId, threadType, private: isPrivate }) => {
         try {
-            const result = await sendThreadMessageFromMcp({ companyId, text, threadId, agentId, targetAgentId, threadType, private: isPrivate === true });
+            const result = await sendThreadMessageFromMcp({ companyId, text, threadId, agentId, callerAgentId: callerAgentId ?? null, targetAgentId, threadType, private: isPrivate === true });
             return jsonResult(result);
         } catch (e) {
             return errorResult(e);
@@ -83,6 +84,8 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
             // Private agent pair threads are never listed except to the caller
             // agent that is one of their two participants.
             threads = await excludePrivatePairThreads(companyId, threads, callerAgentId ?? null);
+            // A person's private direct thread only for a connection bound to its agent.
+            threads = threads.filter((thread) => agentTokenMayUseThread(thread, callerAgentId ?? null));
             return jsonResult({ threads });
         } catch (e) {
             return errorResult(e);

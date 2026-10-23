@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { companyMembers, tasks, users } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { isSelfHosted } from "@/lib/instance";
+import { archivePrivateThreadsOf } from "@/lib/control-plane";
 
 // ── PUT /api/instance/members/[userId]/role — Change role ─────────────────
 
@@ -207,6 +208,8 @@ export async function DELETE(
                 eq(companyMembers.userId, userId),
                 eq(companyMembers.companyId, ctx.companyId),
             ));
+            // Their private chats with agents are kept but hidden from everyone.
+            await archivePrivateThreadsOf(ctx.companyId, userId, tx);
         });
 
         return NextResponse.json({ success: true }, { status: 200 });

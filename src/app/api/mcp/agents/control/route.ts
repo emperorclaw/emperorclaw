@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { threadMessages } from "@/db/schema";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { privateThreadsHiddenFromToken } from "@/lib/thread-access";
 
 async function actor(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -11,7 +12,7 @@ async function actor(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const agentId = await resolveBoundAgentId(companyId, auth.companyToken!, new URL(req.url).searchParams.get("agentId"));
     if (!agentId) return { error: NextResponse.json({ error: "agentId is required" }, { status: 400 }) };
-    return { companyId, agentId };
+    return { companyId, agentId, boundAgentId: auth.companyToken!.agentId ?? null };
 }
 export async function GET(req: NextRequest) {
     try {
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
         const { companyId, agentId } = auth;
         const commands = await db.select().from(threadMessages).where(and(
             eq(threadMessages.companyId, companyId!), eq(threadMessages.targetAgentId, agentId!),
+            privateThreadsHiddenFromToken(companyId!, auth.boundAgentId),
             eq(threadMessages.senderType, "system"), eq(threadMessages.deliveryState, "queued"),
             sql`${threadMessages.metadataJson}->'runtimeControl'->>'action' IN ('kill', 'replace')`,
         )).orderBy(asc(threadMessages.createdAt), asc(threadMessages.id)).limit(100);

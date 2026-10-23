@@ -7,6 +7,7 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { appendThreadMessage, ensureTeamThread } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { parseJsonBody, optionalString } from "@/lib/validation";
+import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 
 const inboundWebhookSchema = z.object({
     event: z.string(),
@@ -63,19 +64,26 @@ export async function POST(req: NextRequest) {
         // A caller-supplied thread_id must belong to the caller's company —
         // otherwise a token from one tenant could inject messages into another
         // tenant's thread.
-        let threadId = thread.id;
+        let target: typeof messageThreads.$inferSelect = thread;
         if (thread_id) {
-            const [ownedThread] = await db.select({ id: messageThreads.id }).from(messageThreads)
+            const [ownedThread] = await db.select().from(messageThreads)
                 .where(and(
                     eq(messageThreads.id, thread_id),
                     eq(messageThreads.companyId, companyId),
                 ))
                 .limit(1);
-            if (!ownedThread) {
+            // A person's private direct thread reads as missing to any token
+            // but one bound to that thread's own agent.
+            if (!ownedThread || !agentTokenMayUseThread(ownedThread, auth.companyToken!.agentId)) {
                 return NextResponse.json({ error: "Thread not found" }, { status: 404 });
             }
-            threadId = ownedThread.id;
+            // Its only human is its owner: nobody may post there as someone else.
+            if (isPrivateDirectThread(ownedThread) && (!ownedThread.ownerUserId || from_user_id !== ownedThread.ownerUserId)) {
+                return NextResponse.json({ error: "Access denied: only the thread's owner can write in a private chat" }, { status: 403 });
+            }
+            target = ownedThread;
         }
+        const threadId = target.id;
 
         const newMessage = await appendThreadMessage({
             companyId,
@@ -88,7 +96,8 @@ export async function POST(req: NextRequest) {
             createdAt: timestamp ? new Date(timestamp) : new Date(),
         });
 
-        broadcastMcpEvent(companyId, { type: 'thread_message', thread, message: newMessage });
+        // The thread the message was actually stored in (its audience follows it).
+        broadcastMcpEvent(companyId, { type: 'thread_message', thread: target, message: newMessage });
 
         // 5. Return 200
         return NextResponse.json({ ok: true });

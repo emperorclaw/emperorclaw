@@ -196,6 +196,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/__fake/control":
                 cmd = {"id": str(uuid.uuid4()), "agentId": body["agentId"], "action": body.get("action", "stop"),
                        "messageId": body.get("messageId"), "threadId": body.get("threadId"), "createdAt": iso()}
+                if body.get("scope"):
+                    cmd["scope"] = body["scope"]  # replace in a private direct thread: "thread"
                 STORE.controls.append(cmd)
                 self._reply({"ok": True, "id": cmd["id"]})
             elif path == "/__fake/outage":
@@ -293,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
                 "gatewayTopology": topo, "deployMode": body.get("deployMode"), "transport": body.get("transport")}
         return 200, {"runtimeNode": node, "serverCapabilities": SERVER_CAPABILITIES,
                      "replyFormatGuide": REPLY_FORMAT_GUIDE,
-                     "bridge": {"latestVersion": "0.9.2", "updateState": "current"},
+                     "bridge": {"latestVersion": "0.9.3", "updateState": "current"},
                      "duplicateRuntime": ({"runtimeId": "other-runtime", "hostname": "elsewhere"} if dup else None),
                      "sharedHostOk": shared_ok}, None, None
 

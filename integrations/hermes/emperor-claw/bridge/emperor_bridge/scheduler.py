@@ -156,6 +156,21 @@ class Scheduler:
         self._submit_attempt.clear()
         return dropped
 
+    def clear_thread(self, thread_id: str, *, before: Any = None) -> list[InboundMessage]:
+        """Drop one thread's queued messages (thread-scoped replace). With `before` (an ISO time),
+        only those created before it: the replacing prompt itself may already be queued."""
+        cutoff = _instant(before)
+        queue = self._pending.get(thread_id) or deque()
+        dropped = [m for m in queue if cutoff is None or (_instant(m.raw.get("createdAt")) or 0.0) < cutoff]
+        for message in dropped:
+            queue.remove(message)
+            self._known_ids.discard(message.id)
+        if not queue:
+            self._pending.pop(thread_id, None)
+            self._ready.pop(thread_id, None)
+            self._submit_attempt.pop(thread_id, None)
+        return dropped
+
     def pause(self) -> None:
         self._paused = True
 
@@ -228,3 +243,11 @@ class Scheduler:
             if not self._in_flight and not self._reserved:
                 self._idle.set()
             self._pump()
+
+
+def _instant(value: Any) -> Optional[float]:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp() if value else None
+    except ValueError:
+        return None

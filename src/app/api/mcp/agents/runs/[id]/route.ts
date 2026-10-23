@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns } from "@/db/schema";
 import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
+import { mcpTokenMayUseMessageId } from "@/lib/thread-access";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, finishUsageColumns, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
 
@@ -43,6 +44,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ error: `Invalid request body — ${path}: ${issue?.message ?? "invalid"}` }, { status: 400 });
     }
     const input = parsed.data;
+    // The reply a run names must not be a message in a private thread this token may not use.
+    if (!(await mcpTokenMayUseMessageId(companyId, auth.companyToken!.agentId ?? null, input.replyMessageId))) {
+        return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    }
 
     const limit = consumeRateLimit({
         key: `mcp:runs:finish:${auth.companyToken!.agentId ?? companyId}`,

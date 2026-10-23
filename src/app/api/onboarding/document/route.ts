@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
             .where(and(eq(agents.companyId, ctx.companyId), eq(agents.id, agentId), isNull(agents.deletedAt))).limit(1).catch(() => []) : [];
         if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         const website = typeof body.website === "string" && /^https?:\/\//i.test(body.website.trim()) ? body.website.trim().slice(0, 200) : null;
-        const started = await startCompanyDocumentation({ companyId: ctx.companyId, agentId: agent.id, website });
+        const started = await startCompanyDocumentation({ companyId: ctx.companyId, agentId: agent.id, website, userId: ctx.userId });
         return NextResponse.json({ ...started, progress: await documentationProgress(ctx.companyId, started.taskId) }, { status: started.created ? 201 : 200 });
     } catch (error) {
         return failure(error);

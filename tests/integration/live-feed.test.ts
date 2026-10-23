@@ -4,6 +4,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { dbAvailable, getDb, getSchema, makeRequest, resetDb, seedAgent, seedCompanyWithToken } from "./_helper";
 const maybe = dbAvailable ? test : test.skip;
 
+/** One shared direct thread per agent (companies created before the setting). */
+async function useSharedDirectChats(companyId: string) {
+    const db = await getDb();
+    const { companies } = await getSchema();
+    const { eq } = await import("drizzle-orm");
+    await db.update(companies).set({ directChatMode: "shared" }).where(eq(companies.id, companyId));
+}
+
 async function seedScopedToken(companyId: string, scope: "read_only" | "requests") {
     const db = await getDb();
     const { companyTokens } = await getSchema();
@@ -202,6 +210,8 @@ type DmThread = { agentId: string; messages: { id: string; me: boolean; text: st
 maybe("dm carries only the token creator's own exchanges with each agent", async () => {
     await resetDb();
     const { companyId } = await seedCompanyWithToken();
+    // The shared-channel `dm` rule (private mode is covered in private-thread-access.test.ts).
+    await useSharedDirectChats(companyId);
     const creator = await seedMember(companyId, "owner");
     const other = await seedMember(companyId);
     const db = await getDb();
@@ -316,6 +326,8 @@ maybe("dm carries only the token creator's own exchanges with each agent", async
 maybe("a member's screen never shows another member's chats, even with the flag on", async () => {
     await resetDb();
     const { companyId } = await seedCompanyWithToken();
+    // The shared-channel `dm` rule (private mode is covered in private-thread-access.test.ts).
+    await useSharedDirectChats(companyId);
     const creator = await seedMember(companyId, "admin");
     const other = await seedMember(companyId, "admin");
     const plain = await seedMember(companyId);
@@ -340,6 +352,8 @@ maybe("a member's screen never shows another member's chats, even with the flag 
 maybe("v2: look, act, mood, thought, events and needs, with private threads kept off the screen", async () => {
     await resetDb();
     const { companyId } = await seedCompanyWithToken();
+    // The shared-channel `dm` rule (private mode is covered in private-thread-access.test.ts).
+    await useSharedDirectChats(companyId);
     const creator = await seedMember(companyId, "owner");
     const other = await seedMember(companyId);
     const db = await getDb();

@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { messageThreads, threadParticipants, projects, tasks } from "@/db/schema";
 import { ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { createGroup, GroupError, GROUP_THREAD_TYPE, isAgentPairThread } from "@/lib/groups";
+import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,7 +42,9 @@ export async function GET(req: NextRequest) {
     if (projectId) conditions.push(eq(messageThreads.projectId, projectId));
     if (taskId) conditions.push(eq(messageThreads.taskId, taskId));
 
-    const threads = await db.select().from(messageThreads).where(and(...conditions));
+    // Private direct threads are listed only to a token bound to their agent.
+    const threads = (await db.select().from(messageThreads).where(and(...conditions)))
+        .filter((thread) => agentTokenMayUseThread(thread, auth.companyToken!.agentId));
 
     if (!agentId) {
         // No participant scoping → an everything-listing. Private agent pair

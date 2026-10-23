@@ -5,6 +5,7 @@ import { RUN_STATUSES } from "@/lib/run-ledger";
 import { liveUsageFromData, loadLiveRuns, type RunLive, type RunLiveUsage } from "@/lib/run-events";
 import { loadThreadVisibility, redactRunForViewer } from "@/lib/agent-activity";
 import type { TimelineStep } from "@/lib/live-activity";
+import { userMayUseThread } from "@/lib/direct-chat-mode";
 
 /**
  * Read side of the run ledger, used by the delivery inspector and the Agent →
@@ -46,8 +47,11 @@ export interface MessageDeliveryView {
     coalescedInto: string | null;
 }
 
-/** Every stored verdict for a message, plus the runs it triggered. */
-export async function loadMessageDelivery(companyId: string, messageId: string): Promise<MessageDeliveryView | null> {
+/**
+ * Every stored verdict for a message, plus the runs it triggered. A message in
+ * a private direct thread the viewer may not use reads as missing (null).
+ */
+export async function loadMessageDelivery(companyId: string, messageId: string, viewerUserId: string | null = null): Promise<MessageDeliveryView | null> {
     const [message] = await db
         .select({
             id: threadMessages.id,
@@ -57,12 +61,17 @@ export async function loadMessageDelivery(companyId: string, messageId: string):
             deliveryState: threadMessages.deliveryState,
             createdAt: threadMessages.createdAt,
             coalescedInto: sql<string | null>`${threadMessages.metadataJson}->>'coalescedIntoMessageId'`,
+            threadType: messageThreads.type,
+            threadOwnerUserId: messageThreads.ownerUserId,
+            threadIsPrivate: messageThreads.isPrivate,
         })
         .from(threadMessages)
+        .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
         .where(and(eq(threadMessages.id, messageId), eq(threadMessages.companyId, companyId)))
         .limit(1);
     if (!message) return null;
-    const { coalescedInto, ...messageView } = message;
+    const { coalescedInto, threadType, threadOwnerUserId, threadIsPrivate, ...messageView } = message;
+    if (!userMayUseThread({ type: threadType, ownerUserId: threadOwnerUserId, isPrivate: threadIsPrivate }, viewerUserId)) return null;
 
     const verdicts = await db
         .select({

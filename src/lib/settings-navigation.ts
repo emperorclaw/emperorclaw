@@ -7,6 +7,7 @@ export const SETTINGS_SECTIONS = [
     { label: 'Workspace', items: [
         { id:'routines', label:'Agent routines', description:'Set the daily review and maintain shared operating rules.' },
         { id:'members', label:'People & access', description:'Manage people and their workspace permissions.', admin:true },
+        { id:'direct-chats', label:'Direct chats', description:'Choose whether direct chats with agents are shared or private.', admin:true },
     ] },
     { label: 'Connections', items: [
         { id:'connections', label:'Agent connections', description:'Add agents or connect a runtime you already use.' },

@@ -5,6 +5,7 @@ import { normalizeExecutionState } from "@/lib/project-workflow";
 import { markMessageFailedByRuntime, updateAgentThreadParticipant, updateThreadExecutionState } from "@/lib/control-plane";
 import { notifyRuntimeFailure } from "@/lib/notifications";
 import { touchAgentLiveness } from "@/lib/lifecycle";
+import { mcpTokenMayUseMessageId, mcpTokenMayUseThreadId } from "@/lib/thread-access";
 
 // How long one typing=true keeps the agent shown as working. The Hermes bridge
 // refreshes every ~3 s while a turn runs; a 5 s window lapsed on any late beat
@@ -31,6 +32,11 @@ export async function POST(req: NextRequest) {
         if (!agentId) return NextResponse.json({ error: "agentId is required for status updates" }, { status: 400 });
 
         const resolvedAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
+        // A person's private direct thread: only a token bound to its agent.
+        if (!(await mcpTokenMayUseThreadId(companyId, auth.companyToken!.agentId, threadId))
+            || !(await mcpTokenMayUseMessageId(companyId, auth.companyToken!.agentId, typeof messageId === "string" ? messageId : null))) {
+            return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+        }
         await touchAgentLiveness(companyId, resolvedAgentId);
 
         const updates: { lastReadAt?: Date; typingUntil?: Date | null; currentActivity?: string | null } = {};

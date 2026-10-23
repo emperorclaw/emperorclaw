@@ -9,6 +9,7 @@ import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 import { recordInterestingVerdicts, type VerdictRecord } from "@/lib/run-ledger";
+import { privateThreadsHiddenFromToken } from "@/lib/thread-access";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -80,12 +81,18 @@ export async function GET(req: NextRequest) {
             }
 
             // Scope delivery to threads this agent belongs to: the shared team
-            // channel (everyone) plus its own direct thread. This is the fix for
+            // channel (everyone) plus every direct thread it is in — its shared
+            // (Operations) thread and, in private direct-chat mode, each
+            // person's own thread with it. This is the fix for
             // messages "leaking" into the wrong agent's chat — an agent must only
             // receive messages addressed to it or posted in the team channel.
             // Recomputed each iteration so a direct thread created mid-poll (the
             // human's first DM provisions it) is picked up without waiting for
             // the next sync call.
+            // A person's private direct thread reaches only a token bound to its
+            // own agent: never a company-wide token, whatever agentId it names.
+            conditions.push(privateThreadsHiddenFromToken(companyId, auth.companyToken!.agentId ?? null));
+
             if (scopeAgentId) {
                 conditions.push(sql`${threadMessages.threadId} IN (
                     SELECT id FROM message_threads

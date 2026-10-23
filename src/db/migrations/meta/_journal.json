@@ -435,6 +435,20 @@
       "when": 1792702721429,
       "tag": "0061_agent-run-events",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792766272712,
+      "tag": "0062_direct-chat-mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792769674927,
+      "tag": "0063_private-direct-flag",
+      "breakpoints": true
     }
   ]
 }

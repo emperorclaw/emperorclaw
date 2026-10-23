@@ -8,6 +8,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
 import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata } from "@/lib/message-routing";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
+import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -28,7 +29,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
     ).limit(1);
 
-    if (!thread) {
+    // A person's private direct thread: only a token bound to its agent.
+    if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)) {
         return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
         ).limit(1);
 
-        if (!thread) {
+        if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)) {
             return NextResponse.json({ error: "Thread not found" }, { status: 404 });
         }
 
@@ -88,6 +90,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const resolvedSenderId = senderType === "agent" && senderId
             ? await resolveAgentId(companyId, senderId)
             : senderId || null;
+        if (isPrivateDirectThread(thread) && resolvedSenderId && resolvedSenderId !== thread.directAgentId) {
+            return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+        }
         const isGroup = thread.type === GROUP_THREAD_TYPE;
         const isAgentPair = isGroup && isAgentPairThread(thread);
         // Groups are members-only: whoever posts (the token's bound agent, or

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { saveThreadMessageReasoning } from "@/lib/control-plane";
 import { REASONING_HISTORY_MAX_CHARS } from "@/lib/reasoning-history";
+import { mcpTokenMayUseMessageId } from "@/lib/thread-access";
 
 /**
  * POST /api/mcp/chat/reasoning — persist the reasoning transcript for one
@@ -38,6 +39,9 @@ export async function POST(req: NextRequest) {
         }
 
         const resolvedAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
+        if (!(await mcpTokenMayUseMessageId(companyId, auth.companyToken!.agentId, messageId))) {
+            return NextResponse.json({ error: "Message not found" }, { status: 404 });
+        }
 
         // The cap is re-applied inside saveThreadMessageReasoning. The client's
         // own cap is a courtesy to the network, never a guarantee: a client can

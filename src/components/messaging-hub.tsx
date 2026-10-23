@@ -57,6 +57,7 @@ type DirectThreadSummary = {
     unreadCount: number;
     lastMessageText: string | null;
     lastMessageAt: string | null;
+    kind?: "operations" | "private";
 };
 
 export type GroupThreadSummary = {
@@ -72,6 +73,12 @@ export type GroupThreadSummary = {
 };
 
 const GROUP_PREFIX = "group:";
+// A secondary direct thread (an agent's Operations thread, or an earlier private one).
+const DIRECT_THREAD_PREFIX = "thread:";
+
+function secondaryThreadLabel(thread: DirectThreadSummary) {
+    return thread.kind === "private" ? `${thread.agentName} · Private` : `${thread.agentName} · Operations`;
+}
 
 const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
 const AGENT_CONVERSATIONS_KEY = "emperor-messages-show-agent-conversations";
@@ -96,6 +103,7 @@ function formatRelativeMessageTime(value: string | null) {
 export function MessagingHub({
     agents,
     directThreads,
+    secondaryDirectThreads = [],
     initialTeamMessages = [],
     initialTeamHasMore = false,
     teamThreadId,
@@ -106,6 +114,7 @@ export function MessagingHub({
 }: {
     agents: Agent[];
     directThreads: DirectThreadSummary[];
+    secondaryDirectThreads?: DirectThreadSummary[];
     initialTeamMessages?: TeamMessage[];
     initialTeamHasMore?: boolean;
     teamThreadId: string;
@@ -116,6 +125,8 @@ export function MessagingHub({
 }) {
     const router = useRouter();
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    // Set only for a secondary direct thread; null = the agent's main conversation.
+    const [selectedDirectThreadId, setSelectedDirectThreadId] = useState<string | null>(null);
     const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
     const [groupDialog, setGroupDialog] = useState<{ mode: "create" } | { mode: "edit"; groupId: string } | null>(null);
     const [showAgentConversations, setShowAgentConversations] = useState(false);
@@ -128,6 +139,16 @@ export function MessagingHub({
             thread.agentName.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }, [directThreads, searchQuery]);
+
+    const filteredSecondaryThreads = useMemo(() => {
+        return secondaryDirectThreads.filter((thread) =>
+            thread.agentName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [secondaryDirectThreads, searchQuery]);
+    const activeSecondaryThread = useMemo(
+        () => secondaryDirectThreads.find((thread) => thread.threadId === selectedDirectThreadId) ?? null,
+        [secondaryDirectThreads, selectedDirectThreadId],
+    );
 
     const activeAgent = useMemo(() => {
         return agents.find(a => a.id === selectedAgentId);
@@ -157,11 +178,22 @@ export function MessagingHub({
         const requestedAgent = new URLSearchParams(window.location.search).get("agent");
         // `?group=<id>`: a notification or shared link opens that group.
         const requestedGroup = new URLSearchParams(window.location.search).get("group");
+        // `?thread=<id>`: a notification names the exact direct conversation.
+        const requestedThread = new URLSearchParams(window.location.search).get("thread");
+        const requestedSecondary = requestedThread ? secondaryDirectThreads.find((t) => t.threadId === requestedThread) : undefined;
+        const requestedPrimary = requestedThread ? directThreads.find((t) => t.threadId === requestedThread) : undefined;
+        const savedSecondary = savedConversationThread(localStorage.getItem(ACTIVE_CONVERSATION_KEY));
         const savedConversation = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
         setShowAgentConversations(localStorage.getItem(AGENT_CONVERSATIONS_KEY) === "1");
         const savedFocusMode = localStorage.getItem(FOCUS_MODE_KEY) === "1";
 
-        if (requestedGroup && groups.some((g) => g.id === requestedGroup)) {
+        if (requestedSecondary) {
+            openSecondaryState(requestedSecondary);
+        } else if (requestedPrimary) {
+            setSelectedAgentId(requestedPrimary.agentId);
+            setMobileChatOpen(true);
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, requestedPrimary.agentId);
+        } else if (requestedGroup && groups.some((g) => g.id === requestedGroup)) {
             setSelectedGroupId(requestedGroup);
             if (groups.find((g) => g.id === requestedGroup)?.isAgentPair) setShowAgentConversations(true);
             setSelectedAgentId(null);
@@ -175,6 +207,8 @@ export function MessagingHub({
             setSelectedGroupId(savedConversation.slice(GROUP_PREFIX.length));
             setSelectedAgentId(null);
             setMobileChatOpen(true);
+        } else if (savedSecondary) {
+            openSecondaryState(savedSecondary);
         } else if (savedConversation === TEAM_CONVERSATION) {
             setSelectedAgentId(null);
             setMobileChatOpen(true);
@@ -189,7 +223,21 @@ export function MessagingHub({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [agents]);
 
+    function savedConversationThread(saved: string | null) {
+        if (!saved?.startsWith(DIRECT_THREAD_PREFIX)) return undefined;
+        return secondaryDirectThreads.find((t) => `${DIRECT_THREAD_PREFIX}${t.threadId}` === saved);
+    }
+
+    function openSecondaryState(thread: DirectThreadSummary) {
+        setSelectedGroupId(null);
+        setSelectedAgentId(thread.agentId);
+        setSelectedDirectThreadId(thread.threadId);
+        setMobileChatOpen(true);
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, `${DIRECT_THREAD_PREFIX}${thread.threadId}`);
+    }
+
     const openGroup = (groupId: string) => {
+        setSelectedDirectThreadId(null);
         setSelectedAgentId(null);
         setSelectedGroupId(groupId);
         setMobileChatOpen(true);
@@ -197,6 +245,7 @@ export function MessagingHub({
     };
 
     const openTeamChannel = () => {
+        setSelectedDirectThreadId(null);
         setSelectedGroupId(null);
         setSelectedAgentId(null);
         setMobileChatOpen(true);
@@ -204,6 +253,7 @@ export function MessagingHub({
     };
 
     const openDirectThread = (agentId: string) => {
+        setSelectedDirectThreadId(null);
         setSelectedGroupId(null);
         setSelectedAgentId(agentId);
         setMobileChatOpen(true);
@@ -220,11 +270,15 @@ export function MessagingHub({
 
     const conversationTitle = activeGroup?.isAgentPair
         ? `Agent conversation: ${activeGroup.title}`
-        : activeGroup?.title || activeAgent?.name || "Team Channel";
+        : activeGroup?.title || (activeSecondaryThread ? secondaryThreadLabel(activeSecondaryThread) : activeAgent?.name) || "Team Channel";
     const conversationDescription = activeGroup?.isAgentPair
         ? activeGroup.description || "Private agent conversation"
         : activeGroup
             ? activeGroup.description || `${groupAgents.length} agent${groupAgents.length === 1 ? "" : "s"} · @mention a member to get a reply`
+            : activeSecondaryThread
+                ? activeSecondaryThread.kind === "private"
+                    ? "Your private conversation from when direct chats were private"
+                    : "Shared with the team: system updates and earlier shared chats"
             : activeAgent
                 ? activeAgent.role || "Direct agent conversation"
                 : "Everyone can see & reply. @mention an agent to get replies.";
@@ -369,7 +423,7 @@ export function MessagingHub({
                                 onClick={() => openDirectThread(thread.agentId)}
                                 className={cn(
                                     "group flex min-h-16 w-full items-start gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
-                                    selectedAgentId === thread.agentId
+                                    selectedAgentId === thread.agentId && !selectedDirectThreadId
                                         ? "border border-cyan-400/30 bg-cyan-400/10"
                                         : "border border-transparent hover:bg-zinc-900/70"
                                 )}
@@ -390,7 +444,7 @@ export function MessagingHub({
                                         <div className="min-w-0">
                                             <span className={cn(
                                                 "block text-sm font-semibold tracking-tight truncate",
-                                                selectedAgentId === thread.agentId ? "text-cyan-100" : "text-zinc-300"
+                                                selectedAgentId === thread.agentId && !selectedDirectThreadId ? "text-cyan-100" : "text-zinc-300"
                                             )}>
                                                 {thread.agentName}
                                             </span>
@@ -415,6 +469,44 @@ export function MessagingHub({
                                 </div>
                             </button>
                         ))}
+
+                        {filteredSecondaryThreads.length > 0 && (
+                            <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
+                                Shared agent threads
+                            </div>
+                        )}
+                        {filteredSecondaryThreads.map((thread) => {
+                            const selected = selectedDirectThreadId === thread.threadId;
+                            return (
+                                <button
+                                    key={thread.threadId}
+                                    onClick={() => openSecondaryState(thread)}
+                                    className={cn(
+                                        "group flex min-h-14 w-full items-center gap-3 rounded-xl p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70",
+                                        selected ? "border border-cyan-400/30 bg-cyan-400/10" : "border border-transparent hover:bg-zinc-900/70"
+                                    )}
+                                >
+                                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-zinc-800">
+                                        <img
+                                            src={agentAvatarSrc({ id: thread.agentId, avatarUrl: thread.avatarUrl })}
+                                            className="h-full w-full object-cover"
+                                            alt=""
+                                        />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className={cn("truncate text-sm font-semibold tracking-tight", selected ? "text-cyan-100" : "text-zinc-300")}>{secondaryThreadLabel(thread)}</span>
+                                            {thread.unreadCount > 0 && (
+                                                <span className="min-w-5 shrink-0 rounded-full bg-cyan-400 px-1.5 py-0.5 text-center text-[10px] font-bold text-cyan-950">{thread.unreadCount}</span>
+                                            )}
+                                        </div>
+                                        <span className="block truncate text-[11px] text-zinc-500">
+                                            {thread.lastMessageText || formatRelativeMessageTime(thread.lastMessageAt)}
+                                        </span>
+                                    </div>
+                                </button>
+                            );
+                        })}
 
                         {filteredThreads.length === 0 && (
                             <div className="mt-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8 text-center">
@@ -625,7 +717,7 @@ export function MessagingHub({
                     </div>
                 ) : (
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                        <AgentDirectChat key={selectedAgentId} agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} />
+                        <AgentDirectChat key={`${selectedAgentId}:${selectedDirectThreadId ?? ""}`} agentId={selectedAgentId} agentName={activeAgent?.name || "Agent"} hideHeader={true} directThreadId={selectedDirectThreadId} />
                     </div>
                 )}
             </section>

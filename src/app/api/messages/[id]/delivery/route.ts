@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId } from "@/lib/auth";
+import { getCompanyId, getUserId } from "@/lib/auth";
 import { loadMessageDelivery } from "@/lib/run-ledger-reads";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     if (!UUID_RE.test(id)) return NextResponse.json({ error: "Invalid message id" }, { status: 400 });
 
-    const view = await loadMessageDelivery(companyId, id);
+    // A message in someone else's private direct thread reads as missing.
+    const view = await loadMessageDelivery(companyId, id, await getUserId());
     if (!view) return NextResponse.json({ error: "Message not found" }, { status: 404 });
     return NextResponse.json(view);
 }

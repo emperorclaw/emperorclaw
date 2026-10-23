@@ -1,5 +1,7 @@
 import { db } from "@/db";
-import { sql } from "drizzle-orm";
+import { messageThreads } from "@/db/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { eventThreadIds, mostRestrictiveAudience, type RealtimeAudience } from "@/lib/direct-chat-mode";
 
 /**
  * Broadcasts an event to connected MCP WebSocket clients for a specific company.
@@ -12,13 +14,36 @@ import { sql } from "drizzle-orm";
 // the whole request. Stay safely under the limit to leave room for UTF-8.
 const NOTIFY_PAYLOAD_LIMIT = 7500;
 
+/**
+ * Who may receive an event: null = every socket of the company. An event about
+ * a private direct thread goes only to sockets bound to that thread's agent
+ * (server.ts applies it). Throws when the thread cannot be looked up, so a
+ * lookup failure never fans private data out to the whole company.
+ */
+export async function realtimeAudienceFor(companyId: string, payload: unknown): Promise<RealtimeAudience | null> {
+    // A non-uuid cannot name a thread, so there is nothing private to protect.
+    const threadIds = eventThreadIds(payload)
+        .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (threadIds.length === 0) return null;
+    const threads = await db.select({
+        type: messageThreads.type,
+        ownerUserId: messageThreads.ownerUserId,
+        isPrivate: messageThreads.isPrivate,
+        directAgentId: messageThreads.directAgentId,
+    }).from(messageThreads)
+        .where(and(inArray(messageThreads.id, threadIds), eq(messageThreads.companyId, companyId)));
+    return mostRestrictiveAudience(threads);
+}
+
 export async function broadcastMcpEvent(companyId: string, payload: any) {
     if (!companyId) return;
     try {
-        let message = JSON.stringify({ companyId, payload });
+        const audience = await realtimeAudienceFor(companyId, payload);
+        let message = JSON.stringify({ companyId, audience, payload });
         if (Buffer.byteLength(message, "utf8") > NOTIFY_PAYLOAD_LIMIT) {
             const compact = {
                 companyId,
+                audience,
                 payload: {
                     type: payload?.type ?? "event",
                     truncated: true,

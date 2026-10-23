@@ -27,6 +27,8 @@ import { agentMessageWakesAgent, agentStreakState, agentLoopMaxTurnsFor, AGENT_L
 import { notifyAgentMessage, notify, companyAdminIds } from "./notifications";
 import { isAgentPairThread } from "./groups";
 import { parseObjectiveStatusMarker, OBJECTIVE_STATUS_METADATA_KEY } from "./objective-status-marker";
+import { normalizeDirectChatMode, operationsThreadTitle, PRIVATE_DIRECT_THREAD_TITLE, agentTokenMayUseThread, userMayUseThread, type DirectChatMode, type ThreadPrivacy } from "./direct-chat-mode";
+import { isMissingSchemaError } from "./schema-compat";
 
 type SenderType = "human" | "agent" | "system";
 
@@ -160,14 +162,44 @@ function isUniqueViolation(error: unknown): boolean {
     return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
 }
 
+/** The company's direct-chat mode; "shared" for a database without the column yet. */
+export async function getDirectChatMode(companyId: string): Promise<DirectChatMode> {
+    try {
+        const [row] = await db.select({ mode: companies.directChatMode }).from(companies)
+            .where(eq(companies.id, companyId)).limit(1);
+        return normalizeDirectChatMode(row?.mode);
+    } catch (error) {
+        if (isMissingSchemaError(error)) return "shared";
+        throw error;
+    }
+}
+
+async function isCompanyMember(companyId: string, userId: string): Promise<boolean> {
+    if (!USER_ID_UUID_RE.test(userId)) return false;
+    const [row] = await db.select({ id: companyMembers.id }).from(companyMembers)
+        .where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, userId)))
+        .limit(1);
+    return Boolean(row);
+}
+
 /**
- * The shared channel for one agent: exactly one "direct" thread per
- * (company, agent), visible to the whole company. Every member is a participant
- * (for per-user read state); the agent is a participant. `userId` is accepted
- * for backward compatibility but no longer affects thread identity — it is NOT
- * used to fork per-user threads, and no participant ref is ever overwritten.
+ * The direct thread for one agent, per the company's direct-chat mode
+ * (lib/direct-chat-mode.ts).
+ *
+ * - shared mode, or no person given: the agent's shared thread — exactly one
+ *   live "direct" thread per (company, agent) with no owner, every member a
+ *   participant (for per-user read state). In private mode this is the agent's
+ *   "Operations" thread, where system traffic with nobody behind it lands.
+ * - private mode with a person: that person's own thread with the agent, one
+ *   per (company, agent, person); the person is its only human participant.
+ *
+ * No participant ref is ever overwritten.
  */
-export async function ensureDirectThread(companyId: string, agentId: string, _userId?: string | null) {
+export async function ensureDirectThread(companyId: string, agentId: string, userId?: string | null) {
+    const mode = await getDirectChatMode(companyId);
+    const ownerUserId = mode === "private" && userId && (await isCompanyMember(companyId, userId)) ? userId : null;
+    if (ownerUserId) return ensurePrivateDirectThread(companyId, agentId, ownerUserId);
+
     // Serialize creation per (company, agent) with a transaction-scoped advisory
     // lock. Without it, two concurrent callers both see "no thread yet" and each
     // insert one, permanently splitting the agent's DM history across duplicate
@@ -175,34 +207,35 @@ export async function ensureDirectThread(companyId: string, agentId: string, _us
     const thread = await db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}`}))`);
 
-        const [agentParticipant] = await tx.select({ threadId: threadParticipants.threadId })
-            .from(threadParticipants)
-            .innerJoin(messageThreads, and(
-                eq(messageThreads.id, threadParticipants.threadId),
+        // A private thread is never the shared one, even after its owner is
+        // deleted (owner_user_id then reads NULL, but is_private stays true).
+        const [existing] = await tx.select().from(messageThreads)
+            .where(and(
                 eq(messageThreads.companyId, companyId),
                 eq(messageThreads.type, "direct"),
+                eq(messageThreads.directAgentId, agentId),
+                isNull(messageThreads.ownerUserId),
+                eq(messageThreads.isPrivate, false),
                 isNull(messageThreads.archivedAt),
-            ))
-            .where(and(
-                eq(threadParticipants.companyId, companyId),
-                eq(threadParticipants.participantType, "agent"),
-                eq(threadParticipants.participantId, agentId),
             ))
             .orderBy(messageThreads.createdAt)
             .limit(1);
+        if (existing) return existing;
 
-        if (agentParticipant) {
-            const [existing] = await tx.select().from(messageThreads)
-                .where(eq(messageThreads.id, agentParticipant.threadId)).limit(1);
-            if (existing) return existing;
+        let title = "Direct Agent Thread";
+        if (mode === "private") {
+            const [agent] = await tx.select({ name: agents.name }).from(agents)
+                .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId))).limit(1);
+            title = operationsThreadTitle(agent?.name);
         }
 
         // None yet — create the agent's shared channel.
         const [created] = await tx.insert(messageThreads).values({
             companyId,
             type: "direct",
-            title: "Direct Agent Thread",
+            title,
             createdByType: "system",
+            directAgentId: agentId,
         }).returning();
 
         await tx.insert(threadParticipants).values({
@@ -218,6 +251,90 @@ export async function ensureDirectThread(companyId: string, agentId: string, _us
 
     await ensureThreadHumanParticipants(companyId, thread.id);
     return thread;
+}
+
+/** Private mode: one person's own thread with an agent (see ensureDirectThread). */
+async function ensurePrivateDirectThread(companyId: string, agentId: string, ownerUserId: string) {
+    return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`direct-thread:${companyId}:${agentId}:${ownerUserId}`}))`);
+
+        const [existing] = await tx.select().from(messageThreads)
+            .where(and(
+                eq(messageThreads.companyId, companyId),
+                eq(messageThreads.type, "direct"),
+                eq(messageThreads.directAgentId, agentId),
+                eq(messageThreads.ownerUserId, ownerUserId),
+                isNull(messageThreads.archivedAt),
+            ))
+            .orderBy(messageThreads.createdAt)
+            .limit(1);
+        if (existing) return existing;
+
+        const [created] = await tx.insert(messageThreads).values({
+            companyId,
+            type: "direct",
+            title: PRIVATE_DIRECT_THREAD_TITLE,
+            createdByType: "human",
+            createdById: ownerUserId,
+            directAgentId: agentId,
+            ownerUserId,
+            isPrivate: true,
+        }).returning();
+
+        // Only the owner: no ensureThreadHumanParticipants fan-out here.
+        await tx.insert(threadParticipants).values([
+            { threadId: created.id, companyId, participantType: "agent", participantId: agentId, role: "member" },
+            { threadId: created.id, companyId, participantType: "human", participantRef: ownerUserId, role: "member", lastReadAt: sql`now()` },
+        ]);
+
+        return created;
+    });
+}
+
+/**
+ * Whether a person may use a thread as a direct chat: any thread that is not
+ * a private direct thread, or a private one they own. Opening someone else's
+ * private thread must never make the viewer a participant.
+ */
+export function canUseDirectThread(thread: ThreadPrivacy, userId: string | null | undefined): boolean {
+    return userMayUseThread(thread, userId);
+}
+
+/**
+ * A person left the company: their private direct threads are archived (kept,
+ * hidden from everyone, including the agents' sync). Pass a transaction to run
+ * it with the membership removal.
+ */
+export async function archivePrivateThreadsOf(companyId: string, userId: string, executor: Pick<typeof db, "update"> = db) {
+    await executor.update(messageThreads).set({ archivedAt: new Date() }).where(and(
+        eq(messageThreads.companyId, companyId),
+        eq(messageThreads.type, "direct"),
+        eq(messageThreads.ownerUserId, userId),
+        isNull(messageThreads.archivedAt),
+    ));
+}
+
+/**
+ * A specific direct thread of an agent that a person takes part in (e.g. the
+ * agent's Operations thread in private mode), or null when it is not one.
+ */
+export async function getDirectThreadForUser(companyId: string, agentId: string, threadId: string, userId: string) {
+    if (!USER_ID_UUID_RE.test(threadId)) return null;
+    const [thread] = await db.select().from(messageThreads).where(and(
+        eq(messageThreads.id, threadId),
+        eq(messageThreads.companyId, companyId),
+        eq(messageThreads.type, "direct"),
+        eq(messageThreads.directAgentId, agentId),
+        isNull(messageThreads.archivedAt),
+    )).limit(1);
+    if (!thread || !canUseDirectThread(thread, userId)) return null;
+    const [participant] = await db.select({ id: threadParticipants.id }).from(threadParticipants).where(and(
+        eq(threadParticipants.companyId, companyId),
+        eq(threadParticipants.threadId, thread.id),
+        eq(threadParticipants.participantType, "human"),
+        eq(threadParticipants.participantRef, userId),
+    )).limit(1);
+    return participant ? thread : null;
 }
 
 /**
@@ -243,10 +360,12 @@ export async function markThreadRead(companyId: string, threadId: string, userId
     } else {
         // Only threads of this company. Opening a group records a read cursor
         // but doesn't make you a member: that happens when you post or are added.
-        const [thread] = await db.select({ type: messageThreads.type, description: messageThreads.description, createdByType: messageThreads.createdByType }).from(messageThreads)
+        const [thread] = await db.select({ type: messageThreads.type, description: messageThreads.description, createdByType: messageThreads.createdByType, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate }).from(messageThreads)
             .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
             .limit(1);
         if (!thread) return;
+        // Someone else's private direct thread: opening it must not add a reader.
+        if (!canUseDirectThread(thread, userId)) return;
         // A pair thread is a private two-agent handoff: a human opening it must
         // not gain a reader row (which would look like a third participant).
         if (thread.type === "group" && isAgentPairThread(thread)) return;
@@ -287,6 +406,13 @@ export async function updateAgentThreadParticipant(
     if (existing) {
         await db.update(threadParticipants).set(updates).where(eq(threadParticipants.id, existing.id));
     } else {
+        // A status update must never make another agent a participant of a
+        // person's private direct thread (that would route it into its sync).
+        const [thread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate, directAgentId: messageThreads.directAgentId })
+            .from(messageThreads)
+            .where(and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId)))
+            .limit(1);
+        if (!thread || !agentTokenMayUseThread(thread, agentId)) return;
         await db.insert(threadParticipants).values({
             threadId,
             companyId,

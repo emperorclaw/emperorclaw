@@ -575,7 +575,8 @@ def split_control_commands(payload: Any) -> tuple[list[dict[str, Any]], list[dic
         if action == "stop" and command.get("messageId"):
             stops.append(command)
         elif action in ("kill", "replace") and not command.get("metadataJson"):
-            kills.append({**command, "metadataJson": {"runtimeControl": {"action": action}}})
+            control = {"action": action, **({"scope": command["scope"]} if command.get("scope") else {})}
+            kills.append({**command, "metadataJson": {"runtimeControl": control}})
         else:
             kills.append(command)
     return stops, kills

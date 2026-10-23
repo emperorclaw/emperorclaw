@@ -7,6 +7,7 @@ import { consumeRateLimit } from "@/lib/rate-limit";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { updateAgentThreadParticipant } from "@/lib/control-plane";
 import { insertRunStart, payloadTooLarge } from "@/lib/run-ledger";
+import { mcpTokenMayStartRun, mcpTokenMayUseThreadId } from "@/lib/thread-access";
 import {
     RUN_EVENTS_BATCH_MAX,
     RUN_EVENTS_BODY_MAX_BYTES,
@@ -89,12 +90,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!run) {
             if (!input.run) return NextResponse.json({ error: "run_not_found" }, { status: 409 });
             if (!boundAgentId) return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+            // Same thread checks as POST /agents/runs.
+            if (!(await mcpTokenMayStartRun(companyId, auth.companyToken!.agentId ?? null, input.run))) {
+                return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+            }
             const started = await insertRunStart(companyId, boundAgentId, input.run);
             if (!started) return NextResponse.json({ error: "Run id is already in use" }, { status: 409 });
             run = started;
         }
         if (boundAgentId && run.agentId !== boundAgentId) {
             return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+        }
+        // A run in a private thread only takes events from its own agent's token.
+        if (!(await mcpTokenMayUseThreadId(companyId, auth.companyToken!.agentId ?? null, run.threadId))) {
+            return NextResponse.json({ error: "Run not found" }, { status: 404 });
         }
 
         const now = new Date();

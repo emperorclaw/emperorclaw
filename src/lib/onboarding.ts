@@ -41,7 +41,8 @@ export async function validateLlmKey(provider: string, apiKey: string): Promise<
 
 export const DOCUMENT_TASK_KIND = "document_company";
 
-type DocumentInput = { companyId: string; agentId: string; website: string | null };
+// userId: who asked; in private direct-chat mode the brief lands in their own chat with the agent.
+type DocumentInput = { companyId: string; agentId: string; website: string | null; userId?: string | null };
 
 function documentationPrompt(input: { companyName: string; taskId: string; website: string | null }) {
     return [
@@ -106,7 +107,7 @@ export async function startCompanyDocumentation(input: DocumentInput): Promise<{
     });
 
     const { appendThreadMessage, ensureDirectThread } = await import("@/lib/control-plane");
-    const thread = await ensureDirectThread(input.companyId, input.agentId, null);
+    const thread = await ensureDirectThread(input.companyId, input.agentId, input.userId ?? null);
     await appendThreadMessage({
         companyId: input.companyId,
         threadId: thread.id,

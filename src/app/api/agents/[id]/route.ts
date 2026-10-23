@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { isMissingSchemaError } from "@/lib/schema-compat";
+import { userMayUseThread } from "@/lib/direct-chat-mode";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { validAvatarUrl } from "@/lib/avatar";
@@ -154,7 +155,7 @@ export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
+    const [companyId, viewerId] = await Promise.all([getCompanyId(), getUserId()]);
     if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
@@ -198,6 +199,8 @@ export async function GET(
                 and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, threadIds), isNull(messageThreads.archivedAt))
             ).orderBy(desc(messageThreads.createdAt)).limit(20)
             : [];
+        // Never list (or quote) another person's private direct thread.
+        threads = threads.filter((thread) => userMayUseThread(thread, viewerId));
 
         lastMessages = threadIds.length > 0
             ? await db.select().from(threadMessages).where(

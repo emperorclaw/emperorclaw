@@ -3,14 +3,14 @@ import { db } from "@/db";
 import { artifacts, threadMessages, threadParticipants } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
-import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getThreadMessages, type ThreadMessageAttachment } from "@/lib/control-plane";
+import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getDirectThreadForUser, getThreadMessages, type ThreadMessageAttachment } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
 import { parseObjectiveCommand, replyObjectiveStatus, requestAgentObjective } from "@/lib/agent-objective";
 import { requireRole, AuthError } from "@/lib/roles";
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
-import { requestAgentControl } from "@/lib/agent-control";
+import { DirectThreadNotAllowedError, requestAgentControl } from "@/lib/agent-control";
 import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 import { parseEventsSince } from "@/lib/run-events";
 import { loadChatRunState } from "@/lib/run-ledger-reads";
@@ -32,6 +32,18 @@ function normalizedPrompt(text: string) {
     return text.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * An agent's direct thread for this person: their own (private mode) or the
+ * shared one, or — with `directThreadId` — a specific direct thread of that
+ * agent they take part in, such as its Operations thread in private mode.
+ */
+async function directThreadFor(companyId: string, agentId: string, userId: string | null, directThreadId: unknown) {
+    if (typeof directThreadId !== "string" || !directThreadId) return ensureDirectThread(companyId, agentId, userId);
+    const thread = userId ? await getDirectThreadForUser(companyId, agentId, directThreadId, userId) : null;
+    if (!thread) throw new GroupError("Conversation not found", 404);
+    return thread;
+}
+
 export async function GET(req: NextRequest) {
     const companyId = await getCompanyId();
     if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -43,6 +55,7 @@ export async function GET(req: NextRequest) {
         const limit = Math.min(parseInt(searchParams.get("limit") || "25", 10), 200);
         const targetAgentId = searchParams.get("targetAgentId");
         const groupId = searchParams.get("threadId");
+        const directThreadId = searchParams.get("directThreadId");
         const sinceDate = since ? new Date(since) : null;
         const beforeDate = before ? new Date(before) : null;
 
@@ -51,7 +64,7 @@ export async function GET(req: NextRequest) {
         const thread = groupId
             ? await getGroupThread(companyId, groupId)
             : targetAgentId
-                ? await ensureDirectThread(companyId, targetAgentId, await getUserId())
+                ? await directThreadFor(companyId, directThreadId ? await resolveAgentId(companyId, targetAgentId) : targetAgentId, await getUserId(), directThreadId)
                 : await ensureTeamThread(companyId);
 
         // An agent pair thread is a private handoff: only owners/admins may read
@@ -103,7 +116,7 @@ export async function POST(req: NextRequest) {
     if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        const { text, targetAgentId, attachments, threadId: groupId } = await req.json();
+        const { text, targetAgentId, attachments, threadId: groupId, directThreadId } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
         const goalCommand = typeof text === "string" ? parseObjectiveCommand(text) : null;
@@ -124,7 +137,13 @@ export async function POST(req: NextRequest) {
             if (error) return NextResponse.json({ error }, { status: 400 });
             if (Array.isArray(attachments) && attachments.length) return NextResponse.json({ error: "Send attachments as a normal message" }, { status: 400 });
             const agentId = await resolveAgentId(companyId, targetAgentId);
-            return NextResponse.json(await requestAgentControl(companyId, userId, agentId, command.action, command.prompt));
+            try {
+                return NextResponse.json(await requestAgentControl(companyId, userId, agentId, command.action, command.prompt,
+                    typeof directThreadId === "string" && directThreadId ? directThreadId : null));
+            } catch (e) {
+                if (e instanceof DirectThreadNotAllowedError) return NextResponse.json({ error: e.message }, { status: 404 });
+                throw e;
+            }
         }
 
         // Resolve attachment artifact ids to compact company-scoped refs.
@@ -166,7 +185,7 @@ export async function POST(req: NextRequest) {
         const thread = groupId
             ? await getGroupThread(companyId, groupId)
             : resolvedTargetAgentId
-                ? await ensureDirectThread(companyId, resolvedTargetAgentId, userId)
+                ? await directThreadFor(companyId, resolvedTargetAgentId, userId, directThreadId)
                 : await ensureTeamThread(companyId);
         // Pair threads are read-only from the human side: nobody posts into a
         // private agent handoff.

@@ -14,6 +14,7 @@ import {
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { getAppUrl } from "@/lib/env";
 import { mentionedAgentIds } from "@/lib/message-routing";
+import { directThreadLink, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 import { decryptSecretPayload } from "@/lib/secrets";
 
 /**
@@ -58,6 +59,19 @@ export interface NotificationInput {
     sourceId?: string | null;
     /** Repeats with the same key inside the window collapse into one. */
     dedupeKey?: string | null;
+    /**
+     * Set when the event is about a private direct thread. Company-wide
+     * channels (the webhook: Slack, Discord, generic) then get only this
+     * content-free title, never the message text, link or ids. The recipient's
+     * own in-app notification and email keep the full details.
+     */
+    privateOutboundTitle?: string | null;
+}
+
+/** What a company-wide outbound channel may see of a notification. */
+export function outboundNotification(input: NotificationInput): NotificationInput {
+    if (!input.privateOutboundTitle) return input;
+    return { kind: input.kind, title: input.privateOutboundTitle, body: null, link: null, sourceType: null, sourceId: null, dedupeKey: input.dedupeKey ?? null };
 }
 
 function windowBucket(now = Date.now()): number {
@@ -165,7 +179,8 @@ async function deliverWebhook(companyId: string, input: NotificationInput) {
         .where(and(eq(companyNotificationWebhooks.companyId, companyId), eq(companyNotificationWebhooks.enabled, true)))
         .limit(1);
     if (!hook || !hook.kinds.includes(input.kind)) return;
-    await postWebhook(hook, input);
+    // Company-wide channel: a private-thread event goes out content-free.
+    await postWebhook(hook, outboundNotification(input));
 }
 
 /** Post one notification to a stored webhook; records the outcome on the row. */
@@ -226,9 +241,12 @@ export async function mentionedHumanIds(companyId: string, text: string): Promis
     return [...mentionedAgentIds(text, roster, { tokenAliases: false })];
 }
 
-function threadLink(thread: { id: string; type: string }, agentId: string | null): string {
+type NotifiedThread = { id: string; type: string; ownerUserId?: string | null; isPrivate?: boolean | null };
+
+function threadLink(thread: NotifiedThread, agentId: string | null): string {
     if (thread.type === "group") return `/messages?group=${thread.id}`;
-    if (thread.type === "direct" && agentId) return `/messages?agent=${agentId}`;
+    // The exact conversation: a private thread, or the agent's shared one.
+    if (thread.type === "direct") return directThreadLink(thread.id, agentId);
     return "/messages";
 }
 
@@ -245,7 +263,7 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
         const hasChoices = /^\s*(`{3,}|~{3,})\s*choices\b/im.test(text);
         if (!text.includes("@") && !hasChoices) return;
 
-        const [thread] = await db.select({ id: messageThreads.id, type: messageThreads.type, title: messageThreads.title })
+        const [thread] = await db.select({ id: messageThreads.id, type: messageThreads.type, title: messageThreads.title, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
             .from(messageThreads).where(eq(messageThreads.id, message.threadId)).limit(1);
         if (!thread) return;
         const [agent] = message.senderId
@@ -254,8 +272,12 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
         const agentName = agent?.name ?? "An agent";
         const where = thread.type === "group" ? ` in ${thread.title || "a group"}` : thread.type === "team" ? " in team chat" : "";
         const link = threadLink(thread, agent?.id ?? null);
+        const isPrivate = isPrivateDirectThread(thread);
 
-        const mentioned = await mentionedHumanIds(companyId, text);
+        // A private direct thread is only its owner's: nobody else is told
+        // about (or linked to) a conversation they cannot open.
+        const mentioned = (await mentionedHumanIds(companyId, text))
+            .filter((id) => !isPrivateDirectThread(thread) || id === thread.ownerUserId);
         // A decision is the more specific signal: whoever it is for gets that
         // one notification, not a second "mentioned you" for the same message.
         const decisionFor = hasChoices ? (mentioned.length ? mentioned : await threadHumans(companyId, thread)) : [];
@@ -265,6 +287,7 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
             await notify(companyId, mentionOnly, {
                 kind: "mention",
                 title: `${agentName} mentioned you${where}`,
+                privateOutboundTitle: isPrivate ? `${agentName} mentioned a teammate in a private chat` : null,
                 body: text,
                 link,
                 sourceType: "message",
@@ -276,6 +299,7 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
             await notify(companyId, decisionFor, {
                 kind: "decision",
                 title: `${agentName} is waiting on your decision${where}`,
+                privateOutboundTitle: isPrivate ? `${agentName} needs a decision from a teammate in a private chat` : null,
                 body: text,
                 link,
                 sourceType: "message",
@@ -288,8 +312,8 @@ export async function notifyAgentMessage(companyId: string, message: typeof thre
     }
 }
 
-/** The people a thread's decision is for: group members, or who spoke last in a direct thread. */
-async function threadHumans(companyId: string, thread: { id: string; type: string }): Promise<string[]> {
+/** The people a thread's decision is for: group members, a private thread's owner, or who spoke last in a shared direct thread. */
+async function threadHumans(companyId: string, thread: NotifiedThread): Promise<string[]> {
     if (thread.type === "group") {
         const rows = await db.select({ ref: threadParticipants.participantRef }).from(threadParticipants).where(and(
             eq(threadParticipants.companyId, companyId),
@@ -299,6 +323,8 @@ async function threadHumans(companyId: string, thread: { id: string; type: strin
         ));
         return rows.map((r) => r.ref).filter((r): r is string => Boolean(r));
     }
+    // A private thread is its owner's alone; an orphaned one (owner gone) nobody's.
+    if (isPrivateDirectThread(thread)) return thread.ownerUserId ? [thread.ownerUserId] : [];
     if (thread.type === "direct") {
         const [last] = await db.select({ senderId: threadMessages.senderId }).from(threadMessages).where(and(
             eq(threadMessages.companyId, companyId),
@@ -314,10 +340,11 @@ async function threadHumans(companyId: string, thread: { id: string; type: strin
 export async function notifyRuntimeFailure(companyId: string, message: typeof threadMessages.$inferSelect, agentId: string): Promise<void> {
     if (!message.senderId || message.senderType !== "human") return;
     const [agent] = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, agentId)).limit(1);
-    const [thread] = await db.select({ id: messageThreads.id, type: messageThreads.type }).from(messageThreads).where(eq(messageThreads.id, message.threadId)).limit(1);
+    const [thread] = await db.select({ id: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate }).from(messageThreads).where(eq(messageThreads.id, message.threadId)).limit(1);
     await notify(companyId, [message.senderId], {
         kind: "agent_failed",
         title: `${agent?.name ?? "An agent"} couldn't process your message`,
+        privateOutboundTitle: thread && isPrivateDirectThread(thread) ? `${agent?.name ?? "An agent"} couldn't process a message in a private chat` : null,
         body: `It gave up after several attempts: "${clip(message.text, 160) ?? ""}". Send it again, or check the agent's health.`,
         link: thread ? threadLink(thread, agentId) : "/messages",
         sourceType: "message",

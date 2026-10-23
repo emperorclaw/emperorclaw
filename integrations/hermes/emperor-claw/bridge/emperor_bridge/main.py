@@ -108,7 +108,8 @@ class AgentRuntime:
                                  save=self.state.save, agent_id=agent_id, retry=cfg, llm_model=cfg.llm_model,
                                  drop_goal_step=self._drop_goal_step, spawn=self._spawn, logger=self.log)
         self.controls = ControlPlane(self.scheduler, self.runner, self.sessions, self.client,
-                                     on_kill=lambda _action: self.objectives.pause_all(), logger=self.log)
+                                     on_kill=lambda _action: self.objectives.pause_all(),
+                                     on_thread_reset=self._thread_reset, logger=self.log)
         self.write_health()
 
     async def start(self) -> None:
@@ -211,6 +212,12 @@ class AgentRuntime:
             if follow_up is None:  # a retry keeps running in the same slot: keep tracking its messages
                 for message in batch.messages:
                     self._accepted.pop(message.id, None)
+
+    async def _thread_reset(self, thread_id: str) -> None:
+        """A thread-scoped replace: pause the objective only when it lives in that thread."""
+        goal = self.objectives.goal
+        if goal and goal.get("threadId") == thread_id:
+            await self.objectives.pause_all("Objective paused by Replace in its thread.")
 
     def _drop_goal_step(self) -> None:
         """A queued objective step that will not run now; the objective loop queues it again."""
