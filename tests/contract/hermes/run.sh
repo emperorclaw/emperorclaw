@@ -70,7 +70,9 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
     printf '%s\n' "$BASE_IMAGE" > "$RESULTS/base-image.txt"
 fi
 
-args=(--rm --name "hermes-contract-$$" -v "$(host_path "$RESULTS"):/results"
+# SYS_PTRACE: ws_drop_replay borrows the bridge's socket with pidfd_getfd(2), which
+# hosted CI runners refuse without it (Docker Desktop allows it by default).
+args=(--rm --name "hermes-contract-$$" --cap-add SYS_PTRACE -v "$(host_path "$RESULTS"):/results"
       -e "CONTRACT_SUITE=$CONTRACT_SUITE")
 if [ "${RECORD_FIXTURES:-0}" = "1" ]; then
     mkdir -p "$ROOT/tests/fixtures/hermes-v0224"

@@ -639,7 +639,9 @@ def s_sigkill_tool(entry: dict) -> None:
     profiles, gws, bridge = standalone_stack(entry, "sigkilltool")
     p, gw = profiles[0], gws[0]
     thread = str(uuid.uuid4())
-    msg = inject(p.agent_id, "[[tool:thenhang]] then die", thread)
+    # A unique marker: the probe suite shares the fake model's log and sends its own "then die".
+    marker = f"then die {uuid.uuid4().hex[:8]}"
+    msg = inject(p.agent_id, f"[[tool:thenhang]] {marker}", thread)
     wait_for(lambda: "tool.end" in kinds(events_of(run_for(msg["id"]))), 30, "tool.end before the kill")
     time.sleep(1)
     gw.stop(signal.SIGKILL)
@@ -649,7 +651,7 @@ def s_sigkill_tool(entry: dict) -> None:
     entry["evidence"]["run"] = run
     check(entry, run_status(run) == "failed", "run failed (no auto-retry after a tool)")
     check(entry, "runtime_restart" in json.dumps(run), "failure reason runtime_restart")
-    check(entry, sum(1 for x in read_jsonl(FAKE_LLM_LOG) if "then die" in x.get("last_user", "")
+    check(entry, sum(1 for x in read_jsonl(FAKE_LLM_LOG) if marker in x.get("last_user", "")
                      and x.get("decision") == "thenhang:tool") == 1, "the model call was not repeated")
     r2 = turn(p, "next after kill", thread, timeout=60)
     check(entry, "pong: next after kill" in r2["replies"][0]["text"],
