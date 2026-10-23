@@ -9,6 +9,12 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.9.1] — 2026-10-23
+
+### Fixed
+- Managed Hermes agents now move to the new runtime after an automatic update even when the app updates before the runtime image is published: the server retries the download and the rollout with backoff for about a day, instead of trying once on boot.
+- While an agent works on one thread, new messages in its other threads are picked up at once again, instead of after up to 5 s.
+
 ## [0.9.0] — 2026-10-23
 
 Hermes agents now run on a persistent gateway: no more cold start per message, replies survive restarts, and you can watch each run step by step.
