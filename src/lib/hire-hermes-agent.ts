@@ -4,7 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { DOCKER_SOCKET, isDocker } from "@/lib/docker";
-import { mintAgentSetupToken, provisionHermesContainer } from "@/lib/hermes-provisioning";
+import { mintAgentSetupToken, provisionHermesContainer, revokeAgentSetupTokens } from "@/lib/hermes-provisioning";
 import { hermesSafeName } from "@/lib/hermes-names";
 import { logAudit } from "@/lib/mcp";
 
@@ -37,10 +37,13 @@ export async function hireHermesAgent(input: {
     if (!reserved.created) return retainedHermesHiringResult(agent);
     const safeName = hermesSafeName(name);
     try {
-        const { rawToken } = await mintAgentSetupToken(input.companyId, safeName, agent.id);
+        const { rawToken, tokenHash } = await mintAgentSetupToken(input.companyId, safeName, agent.id);
         const result = await provisionHermesContainer({ agent, apiToken: rawToken, safeName, role });
         if (result.success) {
             await db.update(agents).set({ containerId: result.containerId, containerName: result.containerName }).where(eq(agents.id, agent.id));
+        } else {
+            // No container holds this token; a retry from Agents mints a new one.
+            await revokeAgentSetupTokens(agent.id, { onlyTokenHash: tokenHash }).catch(() => 0);
         }
         await logAudit(input.companyId, "agent", source.id, "hire_hermes_agent", "agent", agent.id, { success: result.success });
         return { agentId: agent.id, name, success: result.success, message: result.message, outputs: result.outputs };

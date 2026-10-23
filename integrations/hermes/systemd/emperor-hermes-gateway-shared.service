@@ -1,0 +1,27 @@
+# Opt-in shared Hermes v0.22.4 gateway for low-memory hosts (one per host).
+# Runs from the default Hermes home with gateway.multiplex_profiles=true and serves
+# every profile listed in EMPEROR_HERMES_PROFILES. Every agent on the host shares this
+# process: see "Small machines" in the 0.9 migration guide for the trade-off.
+[Unit]
+Description=Hermes shared gateway for Emperor Claw
+Documentation=https://emperorclaw.malecu.eu/docs/v1.1/hermes-migration-0-9
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/emperor-hermes/host.env
+Environment=PYTHONUNBUFFERED=1
+# Read by the emperor-claw plugin: a shared gateway never lends its process credentials.
+Environment=EMPEROR_GATEWAY_TOPOLOGY=shared
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h
+ExecStart=/bin/sh -c 'exec "$${HERMES_LAUNCHER}" gateway run --replace'
+Restart=always
+RestartSec=3
+SuccessExitStatus=1
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=70
+
+[Install]
+WantedBy=default.target

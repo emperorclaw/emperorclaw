@@ -1,0 +1,26 @@
+# Opt-in multi-agent Emperor Claw bridge 0.9 for the shared gateway (one per host).
+# Hosts one AgentRuntime per profile in EMPEROR_HERMES_PROFILES (comma-separated,
+# written to host.env by `emperor-hermes`).
+[Unit]
+Description=Emperor Claw shared bridge
+Documentation=https://emperorclaw.malecu.eu/docs/v1.1/hermes-migration-0-9
+Wants=emperor-hermes-gateway-shared.service
+After=emperor-hermes-gateway-shared.service network-online.target
+
+[Service]
+Type=simple
+# HERMES_PYTHON, HERMES_CHECKOUT, EMPEROR_HERMES_PROFILES
+EnvironmentFile=%h/.config/emperor-hermes/host.env
+Environment=EMPEROR_CLAW_HERMES_GATEWAY=shared
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=%h/.hermes/emperor-bridge/current/bridge
+WorkingDirectory=%h
+ExecStart=/bin/sh -c 'exec "$${HERMES_PYTHON}" -m emperor_bridge run --profiles "$${EMPEROR_HERMES_PROFILES}"'
+Restart=always
+RestartSec=3
+TimeoutStopSec=45
+StandardOutput=append:%h/.hermes/emperor-bridge/shared.log
+StandardError=inherit
+
+[Install]
+WantedBy=default.target

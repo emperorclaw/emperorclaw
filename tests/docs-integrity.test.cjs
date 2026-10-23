@@ -56,3 +56,34 @@ test("light mode doesn't use standard-scale zinc pairs (the scale is inverted)",
   const css = readFileSync(resolve(root, "src/app/globals.css"), "utf8");
   assert.ok(css.includes("select option"), "native dropdown options follow the theme");
 });
+
+test("Hermes docs only use emperor-hermes commands the installer has", () => {
+  const installer = readFileSync(resolve(root, "integrations/hermes/install/emperor-hermes.sh"), "utf8");
+  const dispatch = installer.slice(installer.indexOf('case "$cmd" in'));
+  const commands = new Set([...dispatch.matchAll(/^\s+([a-z-]+)(?: \| [a-z-]+)*\)/gm)].map((m) => m[1]));
+  for (const cmd of ["install", "migrate", "update", "rollback", "status", "doctor", "finalize", "restart-gateway"]) {
+    assert.ok(commands.has(cmd), `installer dispatches ${cmd}`);
+  }
+  const docs = [
+    "src/content/docs/v1.1/hermes-runtime.md",
+    "src/content/docs/v1.1/hermes-migration-0.9.md",
+    "integrations/hermes/emperor-claw/README.md",
+  ];
+  for (const file of docs) {
+    const text = readFileSync(resolve(root, file), "utf8");
+    for (const m of text.matchAll(/\bemperor-hermes ([a-z][a-z-]*)/g)) {
+      if (["gateway", "bridge", "logrotate"].includes(m[1])) continue; // unit names, not commands
+      assert.ok(commands.has(m[1]), `${file} uses unknown command "emperor-hermes ${m[1]}"`);
+    }
+  }
+});
+
+test("the installer pins the same Hermes commit as the server", () => {
+  const installer = readFileSync(resolve(root, "integrations/hermes/install/emperor-hermes.sh"), "utf8");
+  const sha = installer.match(/^readonly HERMES_SHA="([0-9a-f]{40})"/m)?.[1];
+  const ref = installer.match(/^readonly HERMES_REF="([^"]+)"/m)?.[1];
+  assert.ok(sha && ref, "installer declares HERMES_REF and HERMES_SHA");
+  const server = readFileSync(resolve(root, "src/lib/hermes-bridge-version.ts"), "utf8");
+  assert.ok(server.includes(`"${sha}"`), "PINNED_HERMES_SHA matches the installer");
+  assert.ok(server.includes(`"${ref}"`), "PINNED_HERMES_VERSION matches the installer");
+});

@@ -159,22 +159,24 @@ export async function POST(
         // 5. Kill any existing bridge for this agent (prevent duplicates)
         const killCmd = process.platform === "win32"
             ? `taskkill /F /FI "WINDOWTITLE eq *${safeName}*" 2>nul & taskkill /F /IM python.exe 2>nul`
-            : `pkill -f "emperor_hermes_bridge.*${safeName}" 2>/dev/null; sleep 1`;
+            : `pkill -f "emperor_bridge.*${safeName}" 2>/dev/null; sleep 1`;
         const r5 = await runCmd(killCmd, 10_000);
         outputs.push({ command: `Kill existing bridge (if any)`, stdout: r5.stdout || "Done", stderr: r5.stderr, exitCode: 0 });
 
-        // 6. Start bridge in background (no window, survives parent exit)
-        const bridgeScript = path.join(globalPluginDir, "bridge", "emperor_hermes_bridge.py");
+        // 6. Start the 0.9 bridge (python -m emperor_bridge run) in the background.
+        const bridgeSrcDir = path.join(globalPluginDir, "bridge");
         try {
             // On Windows, use start /B to run without a console window
             // On Unix, use nohup to survive parent exit
             const isWin = process.platform === "win32";
             const bridgeCmd = isWin
-                ? `start "" /B python "${bridgeScript}"`
-                : `nohup python "${bridgeScript}" > /dev/null 2>&1 &`;
+                ? `start "" /B python -m emperor_bridge run`
+                : `nohup python -m emperor_bridge run > /dev/null 2>&1 &`;
             const bridgeProc = spawn(isWin ? "cmd.exe" : "sh", [isWin ? "/c" : "-c", bridgeCmd], {
                 env: {
                     ...process.env,
+                    PYTHONPATH: bridgeSrcDir,
+                    HERMES_PROFILE: safeName,
                     EMPEROR_CLAW_API_URL: emperorUrl,
                     EMPEROR_CLAW_API_TOKEN: rawToken,
                     EMPEROR_CLAW_AGENT_NAME: safeName,

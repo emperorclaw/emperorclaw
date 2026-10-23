@@ -1,0 +1,30 @@
+# Hermes v0.22.4 gateway for one Emperor Claw agent profile (standalone topology).
+# Installed and managed by `emperor-hermes`. Install-specific paths live in host.env,
+# never in this file, so `emperor-hermes update` only rewrites host.env.
+[Unit]
+Description=Hermes gateway (%i) for Emperor Claw
+Documentation=https://emperorclaw.malecu.eu/docs/v1.1/hermes-runtime
+After=network-online.target
+
+[Service]
+Type=simple
+# HERMES_LAUNCHER=<hermes-dir>/.hermes/bin/hermes
+EnvironmentFile=%h/.config/emperor-hermes/host.env
+Environment=PYTHONUNBUFFERED=1
+# Read by the emperor-claw plugin: a shared gateway never lends its process credentials.
+Environment=EMPEROR_GATEWAY_TOPOLOGY=standalone
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h
+ExecStart=/bin/sh -c 'exec "$${HERMES_LAUNCHER}" -p "%i" gateway run --replace'
+Restart=always
+RestartSec=3
+# The gateway exits with rc 1 after SIGTERM; that is a clean stop.
+SuccessExitStatus=1
+KillSignal=SIGTERM
+KillMode=mixed
+# agent.restart_drain_timeout is 30 s; the gateway exits ~51 s after SIGTERM (measured),
+# so 70 s lets in-flight turns settle without a SIGKILL.
+TimeoutStopSec=70
+
+[Install]
+WantedBy=default.target

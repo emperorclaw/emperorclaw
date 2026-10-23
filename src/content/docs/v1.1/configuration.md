@@ -141,9 +141,12 @@ Monthly counters reset in UTC at the first budget check or usage report of the
 new month, including for paused agents. Raising the budget and reactivating can
 resume an agent, but reactivating alone cannot bypass an already exhausted limit.
 
-These are limits on **estimated reported usage**, not hard provider billing caps.
-The bridges estimate tokens from text; internal tool/model calls, reasoning and
-conversation history are not fully counted. Running or concurrent turns can
+These are limits on **reported usage**, not hard provider billing caps.
+The Hermes bridge reports the real input/output tokens Hermes logged for every
+model call of a turn (including history and tool results it re-sends); when
+that log is unavailable it falls back to a text estimate (~4 characters per
+token), which badly under-counts. Cached-input discounts are not priced, so
+reported cost can run slightly above the provider bill. Running or concurrent turns can
 exceed the remaining allowance. Usage retries are held in bridge memory, so a
 process crash can lose an unacknowledged sample. Other runtimes must explicitly
 implement this preflight contract; merely reporting usage does not stop execution.

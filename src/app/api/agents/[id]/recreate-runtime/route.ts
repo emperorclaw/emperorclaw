@@ -16,9 +16,11 @@ export const dynamic = "force-dynamic";
  * updates (ops/update route), LLM key rotation (after PATCH), and
  * repairing a crashed/manually-removed container.
  *
- * A fresh setup token is minted on every recreate rather than reusing the
- * old one — simpler than tracking/validating token liveness, and the old
- * token is naturally orphaned (and harmless) once its container is gone.
+ * A fresh setup token is minted on every recreate and the previous
+ * container's token is revoked once that container is gone, so a leaked or
+ * copied runtime token stops working at the next recreate. The container runs
+ * this release's pinned runtime image, and the old one is stopped with the
+ * managed stop timeout (75 s) so in-flight turns drain first.
  */
 export async function POST(
     _req: NextRequest,

@@ -4,11 +4,7 @@ import { promisify } from "util";
 import { requirePlatformAdminSession } from "@/lib/platform-admin";
 import fs from "fs";
 import http from "http";
-import { and, isNotNull, isNull } from "drizzle-orm";
 import { DOCKER_SOCKET, isDocker, dockerCall, dockerPull, getOwnContainerId } from "@/lib/docker";
-import { db } from "@/db";
-import { agents } from "@/db/schema";
-import { HERMES_IMAGE, recreateHermesContainer } from "@/lib/hermes-provisioning";
 
 export const dynamic = "force-dynamic";
 const execAsync = promisify(exec);
@@ -251,45 +247,10 @@ async function dockerUpdateSelf(): Promise<UpdateStep[]> {
     // 8. Cleanup old
     try { await dockerCall("DELETE", `/containers/${cid}?force=true`); } catch { /* best effort */ }
 
-    // 9. Roll Hermes sibling containers onto the latest image. Fail-open per
-    // agent — one agent's recreate failing must never undo the already-
-    // completed app update above, nor block reporting on the other agents.
-    try {
-        const hermesAgents = await db.select({ id: agents.id, name: agents.name }).from(agents).where(
-            and(isNull(agents.deletedAt), isNotNull(agents.containerId))
-        );
-
-        if (hermesAgents.length > 0) {
-            try {
-                const msg = await dockerPull(HERMES_IMAGE, "linux/amd64");
-                steps.push({ step: "pull-hermes-image", status: "ok", output: msg });
-            } catch (e) {
-                // Recreate calls below will still attempt their own pull per
-                // agent (provisionHermesContainer), so a failed shared pull
-                // here is reported but not fatal to the loop.
-                steps.push({ step: "pull-hermes-image", status: "error", output: (e as Error).message });
-            }
-
-            for (const agent of hermesAgents) {
-                try {
-                    const result = await recreateHermesContainer(agent.id);
-                    steps.push({
-                        step: `recreate-hermes-${agent.name}`,
-                        status: result.success ? "ok" : "error",
-                        output: result.message,
-                    });
-                } catch (e) {
-                    steps.push({
-                        step: `recreate-hermes-${agent.name}`,
-                        status: "error",
-                        output: (e as Error).message,
-                    });
-                }
-            }
-        }
-    } catch (e) {
-        steps.push({ step: "recreate-hermes-agents", status: "error", output: (e as Error).message });
-    }
+    // Managed Hermes runtimes are NOT recreated here: stopping the old container
+    // above ends this process. The new server rolls them onto its pinned
+    // runtime image at startup (reconcileManagedHermesRuntimes in
+    // src/lib/hermes-provisioning.ts), one at a time, in the background.
 
     return steps;
 }

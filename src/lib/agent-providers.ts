@@ -96,56 +96,51 @@ The plugin injects recognized bootstrap files into the agent's prompt context au
         name: "Hermes",
         icon: "IconTerminal2",
         description:
-            "Bridge service. One Hermes profile per agent. Best for Raspberry Pi, VPS, or dedicated workers.",
+            "Warm Hermes gateway plus Emperor bridge per agent, installed with one command. Best for a workstation, VPS, or Raspberry Pi.",
         executionModel: "persistent",
         status: "available",
-        prerequisites: ["Hermes CLI", "systemd (Linux) or equivalent"],
+        prerequisites: ["Linux with systemd user units", "curl, git, python3"],
         doctrinePath: "~/.hermes/profiles/{name}/",
         configFiles: [
             {
-                name: "Bridge .env",
-                path: "~/.hermes/emperor-bridge/{name}/.env",
-                description: "Connection details, model provider key, toolsets",
+                name: "Profile .env",
+                path: "~/.hermes/profiles/{name}/.env",
+                description: "Emperor connection, agent id, toolsets, and the model provider key (read by the bridge and the plugin)",
                 template: `EMPEROR_CLAW_API_URL="{url}"
 EMPEROR_CLAW_API_TOKEN="{token}"
 EMPEROR_CLAW_AGENT_NAME="{name}"
 EMPEROR_CLAW_AGENT_ID="{agentId}"
-EMPEROR_CLAW_AGENT_ROLE="{role}"
-EMPEROR_CLAW_RUNTIME_ID="hermes-{name}-{host}-1"
-EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
-EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="0"
-EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS="900"
-EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS="3"
-HERMES_BIN="/home/{user}/.local/bin/hermes"
-HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
+EMPEROR_CLAW_HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
 DEEPSEEK_API_KEY="<your-key>"`,
             },
         ],
         installCommands: [
-            "hermes profile create {name} --clone --description \"{role}\"",
-            "mkdir -p ~/.hermes/profiles/{name}/plugins/emperor-claw",
-            "cp -R emperor-claw/* ~/.hermes/profiles/{name}/plugins/emperor-claw/",
-            "hermes -p {name} plugins enable emperor-claw",
+            "mkdir -p ~/.local/bin && curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/latest/download/emperor-hermes.sh -o ~/.local/bin/emperor-hermes && chmod +x ~/.local/bin/emperor-hermes",
+            "mkdir -p ~/.hermes/profiles/{name}",
+            "# Put EMPEROR_CLAW_API_URL, EMPEROR_CLAW_API_TOKEN=\"{token}\", EMPEROR_CLAW_AGENT_ID and your model key in ~/.hermes/profiles/{name}/.env",
+            "~/.local/bin/emperor-hermes doctor --plan --profiles {name}",
+            "~/.local/bin/emperor-hermes install --profile {name}",
+            "~/.local/bin/emperor-hermes status --profile {name}",
         ],
         heartbeatModel: "push",
-        setupPromptPrefix: `Use the Hermes bridge service (assumes Hermes CLI is already installed). Each agent needs one Hermes profile and one bridge service.
+        setupPromptPrefix: `Use the emperor-hermes installer (no sudo needed). Each agent gets one Hermes profile, one Hermes gateway and one Emperor bridge, run as systemd user units.
 
-Create a profile per agent:
-  hermes profile create {name} --clone --description "{role}"
+Download the installer:
+  curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/latest/download/emperor-hermes.sh -o ~/.local/bin/emperor-hermes && chmod +x ~/.local/bin/emperor-hermes
 
-Install the Emperor Hermes plugin into the profile:
-  mkdir -p ~/.hermes/profiles/{name}/plugins
-  cp -R emperor-claw ~/.hermes/profiles/{name}/plugins/emperor-claw
-  hermes -p {name} plugins enable emperor-claw
+Put the agent's Emperor settings and model key in ~/.hermes/profiles/{name}/.env, then:
+  emperor-hermes doctor --plan --profiles {name}
+  emperor-hermes install --profile {name}
+  emperor-hermes status --profile {name}
 
-Create a systemd service at ~/.config/systemd/user/emperor-hermes-bridge-{name}.service`,
+Upgrading from the 0.3 bridge: emperor-hermes migrate --all`,
         postInstallChecklist: [
-            "Create profile: hermes profile create {name} --clone --description \"{role}\"",
-            "Install Emperor plugin into the profile",
-            "Create bridge .env at ~/.hermes/emperor-bridge/{name}/.env",
-            "Create systemd service for the bridge",
-            "Start: systemctl --user start emperor-hermes-bridge-{name}",
-            "Check Emperor dashboard — agent should appear as online",
+            "Download emperor-hermes to ~/.local/bin",
+            "Write ~/.hermes/profiles/{name}/.env with the Emperor URL, token, agent id and model key",
+            "Run: emperor-hermes doctor --plan --profiles {name}",
+            "Run: emperor-hermes install --profile {name}",
+            "Check: emperor-hermes status --profile {name} ends with STATUS: ok",
+            "Check Emperor dashboard: agent should appear as online",
         ],
         supportsLocal: true,
         supportsLlmProvider: true,

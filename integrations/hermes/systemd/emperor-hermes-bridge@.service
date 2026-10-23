@@ -1,0 +1,28 @@
+# Emperor Claw bridge 0.9 for one agent profile (standalone topology).
+# Runs on Hermes' own venv interpreter (HERMES_PYTHON, a stable symlink resolved by
+# `emperor-hermes`). Agent credentials are read from the profile's .env by the bridge.
+[Unit]
+Description=Emperor Claw bridge (%i)
+Documentation=https://emperorclaw.malecu.eu/docs/v1.1/hermes-runtime
+Wants=emperor-hermes-gateway@%i.service
+After=emperor-hermes-gateway@%i.service network-online.target
+
+[Service]
+Type=simple
+# HERMES_PYTHON, HERMES_CHECKOUT
+EnvironmentFile=%h/.config/emperor-hermes/host.env
+Environment=HERMES_PROFILE=%i
+Environment=EMPEROR_CLAW_HERMES_GATEWAY=standalone
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=%h/.hermes/emperor-bridge/current/bridge
+WorkingDirectory=%h
+ExecStart=/bin/sh -c 'exec "$${HERMES_PYTHON}" -m emperor_bridge run'
+Restart=always
+RestartSec=3
+# The bridge stops dispatch and drains for up to 30 s.
+TimeoutStopSec=45
+StandardOutput=append:%h/.hermes/profiles/%i/bridge.log
+StandardError=inherit
+
+[Install]
+WantedBy=default.target

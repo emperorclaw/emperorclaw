@@ -1,117 +1,148 @@
 # Hermes Agent Runtime
 
-Emperor can run agents through Hermes Agent instead of OpenClaw. In that setup, Emperor remains the durable control plane, while Hermes is the local runtime that thinks, uses tools, keeps profile memory, and replies to Emperor messages.
+Emperor can run agents through Hermes Agent instead of OpenClaw. Emperor remains the durable control plane. Hermes is the local runtime that thinks, uses tools, keeps profile memory, and replies to Emperor messages.
 
-Use this page when you want to operate Emperor agents from a machine such as a Raspberry Pi, VPS, or workstation with Hermes installed.
+Use this page to run Emperor agents on your own machine (a workstation, VPS, or Raspberry Pi) with Hermes. Upgrading from bridge 0.3? Read [Migrating Hermes agents to 0.9](/docs/v1.1/hermes-migration-0-9) first.
 
-For the product-level operating contract that every connected agent should follow, start with [Emperor Operating Pipeline](/docs/v1.1/emperor-operating-pipeline).
+For the operating contract every connected agent follows, start with [Emperor Operating Pipeline](/docs/v1.1/emperor-operating-pipeline).
 
 ## Runtime Model
+
+Since Emperor Claw 0.9, every Hermes agent stays warm. A message travels from Emperor to a running Hermes gateway over a local WebSocket, and live steps (tool calls, reasoning, usage) stream back to Emperor while the agent works.
 
 | Layer | Owns |
 | --- | --- |
 | Emperor | Agent records, direct/team threads, projects, tasks, Knowledge & Rules, Storage, activity, and operator visibility |
-| Hermes profile | Model config, API keys, `SOUL.md`, sessions, local memory, skills, plugin state, and runtime identity |
-| Emperor Hermes bridge | Polls Emperor messages, starts the right Hermes profile, sends replies, marks messages read/acting/resolved, and heartbeats the Emperor agent |
-| Emperor Hermes plugin | Gives Hermes tools for reading and writing Emperor MCP state |
+| Hermes profile | Model config, API keys, `SOUL.md`, sessions (`state.db`), local memory, skills, plugin state, and runtime identity |
+| Hermes gateway (v0.22.4) | A long-running Hermes process that keeps the profile's sessions warm |
+| Emperor bridge 0.9 | Picks up Emperor messages, submits them to the gateway, streams live steps, sends replies, and heartbeats the agent |
+| Emperor plugin | Gives Hermes tools for reading and writing Emperor state |
 
-One Emperor agent maps to one Hermes profile and one bridge service.
-
-Do not run multiple Emperor agents through the same Hermes profile. Profiles are the isolation boundary for agent memory, sessions, config, skills, and local state.
+One Emperor agent maps to one Hermes profile. Do not run several Emperor agents through the same profile: profiles are the isolation boundary for memory, sessions, config, skills, and local state.
 
 ## Agent Mapping
 
-A correct multi-agent install looks like this:
-
-| Emperor agent | Hermes profile | Systemd service | Runtime id |
+| Emperor agent | Hermes profile | Gateway unit | Bridge unit |
 | --- | --- | --- | --- |
-| Viktor | `viktor` | `emperor-hermes-bridge-viktor.service` | `hermes-viktor-<host>` |
-| Builder | `builder` | `emperor-hermes-bridge-builder.service` | `hermes-builder-<host>` |
-| Growth | `growth` | `emperor-hermes-bridge-growth.service` | `hermes-growth-<host>` |
+| Viktor | `viktor` | `emperor-hermes-gateway@viktor` | `emperor-hermes-bridge@viktor` |
+| Builder | `builder` | `emperor-hermes-gateway@builder` | `emperor-hermes-bridge@builder` |
+| Growth | `growth` | `emperor-hermes-gateway@growth` | `emperor-hermes-bridge@growth` |
 
-Agents may share the same Hermes binary and the same model provider key, but must not share `HERMES_HOME`, state path, or `RUNTIME_ID`.
+This is the **standalone** layout (the default): each agent has its own gateway process. Small machines can opt into one **shared** gateway for all agents on the host (`emperor-hermes-gateway-shared` + `emperor-hermes-bridge-shared`). See [Small machines](/docs/v1.1/hermes-migration-0-9) in the migration guide before choosing it.
 
-## Install Hermes
+## Install
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup
-export PATH="$HOME/.local/bin:$PATH"
-hermes version
-```
+Requirements: Linux with systemd, `curl`, `git`, `tar`, `python3`, and a user account with lingering enabled (`loginctl enable-linger $USER`). No sudo is needed.
 
-## Create Profiles
+1. Download the installer:
 
-Create one profile per Emperor agent. Use `--clone` to inherit the default profile's model config:
+   ```bash
+   mkdir -p ~/.local/bin
+   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+   chmod +x ~/.local/bin/emperor-hermes
+   ```
 
-```bash
-hermes profile create viktor --clone --description "Malecu Manager / Operator."
-hermes profile create builder --clone --description "Malecu Builder — Technical Implementation."
-hermes profile create growth --clone --description "Malecu Growth — Sales and Lead Analysis."
-```
+2. Create one Hermes profile per agent and put its Emperor credentials in the profile's `.env` (example below). If Hermes is not installed yet, `emperor-hermes install` creates a missing profile for you; fill in its `.env` and run the command again.
 
-Hermes creates separate homes:
+3. Check that the host has room for the agents:
 
-```
-~/.hermes/profiles/viktor/
-~/.hermes/profiles/builder/
-~/.hermes/profiles/growth/
-```
+   ```bash
+   emperor-hermes doctor --plan --profiles viktor,builder,growth
+   ```
 
-Each profile has its own `config.yaml`, `.env`, `SOUL.md`, sessions, memory, skills, and plugin state.
+   A gateway uses about 300 MiB once warm. The plan says `standalone`, `shared` (needs `--gateway shared`), or which agents to move to another host.
 
-## Install The Emperor Hermes Plugin
+4. Install:
 
-Copy the Emperor Hermes plugin into each profile and enable it:
+   ```bash
+   emperor-hermes install --profile viktor,builder,growth
+   ```
 
-```bash
-for profile in viktor builder growth; do
-  mkdir -p ~/.hermes/profiles/$profile/plugins
-  cp -R /path/to/emperor-claw ~/.hermes/profiles/$profile/plugins/emperor-claw
-  hermes -p $profile plugins enable emperor-claw
-done
-```
+   The installer installs Hermes v0.22.4 (pinned to an exact commit) next to any existing Hermes, resolves Hermes' own Python for the bridge, installs the bridge, plugin and systemd user units, applies Emperor's profile defaults, then starts each gateway and its bridge. It is safe to run again.
 
-**Critical:** enabling the plugin writes `plugins: enabled: [emperor-claw]` into the profile's `config.yaml`. Without this entry, Hermes loads but warns `Unknown toolsets: emperor-claw` and the agent cannot use any Emperor tools.
+5. Check: `emperor-hermes status`. Each agent should show a `ready 0.22.4` gateway and an active bridge, and appear online in Emperor.
 
-If you created a profile by copying files manually without running `hermes -p <profile> plugins enable emperor-claw`, run the enable command explicitly and verify:
+### Profile `.env`
+
+The bridge and the plugin read each agent's settings from its profile, `~/.hermes/profiles/<profile>/.env`:
 
 ```bash
-grep -A3 "plugins:" ~/.hermes/profiles/builder/config.yaml
-# Expected output:
-# plugins:
-#   enabled:
-#   - emperor-claw
+EMPEROR_CLAW_API_URL="https://emperorclaw.example.com"
+EMPEROR_CLAW_API_TOKEN="<agent token>"
+EMPEROR_CLAW_AGENT_ID="<emperor-agent-id>"
+EMPEROR_CLAW_AGENT_NAME="Viktor"
+EMPEROR_CLAW_HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
+DEEPSEEK_API_KEY="<model provider key>"
 ```
 
-### What the Plugin Provides
+Optional per-agent settings:
 
-- `emperor_health`
-- `emperor_request`
-- `emperor_list_projects`, `emperor_list_tasks`
-- `emperor_list_threads`, `emperor_get_thread_messages`
-- `emperor_add_task_note`
-- `emperor_send_message`
+| Variable | Default | Use |
+| --- | --- | --- |
+| `EMPEROR_CLAW_HERMES_MAX_PARALLEL_TURNS` | `3` | Threads handled at the same time. Use `1` on small hosts and for agents sharing a working directory |
+| `EMPEROR_CLAW_HERMES_COMPACT_AFTER_TOKENS` | `60000` | Context size that triggers compaction after a reply. `0` turns it off |
+| `EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS` | `900` | Interrupt a turn after this long with no activity |
+| `EMPEROR_CLAW_HERMES_CWD` | `$HOME` | Working directory for new sessions |
+
+A token rotation takes effect on the agent's next tool call. A model key rotation needs a gateway restart: `emperor-hermes restart-gateway --profile <p> --when-idle`.
+
+### What gets installed
+
+| Path | Purpose |
+| --- | --- |
+| `~/.local/bin/emperor-hermes` | The installer |
+| `~/.hermes/hermes-agent-v0.22.4/` | Pinned Hermes checkout. `~/.local/bin/hermes` is only repointed by `emperor-hermes finalize` |
+| `~/.local/share/emperor-hermes/python` | Small wrapper that runs Hermes' own Python. The bridge runs on it |
+| `~/.hermes/emperor-bridge/releases/<version>/`, `current` | Bridge bundles |
+| `~/.config/emperor-hermes/host.env` | Install paths for the units. Rewritten by `emperor-hermes update` |
+| `~/.config/systemd/user/emperor-hermes-*.service` | Unit templates and a daily log rotation timer |
+| `~/.hermes/profiles/<p>/plugins/emperor-claw/` | The plugin, per profile |
+| `~/.hermes/profiles/<p>/emperor/` | Bridge state and the turn files the plugin reads |
+| `~/.hermes/backups/emperor-hermes/` | Backups taken before the first 0.9 start (`state.db`, config, `.env`, plugin) |
+
+## Operate
+
+| Task | Command |
+| --- | --- |
+| Health of every agent | `emperor-hermes status` |
+| Bridge log | `tail -f ~/.hermes/profiles/<p>/bridge.log` (shared: `~/.hermes/emperor-bridge/shared.log`) |
+| Gateway log | `journalctl --user -u emperor-hermes-gateway@<p>` |
+| Update the bridge | `emperor-hermes update` |
+| Restart a gateway safely | `emperor-hermes restart-gateway --profile <p> --when-idle` |
+| Memory in use | `emperor-hermes doctor --measure` |
+| Go back to the previous bridge bundle | `emperor-hermes rollback --bridge-only` |
+| Go back to bridge 0.3 | `emperor-hermes rollback --profile <p>` |
+
+Stopping a turn from Emperor interrupts it in about a second. If the network drops mid-turn, the turn keeps running and its reply and live steps are delivered when the connection returns.
+
+## The Emperor Hermes Plugin
+
+The installer copies the plugin into each profile and enables it. The agent gets tools such as:
+
+- `emperor_health`, `emperor_request`
+- `emperor_list_projects`, `emperor_list_tasks`, `emperor_add_task_note`
+- `emperor_list_threads`, `emperor_get_thread_messages`, `emperor_send_message`
 - `emperor_list_groups`, `emperor_create_group`, `emperor_add_group_members`, `emperor_remove_group_member`
 - `emperor_upload_artifact`, `emperor_create_folder`, `emperor_list_folder_contents`
 
-It also injects short Emperor usage guidance before model calls so agents understand current product terms: Storage means artifacts, Knowledge & Rules means resources, and conversation history is readable through `emperor_list_threads`.
+The Emperor operating guide is part of each agent's session instructions, and the plugin ships it as a skill. Storage means artifacts, Knowledge & Rules means resources, and conversation history is readable through `emperor_list_threads`.
 
 ### Agent Lookup Map
 
 | Need | Use |
 | --- | --- |
 | Past chat or exact message history | `emperor_list_threads`, then `emperor_get_thread_messages` |
+| Open tasks right now | `emperor_list_tasks` |
 | Current team roster | `emperor_request` with `GET /agents` |
 | Project list or project details | `emperor_list_projects`, or `emperor_request` with `GET /projects/{id}` |
-| Task list or task details | `emperor_list_tasks`, or `emperor_request` with `GET /tasks/{id}` |
 | Task progress, blockers, notes, handoffs | `emperor_request` with `GET /tasks/{id}/notes` |
 | Project memory, assumptions, decisions | `emperor_request` with `GET /projects/{id}/memory` |
 | Knowledge & Rules | `emperor_request` with `GET /resources` |
 | Storage files, deliverables, reports, evidence | `emperor_request` with `GET /artifacts` |
 | Upload a file to Storage | `emperor_create_folder`, then `emperor_upload_artifact` with `folderId` |
-| External APIs or websites | terminal/curl, web, or a dedicated plugin — not `emperor_request` |
+| External APIs or websites | terminal/curl, web, or a dedicated plugin, not `emperor_request` |
 
-Storage is an Emperor abstraction. Hermes agents should not know or mention the backing blob provider during normal uploads. If upload fails, report an Emperor Storage failure and include the tool/API error.
+Storage is an Emperor abstraction. Agents should not mention the backing blob provider. If an upload fails, report an Emperor Storage failure with the tool or API error.
 
 Before uploading:
 
@@ -123,7 +154,7 @@ Before uploading:
 
 ## Find The Correct Agent ID
 
-Before writing the bridge env, confirm which agent ID Emperor is already using for that agent name. Emperor routes direct messages by `targetAgentId`, so if the bridge registers with the wrong ID it never sees DMs even when the agent appears online.
+Emperor routes direct messages by `targetAgentId`. If the bridge uses the wrong agent id it never sees DMs, even though the agent appears online.
 
 ```bash
 curl -s -H "Authorization: Bearer <token>" \
@@ -131,159 +162,46 @@ curl -s -H "Authorization: Bearer <token>" \
   | jq '.agents[] | {name, id, status}'
 ```
 
-Use the `id` from this output in `EMPEROR_CLAW_AGENT_ID`. If two agents appear with similar names (e.g. "Builder" and "Malecu Builder"), the one shown in the Emperor UI chat sidebar is the one receiving DMs — match that ID.
-
-## Configure Bridge Env
-
-Each bridge service needs its own env file with connection details and the model provider key.
-
-Example `~/.hermes/emperor-bridge/viktor/.env`:
-
-```bash
-EMPEROR_CLAW_API_URL="https://emperorclaw.example.com"
-EMPEROR_CLAW_API_TOKEN="<company-token>"
-EMPEROR_CLAW_AGENT_NAME="Viktor"
-EMPEROR_CLAW_AGENT_ID="<emperor-agent-id>"
-EMPEROR_CLAW_AGENT_ROLE="Malecu Manager / Operator"
-EMPEROR_CLAW_RUNTIME_ID="hermes-viktor-<hostname>-1"
-EMPEROR_CLAW_HERMES_POLL_SECONDS="5"
-EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS="0"
-EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS="900"
-EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS="3"
-EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/viktor/state.json"
-HERMES_BIN="/home/<user>/.local/bin/hermes"
-HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
-DEEPSEEK_API_KEY="<deepseek-key>"
-```
-
-**The model provider key must be in this env file.** The bridge runs Hermes as a subprocess and Hermes inherits the bridge's environment. If the key is missing, every LLM call fails and the bridge crashes without logging a visible error — producing a loop of `started` lines in the log with no `error:` entry and no replies.
-
-`HERMES_TOOLSETS` controls which toolsets the agent can use:
-
-```bash
-HERMES_TOOLSETS="emperor-claw,web,terminal,code_execution"
-```
-
-Add role-specific operating instructions when a role needs strong behavior:
-
-```bash
-EMPEROR_CLAW_AGENT_INSTRUCTIONS="You are Malecu Builder, the technical implementation agent..."
-```
-
-The bridge injects these instructions into every Hermes run.
-
-Each bridge must use a unique `RUNTIME_ID` and a unique `STATE_PATH`. Two bridges sharing a state file corrupt each other's seen-message list.
+Put the `id` in `EMPEROR_CLAW_AGENT_ID`. If two agents have similar names (for example "Builder" and "Malecu Builder"), use the one shown in the Emperor chat sidebar.
 
 ### Shared Doctrine Loading
 
-Do not solve doctrine drift by pasting the full Emperor manual into every bridge prompt.
-
-The bridge prompt should stay small and stable. The long-form operating doctrine should live in Emperor Knowledge & Rules as a company-scoped `knowledge_base` resource, normally named `emperor-operating-doctrine` and marked `isShared: true`.
-
-Recommended bridge behavior:
-
-1. Fetch shared Knowledge & Rules relevant to the company, project, customer, and agent.
-2. Inject only shared/force-injected resources automatically.
-3. Keep non-shared resources discoverable through `GET /resources`.
-4. Fall back to a tiny hardcoded bootstrap if resource loading fails.
-
-An env var such as `EMPEROR_CLAW_DOCTRINE_RESOURCE_ID` may be used as an optimization, but new installs should work without it by looking up the shared company doctrine resource by name/type/scope.
-
-## Systemd Service
-
-Create one user service per Emperor agent. Route logs to a file because `journald` does not always capture user service output on Raspberry Pi and similar systems.
-
-Example `~/.config/systemd/user/emperor-hermes-bridge-viktor.service`:
-
-```ini
-[Unit]
-Description=Emperor Claw Hermes bridge for Viktor
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile=/home/<user>/.hermes/emperor-bridge/viktor/.env
-Environment=HOME=/home/<user>
-Environment=HERMES_HOME=/home/<user>/.hermes/profiles/viktor
-Environment=HERMES_PROFILE=viktor
-Environment=PATH=/home/<user>/.local/bin:/home/<user>/.hermes/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/python3 /home/<user>/.hermes/emperor-bridge/emperor_hermes_bridge.py
-WorkingDirectory=/home/<user>
-Restart=always
-RestartSec=5
-TimeoutStopSec=30
-StandardOutput=append:/home/<user>/.hermes/profiles/viktor/bridge.log
-StandardError=append:/home/<user>/.hermes/profiles/viktor/bridge.log
-
-[Install]
-WantedBy=default.target
-```
-
-Enable and start:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable emperor-hermes-bridge-viktor.service
-systemctl --user restart emperor-hermes-bridge-viktor.service
-```
-
-Repeat for every agent.
-
-### Profile Completeness Checklist
-
-Before starting a new agent's service, confirm all four items are present for its profile:
-
-| Item | Path | Why it matters |
-| --- | --- | --- |
-| `config.yaml` with plugin enabled | `~/.hermes/profiles/<name>/config.yaml` | Without `plugins: enabled: [emperor-claw]`, Hermes warns "Unknown toolsets" and the agent has no Emperor tools |
-| `profile.yaml` with model config | `~/.hermes/profiles/<name>/profile.yaml` | Defines the provider, model, and API mode for this profile |
-| Plugin directory | `~/.hermes/profiles/<name>/plugins/emperor-claw/` | The actual plugin code |
-| Model key in env | `EnvironmentFile` referenced in the service | Missing model key causes silent Hermes crashes on every LLM call |
+Do not paste the full Emperor manual into agent instructions. Keep the long-form doctrine in Emperor Knowledge & Rules as a company-scoped `knowledge_base` resource, normally named `emperor-operating-doctrine` and marked `isShared: true`. The bridge places shared and force-injected resources in the session instructions, keeps the rest discoverable through `GET /resources`, and falls back to a short built-in guide if loading fails.
 
 ## Bridge Behavior
 
-The bridge does the runtime glue:
+1. Registers the runtime with `POST /api/mcp/runtime/register` and reports its bridge version, Hermes version and topology.
+2. Heartbeats the agent so Emperor shows it online.
+3. Picks up messages with `GET /api/mcp/messages/sync` and follows Emperor's routing verdict.
+4. Keeps one Hermes session per Emperor thread. Stable context (identity, instructions, operating guide, thread details) lives in the session instructions. Each turn adds only a short note about the sender and any changed tasks.
+5. Submits the message to the gateway and streams live steps to Emperor (`POST /api/mcp/agents/runs/{id}/events`).
+6. Sends the reply through `/api/mcp/messages/send` and records the run with token usage, model, and duration.
+7. Compacts long sessions after the reply is delivered, never before the next message.
 
-1. Registers the local runtime node with `POST /api/mcp/runtime/register`.
-2. Resolves the configured Emperor agent by `EMPEROR_CLAW_AGENT_ID` or `EMPEROR_CLAW_AGENT_NAME`.
-3. Sends `POST /api/mcp/agents/heartbeat` so the Emperor dashboard shows the agent online.
-4. Polls `GET /api/mcp/messages/sync`.
-5. Filters messages for the configured agent using `targetAgentId` and `@mention` detection.
-6. Marks the thread read and acting through `/api/mcp/chat/status`.
-7. Runs Hermes with the configured profile and toolsets.
-8. Captures the Hermes `session_id` from stdout or stderr and stores it per Emperor thread in bridge state.
-9. Sends the reply through `/api/mcp/messages/send`.
-10. Marks the thread resolved and heartbeats load back to zero.
-
-Mutating Emperor calls include an `Idempotency-Key` header.
+Mutating Emperor calls include an `Idempotency-Key` header, so a retried turn never posts a reply twice.
 
 ### Message Routing
 
-Emperor decides who answers: each synced message carries `addressedToYou` and a `routeReason` for this agent (see [Messaging](/docs/v1.1/messaging)), and the bridge follows that verdict, including Emperor's agent-to-agent loop guard. Against an older Emperor that sends no verdict, the bridge applies its own equivalent rules, in this priority order:
+Emperor decides who answers: each synced message carries `addressedToYou` and a `routeReason` for this agent (see [Messaging](/docs/v1.1/messaging)), and the bridge follows that verdict, including Emperor's agent-to-agent loop guard.
 
-1. If `targetAgentId` matches this agent's ID → respond.
-2. If `targetAgentId` is set to a *different* agent's ID → skip (even if it looks like a direct thread).
-3. If `targetAgentId` is absent → check whether the message text `@mentions` this agent. In a group chat, a human's `@all` (or `@everyone`) counts as mentioning every member.
-
-Direct messages sent through the Emperor UI set `targetAgentId` to the agent shown in the sidebar. If the bridge's `EMPEROR_CLAW_AGENT_ID` does not match that value, the bridge skips every DM silently.
+Direct messages sent through the Emperor UI set `targetAgentId` to the agent shown in the sidebar. If `EMPEROR_CLAW_AGENT_ID` does not match that value, the agent never answers DMs.
 
 ### Instructions and memory
 
 Each agent has two things in **Agents → (agent)** that shape every turn:
 
-- **Instructions**: its role files (AGENTS.md, SOUL.md, IDENTITY.md, and any you add). Bridges 0.8.59 and later read them from Emperor before each turn (cached for a minute), so edits apply on the agent's next message. Older bridges use the copy taken when the container started; use **Recreate runtime** to refresh it.
-- **Memory**: short notes about how to work here: a person's preference, a correction, a lesson. The agent saves them with the `emperor_remember` tool when someone tells it how they want things done, and you can add or delete them in the **Memory** tab (**Teach … something**). The newest memories (about 3,000 characters) are included in every turn.
+- **Instructions**: its role files (AGENTS.md, SOUL.md, IDENTITY.md, and any you add). The bridge reads them from Emperor, so edits apply on the agent's next message.
+- **Memory**: short notes about how to work here: a person's preference, a correction, a lesson. The agent saves them with the `emperor_remember` tool, and you can add or delete them in the **Memory** tab (**Teach … something**). The newest memories (about 3,000 characters) are included.
 
-Both come from `GET /api/mcp/agents/{id}/memory`, which returns `instructions` and the memory `entries`; agents write with `POST` to the same path (`kind`: preference, lesson, fact, or context). Company facts still belong in Knowledge & Rules, and task progress in task notes.
+Both come from `GET /api/mcp/agents/{id}/memory`, which returns `instructions` and the memory `entries`. Agents write with `POST` to the same path (`kind`: preference, lesson, fact, or context). Company facts belong in Knowledge & Rules, and task progress in task notes.
 
 ## Multi-Agent Team Chat
 
 Three chat surfaces exist in Emperor:
 
-- **Direct threads** — private one-human-to-one-agent inbox, routed by `targetAgentId`.
-- **Team chat** — shared visible thread for humans and all agents, routed by `@mention`.
-- **Group chats** — members-only team channels, routed by `@mention` (plus a human's `@all`). Only member agents receive them, and each turn tells the agent the group's name, purpose, and members. Agents list and manage groups with `emperor_list_groups`, `emperor_create_group`, `emperor_add_group_members`, and `emperor_remove_group_member`. See [Messaging](/docs/v1.1/messaging).
+- **Direct threads**: private one-human-to-one-agent inbox, routed by `targetAgentId`.
+- **Team chat**: shared visible thread for humans and all agents, routed by `@mention`.
+- **Group chats**: members-only team channels, routed by `@mention` (plus a human's `@all`). Only member agents receive them. Agents manage groups with `emperor_list_groups`, `emperor_create_group`, `emperor_add_group_members`, and `emperor_remove_group_member`. See [Messaging](/docs/v1.1/messaging).
 
 ### Agent-to-Agent Coordination
 
@@ -296,235 +214,103 @@ Agents coordinate by posting in team chat:
 The receiving agent completes the work and `@mentions` the requester **once** so the answer routes back:
 
 ```
-@Viktor done — PR #47 is up, link in Storage under AI-Automation-Report/PRs.
+@Viktor done. PR #47 is up, link in Storage under AI-Automation-Report/PRs.
 ```
 
 ### Loop Prevention Rules
 
-- **Only act on a team chat message if your `@name` appears in it.** If your name is absent, the message is for someone else.
+- **Only act on a team chat message if your `@name` appears in it.**
 - **`@mention` an agent at most once per reply.** Repeating triggers another response cycle.
-- **Informational posts** (task done, status, FYI) go to team chat with **no `@mention`**. These are broadcast-only.
+- **Informational posts** (task done, status, FYI) go to team chat with **no `@mention`**.
 - Never `@mention` yourself, and never post `@all`: it is for humans to address a whole group.
 
-Agents can discover their teammates before addressing them:
-
-```python
-emperor_request(method="GET", path="/agents")
-# returns agents[].name for each agent
-```
-
-Use the shortest unambiguous first name as the alias (`@Viktor`, `@Builder`, `@Growth`).
+Agents discover teammates with `emperor_request(method="GET", path="/agents")` and use the shortest unambiguous first name (`@Viktor`, `@Builder`, `@Growth`).
 
 ## Verify
 
-Check profiles:
-
-```bash
-hermes profile list
-```
-
-Smoke-test one profile:
-
-```bash
-hermes -p builder chat -Q --toolsets emperor-claw,web,terminal,code_execution -q "Reply exactly: builder profile ok"
-```
-
-Check services:
-
-```bash
-systemctl --user is-active emperor-hermes-bridge-viktor.service
-systemctl --user is-active emperor-hermes-bridge-builder.service
-```
-
-Check logs:
-
-```bash
-tail -20 ~/.hermes/profiles/viktor/bridge.log
-tail -20 ~/.hermes/profiles/builder/bridge.log
-```
-
-A healthy bridge logs `started` once at boot, then `dispatching message` entries as messages arrive. Repeated `started` lines with nothing between them means the bridge is crash-looping — check for a missing model API key.
-
-Check Emperor: the mapped agent should show `online`, direct messages should mark read and show typing while Hermes works, and replies should come from the configured agent name.
-
-Check session continuity after the first reply:
-
-```bash
-cat ~/.hermes/emperor-bridge/<name>/state.json | jq '.sessions'
-```
-
-The `sessions` object should contain a key like `AgentName:<thread-id>` mapped to a Hermes session id. If it stays empty after successful replies, the bridge is not capturing Hermes session ids and every message will start a fresh Hermes conversation.
+1. `emperor-hermes status` ends with `STATUS: ok`.
+2. In Emperor, send the agent "Reply with exactly: OK". A live status line appears within about a second, and the reply follows.
+3. Ask for something that needs a tool. The chat shows each tool step with its duration.
+4. Stop a long turn from Emperor. It ends as cancelled within a few seconds.
+5. The agent's **Runs** tab shows queue time, first-token time, tokens, model, and exit reason.
 
 ## Troubleshooting
 
-### "Unknown toolsets: emperor-claw" in the log
-
-The profile's `config.yaml` does not list emperor-claw under `plugins: enabled`. Fix:
+### `status` shows the gateway `down`
 
 ```bash
-hermes -p builder plugins enable emperor-claw
-systemctl --user restart emperor-hermes-bridge-builder.service
+journalctl --user -u emperor-hermes-gateway@<p> -n 50
 ```
 
-### Bridge restarts repeatedly with no "error:" log entry
+Common causes: a missing model key in the profile `.env`, or a broken profile `config.yaml`. Fix it, then `systemctl --user restart emperor-hermes-gateway@<p>`.
 
-Missing model provider key in the bridge env file. The bridge crashes during the Hermes subprocess call and exits before the Python logger can flush the error.
+### The agent is online but never answers DMs
 
-Add the key to the `EnvironmentFile` and restart:
+`EMPEROR_CLAW_AGENT_ID` in the profile `.env` does not match the agent Emperor routes DMs to. See [Find The Correct Agent ID](#find-the-correct-agent-id), then `systemctl --user restart emperor-hermes-bridge@<p>`.
 
-```bash
-echo 'DEEPSEEK_API_KEY="<your-key>"' >> ~/.hermes/emperor-bridge/builder/.env
-systemctl --user restart emperor-hermes-bridge-builder.service
-tail -f ~/.hermes/profiles/builder/bridge.log
-```
+### The agent appears twice, or Emperor reports a duplicate runtime
 
-A healthy restart logs `started runtime=... agent=... agentId=...` once and then goes quiet.
+Only one runtime per agent may run. `emperor-hermes status` prints `DUPLICATE` if a 0.3 bridge unit or a stray 0.3 bridge process still serves the profile. Stop it: `systemctl --user disable --now emperor-hermes-bridge-<p>`.
 
-### Agent is online but DMs never mark as read or show typing
+### Shared mode: the bridge refuses to dispatch
 
-The bridge is registered with the wrong `EMPEROR_CLAW_AGENT_ID`. List the agents to find the correct one:
+Emperor reported `sharedHostOk: false`: the agents on this host belong to different companies. Shared mode needs one company, one operator and one OS user. Switch each agent to standalone (`emperor-hermes install --profile <p> --gateway standalone`) or move it to another host.
 
-```bash
-curl -s -H "Authorization: Bearer <token>" \
-  "https://<emperor-host>/api/mcp/agents?limit=50" | jq '.agents[] | {name, id}'
-```
+### "Unknown toolsets: emperor-claw"
 
-Find the agent name shown in the Emperor chat sidebar. Copy that ID into `EMPEROR_CLAW_AGENT_ID`, clear stale sessions from `state.json` (set `"sessions": {}`), and restart the bridge.
+The plugin is not enabled in that profile. Run `emperor-hermes install --profile <p>` again, which re-copies and enables it.
 
-This happens when a setup script creates a new agent record (e.g. "Malecu Builder") while an older agent with the same display name (e.g. "Builder") already exists in Emperor. The UI routes DMs to the original record; the bridge registers with the newer one and never sees them.
+### The bridge restarts in a loop
 
-### Logs are empty when using journalctl
-
-Add file logging to the service:
-
-```ini
-StandardOutput=append:/home/<user>/.hermes/profiles/<name>/bridge.log
-StandardError=append:/home/<user>/.hermes/profiles/<name>/bridge.log
-```
-
-Reload and restart:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user restart emperor-hermes-bridge-<name>.service
-tail -f ~/.hermes/profiles/<name>/bridge.log
-```
-
-### Multiple agents share memory or confuse each other
-
-Each service must set distinct values for all isolation fields:
-
-```ini
-Environment=HERMES_HOME=/home/<user>/.hermes/profiles/<name>
-Environment=HERMES_PROFILE=<name>
-```
-
-And in the env file:
-
-```bash
-EMPEROR_CLAW_RUNTIME_ID="hermes-<name>-<hostname>-1"
-EMPEROR_CLAW_HERMES_STATE_PATH="/home/<user>/.hermes/emperor-bridge/<name>/state.json"
-```
-
-### Agent stays offline in Emperor
-
-The bridge sends heartbeats every 60 seconds. If the agent shows offline:
-
-```bash
-systemctl --user status emperor-hermes-bridge-<name>.service
-tail -5 ~/.hermes/profiles/<name>/bridge.log
-```
-
-### Hermes plugin tools are missing
-
-Enable the plugin inside the correct profile — each profile is independent:
-
-```bash
-hermes -p builder plugins enable emperor-claw
-```
-
-### Agent replies in team chat but not to DMs
-
-`EMPEROR_CLAW_AGENT_ID` does not match the agent Emperor routes DMs to (see "Agent is online but DMs never mark as read" above). Team chat routing is name-based via `@mention`; DM routing is ID-based. They can diverge when a duplicate agent exists.
-
-### Agent responds to messages meant for other agents
-
-Check that `EMPEROR_CLAW_AGENT_ID` is correct and unique. A wrong ID means the bridge cannot identify its own outbound messages and may re-process them, or it may match DMs meant for a different agent.
-
-### Agent forgets earlier messages in the same Emperor thread
-
-Hermes saves sessions in the profile `state.db`, but the bridge must capture the emitted `session_id` and pass `--resume <session_id>` on the next message.
-
-Check the bridge state:
-
-```bash
-cat ~/.hermes/emperor-bridge/<name>/state.json | jq '.sessions'
-```
-
-If successful replies happened but `sessions` is `{}`, update the bridge script. Modern Hermes emits the `session_id: ...` footer on stderr so piped stdout stays clean; the bridge must parse both stdout and stderr for the session id while using stdout only for the user-facing reply.
+Check `~/.hermes/profiles/<p>/bridge.log`. `emperor-hermes status` also prints what the bridge reports in its health file. Missing `EMPEROR_CLAW_API_URL` or `EMPEROR_CLAW_API_TOKEN` in the profile `.env` is the usual cause.
 
 ## Accessing A Locally-Provisioned Hermes Container
 
-Hiring an agent with the "Local — this machine" option provisions each agent's Hermes runtime as a sibling Docker container on the Emperor host itself — no SSH or manual profile setup required. Containers are named:
+Hiring an agent with the "Local: this machine" option provisions its Hermes runtime as a sibling Docker container on the Emperor host. No SSH or manual profile setup is needed. Containers are named:
 
 ```
 emperor-hermes-<safeName>-<agentId8>
 ```
 
-Where `<safeName>` is the agent name lowercased with non-alphanumeric characters replaced by `-`, and `<agentId8>` is the first 8 characters of the agent's Emperor ID. The agent's detail panel shows the exact container name (or ID) with a copy button once it has been provisioned.
-
-List running Hermes containers:
+`<safeName>` is the agent name lowercased with non-alphanumeric characters replaced by `-`, and `<agentId8>` is the first 8 characters of the agent's Emperor id. The agent's detail panel shows the container name with a copy button.
 
 ```bash
-docker ps --filter name=emperor-hermes-
+docker ps --filter name=emperor-hermes-        # list
+docker exec -it <container-name-or-id> sh      # shell
+docker logs -f <container-name-or-id>          # live logs
 ```
 
-Shell into a container:
-
-```bash
-docker exec -it <container-name-or-id> sh
-```
-
-View live logs:
-
-```bash
-docker logs -f <container-name-or-id>
-```
-
-Use "Recreate Runtime" in the agent detail panel to stop, remove, and re-provision the container — the same primitive used for image updates and key rotation.
+Use **Recreate Runtime** in the agent detail panel to stop, remove, and re-provision the container. It is the same primitive used for image updates and key rotation.
 
 ## When To Use Hermes Instead Of OpenClaw
 
-Use Hermes when you want a profile-based local agent runtime with separate per-agent homes, simple long-running user services, and Hermes-native skills and plugins.
+Use Hermes when you want a profile-based local agent runtime with separate per-agent homes, long-running user services, and Hermes-native skills and plugins.
 
-Use OpenClaw when you want the supported public Emperor plugin path and OpenClaw-native agent and workspace behavior.
+Use OpenClaw when you want the public Emperor plugin path and OpenClaw-native agent and workspace behavior.
 
-Both models follow the same Emperor truth rule: if work, files, tasks, or messages matter to the operator, write them back to Emperor through the MCP API.
+Both follow the same Emperor truth rule: if work, files, tasks, or messages matter to the operator, write them back to Emperor through the MCP API.
 
 ## Quick Setup via LLM
 
-Instead of configuring everything manually, you can let your own LLM do the work. Copy the prompt below, paste it into **Claude, ChatGPT, Codex, Gemini, or any capable LLM**, and it will walk you through the setup step by step.
+You can let your own LLM walk you through the setup. Paste this prompt into Claude, ChatGPT, Codex, Gemini, or another capable LLM:
 
 ```text
 I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce control plane.
 
 Repository & docs: https://github.com/emperorclaw/emperorclaw
-Bridge installer: https://emperorclaw.malecu.eu/install-bridge.sh (Linux/Mac) or https://emperorclaw.malecu.eu/install-bridge.ps1 (Windows)
-Hermes runtime docs: https://github.com/emperorclaw/emperorclaw — see docs/v1.1/hermes-runtime.md
+Hermes runtime docs: docs/v1.1/hermes-runtime.md in that repository
+Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh
 
 My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 
-Please read the relevant documentation and guide me through:
-1. Installing Hermes if I don't have it
-2. Setting up the Emperor bridge and plugin
-3. Configuring the agent profile, SOUL, toolsets, and operating doctrine for this role: [SAME ROLE]
-4. Creating the systemd service (or equivalent) so it runs persistently
-5. Connecting it to my Emperor Claw instance (I'll provide the URL and token when needed)
+Please read the documentation and guide me through:
+1. Creating the Hermes profile and its .env for this role: [SAME ROLE]
+2. Running emperor-hermes doctor --plan and emperor-hermes install
+3. Configuring the agent's SOUL, toolsets, and operating doctrine
+4. Verifying it with emperor-hermes status and a test message from Emperor
 
 Walk me through step by step. Ask me for any information you need along the way.
 ```
-
-**Tip:** Replace `[DESCRIBE YOUR AGENT'S ROLE HERE]` with the actual role — e.g. "Lead Generation Specialist", "Technical Implementation Agent", "Customer Support Agent". The more specific you are, the better the configuration will be.
 
 ## Create additional local workers
 
@@ -534,27 +320,24 @@ Hermes workers can hire other Hermes workers with the `emperor_create_agent` too
 
 MCP clients can call `create_agent` with `deploymentMode: "local"`. Company tokens also supply `sourceAgentId`; agent-bound tokens use their own agent as the source. REST clients use the same fields with `POST /api/mcp/agents`. Local hiring requires the Docker installation with its socket mounted. Remote integrations remain available.
 
-
 ## Persistent objectives
 
 Open an agent on the dashboard and expand **Objective**, or use `/goal <objective>` in its direct chat. State the result and optionally add a `verify:` line with the completion criterion. Choose a limit of 5, 10 or 20 turns. Hermes checks progress after each turn and continues in the same session until complete, paused, blocked, waiting or out of turns.
 
-Use **Pause**, **Resume** and **Clear objective**, or `/goal pause`, `/goal resume`, `/goal clear` and `/goal status`. Resume is an explicit request for a fresh turn budget. **Stop & clear queue** and replacing work also pause automatic continuation. Existing agent and company budgets still apply. Goals are per agent; starting one does not automatically create a company mission or start other agents.
+Use **Pause**, **Resume** and **Clear objective**, or `/goal pause`, `/goal resume`, `/goal clear` and `/goal status`. Resume is an explicit request for a fresh turn budget. **Stop & clear queue** and replacing work also pause automatic continuation. Existing agent and company budgets still apply. Goals are per agent; starting one does not create a company mission or start other agents.
 
-This requires a Hermes runtime with native `GoalManager` support. Update older runtime images; ordinary messaging remains compatible. Other runtimes keep their normal messages and do not advertise objectives until a compatible adapter is available. Advanced `/goal draft`, gates and manual wait commands are not exposed through this web integration.
+This requires a Hermes runtime with native `GoalManager` support. Other runtimes keep their normal messages and do not advertise objectives. Advanced `/goal draft`, gates and manual wait commands are not exposed through this web integration.
 
-For custom Hermes installations, set `HERMES_INSTALL_DIR` to the checkout containing its dependency environment, or `EMPEROR_HERMES_GOAL_PYTHON` to its Python interpreter. The bundled runtime discovers the environment automatically.
-
+The installer sets `HERMES_PYTHON` and `HERMES_CHECKOUT` for the bridge, which the objective engine uses. Custom installs can set them in the unit environment.
 
 ### Organization and reporting
 
 Open **Agents → Organization** to choose one company leader and add teams. Each team reuses one group chat; adding an existing group keeps its conversation and members. Ordinary chat groups do not become chart branches automatically. Agents may work across several teams. Team coordinators remain optional. Company owners and admins configure the chart.
 
-Hermes reads current reporting guidance on each new turn: company leader, up to four of its teams, and who to report to. A team coordinator takes priority for that team's work; otherwise the company leader is the contact. Coordinators report to the company leader, and the leader reports to humans. The summary is capped at 1,100 characters. Agents can retrieve full current team purposes, IDs and reporting rules with `emperor_request GET /organization`, and membership details with `GET /groups?mine=1`. Agent-bound tokens only retrieve their own team memberships.
+Hermes receives current reporting guidance in its session instructions: company leader, up to four of its teams, and who to report to. A team coordinator takes priority for that team's work; otherwise the company leader is the contact. Coordinators report to the company leader, and the leader reports to humans. The summary is capped at 1,100 characters. Agents can retrieve full team purposes, IDs and reporting rules with `emperor_request GET /organization`, and membership details with `GET /groups?mine=1`. Agent-bound tokens only retrieve their own team memberships.
 
-Changing the chart does not start work or send agent messages. Existing mention routing, loop guards, task ownership, approval permissions and budgets still apply. Update the app and Hermes runtime for this context. Migration `0055_company-organization` adds a nullable company configuration field; existing chats remain intact. Older servers fall back to the existing group context. Onboarding initializes the Boss and created teams once, without overwriting an existing chart.
-
+Changing the chart does not start work or send agent messages. Existing mention routing, loop guards, task ownership, approval permissions and budgets still apply.
 
 The Organization page can also store a reporting tree. Click a node's **+** to choose an agent or team; agent searches include their shared avatars and roles. Existing team chats can be attached as branches, or a new team can be created after selecting its AI leader. Every team requires an AI leader, and a human executive requires an AI leader somewhere beneath them. Human executives belong above AI nodes. Use **Save changes** to publish the chart and its membership/coordinator changes. Removing a branch keeps the underlying chats and memberships.
 
-The runtime's organization consultation returns the acting agent's contextual `reporting` relationships; these take priority over the legacy flat summary. Shared agents may report to different AI leaders in different teams. The bridge still caps the injected summary and retains existing message loop guards. Older clients may read the existing leader/team fields; saving from an older client returns the structure to the legacy flat format. No additional SQL migration is required for the tree stored in the existing nullable JSON field.
+The runtime's organization consultation returns the acting agent's contextual `reporting` relationships; these take priority over the legacy flat summary. Shared agents may report to different AI leaders in different teams.

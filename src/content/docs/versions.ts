@@ -34,6 +34,7 @@ export const versions: DocVersion[] = [
       { slug: 'usage', title: 'Usage Examples', file: 'usage.md', section: 'Using Emperor' },
 
       { slug: 'hermes-runtime', title: 'Hermes Agent Runtime', file: 'hermes-runtime.md', section: 'Agent Runtimes' },
+      { slug: 'hermes-migration-0-9', title: 'Migrating Hermes Agents to 0.9', file: 'hermes-migration-0.9.md', section: 'Agent Runtimes' },
       { slug: 'openclaw-agents', title: 'OpenClaw Agent Runtime', file: 'openclaw-agents.md', section: 'Agent Runtimes' },
       { slug: 'agent-operating-manual', title: 'Agent Operating Manual', file: 'agent-operating-manual.md', section: 'Agent Runtimes' },
       { slug: 'doctrine-reference', title: 'Doctrine Reference', file: 'doctrine-reference.md', section: 'Agent Runtimes' },
