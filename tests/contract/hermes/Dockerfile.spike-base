@@ -1,0 +1,24 @@
+# Fallback base for the contract harness: the W0 spike's own pinned Hermes v0.22.4 install.
+# The default base is the SHIPPED image (integrations/hermes/Dockerfile, tag emperorclaw-hermes:ci);
+# run.sh falls back to this one only with HERMES_BASE=spike, or HERMES_BASE=auto when the shipped
+# image does not build or is not pinned to v0.22.4. CI never uses it.
+#   docker build -f tests/contract/hermes/Dockerfile.spike-base -t emperor-hermes-contract-base:v0.22.4 .
+FROM python:3.11-slim
+
+ARG HERMES_REF=v0.22.4
+ARG HERMES_COMMIT=4d04303818b61bf3aa09278af48356315515965b
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git ca-certificates curl xz-utils build-essential procps \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 1001 hermes && useradd --uid 1001 --gid hermes --create-home hermes
+
+USER hermes
+WORKDIR /home/hermes
+ENV PATH="/home/hermes/.local/bin:${PATH}"
+
+# Pinned install (protocol doc section 8). No browser / computer-use tooling.
+# The commit check lives in tests/contract/hermes/Dockerfile, so it covers both bases.
+RUN curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_REF}/scripts/install.sh" \
+      | bash -s -- --skip-setup --skip-browser --skip-computer-use --branch "${HERMES_REF}"

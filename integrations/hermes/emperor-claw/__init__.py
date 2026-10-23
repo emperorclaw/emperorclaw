@@ -4,35 +4,244 @@ import json
 import mimetypes
 import os
 import re
+import threading
+import time
 import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
 
 TOOLSET = "emperor-claw"
+PLUGIN_VERSION = "0.9.0"
 DEFAULT_API_URL = "https://emperorclaw.malecu.eu"
+CREDENTIAL_KEYS = ("EMPEROR_CLAW_API_URL", "EMPEROR_CLAW_API_TOKEN", "EMPEROR_CLAW_AGENT_ID", "EMPEROR_CLAW_AGENT_NAME")
 
 
-def _api_url() -> str:
-    return os.environ.get("EMPEROR_CLAW_API_URL", DEFAULT_API_URL).rstrip("/")
+# ---- Session binding --------------------------------------------------------
+# One gateway process can serve several sessions at once, and in shared mode
+# several agents (profiles). Per-session data therefore never comes from
+# os.environ, which is process-wide: the bridge passes it as client_env on
+# session.create, and Hermes exposes that to plugin code only through
+# bound_client_env() (a per-turn ContextVar). Names starting with HERMES_ and
+# secret-looking names (*_TOKEN, *_KEY) are dropped from client_env, so the
+# token itself is read from the bound profile's .env.
+
+
+def _bound_env() -> Dict[str, str]:
+    """The client_env of the session running this tool call, or {} outside one."""
+    try:
+        from agent.session_client_env import bound_client_env
+    except Exception:
+        return {}
+    try:
+        bound = bound_client_env()
+    except Exception:
+        return {}
+    return {str(k): str(v) for k, v in dict(bound).items()} if bound else {}
+
+
+def _profile_home(bound: Dict[str, str]) -> Path | None:
+    raw = (bound.get("EMPEROR_PROFILE_HOME") or "").strip()
+    return Path(raw) if raw else None
+
+
+_DOTENV_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$")
+_dotenv_cache: Dict[str, tuple[tuple[int, int], Dict[str, str]]] = {}
+_dotenv_lock = threading.Lock()
+
+
+def _parse_dotenv(text: str) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        match = _DOTENV_LINE.match(line)
+        if not match:
+            continue
+        key, value = match.group(1), match.group(2)
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        else:
+            value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
+        values[key] = value
+    return values
+
+
+def _read_dotenv(path: Path) -> Dict[str, str]:
+    """Parse a profile .env, cached by (mtime, size) so a token rotation lands on the next call."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    key = str(path)
+    with _dotenv_lock:
+        cached = _dotenv_cache.get(key)
+        if cached and cached[0] == stamp:
+            return cached[1]
+    try:
+        values = _parse_dotenv(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return {}
+    with _dotenv_lock:
+        _dotenv_cache[key] = (stamp, values)
+    return values
+
+
+def _hermes_root() -> Path:
+    env = os.environ
+    return Path(env.get("EMPEROR_HERMES_ROOT") or env.get("HOME") or Path.home()) / ".hermes"
+
+
+def _profile_env_count() -> int:
+    """How many profile .env files live under the Hermes root."""
+    profiles = _hermes_root() / "profiles"
+    if not profiles.is_dir():
+        return 0
+    try:
+        return sum(1 for entry in profiles.iterdir() if (entry / ".env").is_file())
+    except OSError:
+        return 0
+
+
+def _process_credentials_allowed() -> bool:
+    """May an unbound call use this process's os.environ credentials? (M6)
+
+    EMPEROR_GATEWAY_TOPOLOGY (standalone|shared), set in the gateway's own environment by the
+    installer's systemd units and the managed supervisor, decides. Without it (a hand-started
+    gateway): a standalone gateway runs as `hermes -p <profile>`: HERMES_HOME is that profile's home and its
+    os.environ was loaded from that profile's .env, so the fallback is unambiguous. A shared
+    gateway runs on the default home and serves several profiles in one process: os.environ
+    belongs to no agent there, so the fallback is refused unless the operator opts in with
+    EMPEROR_ALLOW_PROCESS_CREDENTIALS=1.
+    """
+    if os.environ.get("EMPEROR_ALLOW_PROCESS_CREDENTIALS") == "1":
+        return True
+    topology = (os.environ.get("EMPEROR_GATEWAY_TOPOLOGY") or "").strip().lower()
+    if topology:  # set by the gateway's systemd unit / the managed supervisor: authoritative
+        return topology != "shared"
+    home = (os.environ.get("HERMES_HOME") or "").strip()
+    if home and Path(home).parent.name == "profiles":
+        return True
+    return _profile_env_count() <= 1
+
+
+def _creds() -> Dict[str, Any]:
+    """Emperor credentials for the session running this tool call.
+
+    An Emperor session (bound EMPEROR_PROFILE_HOME) uses only its own profile's
+    .env, never the process environment, so a shared gateway cannot hand one
+    agent another agent's token. Anything else (a human on the CLI, a
+    non-Emperor session) falls back to os.environ only when that is unambiguous
+    (see _process_credentials_allowed).
+    """
+    bound = _bound_env()
+    home = _profile_home(bound)
+    if home is not None:
+        source_path = home / ".env"
+        values = dict(_read_dotenv(source_path))
+        values.setdefault("EMPEROR_CLAW_AGENT_ID", bound.get("EMPEROR_AGENT_ID", ""))
+        source = str(source_path)
+    elif not _process_credentials_allowed():
+        values = {}
+        source = "environment (refused: shared gateway with multiple profiles)"
+    else:
+        values = {k: os.environ.get(k, "") for k in CREDENTIAL_KEYS}
+        source = "environment"
+    return {
+        "url": (values.get("EMPEROR_CLAW_API_URL") or "").strip().rstrip("/") or DEFAULT_API_URL,
+        "token": (values.get("EMPEROR_CLAW_API_TOKEN") or "").strip(),
+        "agent_ref": (values.get("EMPEROR_CLAW_AGENT_ID") or "").strip()
+        or (values.get("EMPEROR_CLAW_AGENT_NAME") or "").strip(),
+        "source": source,
+    }
+
+
+def _missing_token_error(creds: Dict[str, Any]) -> Dict[str, Any]:
+    return {"ok": False, "error": f"Emperor credentials are not configured: EMPEROR_CLAW_API_TOKEN is not set in {creds['source']}"}
 
 
 def _token() -> str:
-    return os.environ.get("EMPEROR_CLAW_API_TOKEN", "").strip()
+    return _creds()["token"]
 
 
 def _agent_ref() -> str:
-    return (
-        os.environ.get("EMPEROR_CLAW_AGENT_ID", "").strip()
-        or os.environ.get("EMPEROR_CLAW_AGENT_NAME", "").strip()
-    )
+    return _creds()["agent_ref"]
 
 
 def _available() -> bool:
+    # Inside an Emperor session the answer is exact. Outside one (gateway boot
+    # in shared mode has no single token) the tools stay listed and a call
+    # without credentials returns a clear error instead.
+    if _profile_home(_bound_env()) is None:
+        return True
     return bool(_token())
+
+
+# ---- Turn context -----------------------------------------------------------
+# The bridge writes <profileHome>/emperor/turns/<threadId>.json (0600, atomic)
+# before prompt.submit and deletes it after the turn settles. It names the
+# Emperor message the running turn answers. A file from another session
+# generation or past its expiresAt is stale and is never used.
+
+_SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def _parse_expiry(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+        return seconds / 1000.0 if seconds > 1e11 else seconds
+    if isinstance(value, str) and value.strip():
+        try:
+            moment = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.timestamp()
+    return None
+
+
+def _turn_context() -> Dict[str, Any] | None:
+    """The Emperor turn this tool call belongs to, or None when there is no valid one."""
+    bound = _bound_env()
+    home = _profile_home(bound)
+    thread_id = (bound.get("EMPEROR_THREAD_ID") or "").strip()
+    generation = (bound.get("EMPEROR_SESSION_GEN") or "").strip()
+    if home is None or not thread_id or not generation or not _SAFE_ID.match(thread_id):
+        return None
+    try:
+        data = json.loads((home / "emperor" / "turns" / f"{thread_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if str(data.get("sessionGeneration", "")).strip() != generation:
+        return None
+    file_thread = data.get("threadId")
+    if file_thread not in (None, "") and str(file_thread) != thread_id:
+        return None
+    expires = _parse_expiry(data.get("expiresAt"))
+    if expires is None or expires <= time.time():
+        return None
+    message_id = str(data.get("messageId") or "").strip()
+    if not message_id:
+        return None
+    return {
+        "threadId": thread_id,
+        "threadType": (bound.get("EMPEROR_THREAD_TYPE") or "").strip() or None,
+        "messageId": message_id,
+        "runId": str(data.get("runId") or "").strip() or None,
+        "submissionId": str(data.get("submissionId") or "").strip() or None,
+        "sessionGeneration": generation,
+        "agentId": (bound.get("EMPEROR_AGENT_ID") or "").strip() or None,
+    }
 
 
 DEFAULT_TOOL_RESULT_MAX_CHARS = 12000
@@ -243,15 +452,16 @@ def _json(data: Any) -> str:
 
 
 def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: Dict[str, Any] | None = None, timeout: int = 30) -> Dict[str, Any]:
-    token = _token()
+    creds = _creds()
+    token = creds["token"]
     if not token:
-        return {"error": "EMPEROR_CLAW_API_TOKEN is not set"}
+        return _missing_token_error(creds)
 
     clean_path = "/" + str(path or "").lstrip("/")
     if not clean_path.startswith("/api/"):
         clean_path = "/api/mcp" + clean_path
 
-    url = _api_url() + clean_path
+    url = creds["url"] + clean_path
     if query:
         pairs = {k: v for k, v in query.items() if v is not None and v != ""}
         if pairs:
@@ -261,7 +471,7 @@ def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: 
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
-        "User-Agent": "hermes-emperor-claw-plugin/0.1.0",
+        "User-Agent": f"hermes-emperor-claw-plugin/{PLUGIN_VERSION}",
     }
     if body is not None:
         payload = json.dumps(body).encode("utf-8")
@@ -289,7 +499,12 @@ def _request(method: str, path: str, body: Dict[str, Any] | None = None, query: 
         return {"ok": False, "error": str(exc)}
 
 
-def _multipart_upload(url: str, token: str, file_path: str, fields: Dict[str, str], method: str = "POST") -> Dict[str, Any]:
+def _multipart_upload(path: str, file_path: str, fields: Dict[str, str], method: str = "POST") -> Dict[str, Any]:
+    creds = _creds()
+    token = creds["token"]
+    if not token:
+        return _missing_token_error(creds)
+    url = creds["url"] + path
     boundary = uuid.uuid4().hex
     filename = os.path.basename(file_path)
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -316,7 +531,7 @@ def _multipart_upload(url: str, token: str, file_path: str, fields: Dict[str, st
         "Authorization": f"Bearer {token}",
         "Content-Type": f"multipart/form-data; boundary={boundary}",
         "Accept": "application/json",
-        "User-Agent": "hermes-emperor-claw-plugin/0.1.0",
+        "User-Agent": f"hermes-emperor-claw-plugin/{PLUGIN_VERSION}",
         "Idempotency-Key": str(uuid.uuid4()),
     }
     req = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
@@ -739,8 +954,7 @@ def emperor_upload_artifact(args: Dict[str, Any], **_: Any) -> str:
         fields["agentId"] = agent
     if "visibility" not in fields:
         fields["visibility"] = "private"
-    url = _api_url() + "/api/mcp/artifacts/upload"
-    return _json(_artifact_receipt(_multipart_upload(url, _token(), file_path, fields)))
+    return _json(_artifact_receipt(_multipart_upload("/api/mcp/artifacts/upload", file_path, fields)))
 
 
 def emperor_upload_artifacts(args: Dict[str, Any], **_: Any) -> str:
@@ -794,8 +1008,8 @@ def emperor_replace_artifact(args: Dict[str, Any], **_: Any) -> str:
         value = args.get(key)
         if value not in (None, ""):
             fields[key] = str(value)
-    url = _api_url() + "/api/mcp/artifacts/" + urllib.parse.quote(artifact_id) + "/replace"
-    return _json(_artifact_receipt(_multipart_upload(url, _token(), file_path, fields, method="PATCH")))
+    path = "/api/mcp/artifacts/" + urllib.parse.quote(artifact_id) + "/replace"
+    return _json(_artifact_receipt(_multipart_upload(path, file_path, fields, method="PATCH")))
 
 
 def emperor_verify_artifact(args: Dict[str, Any], **_: Any) -> str:
@@ -857,25 +1071,27 @@ def emperor_send_message(args: Dict[str, Any], **_: Any) -> str:
     text = str(args.get("text") or "").strip()
     if not text:
         return _json({"error": "text is required"})
-    # The bridge exports the message this turn answers. A post into that same
-    # thread (the one allowed "acknowledge first" message) must say which
-    # message it answers: without replyToMessageId the server marks the thread
-    # answered up to the ack's own instant and drops @mentions that arrive
-    # while the agent is still working.
-    turn_thread = os.environ.get("EMPEROR_CLAW_TURN_THREAD_ID") or None
-    turn_message = os.environ.get("EMPEROR_CLAW_TURN_MESSAGE_ID") or None
+    # The bridge's turn file names the message this turn answers. A post into
+    # that same thread (the one allowed "acknowledge first" message) must say
+    # which message it answers: without replyToMessageId the server marks the
+    # thread answered up to the ack's own instant and drops @mentions that
+    # arrive while the agent is still working.
+    turn = _turn_context()
+    turn_thread = turn["threadId"] if turn else None
+    turn_message = turn["messageId"] if turn else None
     thread_id = args.get("threadId") or args.get("thread_id")
     thread_type = args.get("threadType") or args.get("thread_type")
     acknowledge = bool(args.get("acknowledge"))
     if acknowledge:
         # An ack only means something inside a bridge turn answering a real
         # message: without one it would fall through to the team channel.
-        if not turn_thread or not turn_message:
+        # A missing, expired or other-generation turn file posts nothing.
+        if not turn:
             return _json({"error": "acknowledge is only available inside a bridge turn"})
         if thread_id and thread_id != turn_thread:
             return _json({"error": "acknowledge posts only into the thread of the message you are answering"})
         thread_id = turn_thread
-        thread_type = thread_type or os.environ.get("EMPEROR_CLAW_TURN_THREAD_TYPE") or None
+        thread_type = thread_type or turn["threadType"]
     reply_to = turn_message if turn_thread and thread_id == turn_thread else None
     body = {
         "text": text,
@@ -936,49 +1152,6 @@ def emperor_search_knowledge(args: Dict[str, Any], **_: Any) -> str:
     return _json(_request("GET", "/knowledge/search", query={"q": query, "limit": args.get("limit") or 10}))
 
 
-def emperor_context_hook(**_: Any) -> Dict[str, str]:
-    # Lean mode: the bridge's static block already carries the kernel plus the
-    # knowledge index, so injecting the operating guide again would re-add
-    # exactly what lean mode removed. Inject nothing.
-    if os.environ.get("EMPEROR_CLAW_CONTEXT_MODE", "").strip().lower() == "lean":
-        return {"context": ""}
-    if os.environ.get("EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE") == "1":
-        return {"context": "Emperor Claw tools are available for durable state and exact company data."}
-    return {
-        "context": Path(__file__).with_name("operating-guide.md").read_text(encoding="utf-8") + "\n\n" + (
-            "Use Emperor only when the request needs durable state, exact message history, or a real state change; otherwise answer normally. "
-            "Do not preload, summarize, or mention projects/tasks/resources/artifacts by default. "
-            "Lookup map: past chat/history -> emperor_list_threads then emperor_get_thread_messages; team roster -> GET /agents; "
-            "projects -> emperor_list_projects or GET /projects/{id}; task status -> emperor_get_task_overview first; selected task -> GET /tasks/{id}; "
-            "task progress/history -> GET /tasks/{id}/notes; project memory -> GET /projects/{id}/memory; "
-            "objective check-in -> reply with emperor_update_objective(objectiveId, action='update'|'block'|'complete'): a short status, blockerReason when stuck, completionSummary when done; "
-            "When proposing Knowledge & Rules, use Obsidian-style markdown: frontmatter scope/type/status/owner/tags, one reusable rule per note, explicit [[wikilinks]], Evidence, and Related sections. "
-            "Do not fake folders in note titles; Emperor places notes by company/customer/project/agent scope. "
-            "browse a folder's contents (subfolders + files) -> emperor_list_folder_contents; "
-            "upload a local file to Storage -> emperor_upload_artifact (never emperor_request, never curl). "
-            "verify an uploaded file without reading its bytes -> emperor_verify_artifact(artifactId). "
-            "Storage is an Emperor abstraction: do not ask for or mention Bunny/backing blob-provider keys during normal uploads. "
-            "If upload fails, report an Emperor Storage upload failure with the tool error. "
-            "Storage folder workflow: (1) emperor_create_folder(name, projectId/customerId) -> returns folder.id; "
-            "(2) for a subfolder: emperor_create_folder(name, projectId, parentFolderId=<id>); "
-            "(3) emperor_upload_artifact(filePath, kind, projectId, folderId=<id>) for each file. "
-            "Always pass folderId when uploading into a folder. Never upload without folderId and expect files to be grouped. "
-            "Use customer/project/month/type folders when possible; search/list before creating duplicates; prefer move/replace over duplicate uploads. "
-            "Thread history is REST-readable; do not call it unavailable or WebSocket-only. "
-            "Team chat rules: (1) Only act on a team chat message if your @name is explicitly mentioned in it — if your name is absent, the message is for someone else. "
-            "(2) To ask a sibling to do something: emperor_send_message(text='@SiblingName <request>', threadType='team'). Discover sibling names first with emperor_request GET /agents. "
-            "To reach one sibling directly: emperor_send_message(targetAgentId='<id or name>', text='<request>') — Emperor posts in your shared work-team chat and mentions them so only they wake; add threadId if you share several teams, or private=true only when the team must not see it. "
-            "(3) When responding to a sibling's request, @mention them once in your reply so the message routes back: '@Viktor here are the results...'. "
-            "(4) A closing answer ends the exchange: do not send thanks or another acknowledgment; mention only for a new actionable request. "
-            "(5) Informational updates (status, FYI, task done with no one waiting) go to team chat with NO @mention. "
-            "Use emperor_send_message threadType=direct only when the message must be private. "
-            "Never use emperor_send_message to deliver your own reply to the message you are answering: the runtime posts your answer to the current thread automatically, so calling the tool as well duplicates it. It is only for messaging a DIFFERENT thread. "
-            "Call Emperor tools before claiming a state change. "
-            "emperor_request is not a generic external HTTP client; use terminal/curl or a dedicated plugin for external APIs."
-        )
-    }
-
-
 def emperor_create_agent(args: Dict[str, Any], **kwargs: Any) -> str:
     return _json(_request("POST", "/agents", {
         "name": args.get("name", ""),
@@ -1001,6 +1174,11 @@ def _schema(description: str, properties: Dict[str, Any], required: list[str] | 
 
 
 def register(ctx: Any) -> None:
+    # No gate on os.environ: in a shared gateway the process has no single
+    # token, so credentials are resolved per session at call time (_creds).
+    # No pre_llm_call hook either: hook output is appended to every user
+    # message and replayed with history; the bridge puts the operating guide
+    # in the session system prompt, and the skill below keeps it readable.
     requires = ["EMPEROR_CLAW_API_TOKEN"]
     plugin_dir = Path(__file__).resolve().parent
     skill_dir = plugin_dir / "skills" / "emperor-claw"
@@ -1492,4 +1670,3 @@ def register(ctx: Any) -> None:
         requires_env=requires,
         description="Search Emperor knowledge notes",
     )
-    ctx.register_hook("pre_llm_call", emperor_context_hook)

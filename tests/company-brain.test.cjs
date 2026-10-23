@@ -82,7 +82,7 @@ test("Knowledge & Rules UI keeps Company Brain advanced concepts operator-friend
 
 
 test("Hermes bridge and docs use Company Brain context resolver", () => {
-  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_hermes_bridge.py");
+  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_bridge/context.py");
   assertContains(bridge, "format_company_brain_context", "Hermes bridge should use the Company Brain context formatter");
   assertContains(bridge, "GET", "Hermes bridge should call Emperor APIs for context");
   assertContains(bridge, "/resources/context", "Hermes bridge should resolve context through the centralized endpoint");

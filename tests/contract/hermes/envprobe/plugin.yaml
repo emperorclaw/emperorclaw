@@ -1,0 +1,7 @@
+name: envprobe
+version: 0.1.0
+description: Contract-harness plugin that reports the environment a plugin tool sees inside a gateway turn.
+author: Emperor Claw contract harness
+kind: standalone
+provides_tools:
+  - envprobe_dump

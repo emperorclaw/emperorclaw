@@ -1,1921 +1,306 @@
-"""
-Tests for EmperorClaw Hermes Bridge safety functions.
+"""Bridge 0.9 safety rules ported from the 0.3 suite: routing, mentions, loop guard, cold start,
+retry ledger, controls, budget gate, provider failures, reply shape, operating guide, rich replies,
+group context and server routing.
 
-Tests cover:
-- Cold-start guard (per-thread)
-- Loop guard (max 3 agent turns)
-- is_for_agent routing
-- mentions_agent detection
-- check_loop_guard mechanics
-- State persistence (save/load cycle)
+Deleted with the behavior they covered (design 5.2): state.db reasoning sources, stream-json and
+CLI output cleaning, subprocess timeouts/orphan reaping, the main-chat digest and session rotation.
 """
-import json
-import os
+import asyncio
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-# Add bridge dir to path so we can import the bridge module
-BRIDGE_DIR = Path(__file__).resolve().parent.parent / "integrations" / "hermes" / "emperor-claw" / "bridge"
-sys.path.insert(0, str(BRIDGE_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "integrations/hermes/emperor-claw/bridge"))
 
-# We need to set env vars before importing the bridge module
-os.environ.setdefault("EMPEROR_CLAW_API_TOKEN", "test-token")
-os.environ.setdefault("EMPEROR_CLAW_API_URL", "http://localhost:3000/api/mcp")
-os.environ.setdefault("EMPEROR_CLAW_AGENT_NAME", "TestAgent")
-os.environ.setdefault("EMPEROR_CLAW_AGENT_ID", "test-agent-id")
-os.environ.setdefault("EMPEROR_CLAW_AGENT_ROLE", "Tester")
-os.environ.setdefault("EMPEROR_CLAW_RUNTIME_ID", "test-runtime-1")
-os.environ.setdefault("EMPEROR_CLAW_HERMES_STATE_PATH", str(Path(tempfile.gettempdir()) / "test-bridge-state.json"))
-os.environ.setdefault("EMPEROR_CLAW_HERMES_POLL_SECONDS", "5")
-os.environ.setdefault("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "30")
+from emperor_bridge import context as ctx  # noqa: E402
+from emperor_bridge.emperor_api import (check_loop_guard, classify, environment_wait_exhausted, is_direct_thread,  # noqa: E402
+                                        is_for_agent, mark_inflight, mentions_agent, retry_due, schedule_retry,
+                                        split_control_commands)
+from emperor_bridge.interfaces import TurnOutcome, TurnResult, UsageLedger  # noqa: E402
+from emperor_bridge.ledger import BudgetGate, error_classification  # noqa: E402
+from emperor_bridge.outbox import build_entry  # noqa: E402
 
-import emperor_hermes_bridge as bridge
-import emperor_goals
-from unittest.mock import patch
-# Goal scheduling is tested separately; ordinary messaging never calls a live endpoint.
-_goal_poll_patch = patch.object(emperor_goals, "process_commands", return_value=False)
-_goal_run_patch = patch.object(emperor_goals, "run_next", return_value=None)
-_goal_poll_patch.start()
-_goal_run_patch.start()
-_goal_record_patch = patch.object(emperor_goals, "record_external_turn", return_value=None)
-_goal_record_patch.start()
-_organization_formatter = bridge.format_organization_context
-_organization_patch = patch.object(bridge, "format_organization_context", return_value="")
-_organization_patch.start()
+AGENT = "agent-1"
 
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+def verdict(message, data=None, started_at=0.0, parked=False):
+    return classify(message, agent_id=AGENT, agent_name="Viktor", data=data if data is not None else {},
+                    started_at=started_at, loop_guard_max_turns=3, has_parked_reply=lambda _m: parked).action
 
 
 class TestOrganizationReporting(unittest.TestCase):
-    def setUp(self):
-        bridge._organization_cache["info"] = None
-        bridge._organization_cache["fetchedAt"] = 0.0
+    def test_reporting_is_bounded_and_names_leader(self):
+        info = {"configured": True, "leader": {"kind": "human", "name": "Jose " * 40},
+                "reporting": [{"reportsTo": {"name": "Architect"}}]}
+        block = ctx.format_organization(info, AGENT)
+        self.assertIn("you report to Architect", block)
+        self.assertLess(len(block), 400)
 
-    def test_reporting_is_bounded_and_skips_self(self):
-        data = {"configured": True, "leader": {"kind": "agent", "id": bridge.AGENT_ID, "name": "Boss"}, "teams": [{"name": "Team " + "X" * 1000, "coordinator": {"kind": "agent", "id": bridge.AGENT_ID, "name": "Boss"}} for _ in range(30)]}
-        with patch.object(bridge, "api", return_value=data):
-            text = _organization_formatter()
-        self.assertLessEqual(len(text), 400)
-        self.assertIn("report to humans", text)
-        self.assertIn("GET /organization", text)
+    def test_self_leader_reports_to_humans(self):
+        block = ctx.format_organization({"configured": True, "leader": {"kind": "agent", "id": AGENT, "name": "V"}}, AGENT)
+        self.assertIn("you lead the company; report to humans", block)
 
-    def test_chart_reporting_overrides_legacy_coordinator(self):
-        with patch.object(bridge, "api", return_value={"configured": True, "leader": {"name": "CEO"}, "teams": [{"name": "Design", "coordinator": {"name": "Old coordinator"}}], "reporting": [{"context": "Design", "reportsTo": {"name": "AI lead"}}]}):
-            text = _organization_formatter()
-        self.assertIn("Org: leader CEO; you report to AI lead", text)
-        self.assertNotIn("Old coordinator", text)
-
-    def test_shared_teams_select_reporting_by_work_context(self):
-        with patch.object(bridge, "api", return_value={"configured": True, "leader": {"name": "CEO"}, "teams": [], "reporting": [{"context": "Design", "reportsTo": {"name": "Mira"}}, {"context": "Research", "reportsTo": {"name": "Atlas"}}]}):
-            text = _organization_formatter()
-        self.assertIn("you report to Mira", text)
-        self.assertIn("GET /organization", text)
-        self.assertLessEqual(len(text), 400)
-
-    def test_old_server_does_not_interrupt_messages(self):
-        with patch.object(bridge, "api", side_effect=RuntimeError("404")):
-            self.assertEqual(_organization_formatter(), "")
+    def test_old_server_or_unconfigured_chart_adds_nothing(self):
+        self.assertEqual(ctx.format_organization(None, AGENT), "")
+        self.assertEqual(ctx.format_organization({"configured": False}, AGENT), "")
 
     def test_team_coordinator_is_the_reporting_target(self):
-        with patch.object(bridge, "api", return_value={"configured": True, "leader": {"name": "Boss"}, "teams": [{"name": "Design", "coordinator": {"name": "Mira"}}, {"name": "Research"}]}):
-            text = _organization_formatter()
-        self.assertIn("you report to Mira", text)
+        info = {"configured": True, "leader": {"name": "Lead"}, "teams": [{"coordinator": {"kind": "agent", "id": "x", "name": "Coord"}}]}
+        self.assertIn("you report to Coord", ctx.format_organization(info, AGENT))
 
 
 class TestRuntimeControls(unittest.TestCase):
-    def test_control_resets_session_before_acknowledging(self):
-        from unittest.mock import patch
-        state = {"sessions": {"agent:thread": "old-session"}}
-        events = []
-        with patch.object(bridge, "save_state", side_effect=lambda value: events.append(("save", dict(value["sessions"])))), patch.object(bridge, "api", side_effect=lambda *args, **kwargs: events.append(("ack", kwargs["body"]["commandId"]))):
-            self.assertTrue(bridge.apply_runtime_controls({"commands": [{"id": "stop-1"}, {"id": "stop-2"}]}, state))
-        self.assertEqual(events, [("save", {}), ("ack", "stop-1"), ("ack", "stop-2")])
+    def test_stop_commands_are_split_from_kill_and_replace(self):
+        stops, kills = split_control_commands({"commands": [
+            {"id": "c1", "action": "stop", "messageId": "m1"}, {"id": "c2", "action": "kill"},
+            {"id": "c3", "metadataJson": {"runtimeControl": {"action": "replace"}}}]})
+        self.assertEqual([c["id"] for c in stops], ["c1"])
+        self.assertEqual([c["metadataJson"]["runtimeControl"]["action"] for c in kills], ["kill", "replace"])
 
-    def test_queued_prompt_keeps_session(self):
-        state = {"sessions": {"a:t": "existing"}}
-        self.assertFalse(bridge.apply_runtime_controls({"commands": []}, state))
-        self.assertEqual(state["sessions"], {"a:t": "existing"})
-
-    def test_stop_terminates_real_turn_before_ack(self):
-        from unittest.mock import patch
-        import subprocess
-        real_popen = subprocess.Popen
-        processes = []
-        def launch(*args, **kwargs):
-            proc = real_popen(*args, **kwargs)
-            processes.append(proc)
-            return proc
-        def ack(*args, **kwargs):
-            self.assertIsNotNone(processes[0].poll(), "ack must follow process exit")
-            return {"ok": True}
-        state = {"sessions": {"a:t": "old"}}
-        with patch.object(bridge.subprocess, "Popen", side_effect=launch), patch.object(bridge, "fetch_runtime_control", return_value={"commands": [{"id": "stop"}]}), patch.object(bridge, "save_state"), patch.object(bridge, "api", side_effect=ack):
-            with self.assertRaises(bridge.TurnInterrupted):
-                bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(30)"], {"id": "work"}, state=state)
-        self.assertIsNotNone(processes[0].returncode)
-        self.assertEqual(state["sessions"], {})
-
-    def test_cancelled_cached_prompt_is_interrupted(self):
-        from unittest.mock import patch, MagicMock
-        proc = MagicMock()
-        proc.poll.return_value = None
-        proc.communicate.return_value = ("stale answer", "")
-        with patch.object(bridge.subprocess, "Popen", return_value=proc), patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": True}), patch.object(bridge, "_terminate_turn") as terminate:
-            with self.assertRaises(bridge.TurnInterrupted):
-                bridge.invoke_hermes(["hermes"], {"id": "cached-work"}, state={})
-        terminate.assert_called_once_with(proc)
+    def test_empty_or_malformed_payload_is_harmless(self):
+        self.assertEqual(split_control_commands(None), ([], []))
+        self.assertEqual(split_control_commands({"commands": None}), ([], []))
 
 
 class TestRetryLedger(unittest.TestCase):
-    def test_timeout_log_never_contains_the_command_prompt(self):
-        import subprocess
-        error = subprocess.TimeoutExpired(["hermes", "-q", "private prompt"], 600)
-        description = bridge.describe_processing_error(error)
-        self.assertEqual(description, "Hermes turn timed out after 600 seconds")
-        self.assertNotIn("private prompt", description)
-
-    def test_processing_error_is_bounded_and_redacts_token(self):
-        original = bridge.API_TOKEN
-        try:
-            bridge.API_TOKEN = "secret-token"
-            description = bridge.describe_processing_error(RuntimeError("secret-token\n" + "x" * 1200))
-        finally:
-            bridge.API_TOKEN = original
-        self.assertNotIn("secret-token", description)
-        self.assertLessEqual(len(description), 801)
-        self.assertNotIn("\n", description)
-
-    def test_retry_and_orphan_states_are_recoverable_even_if_locally_seen(self):
-        message = {"targetAgentId": "test-agent-id"}
-        for state in ("queued", "seen", "acting"):
-            self.assertTrue(bridge.is_recoverable_direct_message(message, state))
-        self.assertFalse(bridge.is_recoverable_direct_message(message, "resolved"))
-        self.assertFalse(bridge.is_recoverable_direct_message(message, "cancelled"))
-        self.assertFalse(bridge.is_recoverable_direct_message({"targetAgentId": "other"}, "queued"))
-
     def test_retry_is_durable_and_uses_bounded_exponential_backoff(self):
-        state = {}
-        self.assertTrue(bridge.retry_due(state, "message-1", now=100))
-        self.assertEqual(bridge.schedule_retry(state, "message-1", now=100), 1)
-        self.assertFalse(bridge.retry_due(state, "message-1", now=100))
-        self.assertTrue(bridge.retry_due(state, "message-1", now=100 + bridge.RETRY_BASE_SECONDS))
-        self.assertEqual(bridge.schedule_retry(state, "message-1", now=200), 2)
-        self.assertEqual(state["retries"]["message-1"]["nextRetryAt"], 200 + min(bridge.RETRY_MAX_SECONDS, bridge.RETRY_BASE_SECONDS * 2))
-        bridge.clear_retry(state, "message-1")
-        self.assertTrue(bridge.retry_due(state, "message-1", now=200))
+        data = {}
+        self.assertEqual(schedule_retry(data, "m", base_s=15, max_s=300, now=1000), 1)
+        self.assertEqual(data["retries"]["m"]["nextRetryAt"], 1015)
+        self.assertFalse(retry_due(data, "m", now=1010))
+        for _ in range(10):
+            schedule_retry(data, "m", base_s=15, max_s=300, now=1000)
+        self.assertEqual(data["retries"]["m"]["nextRetryAt"], 1300)
 
-    def test_sync_includes_persisted_retry_ids(self):
-        from unittest.mock import patch
-        state = {"lastSeenAt": "2026-01-01T00:00:00Z", "retries": {"retry-1": {"attempts": 1, "nextRetryAt": 0}}}
-        with patch.object(bridge, "api", return_value={"messages": []}) as api:
-            self.assertEqual(bridge.sync_messages(state), [])
-        self.assertEqual(api.call_args.kwargs["query"]["retryMessageIds"], "retry-1")
+    def test_environment_wait_never_spends_the_attempt_budget(self):
+        data = {}
+        schedule_retry(data, "m", base_s=15, max_s=300, environment=True, now=0)
+        schedule_retry(data, "m", base_s=15, max_s=300, environment=True, now=0)
+        self.assertEqual(data["retries"]["m"]["attempts"], 0)
+        self.assertEqual(data["retries"]["m"]["busyMisses"], 2)
+
+    def test_environment_wait_has_a_ceiling_from_the_first_attempt(self):
+        data = {}
+        schedule_retry(data, "m", base_s=15, max_s=300, environment=True, now=100)
+        schedule_retry(data, "m", base_s=15, max_s=300, environment=True, now=5000)
+        self.assertFalse(environment_wait_exhausted(data, "m", 86400, now=86000))
+        self.assertTrue(environment_wait_exhausted(data, "m", 86400, now=86500))
+
+    def test_inflight_messages_stay_in_the_retry_ledger_for_resync(self):
+        data = {}
+        mark_inflight(data, "m", now=5)
+        self.assertTrue(retry_due(data, "m"))
+        self.assertIn("m", data["retries"])
+
+    def test_seen_direct_prompt_still_active_server_side_is_recovered(self):
+        data = {"seen": ["m"]}
+        msg = {"id": "m", "threadId": "t", "threadType": "direct", "targetAgentId": AGENT, "deliveryState": "acting",
+               "senderType": "human", "text": "hi"}
+        self.assertEqual(verdict(msg, data), "dispatch")
+        self.assertEqual(verdict({**msg, "targetAgentId": "other"}, {"seen": ["m"]}), "skip")
 
 
 class TestRosterAliases(unittest.TestCase):
-    def test_turn_includes_baseline_when_company_kb_empty(self):
-        from unittest.mock import patch
-        import subprocess
-        with patch.object(bridge, "format_agent_roster", return_value=""), patch.object(bridge, "fetch_company_brain_context", return_value={"sources": []}), patch.object(bridge, "invoke_hermes", return_value=subprocess.CompletedProcess([], 0, "Hello", "")) as invoke:
-            result = bridge.run_hermes({"threadId": "team-test", "threadType": "team", "text": "@TestAgent hello"}, {})
-        self.assertEqual(result, "Hello")
-        command = invoke.call_args.args[0]
-        prompt = command[command.index("-q") + 1]
-        for phrase in ["Emperor minimum operating practices", "Group chat", "isShared=true", "Common scenarios", "resolver returned no readable context"]:
-            self.assertIn(phrase, prompt)
-
     def test_same_first_name_gets_distinct_aliases(self):
-        from unittest.mock import patch
-        with patch.object(bridge, "fetch_agent_roster", return_value=[
-            {"id": "1", "name": "Alex Smith"}, {"id": "2", "name": "Alex Jones"},
-        ]):
-            roster = bridge.format_agent_roster("1")
-        self.assertIn("@Alex-Jones", roster)
-        self.assertIn("@Alex-Smith", roster)
-        self.assertNotIn(": @Alex\n", roster)
-        self.assertTrue(bridge.mentions_agent("@Alex-Jones please review", "Alex Jones"))
-        self.assertFalse(bridge.mentions_agent("@Alex-Jones please review", "Alex Smith"))
+        roster = ctx.format_roster([{"id": "a", "name": "Viktor Builder"}, {"id": "b", "name": "Viktor QA"}], "a",
+                                   with_ids=False)
+        self.assertIn("@Viktor-Builder", roster)
+        self.assertIn("@Viktor-QA", roster)
+        self.assertNotIn("@Viktor ", roster)
+
+    def test_roster_carries_ids_only_with_rich_replies(self):
+        agents = [{"id": "a1", "name": "Ada"}]
+        self.assertIn("id a1", ctx.format_roster(agents, "x", with_ids=True))
+        self.assertNotIn("id a1", ctx.format_roster(agents, "x", with_ids=False))
+
+    def test_empty_roster_points_at_the_tool(self):
+        self.assertIn("GET /agents", ctx.format_roster([], AGENT, with_ids=False))
 
 
 class TestColdStartGuard(unittest.TestCase):
-    """Tests for per-thread cold-start guard."""
+    def test_agent_backlog_in_shared_thread_is_skipped(self):
+        msg = {"id": "m", "threadId": "t", "threadType": "team", "senderType": "agent", "senderId": "x",
+               "text": "@Viktor go", "createdAt": "2020-01-01T00:00:00Z"}
+        self.assertEqual(verdict(msg, started_at=1e10), "skip")
 
-    def test_new_thread_is_frozen(self):
-        """A thread with no human messages should be frozen (cold_start=True)."""
-        state = {}
-        cold_state = state.setdefault("cold_start_threads", {})
-        thread_id = "team-thread-1"
-        # Default should be True (frozen) for a new thread
-        self.assertTrue(cold_state.get(thread_id, True))
-
-    def test_human_message_unfreezes_thread(self):
-        """A human message should unfreeze only THAT thread."""
-        state = {}
-        cold_state = state.setdefault("cold_start_threads", {})
-        thread_a = "team-thread-a"
-        thread_b = "team-thread-b"
-        # Human speaks in thread A
-        cold_state[thread_a] = False
-        # Thread A should be unfrozen
-        self.assertFalse(cold_state.get(thread_a, True))
-        # Thread B should still be frozen
-        self.assertTrue(cold_state.get(thread_b, True))
-
-    def test_agent_message_stays_frozen(self):
-        """An agent message should NOT unfreeze a thread."""
-        state = {}
-        cold_state = state.setdefault("cold_start_threads", {})
-        thread_id = "team-thread-1"
-        # Simulate: agent message arrives, thread stays frozen
-        is_frozen = cold_state.get(thread_id, True)
-        self.assertTrue(is_frozen)
+    def test_live_agent_message_and_human_backlog_are_not_skipped(self):
+        msg = {"id": "m", "threadId": "t", "threadType": "team", "senderType": "human", "text": "@Viktor go",
+               "createdAt": "2020-01-01T00:00:00Z"}
+        self.assertEqual(verdict(msg, started_at=1e10), "dispatch")
 
 
 class TestLoopGuard(unittest.TestCase):
-    """Tests for the mechanical loop guard (max 3 agent turns)."""
+    def msg(self, sender):
+        return {"id": "m", "threadId": "t", "threadType": "team", "senderType": sender}
 
-    def _make_msg(self, sender_type="agent", thread_type="team", thread_id="team-1"):
-        return {
-            "id": "msg-1",
-            "senderType": sender_type,
-            "threadType": thread_type,
-            "threadId": thread_id,
-            "text": "test message",
-        }
-
-    def test_first_agent_turn_passes(self):
-        """First agent turn should pass the loop guard."""
-        msg = self._make_msg(sender_type="agent")
-        state = {}
-        result = bridge.check_loop_guard(msg, state)
-        self.assertTrue(result)
-
-    def test_three_agent_turns_pass(self):
-        """Up to 3 consecutive agent turns should pass."""
-        state = {}
-        thread_id = "team-loop-test"
-        for i in range(3):
-            msg = self._make_msg(sender_type="agent", thread_id=thread_id)
-            result = bridge.check_loop_guard(msg, state)
-            self.assertTrue(result, f"Turn {i+1} should pass")
-
-    def test_fourth_agent_turn_fails(self):
-        """4th consecutive agent turn should be blocked."""
-        state = {}
-        thread_id = "team-loop-test-2"
-        for i in range(3):
-            msg = self._make_msg(sender_type="agent", thread_id=thread_id)
-            bridge.check_loop_guard(msg, state)
-        # 4th should fail
-        msg4 = self._make_msg(sender_type="agent", thread_id=thread_id)
-        result = bridge.check_loop_guard(msg4, state)
-        self.assertFalse(result)
+    def test_three_agent_turns_pass_and_the_fourth_fails(self):
+        data = {}
+        self.assertEqual([check_loop_guard(self.msg("agent"), data, 3, now=1) for _ in range(4)], [True, True, True, False])
 
     def test_human_resets_counter(self):
-        """A human message resets the loop guard counter to 0."""
-        state = {}
-        thread_id = "team-reset-test"
-        # Build up 3 agent turns
-        for _ in range(3):
-            bridge.check_loop_guard(self._make_msg(sender_type="agent", thread_id=thread_id), state)
-        # Human message
-        human_msg = self._make_msg(sender_type="human", thread_id=thread_id)
-        bridge.check_loop_guard(human_msg, state)
-        # Now agent should pass again
-        agent_msg = self._make_msg(sender_type="agent", thread_id=thread_id)
-        result = bridge.check_loop_guard(agent_msg, state)
-        self.assertTrue(result)
+        data = {}
+        for _ in range(4):
+            check_loop_guard(self.msg("agent"), data, 3, now=1)
+        self.assertTrue(check_loop_guard(self.msg("human"), data, 3, now=1))
+        self.assertTrue(check_loop_guard(self.msg("agent"), data, 3, now=1))
 
     def test_direct_threads_always_pass(self):
-        """Direct threads should always pass loop guard."""
-        msg = self._make_msg(sender_type="agent", thread_type="direct", thread_id="dm-1")
-        state = {}
-        # Even after many turns, direct threads pass
-        for _ in range(10):
-            result = bridge.check_loop_guard(msg, state)
-            self.assertTrue(result)
+        data = {}
+        self.assertTrue(all(check_loop_guard({"threadId": "t", "threadType": "direct", "senderType": "agent"}, data, 3)
+                            for _ in range(10)))
+
+    def test_classify_reports_the_trip_once_per_thread(self):
+        data = {}
+        base = {"threadId": "t", "threadType": "team", "senderType": "agent", "senderId": "x", "text": "@Viktor ok"}
+        actions = [verdict({**base, "id": f"m{i}"}, data) for i in range(4)]
+        self.assertEqual(actions, ["dispatch", "dispatch", "dispatch", "loop_guard"])
 
 
-class TestMentionsAgent(unittest.TestCase):
-    """Tests for @mention detection."""
+class TestMentions(unittest.TestCase):
+    def test_exact_partial_and_unicode_mentions(self):
+        self.assertTrue(mentions_agent("hey @Viktor please", "Viktor"))
+        self.assertTrue(mentions_agent("@viktor-builder go", "Viktor Builder"))
+        self.assertTrue(mentions_agent("hola @José", "José"))
 
-    def test_unicode_multiword_mentions(self):
-        for separator in [" ", "\u00a0", "\u202f", "\u2009", "\t", "\u200b", "\u2060", "\ufeff"]:
-            with self.subTest(separator=repr(separator)):
-                text = "@José" + separator + "Zúñiga, revisa esto"
-                self.assertTrue(bridge.mentions_agent(text, "José Zúñiga"))
-        self.assertTrue(bridge.mentions_agent("＠María José de la Cruz: revisa", "María José de la Cruz"))
-        self.assertFalse(bridge.mentions_agent("qa@TestAgent.example", "TestAgent"))
-        self.assertNotIn("María José", bridge.mentioned_agent_refs("@María\nJosé"))
-
-    def test_exact_mention(self):
-        """Direct @TestAgent should be detected."""
-        text = "@TestAgent can you check this?"
-        result = bridge.mentions_agent(text, "TestAgent")
-        self.assertTrue(result)
-
-    def test_partial_first_name_mention(self):
-        """@TestAgent alone (full name) should match."""
-        text = "@TestAgent do something"
-        result = bridge.mentions_agent(text, "TestAgent")
-        self.assertTrue(result)
-
-    def test_partial_word_does_not_match(self):
-        """@Test (partial word) should NOT match TestAgent (avoids false positives)."""
-        text = "@Test do something"
-        result = bridge.mentions_agent(text, "TestAgent")
-        self.assertFalse(result)
-
-    def test_no_mention(self):
-        """Message without @mention should not match."""
-        text = "Can you check this?"
-        result = bridge.mentions_agent(text, "TestAgent")
-        self.assertFalse(result)
-
-    def test_mention_other_agent(self):
-        """@ mention of another agent should not match."""
-        text = "@Builder do this"
-        result = bridge.mentions_agent(text, "TestAgent")
-        self.assertFalse(result)
-
-    def test_mention_with_punctuation(self):
-        """@TestAgent! or @TestAgent, should still match."""
-        text = "@TestAgent, please help!"
-        result = bridge.mentions_agent(text, "TestAgent")
-        self.assertTrue(result)
+    def test_partial_word_and_other_agents_do_not_match(self):
+        self.assertFalse(mentions_agent("@Viktoria hi", "Viktor"))
+        self.assertFalse(mentions_agent("@Ada hi", "Viktor"))
+        self.assertFalse(mentions_agent("Viktor without at", "Viktor"))
 
 
 class TestIsForAgent(unittest.TestCase):
-    """Tests for message routing (is_for_agent)."""
+    def test_target_and_own_message(self):
+        self.assertTrue(is_for_agent({"targetAgentId": AGENT}, AGENT, "Viktor", {}))
+        self.assertFalse(is_for_agent({"targetAgentId": "x"}, AGENT, "Viktor", {}))
+        self.assertFalse(is_for_agent({"senderType": "agent", "senderId": AGENT, "targetAgentId": AGENT}, AGENT, "V", {}))
 
-    def _make_msg(self, **kwargs):
-        defaults = {
-            "id": "msg-1",
-            "senderType": "human",
-            "senderId": "user-1",
-            "threadType": "team",
-            "threadId": "team-1",
-            "targetAgentId": "",
-            "text": "hello",
-        }
-        defaults.update(kwargs)
-        return defaults
+    def test_team_chat_needs_a_mention_and_groups_honor_human_at_all(self):
+        self.assertFalse(is_for_agent({"threadType": "team", "text": "standup?"}, AGENT, "Viktor", {}))
+        self.assertTrue(is_for_agent({"threadType": "group", "senderType": "human", "text": "@all report"}, AGENT, "V", {}))
+        self.assertFalse(is_for_agent({"threadType": "group", "senderType": "agent", "text": "@all report"}, AGENT, "V", {}))
 
-    def test_direct_target_match(self):
-        """Message with targetAgentId matching this agent."""
-        msg = self._make_msg(targetAgentId="test-agent-id")
-        state = {}
-        result = bridge.is_for_agent(msg, "test-agent-id", state)
-        self.assertTrue(result)
+    def test_known_dm_of_another_agent_is_not_ours(self):
+        data = {"directThreads": {"t": "other"}}
+        self.assertFalse(is_for_agent({"threadId": "t", "text": "@Viktor hi"}, AGENT, "Viktor", data))
 
-    def test_direct_target_mismatch(self):
-        """Message with targetAgentId NOT matching this agent."""
-        msg = self._make_msg(targetAgentId="other-agent-id")
-        state = {}
-        result = bridge.is_for_agent(msg, "test-agent-id", state)
-        self.assertFalse(result)
-
-    def test_own_message_ignored(self):
-        """Agent should ignore its own messages."""
-        msg = self._make_msg(senderType="agent", senderId="test-agent-id")
-        state = {}
-        result = bridge.is_for_agent(msg, "test-agent-id", state)
-        self.assertFalse(result)
-
-    def test_direct_thread_always_relevant(self):
-        """Messages in a direct thread are always for this agent."""
-        msg = self._make_msg(threadType="direct", targetAgentId="")
-        state = {}
-        result = bridge.is_for_agent(msg, "test-agent-id", state)
-        self.assertTrue(result)
-
-    def test_team_chat_needs_mention(self):
-        """Team chat messages need @mention to be for this agent."""
-        msg = self._make_msg(threadType="team", targetAgentId="", text="hello everyone")
-        state = {}
-        result = bridge.is_for_agent(msg, "test-agent-id", state)
-        self.assertFalse(result)
-
-
-class TestStatePersistence(unittest.TestCase):
-    """Tests that state saves and loads correctly."""
-
-    def test_save_and_load_state(self):
-        """State should survive a save/load cycle."""
-        state_path = Path(os.environ["EMPEROR_CLAW_HERMES_STATE_PATH"])
-        state = {
-            "seen": ["msg-1", "msg-2"],
-            "cold_start_threads": {"team-1": False, "team-2": True},
-            "loop_guard": {"team-1": {"count": 2, "notified": False}},
-            "lastSeenAt": "2026-07-20T10:00:00Z",
-        }
-        bridge.save_state(state)
-        loaded = bridge.load_state()
-        self.assertEqual(loaded["seen"], state["seen"])
-        self.assertEqual(loaded["cold_start_threads"], state["cold_start_threads"])
-        self.assertEqual(loaded["loop_guard"], state["loop_guard"])
-        # Cleanup
-        state_path.unlink(missing_ok=True)
-
-    def test_empty_state_on_first_load(self):
-        """First load with no file should return empty state."""
-        state_path = Path(os.environ["EMPEROR_CLAW_HERMES_STATE_PATH"])
-        state_path.unlink(missing_ok=True)
-        Path(str(state_path) + ".bak").unlink(missing_ok=True)
-        state = bridge.load_state()
-        self.assertEqual(state, {"seen": [], "lastSeenAt": None})
-
-    def test_corrupt_state_is_preserved_and_falls_back(self):
-        """A corrupt state file must not be silently discarded."""
-        state_path = Path(os.environ["EMPEROR_CLAW_HERMES_STATE_PATH"])
-        Path(str(state_path) + ".bak").unlink(missing_ok=True)
-        Path(str(state_path) + ".corrupt").unlink(missing_ok=True)
-        state_path.write_text("{not valid json", encoding="utf-8")
-        loaded = bridge.load_state()
-        self.assertEqual(loaded, {"seen": [], "lastSeenAt": None})
-        self.assertTrue(Path(str(state_path) + ".corrupt").exists())
-        Path(str(state_path) + ".corrupt").unlink(missing_ok=True)
-
-
-class TestBudgetGuard(unittest.TestCase):
-    def setUp(self):
-        from unittest.mock import patch
-        self.api_patch = patch.object(bridge, "api")
-        self.api = self.api_patch.start()
-        self.addCleanup(self.api_patch.stop)
-        bridge._pending_input_tokens = 0
-        bridge._pending_output_tokens = 0
-
-    def test_denies_paused_malformed_and_failed_checks(self):
-        for payload in [{}, {"agent": {"executionAllowed": False, "budgetStatus": "paused"}}]:
-            self.api.return_value = payload
-            self.assertFalse(bridge.check_budget())
-        self.api.side_effect = RuntimeError("offline")
-        self.assertFalse(bridge.check_budget())
-
-    def test_paused_poll_never_invokes_hermes_or_consumes_message(self):
-        from unittest.mock import patch
-        from contextlib import ExitStack
-        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
-        message = {"id": "blocked", "text": "hello", "senderType": "human",
-                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
-        self.api.return_value = {"agent": {"budgetStatus": "paused", "executionAllowed": False}}
-        with ExitStack() as stack:
-            for name in ["ensure_runtime", "send_heartbeat", "save_state"]:
-                stack.enter_context(patch.object(bridge, name))
-            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
-            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
-            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
-            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
-            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
-            run = stack.enter_context(patch.object(bridge, "run_hermes"))
-            with self.assertRaises(KeyboardInterrupt):
-                bridge.main()
-            run.assert_not_called()
-            self.assertNotIn("blocked", state["seen"])
-
-    def test_usage_reports_runtime_model_instead_of_provider_name(self):
-        from unittest.mock import patch
-        with patch.dict(bridge.os.environ, {"EMPEROR_CLAW_RUNTIME_MODEL": "openai/gpt-4o-mini"}), patch.object(bridge, "_agent_llm_model", None), patch.object(bridge, "_agent_llm_provider", "openai"):
-            bridge.report_token_usage(400, 200)
-        self.assertEqual(self.api.call_args.kwargs["body"]["model"], "openai/gpt-4o-mini")
-
-    def test_flushes_every_turn_and_retries_before_dispatch(self):
-        self.api.side_effect = RuntimeError("offline")
-        with self.assertRaises(RuntimeError):
-            bridge.report_token_usage(400, 200)
-        self.assertFalse(bridge.check_budget())
-        self.api.side_effect = None
-        self.api.return_value = {"agent": {"executionAllowed": True, "budgetStatus": "active"}}
-        self.assertTrue(bridge.check_budget())
-        self.assertEqual(bridge._pending_input_tokens, 0)
-        self.assertEqual(self.api.call_args_list[-2].args[0], "POST")
-        self.assertEqual(self.api.call_args_list[-1].args[0], "GET")
-        bridge.report_token_usage(400, 200)
-        self.assertEqual(self.api.call_args.args[0], "POST")
-
-
-class TestRealUsageAndProviderFailures(unittest.TestCase):
-    """report-usage bills what Hermes actually sent, and an out-of-credits
-    provider shows up as a named failure instead of a silent stall.
-
-    Regression for 2026-10-18: the chars/4 estimate showed ~$0.03/month per
-    agent while OpenRouter billed ~$27/week on one key, and the account ran
-    dry with nothing in Emperor saying why.
-    """
-
-    # Real lines from malecu-hermes-1 (agent.log, Hermes v0.20.x).
-    LOG = (
-        "2026-10-16 00:52:00,001 INFO [s1] agent.conversation_loop: API call #1: model=deepseek/deepseek-v4-flash provider=openrouter in=1000 out=50 total=1050 latency=1.0s id=gen-old upstream=Baidu\n"
-        "2026-10-16 00:52:59,770 INFO [s1] agent.conversation_loop: API call #1: model=deepseek/deepseek-v4-flash provider=openrouter in=43413 out=176 total=43589 latency=3.6s cache=36864/43413 (85%) id=gen-1 upstream=Baidu\n"
-        "2026-10-16 00:53:05,001 INFO [s1] agent.tool_executor: tool web_search completed (0.20s, 10 chars)\n"
-        "2026-10-16 00:53:59,088 INFO [s1] agent.conversation_loop: API call #2: model=deepseek/deepseek-v4-flash provider=openrouter in=44737 out=82 total=44819 latency=3.8s cache=40960/44737 (92%) id=gen-2 upstream=Baidu\n"
-    )
-    REAL_402 = (
-        "Billing or credits exhausted: HTTP 402: Insufficient credits. Add more using "
-        "https://openrouter.ai/settings/credits  OpenRouter reported that billing, credits, "
-        "or account entitlement is exhausted"
-    )
-
-    def setUp(self):
-        import time as _time
-        self.since = _time.mktime(_time.strptime("2026-10-16 00:52:30", "%Y-%m-%d %H:%M:%S"))
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.log = Path(self.tmp.name) / "agent.log"
-        self.log.write_text(self.LOG, encoding="utf-8")
-        self.api_patch = patch.object(bridge, "api")
-        self.api = self.api_patch.start()
-        self.addCleanup(self.api_patch.stop)
-        bridge._pending_input_tokens = 0
-        bridge._pending_output_tokens = 0
-
-    def test_usage_reports_real_hermes_tokens_not_the_char_estimate(self):
-        with patch.object(bridge, "_agent_log_path", return_value=self.log):
-            bridge.report_token_usage(400, 200, since_ts=self.since, session_id="s1")
-        body = self.api.call_args.kwargs["body"]
-        # Both calls of this turn (with their full re-sent context), not 400/4.
-        self.assertEqual(body["inputTokens"], 43413 + 44737)
-        self.assertEqual(body["outputTokens"], 176 + 82)
-        self.assertEqual(self.api.call_args.args[:2], ("POST", "/agents/report-usage"))
-
-    def test_usage_falls_back_to_char_estimate_without_log(self):
-        with patch.object(bridge, "_agent_log_path", return_value=None):
-            bridge.report_token_usage(400, 200, since_ts=self.since)
-        body = self.api.call_args.kwargs["body"]
-        self.assertEqual((body["inputTokens"], body["outputTokens"]), (100, 50))
-
-    def test_usage_falls_back_when_turn_logged_no_call(self):
-        with patch.object(bridge, "_agent_log_path", return_value=self.log):
-            bridge.report_token_usage(400, 200, since_ts=self.since + 3600, session_id="s1")
-        self.assertEqual(self.api.call_args.kwargs["body"]["inputTokens"], 100)
-
-    def test_usage_without_a_session_id_falls_back_to_the_estimate(self):
-        # agent.log is shared by every process on the profile: with no session
-        # id nothing can be attributed to this turn, so never over-bill.
-        with patch.object(bridge, "_agent_log_path", return_value=self.log):
-            bridge.report_token_usage(400, 200, since_ts=self.since)
-        self.assertEqual(self.api.call_args.kwargs["body"]["inputTokens"], 100)
-
-    def test_usage_ignores_other_sessions_on_the_same_profile(self):
-        other = "2026-10-16 00:53:30,001 INFO [cli-other] agent.conversation_loop: API call #1: model=m provider=p in=99999 out=999 total=1\n"
-        self.log.write_text(self.LOG + other, encoding="utf-8")
-        with patch.object(bridge, "_agent_log_path", return_value=self.log):
-            self.assertEqual(bridge.sum_api_usage(self.since, session_id="s1"), (43413 + 44737, 176 + 82))
-            self.assertEqual(bridge.sum_api_usage(self.since, session_id="cli-other"), (99999, 999))
-            self.assertIsNone(bridge.sum_api_usage(self.since, session_id=None))
-
-    def test_failed_real_sample_is_retained_as_tokens(self):
-        self.api.side_effect = RuntimeError("offline")
-        with patch.object(bridge, "_agent_log_path", return_value=self.log):
-            with self.assertRaises(RuntimeError):
-                bridge.report_token_usage(400, 200, since_ts=self.since, session_id="s1")
-        self.assertEqual(bridge._pending_input_tokens, 43413 + 44737)
-        self.api.side_effect = None
-        bridge.report_token_usage(0, 0)
-        self.assertEqual(self.api.call_args.kwargs["body"]["inputTokens"], 43413 + 44737)
-        self.assertEqual(bridge._pending_input_tokens, 0)
-
-    def test_empty_failed_turn_reports_nothing(self):
-        with patch.object(bridge, "_agent_log_path", return_value=None):
-            bridge.report_token_usage(0, 0, since_ts=self.since)
-        self.api.assert_not_called()
-
-    def test_402_is_classified_with_a_fixed_reason(self):
-        reason = bridge.provider_failure_reason(RuntimeError(self.REAL_402))
-        self.assertEqual(reason, bridge.PROVIDER_CREDITS_REASON)
-        self.assertIn("out of credits", reason)
-        self.assertNotIn("openrouter.ai", reason)
-        self.assertEqual(bridge.ledger_error_message(RuntimeError(self.REAL_402)), "provider_credits_exhausted: HTTP 402")
-
-    def test_other_failures_carry_no_reason(self):
-        import subprocess
-        for exc in (
-            RuntimeError("tool crashed: key=sk-live-123"),
-            RuntimeError("HTTP 4021 bytes read"),
-            subprocess.CalledProcessError(1, ["hermes", "chat", "-q", "Insufficient credits in prompt text"]),
-            subprocess.TimeoutExpired(["hermes", "-q", "HTTP 402"], 5),
-        ):
-            self.assertIsNone(bridge.provider_failure_reason(exc), exc)
-
-    def test_status_update_sends_bounded_reason(self):
-        bridge.update_chat_status({"id": "m1", "threadId": "t1"}, execution_state="cancelled", reason="x" * 500)
-        body = self.api.call_args.kwargs["body"]
-        self.assertEqual(body["executionState"], "cancelled")
-        self.assertEqual(len(body["reason"]), 300)
-        bridge.update_chat_status({"id": "m1", "threadId": "t1"}, execution_state="cancelled")
-        self.assertNotIn("reason", self.api.call_args.kwargs["body"])
-
-    def _run_failing_turn(self, exc, attempts, *, spawned=True):
-        from contextlib import ExitStack
-
-        def failing_turn(message, state):
-            bridge._turn_timing.clear()
-            if spawned:
-                bridge._turn_timing["spawnedAt"] = 1.0
-                bridge._turn_session_id = "sess-402"
-            raise exc
-
-        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
-        message = {"id": "msg-402", "text": "hello", "senderType": "human", "threadId": "t1",
-                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
-        with ExitStack() as stack:
-            for name in ["ensure_runtime", "send_heartbeat", "save_state"]:
-                stack.enter_context(patch.object(bridge, name))
-            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
-            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
-            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
-            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
-            stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
-            stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
-            stack.enter_context(patch.object(bridge, "server_supports_runs", return_value=False))
-            stack.enter_context(patch.object(bridge, "schedule_retry", return_value=attempts))
-            stack.enter_context(patch.object(bridge, "run_hermes", side_effect=failing_turn))
-            stack.enter_context(patch.object(bridge, "flush_outbox", return_value=0))
-            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
-            status = stack.enter_context(patch.object(bridge, "update_chat_status"))
-            usage = stack.enter_context(patch.object(bridge, "report_token_usage"))
-            with self.assertRaises(KeyboardInterrupt):
-                bridge.main()
-        return status, usage
-
-    def test_exhausted_402_turn_is_cancelled_with_credits_reason(self):
-        status, usage = self._run_failing_turn(RuntimeError(self.REAL_402), bridge.MAX_RETRY_ATTEMPTS)
-        cancelled = [c for c in status.call_args_list if c.kwargs.get("execution_state") == "cancelled"]
-        self.assertEqual(len(cancelled), 1)
-        self.assertEqual(cancelled[0].kwargs["reason"], bridge.PROVIDER_CREDITS_REASON)
-        # The failed turn still bills whatever Hermes logged, never an estimate.
-        self.assertEqual(usage.call_args.args[:2], (0, 0))
-        self.assertIn("since_ts", usage.call_args.kwargs)
-        self.assertEqual(usage.call_args.kwargs["session_id"], "sess-402")
-
-    def test_turn_that_never_spawned_hermes_reports_no_usage(self):
-        # SessionBusy before spawn: no model call was made, nothing to bill.
-        _, usage = self._run_failing_turn(bridge.SessionBusy("SESSION_NOT_OWNED"), 1, spawned=False)
-        usage.assert_not_called()
-
-    def test_exhausted_generic_failure_sends_no_reason(self):
-        status, _ = self._run_failing_turn(RuntimeError("boom: secret reply text"), bridge.MAX_RETRY_ATTEMPTS)
-        cancelled = [c for c in status.call_args_list if c.kwargs.get("execution_state") == "cancelled"]
-        self.assertEqual(len(cancelled), 1)
-        self.assertIsNone(cancelled[0].kwargs["reason"])
+    def test_server_verdict_wins(self):
+        self.assertTrue(is_for_agent({"threadType": "team", "text": "no mention", "addressedToYou": True}, AGENT, "V", {}))
+        self.assertFalse(is_for_agent({"targetAgentId": AGENT, "addressedToYou": False}, AGENT, "V", {}))
+        self.assertFalse(is_for_agent({"senderType": "agent", "senderId": AGENT, "addressedToYou": True}, AGENT, "V", {}))
 
 
 class TestIsDirectThread(unittest.TestCase):
-    """Tests for DM vs team classification (is_direct_thread)."""
-
-    def test_explicit_direct_thread_type(self):
-        self.assertTrue(bridge.is_direct_thread({"threadType": "direct", "threadId": "dm-1"}, {}))
-
-    def test_explicit_team_thread_type(self):
-        self.assertFalse(bridge.is_direct_thread({"threadType": "team", "threadId": "team-1"}, {}))
-
-    def test_target_agent_id_marks_direct(self):
-        msg = {"threadId": "dm-1", "targetAgentId": bridge.AGENT_ID}
-        self.assertTrue(bridge.is_direct_thread(msg, {}))
-
-    def test_group_pair_thread_is_not_direct(self):
-        # A two-agent pair thread is a group carrying targetAgentId for old
-        # runtimes; it must never be classified as a private DM.
-        msg = {"threadType": "group", "threadId": "pair-1", "targetAgentId": bridge.AGENT_ID}
-        self.assertFalse(bridge.is_direct_thread(msg, {}))
-
-    def test_recorded_direct_thread_ownership(self):
-        msg = {"threadId": "dm-1"}
-        state = {"direct_threads": {"dm-1": bridge.AGENT_ID}}
-        self.assertTrue(bridge.is_direct_thread(msg, state))
-
-    def test_unknown_thread_is_not_direct(self):
-        self.assertFalse(bridge.is_direct_thread({"threadId": "team-1"}, {}))
-
-
-class TestMainChatContext(unittest.TestCase):
-    """Tests for the DM main-chat digest (format_main_chat_context)."""
-
-    def setUp(self):
-        from unittest.mock import patch
-        self.api_patch = patch.object(bridge, "api")
-        self.api = self.api_patch.start()
-        self.addCleanup(self.api_patch.stop)
-        bridge._team_thread_id_cache = None
-        self.addCleanup(setattr, bridge, "_team_thread_id_cache", None)
-
-    def test_formats_recent_team_messages_with_sender_labels(self):
-        def fake_api(method, path, body=None, query=None):
-            if path == "/threads":
-                return {"threads": [{"id": "team-1", "createdAt": "2026-01-01T00:00:00Z"}]}
-            if path == "/threads/team-1/messages":
-                return {"messages": [
-                    {"senderType": "agent", "senderId": "a1", "text": "hi @Ada"},
-                    {"senderType": "human", "metadataJson": {"senderName": "Operator"}, "text": "thanks"},
-                ]}
-            raise AssertionError(path)
-        self.api.side_effect = fake_api
-        from unittest.mock import patch
-        with patch.object(bridge, "fetch_agent_roster", return_value=[{"id": "a1", "name": "Ada"}]):
-            context = bridge.format_main_chat_context({})
-        self.assertIn("Ada: hi @Ada", context)
-        self.assertIn("Operator: thanks", context)
-
-    def test_disabled_when_limit_is_zero(self):
-        original = bridge.MAIN_CHAT_CONTEXT_LIMIT
-        bridge.MAIN_CHAT_CONTEXT_LIMIT = 0
-        try:
-            self.assertEqual(bridge.format_main_chat_context({}), "")
-            self.api.assert_not_called()
-        finally:
-            bridge.MAIN_CHAT_CONTEXT_LIMIT = original
-
-    def test_empty_when_no_team_thread(self):
-        self.api.return_value = {"threads": []}
-        self.assertEqual(bridge.format_main_chat_context({}), "")
-
-
-class TestReasoningSource(unittest.TestCase):
-    """Tests for the pluggable reasoning source (real model "thinking")."""
-
-    def _make_db(self, rows, columns=("reasoning_content", "reasoning"), table="messages"):
-        """Build a throwaway fixture SQLite DB. Never touches a real state.db."""
-        import sqlite3
-        directory = tempfile.mkdtemp()
-        db_path = Path(directory) / "state.db"
-        conn = sqlite3.connect(str(db_path))
-        base = ["id INTEGER PRIMARY KEY", "session_id TEXT", "role TEXT", "timestamp REAL"]
-        extra = ["%s TEXT" % name for name in columns]
-        conn.execute("CREATE TABLE %s (%s)" % (table, ", ".join(base + extra)))
-        names = ["session_id", "role", "timestamp"] + list(columns)
-        placeholders = ", ".join("?" * len(names))
-        for row in rows:
-            conn.execute(
-                "INSERT INTO %s (%s) VALUES (%s)" % (table, ", ".join(names), placeholders),
-                [row.get(name) for name in names],
-            )
-        conn.commit()
-        conn.close()
-        return db_path
-
-    def test_none_source_returns_nothing(self):
-        source = bridge.NullReasoningSource()
-        self.assertIsNone(source.latest_reasoning("session-1", 0.0))
-
-    def test_session_store_returns_newest_reasoning(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-             "reasoning_content": "Older thought.", "reasoning": None},
-            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
-             "reasoning_content": "Newest thought about the task.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertEqual(
-            source.latest_reasoning("s1", 50.0),
-            "Newest thought about the task.",
-        )
-
-    def test_session_store_falls_back_to_reasoning_column(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
-             "reasoning_content": None, "reasoning": "Fallback reasoning text here."},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertEqual(
-            source.latest_reasoning("s1", 50.0),
-            "Fallback reasoning text here.",
-        )
-
-    def test_session_store_ignores_rows_older_than_turn_start(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 10.0,
-             "reasoning_content": "Stale reasoning from a previous turn.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("s1", 100.0))
-
-    def test_session_store_never_leaks_another_session(self):
-        """A row from a different session id must NEVER be returned."""
-        db_path = self._make_db([
-            {"session_id": "other-agent-session", "role": "assistant", "timestamp": 300.0,
-             "reasoning_content": "Secret reasoning from another agent.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("s1", 50.0))
-
-    def test_session_store_without_session_id_returns_none(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 300.0,
-             "reasoning_content": "Some reasoning.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("", 50.0))
-
-    def test_session_store_ignores_non_assistant_rows(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "user", "timestamp": 300.0,
-             "reasoning_content": "Not assistant reasoning.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("s1", 50.0))
-
-    def test_missing_db_degrades_to_none(self):
-        missing = Path(tempfile.mkdtemp()) / "does-not-exist.db"
-        source = bridge.SessionStoreReasoningSource(missing)
-        self.assertIsNone(source.latest_reasoning("s1", 0.0))
-
-    def test_missing_table_degrades_to_none(self):
-        db_path = self._make_db([], table="other_table")
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("s1", 0.0))
-
-    def test_missing_reasoning_columns_degrade_to_none(self):
-        db_path = self._make_db(
-            [{"session_id": "s1", "role": "assistant", "timestamp": 300.0, "content": "hi"}],
-            columns=("content",),
-        )
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("s1", 0.0))
-
-    def test_corrupt_db_degrades_to_none(self):
-        path = Path(tempfile.mkdtemp()) / "state.db"
-        path.write_text("this is not a sqlite database", encoding="utf-8")
-        source = bridge.SessionStoreReasoningSource(path)
-        self.assertIsNone(source.latest_reasoning("s1", 0.0))
-
-    def test_stub_row_does_not_mask_real_reasoning(self):
-        """A newer row holding a stub must not hide the real thought behind it.
-
-        Assistant rows are written for every step of a turn and many carry a
-        token-sized `reasoning_content` — observed in production as a single
-        character. Taking the newest row unconditionally meant condensing that
-        stub to nothing and reporting no reasoning at all, even with a full
-        thought one row back.
-        """
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-             "reasoning_content": "A complete thought worth showing.", "reasoning": None},
-            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
-             "reasoning_content": "x", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertEqual(
-            source.latest_reasoning("s1", 0.0),
-            "A complete thought worth showing.",
-        )
-
-    def test_stub_column_does_not_shadow_substantive_sibling(self):
-        """The row may qualify on the SECOND column; do not return the first."""
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-             "reasoning_content": "x", "reasoning": "The real reasoning lives here."},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertEqual(
-            source.latest_reasoning("s1", 0.0),
-            "The real reasoning lives here.",
-        )
-
-    def test_missing_table_recovers_once_it_appears(self):
-        """A not-yet-created `messages` table is transient, not permanent.
-
-        During first-run schema bootstrap the store file exists but `messages`
-        does not. PRAGMA returns an empty list instead of raising, and latching
-        that as unusable would freeze the source into "no reasoning" for the
-        whole life of the process — weeks, under Restart=always.
-        """
-        import sqlite3
-        db_path = self._make_db(
-            [{"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-              "reasoning_content": "unused", "reasoning": None}],
-            table="not_messages",
-        )
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.latest_reasoning("s1", 0.0))
-
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, "
-            "role TEXT, timestamp REAL, reasoning_content TEXT)"
-        )
-        conn.execute(
-            "INSERT INTO messages (session_id, role, timestamp, reasoning_content) "
-            "VALUES ('s1', 'assistant', 200.0, 'Reasoning that arrived later.')"
-        )
-        conn.commit()
-        conn.close()
-
-        self.assertEqual(
-            source.latest_reasoning("s1", 0.0),
-            "Reasoning that arrived later.",
-        )
-
-
-class TestReasoningSourceResolution(unittest.TestCase):
-    """The active source must not latch a negative result forever."""
-
-    def setUp(self):
-        self._saved = (bridge._reasoning_source, bridge._reasoning_source_retry_at,
-                       bridge.REASONING_SOURCE_NAME, os.environ.get("HERMES_HOME"))
-        bridge._reasoning_source = None
-        bridge._reasoning_source_retry_at = 0.0
-
-    def tearDown(self):
-        (bridge._reasoning_source, bridge._reasoning_source_retry_at,
-         bridge.REASONING_SOURCE_NAME, home) = self._saved
-        if home is None:
-            os.environ.pop("HERMES_HOME", None)
-        else:
-            os.environ["HERMES_HOME"] = home
-
-    def test_auto_upgrades_when_store_appears_later(self):
-        """The fresh-install path: bridge starts before the runtime ever runs.
-
-        The store does not exist yet, so `auto` correctly resolves to none — but
-        it must re-check, or reasoning silently never works until a restart.
-        """
-        import sqlite3
-        home = Path(tempfile.mkdtemp())
-        os.environ["HERMES_HOME"] = str(home)
-        bridge.REASONING_SOURCE_NAME = "auto"
-
-        self.assertEqual(bridge.reasoning_source().name, "none")
-
-        conn = sqlite3.connect(str(home / "state.db"))
-        conn.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY)")
-        conn.commit()
-        conn.close()
-
-        # Still cached inside the retry window.
-        self.assertEqual(bridge.reasoning_source().name, "none")
-        # Once the window lapses it must notice.
-        bridge._reasoning_source_retry_at = 0.0
-        self.assertEqual(bridge.reasoning_source().name, "session-store")
-
-    def test_positive_result_is_cached(self):
-        home = Path(tempfile.mkdtemp())
-        (home / "state.db").write_bytes(b"")
-        os.environ["HERMES_HOME"] = str(home)
-        bridge.REASONING_SOURCE_NAME = "session-store"
-        first = bridge.reasoning_source()
-        self.assertEqual(first.name, "session-store")
-        self.assertIs(bridge.reasoning_source(), first)
-
-
-class TestCondenseReasoning(unittest.TestCase):
-    """Tests for squashing raw reasoning into a status-line-sized phrase."""
-
-    def test_short_opening_sentence_grows_instead_of_truncating(self):
-        """A terse opener must absorb the next sentence, not be thrown away.
-
-        Discarding it fell back to truncating the entire flattened blob, so the
-        reader got a severed run-on where a complete short thought was available.
-        """
-        text = "Let me check. The deploy job finished at 11:38 and matches the timestamp."
-        out = bridge.condense_reasoning(text)
-        self.assertTrue(out.startswith("Let me check."), out)
-        self.assertNotIn("…", out)
-        self.assertLessEqual(len(out), bridge._REASONING_MAX_CHARS)
-
-    def test_collapses_newlines_and_whitespace(self):
-        condensed = bridge.condense_reasoning("First line of thought\n\n  second   line\nthird")
-        self.assertNotIn("\n", condensed)
-        self.assertNotIn("  ", condensed)
-
-    def test_strips_markdown_scaffolding(self):
-        condensed = bridge.condense_reasoning("## Plan\n- **check** the `config` file")
-        self.assertNotIn("#", condensed)
-        self.assertNotIn("*", condensed)
-        self.assertNotIn("`", condensed)
-
-    def test_truncates_under_budget(self):
-        condensed = bridge.condense_reasoning("word " * 200)
-        self.assertLessEqual(len(condensed), bridge._REASONING_MAX_CHARS)
-        self.assertTrue(condensed.endswith("\u2026"))
-
-    def test_prefers_leading_sentence(self):
-        text = "I should read the config first. Then I will edit the handler and run the tests."
-        self.assertEqual(bridge.condense_reasoning(text), "I should read the config first.")
-
-    def test_empty_input_returns_none(self):
-        self.assertIsNone(bridge.condense_reasoning(""))
-        self.assertIsNone(bridge.condense_reasoning("   \n  "))
-
-
-class TestLatestReasoningActivity(unittest.TestCase):
-    """The status line must mark real reasoning distinctly from tool activity."""
-
-    def _with_source(self, source):
-        original = bridge._reasoning_source
-        bridge._reasoning_source = source
-        self.addCleanup(lambda: setattr(bridge, "_reasoning_source", original))
-
-    def test_prefixes_real_reasoning(self):
-        class Stub(bridge.ReasoningSource):
-            def latest_reasoning(self, session_id, since_ts):
-                return "Checking the cache layer."
-
-        self._with_source(Stub())
-        self.assertEqual(
-            bridge.latest_reasoning_activity("s1", 0.0),
-            "thinking: Checking the cache layer.",
-        )
-
-    def test_no_reasoning_returns_none(self):
-        self._with_source(bridge.NullReasoningSource())
-        self.assertIsNone(bridge.latest_reasoning_activity("s1", 0.0))
-
-    def test_raising_source_is_swallowed(self):
-        class Boom(bridge.ReasoningSource):
-            def latest_reasoning(self, session_id, since_ts):
-                raise RuntimeError("boom")
-
-        self._with_source(Boom())
-        self.assertIsNone(bridge.latest_reasoning_activity("s1", 0.0))
-
-
-class TestReasoningHistory(unittest.TestCase):
-    """Durable reasoning history: opt-in, capped, session-scoped, never fatal."""
-
-    def _make_db(self, rows, columns=("reasoning_content", "reasoning")):
-        import sqlite3
-        directory = tempfile.mkdtemp()
-        db_path = Path(directory) / "state.db"
-        conn = sqlite3.connect(str(db_path))
-        base = ["id INTEGER PRIMARY KEY", "session_id TEXT", "role TEXT", "timestamp REAL"]
-        extra = ["%s TEXT" % name for name in columns]
-        conn.execute("CREATE TABLE messages (%s)" % ", ".join(base + extra))
-        names = ["session_id", "role", "timestamp"] + list(columns)
-        for row in rows:
-            conn.execute(
-                "INSERT INTO messages (%s) VALUES (%s)" % (", ".join(names), ", ".join("?" * len(names))),
-                [row.get(name) for name in names],
-            )
-        conn.commit()
-        conn.close()
-        return db_path
-
-    def _with_source(self, source):
-        original = bridge._reasoning_source
-        bridge._reasoning_source = source
-        self.addCleanup(lambda: setattr(bridge, "_reasoning_source", original))
-
-    def _with_history(self, enabled):
-        original = bridge.REASONING_HISTORY_ENABLED
-        bridge.REASONING_HISTORY_ENABLED = enabled
-        self.addCleanup(lambda: setattr(bridge, "REASONING_HISTORY_ENABLED", original))
-
-    # ── Opt-in ────────────────────────────────────────────────────────────
-
-    def test_disabled_sends_nothing_and_never_reads(self):
-        """Off by default: no transcript, and the store is not even touched."""
-        reads = []
-
-        class Loud(bridge.ReasoningSource):
-            def full_reasoning(self, session_id, since_ts):
-                reads.append(session_id)
-                return "Should never be read."
-
-        self._with_history(False)
-        self._with_source(Loud())
-        self.assertIsNone(bridge.turn_reasoning_history("s1", 0.0))
-        self.assertEqual(reads, [])
-
-    def test_default_is_off(self):
-        """The module default must be off, whatever this process's env says."""
-        self.assertFalse(
-            bridge.REASONING_HISTORY_ENABLED
-            or os.environ.get("EMPEROR_CLAW_REASONING_HISTORY", "off").lower() in {"on", "true", "1", "yes"}
-        )
-
-    def test_enabled_returns_full_text_uncondensed(self):
-        class Stub(bridge.ReasoningSource):
-            def full_reasoning(self, session_id, since_ts):
-                return "First thought about it.\n\nSecond thought about it."
-
-        self._with_history(True)
-        self._with_source(Stub())
-        out = bridge.turn_reasoning_history("s1", 0.0)
-        self.assertIn("First thought", out)
-        self.assertIn("Second thought", out)
-
-    def test_null_source_yields_nothing(self):
-        self._with_history(True)
-        self._with_source(bridge.NullReasoningSource())
-        self.assertIsNone(bridge.turn_reasoning_history("s1", 0.0))
-
-    # ── Cap ───────────────────────────────────────────────────────────────
-
-    def test_cap_truncates_a_runaway_turn(self):
-        class Huge(bridge.ReasoningSource):
-            def full_reasoning(self, session_id, since_ts):
-                return "thinking " * 100_000
-
-        self._with_history(True)
-        self._with_source(Huge())
-        out = bridge.turn_reasoning_history("s1", 0.0)
-        self.assertLessEqual(len(out), bridge._REASONING_HISTORY_MAX_CHARS)
-        self.assertTrue(out.endswith("[reasoning truncated]"), out[-40:])
-
-    def test_text_under_the_cap_is_untouched(self):
-        text = "A complete thought that fits comfortably."
-
-        class Small(bridge.ReasoningSource):
-            def full_reasoning(self, session_id, since_ts):
-                return text
-
-        self._with_history(True)
-        self._with_source(Small())
-        self.assertEqual(bridge.turn_reasoning_history("s1", 0.0), text)
-
-    # ── Session scoping ───────────────────────────────────────────────────
-
-    def test_full_reasoning_never_leaks_another_session(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-             "reasoning_content": "My own reasoning for this turn.", "reasoning": None},
-            {"session_id": "other-agent-session", "role": "assistant", "timestamp": 110.0,
-             "reasoning_content": "Another agent's private reasoning.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        out = source.full_reasoning("s1", 0.0)
-        self.assertIn("My own reasoning", out)
-        self.assertNotIn("Another agent", out)
-
-    def test_full_reasoning_without_session_id_returns_none(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-             "reasoning_content": "Reasoning that must stay put.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.full_reasoning("", 0.0))
-
-    def test_full_reasoning_is_chronological_and_skips_stubs(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 300.0,
-             "reasoning_content": "Third, I will run the tests.", "reasoning": None},
-            {"session_id": "s1", "role": "assistant", "timestamp": 100.0,
-             "reasoning_content": "First, I will read the config.", "reasoning": None},
-            {"session_id": "s1", "role": "assistant", "timestamp": 200.0,
-             "reasoning_content": "x", "reasoning": "Second, I will edit the handler."},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        out = source.full_reasoning("s1", 0.0)
-        self.assertEqual(
-            out,
-            "First, I will read the config.\n\n"
-            "Second, I will edit the handler.\n\n"
-            "Third, I will run the tests.",
-        )
-
-    def test_full_reasoning_ignores_previous_turns_and_other_roles(self):
-        db_path = self._make_db([
-            {"session_id": "s1", "role": "assistant", "timestamp": 10.0,
-             "reasoning_content": "Reasoning from a previous turn.", "reasoning": None},
-            {"session_id": "s1", "role": "user", "timestamp": 300.0,
-             "reasoning_content": "Not assistant reasoning at all.", "reasoning": None},
-        ])
-        source = bridge.SessionStoreReasoningSource(db_path)
-        self.assertIsNone(source.full_reasoning("s1", 100.0))
-
-    def test_full_reasoning_degrades_on_a_corrupt_store(self):
-        path = Path(tempfile.mkdtemp()) / "state.db"
-        path.write_text("this is not a sqlite database", encoding="utf-8")
-        source = bridge.SessionStoreReasoningSource(path)
-        self.assertIsNone(source.full_reasoning("s1", 0.0))
-
-    def test_raising_source_is_swallowed(self):
-        class Boom(bridge.ReasoningSource):
-            def full_reasoning(self, session_id, since_ts):
-                raise RuntimeError("boom")
-
-        self._with_history(True)
-        self._with_source(Boom())
-        self.assertIsNone(bridge.turn_reasoning_history("s1", 0.0))
-
-    # ── A history write must never cost a reply ───────────────────────────
-
-    def test_failing_history_post_does_not_fail_the_turn(self):
-        """The reply is the product; the transcript is a bonus.
-
-        A throwing history write used to be the classic way to lose a reply:
-        it escapes into the turn's except block, posts an error notice for a
-        turn that actually succeeded, and leaves the message to be redispatched.
-        """
-        from unittest.mock import patch
-        from contextlib import ExitStack
-        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
-        message = {"id": "msg-1", "text": "hello", "senderType": "human",
-                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
-        with ExitStack() as stack:
-            for name in ["ensure_runtime", "send_heartbeat", "save_state",
-                         "update_chat_status", "report_token_usage"]:
-                stack.enter_context(patch.object(bridge, name))
-            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
-            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
-            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
-            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
-            stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
-            stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
-            stack.enter_context(patch.object(bridge, "run_hermes", return_value="the real answer"))
-            stack.enter_context(patch.object(bridge, "_last_turn_reasoning", "raw model thinking"))
-            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
-            send = stack.enter_context(patch.object(bridge, "send_reply", return_value="stored-msg-1"))
-            post = stack.enter_context(
-                patch.object(bridge, "post_reasoning_history", side_effect=RuntimeError("history down"))
-            )
-            with self.assertRaises(KeyboardInterrupt):
-                bridge.main()
-
-        post.assert_called_once_with("stored-msg-1", "raw model thinking")
-        sent = [call.args[1] for call in send.call_args_list]
-        self.assertEqual(sent, ["the real answer"])
-        self.assertNotIn("msg-1", [text for text in sent if "hit an error" in text])
-        # The message is still consumed exactly once — no silent redispatch loop.
-        self.assertIn("msg-1", state["seen"])
-
-    def test_no_history_post_without_a_stored_message_id(self):
-        """A deduplicated send returns no id; there is nothing to annotate."""
-        from unittest.mock import patch
-        from contextlib import ExitStack
-        state = {"seen": [], "lastSeenAt": "2026-01-01T00:00:00Z"}
-        message = {"id": "msg-2", "text": "hello", "senderType": "human",
-                   "targetAgentId": bridge.AGENT_ID, "threadType": "direct"}
-        with ExitStack() as stack:
-            for name in ["ensure_runtime", "send_heartbeat", "save_state",
-                         "update_chat_status", "report_token_usage"]:
-                stack.enter_context(patch.object(bridge, name))
-            stack.enter_context(patch.object(bridge, "ensure_agent", return_value=bridge.AGENT_ID))
-            stack.enter_context(patch.object(bridge, "load_state", return_value=state))
-            stack.enter_context(patch.object(bridge, "sync_messages", return_value=[message]))
-            stack.enter_context(patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}))
-            stack.enter_context(patch.object(bridge, "check_budget", return_value=True))
-            stack.enter_context(patch.object(bridge, "check_loop_guard", return_value=True))
-            stack.enter_context(patch.object(bridge, "run_hermes", return_value="answer"))
-            stack.enter_context(patch.object(bridge, "_last_turn_reasoning", "raw model thinking"))
-            stack.enter_context(patch.object(bridge.time, "sleep", side_effect=KeyboardInterrupt))
-            stack.enter_context(patch.object(bridge, "send_reply", return_value=None))
-            post = stack.enter_context(patch.object(bridge, "post_reasoning_history"))
-            with self.assertRaises(KeyboardInterrupt):
-                bridge.main()
-            post.assert_not_called()
-
-
-class TestSendReply(unittest.TestCase):
-    """send_reply must hand back the stored message id for history to attach to."""
-
-    def setUp(self):
-        from unittest.mock import patch
-        self.api_patch = patch.object(bridge, "api")
-        self.api = self.api_patch.start()
-        self.addCleanup(self.api_patch.stop)
-
-    def test_returns_message_id(self):
-        self.api.return_value = {"ok": True, "message_id": "stored-1"}
-        self.assertEqual(bridge.send_reply({"threadId": "t1"}, "hi"), "stored-1")
-
-    def test_deduplicated_send_returns_none(self):
-        self.api.return_value = {"ok": True, "message_id": None, "deduplicated": True}
-        self.assertIsNone(bridge.send_reply({"threadId": "t1"}, "hi"))
-
-    def test_empty_text_sends_nothing(self):
-        self.assertIsNone(bridge.send_reply({"threadId": "t1"}, ""))
-        self.api.assert_not_called()
-
+    def test_kinds(self):
+        self.assertTrue(is_direct_thread({"threadType": "direct"}, AGENT, {}))
+        self.assertFalse(is_direct_thread({"threadType": "team", "targetAgentId": AGENT}, AGENT, {}))
+        self.assertFalse(is_direct_thread({"threadType": "group", "targetAgentId": AGENT}, AGENT, {}))
+        self.assertTrue(is_direct_thread({"targetAgentId": AGENT}, AGENT, {}))
+        self.assertTrue(is_direct_thread({"threadId": "t"}, AGENT, {"directThreads": {"t": AGENT}}))
+        self.assertFalse(is_direct_thread({"threadId": "u"}, AGENT, {}))
+
+
+class TestBudgetGate(unittest.TestCase):
+    def gate(self, answer, clock):
+        async def request(method, path, body=None, query=None, **_):
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        return BudgetGate(request, AGENT, clock=clock)
+
+    def test_denies_paused_and_explicitly_disallowed_agents(self):
+        self.assertFalse(run(self.gate({"agent": {"executionAllowed": False}}, lambda: 100).allowed()))
+        self.assertFalse(run(self.gate({"agent": {"executionAllowed": True, "budgetStatus": "paused"}}, lambda: 100).allowed()))
+        self.assertTrue(run(self.gate({"agent": {"executionAllowed": True}}, lambda: 100).allowed()))
+
+    def test_failed_check_fails_closed_after_five_minutes(self):
+        now = [0.0]
+        gate = self.gate(ConnectionError("down"), lambda: now[0])
+        self.assertTrue(run(gate.allowed()))
+        now[0] = 400.0
+        self.assertFalse(run(gate.allowed()))
+
+
+class TestProviderFailures(unittest.TestCase):
+    def result(self, outcome, **kw):
+        return TurnResult(outcome=outcome, final_text="", usage=UsageLedger(), **kw)
+
+    def test_402_is_classified_with_a_fixed_reason(self):
+        self.assertEqual(error_classification(self.result(TurnOutcome.FAILED, failure_reason="HTTP 402: Insufficient credits")),
+                         "provider_credits_exhausted: HTTP 402")
+
+    def test_other_failures_carry_only_a_code(self):
+        self.assertEqual(error_classification(self.result(TurnOutcome.FAILED, error_code="hermes_failed",
+                                                          failure_reason="secret tool output")), "hermes_failed")
+        self.assertIsNone(error_classification(self.result(TurnOutcome.COMPLETED)))
+
+
+class TestReplyShape(unittest.TestCase):
     def test_reply_carries_source_and_never_invents_direct(self):
-        # A reply with no known thread type must not force "direct" (the path
-        # into the sender's operator DM); it anchors on the message it answers.
-        self.api.return_value = {"ok": True, "message_id": "stored-2"}
-        bridge.send_reply({"id": "source-1", "threadId": "pair-1"}, "hi")
-        body = self.api.call_args.kwargs.get("body") or {}
-        self.assertEqual(body.get("replyToMessageId"), "source-1")
-        self.assertEqual(body.get("thread_id"), "pair-1")
-        self.assertNotIn("thread_type", body)
+        entry = build_entry(message_id="m", thread_id="t", agent_id=AGENT, text="hi", idempotency_key="emp-m")
+        self.assertEqual(entry["body"]["replyToMessageId"], "m")
+        self.assertNotIn("thread_type", entry["body"])
+        self.assertIsNone(entry["body"]["targetAgentId"])
 
-
-class TestCleanHermesOutput(unittest.TestCase):
-    """Hermes prints runtime notices around the answer; they must not be sent.
-
-    The `Unknown toolsets` notice fired on every turn because the bridge named
-    the plugin in HERMES_TOOLSETS, and it travelled into the agent's reply.
-    """
-
-    def test_unknown_toolset_warning_is_dropped(self):
-        raw = "Warning: Unknown toolsets: emperor-claw\nACK working\n"
-        self.assertEqual(bridge.clean_hermes_output(raw), "ACK working")
-
-    def test_warning_alone_leaves_nothing_to_send(self):
-        raw = "Warning: Unknown toolsets: emperor-claw\n"
-        self.assertEqual(bridge.clean_hermes_output(raw), "")
-
-    def test_session_footer_is_dropped(self):
-        raw = "ACK working\nsession_id: abc-123\n"
-        self.assertEqual(bridge.clean_hermes_output(raw), "ACK working")
-
-    def test_an_agent_warning_about_something_else_survives(self):
-        # An agent may legitimately write about a warning; only the fixed
-        # "Unknown toolsets" notice is transport noise.
-        raw = "Warning: this will delete data. Confirm before continuing."
-        self.assertEqual(bridge.clean_hermes_output(raw), raw)
-
-    def test_tirith_security_notice_is_dropped(self):
-        # Fired on a fresh profile's first turn while Hermes downloads tirith,
-        # and used to open the agent's very first reply.
-        raw = (
-            "⚠ tirith security scanner enabled but not available — command "
-            "scanning will use pattern matching only\nHey. What do you need?\n"
-        )
-        self.assertEqual(bridge.clean_hermes_output(raw), "Hey. What do you need?")
-
-    def test_default_toolsets_do_not_name_the_plugin(self):
-        # The Emperor tools come from plugins.enabled, not from a toolset, so
-        # the plugin name must not sit in the default toolset list. Checked on
-        # the source because the resolved value depends on the env.
-        src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
-        self.assertIn(
-            'os.environ.get("HERMES_TOOLSETS", "web,terminal,code_execution")',
-            src,
-        )
-
-
-class TestExtractStreamJson(unittest.TestCase):
-    """`--format stream-json` output is parsed for the final answer only.
-
-    Tool events (and the stray runtime notices Hermes still prints) must never
-    reach an Emperor message.
-    """
-
-    def test_final_result_text_wins(self):
-        raw = "\n".join([
-            '{"type": "system", "subtype": "init", "session_id": "s1"}',
-            "  ⚠ tirith security scanner enabled but not available",
-            '{"type": "tool_use", "name": "terminal", "input": {"command": "echo hi"}}',
-            '{"type": "tool_result", "name": "terminal", "output": "hi"}',
-            '{"type": "text", "text": "\\n\\nDONE"}',
-            '{"type": "result", "session_id": "s2", "text": "DONE", "tokens": {"total": 1}}',
-        ])
-        reply, session = bridge.extract_stream_json(raw)
-        self.assertEqual(reply, "DONE")
-        self.assertEqual(session, "s2")
-
-    def test_tool_preview_never_reaches_the_reply(self):
-        raw = "\n".join([
-            '{"type": "tool_use", "name": "write_file", "input": {"path": "/tmp/x.py"}}',
-            '{"type": "tool_result", "name": "write_file", "output": "review diff a//tmp/x.py"}',
-            '{"type": "result", "session_id": "s1", "text": "Done, file written."}',
-        ])
-        reply, _ = bridge.extract_stream_json(raw)
-        self.assertEqual(reply, "Done, file written.")
-        self.assertNotIn("review diff", reply)
-
-    def test_text_events_join_when_no_result(self):
-        raw = "\n".join([
-            '{"type": "text", "text": "Hello "}',
-            '{"type": "text", "text": "world"}',
-        ])
-        reply, session = bridge.extract_stream_json(raw)
-        self.assertEqual(reply, "Hello world")
-        self.assertIsNone(session)
-
-    def test_no_json_yields_none_for_fallback(self):
-        reply, session = bridge.extract_stream_json("plain text\nsession_id: abc\n")
-        self.assertIsNone(reply)
-        self.assertIsNone(session)
-
-    def test_session_id_from_system_event(self):
-        reply, session = bridge.extract_stream_json('{"type": "system", "session_id": "sys-1"}')
-        self.assertIsNone(reply)
-        self.assertEqual(session, "sys-1")
+    def test_coalesced_reply_resolves_the_earlier_messages(self):
+        entry = build_entry(message_id="m3", thread_id="t", agent_id=AGENT, text="x", idempotency_key="emp-m3",
+                            also_resolves=["m1", "m2"])
+        self.assertEqual(entry["body"]["alsoResolvesMessageIds"], ["m1", "m2"])
 
 
 class TestOperatingGuide(unittest.TestCase):
-    """A missing/unreadable operating-guide.md must degrade, never crash.
-
-    Regression: run_hermes() read the guide unguarded, so a deployment that
-    shipped only the bridge script (the README's own layout) threw
-    FileNotFoundError on every turn and the agent went permanently silent.
-    """
-
-    def _missing_path(self) -> Path:
-        return Path(tempfile.gettempdir()) / "does-not-exist-operating-guide.md"
-
     def test_missing_guide_returns_builtin_fallback(self):
-        from unittest.mock import patch
-        missing = self._missing_path()
-        with patch.object(bridge, "OPERATING_GUIDE_PATH", str(missing)), \
-             patch.object(bridge, "default_operating_guide_path", return_value=missing), \
-             patch.object(bridge, "log"):
-            text = bridge.load_operating_guide()
-        self.assertIn("Emperor is the durable source of truth", text)
+        guide = ctx.load_operating_guide("/nope/guide.md", packaged=Path("/nope/packaged.md"))
+        self.assertIn("Emperor minimum operating practices", guide)
 
     def test_env_override_takes_precedence(self):
-        from unittest.mock import patch
-        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as handle:
-            handle.write("# custom guide")
-            path = handle.name
-        try:
-            with patch.object(bridge, "OPERATING_GUIDE_PATH", path), patch.object(bridge, "log"):
-                text = bridge.load_operating_guide()
-            self.assertEqual(text.strip(), "# custom guide")
-        finally:
-            os.unlink(path)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "g.md"
+            path.write_text("custom guide", encoding="utf-8")
+            self.assertEqual(ctx.load_operating_guide(str(path)), "custom guide")
 
-    def test_run_hermes_proceeds_when_guide_missing(self):
-        from unittest.mock import patch
-        import subprocess
-        missing = self._missing_path()
-        stream = "\n".join([
-            '{"type": "system", "subtype": "init", "session_id": "sess-1"}',
-            '{"type": "result", "session_id": "sess-1", "text": "ACK working"}',
-        ])
-        completed = subprocess.CompletedProcess(["hermes"], 0, stream, "session_id: sess-1\n")
-        state = {"sessions": {}}
-        with patch.object(bridge, "OPERATING_GUIDE_PATH", str(missing)), \
-             patch.object(bridge, "default_operating_guide_path", return_value=missing), \
-             patch.object(bridge, "log"), \
-             patch.object(bridge, "format_agent_roster", return_value=""), \
-             patch.object(bridge, "format_company_brain_context", return_value=""), \
-             patch.object(bridge, "is_direct_thread", return_value=False), \
-             patch.object(bridge, "invoke_hermes", return_value=completed), \
-             patch.object(bridge, "turn_reasoning_history", return_value=None):
-            reply = bridge.run_hermes({"threadId": "t1", "text": "hi"}, state)
-        self.assertEqual(reply, "ACK working")
+    def test_packaged_guide_is_found(self):
+        self.assertIn("Emperor", ctx.load_operating_guide())
 
-
-class TestTurnTimeoutAndErrorNotice(unittest.TestCase):
-    """A wedged turn is bounded and failures remain operational state, not a
-    fabricated chat reply."""
-
-    def test_default_turn_timeout_and_retry_count_are_bounded(self):
-        # Read the source because the test harness overrides the env var.
-        src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
-        self.assertIn(
-            'os.environ.get("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS", "0")',
-            src,
-        )
-        self.assertIn('os.environ.get("EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS", "900")', src)
-        self.assertIn('os.environ.get("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS", "3")', src)
-        self.assertIn('execution_state="cancelled"', src)
-
-    def test_no_generic_error_notice_in_chat(self):
-        src = (BRIDGE_DIR / "emperor_hermes_bridge.py").read_text()
-        self.assertNotIn("I hit an error and couldn't reply", src)
-
-    def test_zero_timeout_does_not_kill_a_turn(self):
-        """0 = no ceiling, so a turn that runs longer than any small ceiling
-        still completes. A positive ceiling kills the same kind of turn."""
-        from unittest.mock import patch
-        import subprocess
-
-        def quiet(*_args, **_kwargs):
-            return {"commands": [], "cancelled": False}
-
-        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
-             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0), \
-             patch.object(bridge, "fetch_runtime_control", side_effect=quiet), \
-             patch.object(bridge, "update_chat_status"), \
-             patch.object(bridge, "log"):
-            done = bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(1.5)"], {"id": "w"})
-        self.assertEqual(done.returncode, 0)
-
-        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0.2), \
-             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0), \
-             patch.object(bridge, "fetch_runtime_control", side_effect=quiet), \
-             patch.object(bridge, "update_chat_status"), \
-             patch.object(bridge, "log"):
-            with self.assertRaises(subprocess.TimeoutExpired):
-                bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(5)"], {"id": "w"})
-
-    def test_continuous_output_is_drained_and_renews_idle_watchdog(self):
-        """Progress may outlive the idle window, and output larger than an OS
-        pipe buffer must not deadlock the Hermes subprocess."""
-        from unittest.mock import patch
-
-        script = (
-            "import time\n"
-            "for _ in range(15):\n"
-            " print('x' * 8192, flush=True)\n"
-            " time.sleep(0.1)\n"
-        )
-        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
-             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0.3), \
-             patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}), \
-             patch.object(bridge, "update_chat_status"), \
-             patch.object(bridge, "log"):
-            done = bridge.invoke_hermes([sys.executable, "-c", script], {"id": "w"})
-        self.assertEqual(done.returncode, 0)
-        self.assertGreater(len(done.stdout), 64 * 1024)
-
-    def test_silent_turn_is_stopped_by_idle_watchdog(self):
-        from unittest.mock import patch
-
-        with patch.object(bridge, "HERMES_TIMEOUT_SECONDS", 0), \
-             patch.object(bridge, "HERMES_IDLE_TIMEOUT_SECONDS", 0.2), \
-             patch.object(bridge, "fetch_runtime_control", return_value={"commands": [], "cancelled": False}), \
-             patch.object(bridge, "update_chat_status"), \
-             patch.object(bridge, "log"):
-            with self.assertRaises(bridge.HermesIdleTimeout):
-                bridge.invoke_hermes([sys.executable, "-c", "import time; time.sleep(5)"], {"id": "w"})
-
+    def test_builtin_does_not_teach_mention_delegation(self):
+        self.assertIn("a @mention requests attention, it does not assign work", ctx.BUILTIN_OPERATING_GUIDE)
 
 
 class TestRichReplies(unittest.TestCase):
-    """Capability handshake + rich-block handling for Emperor's rich chat."""
-
-    def setUp(self):
-        self._saved = (bridge._server_capabilities, bridge._reply_format_guide, bridge.RICH_REPLIES_ENABLED)
-
-    def tearDown(self):
-        bridge._server_capabilities, bridge._reply_format_guide, bridge.RICH_REPLIES_ENABLED = self._saved
-
     def test_old_server_response_yields_no_capabilities(self):
-        self.assertEqual(bridge.parse_server_capabilities({"runtimeNode": {"id": "x"}}), ([], ""))
-        self.assertEqual(bridge.parse_server_capabilities(None), ([], ""))
+        self.assertEqual(ctx.parse_server_capabilities({"runtimeNode": {}}), (frozenset(), ""))
 
-    def test_new_server_response_is_parsed(self):
-        caps, guide = bridge.parse_server_capabilities({
-            "serverCapabilities": ["rich-blocks-v1"],
-            "replyFormatGuide": "  ## Rich replies\nUse charts.  ",
-        })
-        self.assertEqual(caps, ["rich-blocks-v1"])
-        self.assertEqual(guide, "## Rich replies\nUse charts.")
-
-    def test_guidance_always_corrects_the_cli_hint(self):
-        bridge._server_capabilities, bridge._reply_format_guide = [], ""
-        text = bridge.format_reply_guidance()
-        self.assertIn("not a terminal", text)
-        self.assertNotIn("Rich replies", text)
-
-    def test_guide_only_when_server_supports_it_and_not_disabled(self):
-        bridge._server_capabilities, bridge._reply_format_guide = ["rich-blocks-v1"], "## Rich replies"
-        bridge.RICH_REPLIES_ENABLED = True
-        self.assertIn("## Rich replies", bridge.format_reply_guidance())
-        bridge.RICH_REPLIES_ENABLED = False
-        self.assertNotIn("## Rich replies", bridge.format_reply_guidance())
-        bridge.RICH_REPLIES_ENABLED = True
-        bridge._server_capabilities = ["something-else"]
-        self.assertNotIn("## Rich replies", bridge.format_reply_guidance())
-
-    def test_refresh_picks_up_a_server_upgraded_after_start(self):
-        from unittest.mock import patch
-        bridge._server_capabilities, bridge._reply_format_guide = [], ""
-        with patch.object(bridge, "api", return_value={"runtimeNode": {}}):
-            bridge.refresh_server_capabilities()
-        self.assertNotIn("## Rich", bridge.format_reply_guidance())
-        with patch.object(bridge, "api", return_value={"serverCapabilities": ["rich-blocks-v1"], "replyFormatGuide": "## Rich"}):
-            bridge.refresh_server_capabilities()
-        self.assertIn("## Rich", bridge.format_reply_guidance())
-        # A failed refresh keeps the last known capabilities.
-        with patch.object(bridge, "api", side_effect=RuntimeError("offline")):
-            bridge.refresh_server_capabilities()
-        self.assertIn("## Rich", bridge.format_reply_guidance())
-
-    def test_choices_blocks_are_summarized(self):
-        text = '```choices\n{"question":"Launch?","options":[{"label":"Launch now"},"Wait"]}\n```'
-        self.assertEqual(bridge.summarize_rich_blocks(text), "[choices: Launch now / Wait]")
-
-    def test_roster_carries_ids_only_with_rich_replies(self):
-        from unittest.mock import patch
-        roster = [{"id": "11111111-1111-1111-1111-111111111111", "name": "Ada"}]
-        bridge._server_capabilities, bridge._reply_format_guide = [], ""
-        with patch.object(bridge, "fetch_agent_roster", return_value=roster):
-            self.assertNotIn("11111111", bridge.format_agent_roster("x"))
-        bridge._server_capabilities, bridge._reply_format_guide = ["rich-blocks-v1"], "## Rich"
-        bridge.RICH_REPLIES_ENABLED = True
-        with patch.object(bridge, "fetch_agent_roster", return_value=roster):
-            self.assertIn("id 11111111-1111-1111-1111-111111111111", bridge.format_agent_roster("x"))
-
-    def test_summarize_rich_blocks_compresses_history(self):
-        text = (
-            "Here is the week.\n"
-            "```chart\n{\"type\":\"bar\",\"title\":\"Tasks closed\",\"labels\":[\"a\"],\"series\":[[1]]}\n```\n"
-            "```stats\n[{\"label\":\"Open\",\"value\":\"12\"}]\n```\n"
-            "````tabs\n=== Summary\nhi\n=== Details\n```chart\n{}\n```\n````\n"
-            "```html\n<!-- title: Agent load -->\n<div>big markup</div>\n```\n"
-            "```python\nprint('kept')\n```"
-        )
-        out = bridge.summarize_rich_blocks(text)
-        self.assertIn("[chart: Tasks closed]", out)
-        self.assertIn("[stats: Open 12]", out)
-        self.assertIn("[tabs: Summary, Details]", out)
-        self.assertIn("[html widget: Agent load]", out)
-        self.assertNotIn("big markup", out)
-        self.assertIn("print('kept')", out)
-        self.assertEqual(bridge.summarize_rich_blocks("plain text"), "plain text")
+    def test_new_server_response_is_parsed_and_guide_capped(self):
+        caps, guide = ctx.parse_server_capabilities({"serverCapabilities": ["rich-blocks-v1", "runs: 1"],
+                                                     "replyFormatGuide": "x" * 5000})
+        self.assertIn("rich-blocks-v1", caps)
+        self.assertEqual(len(guide), ctx.REPLY_GUIDE_MAX)
 
 
-class TestGroupChats(unittest.TestCase):
-    """Members-only group threads route like team chat and carry their context."""
+class TestGroupContext(unittest.TestCase):
+    def test_group_context_lists_purpose_members_and_coordinator(self):
+        detail = {"type": "group", "title": "Dev team", "description": "Ship the app", "members": [
+            {"kind": "agent", "name": "Viktor"}, {"kind": "human", "name": "Jose", "role": "coordinator"}]}
+        text = ctx.format_thread_context("t1", "group", detail, "Viktor")
+        for needle in ("Dev team", "Group purpose: Ship the app", "Team coordinator: Jose (human)",
+                       "Agent members: Viktor (you)", "Never write @all yourself"):
+            self.assertIn(needle, text)
 
-    def setUp(self):
-        bridge._thread_details.clear()
+    def test_pair_thread_has_no_group_boilerplate(self):
+        text = ctx.format_thread_context("t1", "group", {"description": "agent-pair"}, "V")
+        self.assertNotIn("Group rules", text)
 
-    def test_group_message_needs_a_mention(self):
-        state = {"direct_threads": {}}
-        msg = {"senderType": "human", "threadId": "g1", "threadType": "group", "text": "status please"}
-        self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", state))
-        msg["text"] = "@TestAgent status please"
-        self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", state))
-        self.assertFalse(bridge.is_direct_thread(msg, state))
-
-    def test_at_all_from_a_human_wakes_every_member(self):
-        state = {"direct_threads": {}}
-        human = {"senderType": "human", "threadId": "g1", "threadType": "group", "text": "@all standup in 5"}
-        self.assertTrue(bridge.is_for_agent(human, "test-agent-id", state))
-        self.assertTrue(bridge.is_for_agent({**human, "text": "Heads up @Everyone: deploy freeze"}, "test-agent-id", state))
-        # Never from an agent (fan-out loops), never outside groups, never inside a word or email.
-        self.assertFalse(bridge.is_for_agent({**human, "senderType": "agent", "senderId": "other"}, "test-agent-id", state))
-        self.assertFalse(bridge.is_for_agent({**human, "threadType": "team"}, "test-agent-id", state))
-        self.assertFalse(bridge.is_for_agent({**human, "text": "mail me at ops@all.example"}, "test-agent-id", state))
-        self.assertFalse(bridge.is_for_agent({**human, "text": "@allison can you check"}, "test-agent-id", state))
-
-    def test_loop_guard_applies_to_groups(self):
-        state = {}
-        msg = {"senderType": "agent", "threadId": "g1", "threadType": "group"}
-        results = [bridge.check_loop_guard(dict(msg), state) for _ in range(bridge.LOOP_GUARD_MAX_AGENT_TURNS + 1)]
-        self.assertFalse(results[-1], "consecutive agent turns in a group must trip the guard")
-        self.assertTrue(bridge.check_loop_guard({"senderType": "human", "threadId": "g1", "threadType": "group"}, state))
-
-    def test_group_context_lists_purpose_and_members(self):
-        bridge.remember_thread_details({"g1": {
-            "title": "Development team",
-            "description": "Build and test features",
-            "members": [
-                {"kind": "agent", "name": "TestAgent"},
-                {"kind": "agent", "name": "QA"},
-                {"kind": "human", "name": "José"},
-            ],
-        }})
-        text = bridge.format_group_context({"threadId": "g1", "threadType": "group"})
-        self.assertIn('"Development team"', text)
-        self.assertIn("Build and test features", text)
-        self.assertIn("TestAgent (you)", text)
-        self.assertIn("QA", text)
-        self.assertIn("José", text)
-        self.assertEqual(bridge.format_group_context({"threadId": "t1", "threadType": "team"}), "")
-
-    def test_direct_team_summary_includes_only_my_scoped_roles_and_stays_small(self):
-        from unittest.mock import patch
-        threads = {str(i): {"type":"group", "title":"T" * 1000, "members":[
-            {"kind":"agent", "id":bridge.AGENT_ID, "name":bridge.AGENT_NAME, "role":"coordinator" if i == 0 else "member"},
-            {"kind":"human", "id":"human", "name":"H" * 1000, "role":"coordinator" if i != 0 else "member"},
-        ]} for i in range(30)}
-        threads["foreign"] = {"type":"group", "title":"Foreign secret team", "members":[{"kind":"agent", "id":"other", "name":"Other"}]}
-        with patch.object(bridge, "_thread_details", threads):
-            text = bridge.format_my_team_roles()
-        self.assertLess(len(text), 900)
-        self.assertIn("you are coordinator", text)
-        self.assertIn("26 other teams", text)
-        self.assertNotIn("Foreign secret", text)
-
-    def test_group_context_stays_bounded_for_large_organizations(self):
-        bridge._thread_details["huge"] = {
-            "title": "T" * 10000, "description": "D" * 10000,
-            "members": [{"kind": kind, "name": "N" * 10000, "role": "coordinator" if i == 0 else "member"}
-                        for kind in ("agent", "human") for i in range(100)],
-        }
-        text = bridge.format_group_context({"threadId": "huge", "threadType": "group"})
-        self.assertLess(len(text), 4000)
-        self.assertIn("complete membership", text)
-        self.assertIn("exact names", text)
-        self.assertIn("Never write @all yourself", text)
-
-    def test_group_coordinator_is_scoped_and_project_rules_remain(self):
-        bridge.remember_thread_details({"coordinated": {"title": "Design", "members": [
-            {"kind": "agent", "name": "Ada", "role": "coordinator"},
-            {"kind": "human", "name": "Owner", "role": "owner"},
-        ]}})
-        text = bridge.format_group_context({"threadId": "coordinated", "threadType": "group"})
-        self.assertIn("Team coordinator: Ada (agent)", text)
-        self.assertIn("only to this group", text)
-        self.assertIn("project leads and approval rules still apply", text)
-        self.assertNotIn("Team coordinator:", bridge.format_group_context({"threadId": "g2", "threadType": "group"}))
-
-    def test_group_context_degrades_without_details(self):
-        text = bridge.format_group_context({"threadId": "g2", "threadType": "group", "threadTitle": "Ops"})
-        self.assertIn('"Ops"', text)
-
-    def test_cold_start_only_skips_backlog(self):
-        import datetime
-        before = datetime.datetime.fromtimestamp(bridge.BRIDGE_STARTED_AT - 60, datetime.timezone.utc).isoformat()
-        after = datetime.datetime.fromtimestamp(bridge.BRIDGE_STARTED_AT + 60, datetime.timezone.utc).isoformat()
-        self.assertTrue(bridge.is_backlog(before))
-        self.assertFalse(bridge.is_backlog(after))
-        self.assertFalse(bridge.is_backlog(None))
-        self.assertFalse(bridge.is_backlog("not a date"))
-
-
-class TestServerRouting(unittest.TestCase):
-    """The server's addressedToYou verdict is authoritative when present."""
-
-    def test_server_verdict_wins_over_local_rules(self):
-        state = {"direct_threads": {}}
-        # Mentioned locally, but the server says the loop guard applies.
-        msg = {"senderType": "agent", "senderId": "x", "threadId": "t", "threadType": "team",
-               "text": "@TestAgent again", "addressedToYou": False, "routeReason": "loop_guard"}
-        self.assertTrue(bridge.server_routed(msg))
-        self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", state))
-        # Not mentioned, but the server addressed it.
-        msg = {"senderType": "human", "threadId": "t", "threadType": "team", "text": "status?",
-               "addressedToYou": True, "routeReason": "targeted"}
-        self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", state))
-
-    def test_own_messages_are_ignored_even_if_the_server_says_otherwise(self):
-        msg = {"senderType": "agent", "senderId": "test-agent-id", "addressedToYou": True}
-        self.assertFalse(bridge.is_for_agent(msg, "test-agent-id", {}))
-
-    def test_agent_mention_in_a_group_wakes_only_the_addressed_agent(self):
-        # The server's routing verdict is what wakes a mentioned peer; a third
-        # member in the same group is delivered but must not be woken.
-        state = {"direct_threads": {}}
-        mentioned = {"senderType": "agent", "senderId": "a", "threadId": "t", "threadType": "group",
-                     "text": "@Beta please review", "addressedToYou": True, "routeReason": "mention"}
-        self.assertTrue(bridge.is_for_agent(mentioned, "beta-id", state))
-        other = dict(mentioned, addressedToYou=False, routeReason="not_addressed")
-        self.assertFalse(bridge.is_for_agent(other, "gamma-id", state))
-
-    def test_older_servers_fall_back_to_local_rules(self):
-        msg = {"senderType": "human", "threadId": "t", "threadType": "team", "text": "@TestAgent hi"}
-        self.assertFalse(bridge.server_routed(msg))
-        self.assertTrue(bridge.is_for_agent(msg, "test-agent-id", {"direct_threads": {}}))
-
-class TestLiveProfile(unittest.TestCase):
-    def setUp(self):
-        bridge._live_profile.update({"at": 0.0, "instructions": None, "memories": []})
-
-    def test_instructions_come_from_the_server_when_it_sends_them(self):
-        from unittest.mock import patch
-        with patch.object(bridge, "api", return_value={"instructions": "Be brief.", "entries": [{"kind": "preference", "content": "CC Ana"}]}):
-            bridge.refresh_live_profile(force=True)
-        self.assertEqual(bridge.current_instructions(), "Be brief.")
-        self.assertIn("- (preference) CC Ana", bridge.format_memory_context())
-
-    def test_older_servers_keep_the_environment_instructions(self):
-        from unittest.mock import patch
-        with patch.object(bridge, "api", return_value={"entries": []}):
-            bridge.refresh_live_profile(force=True)
-        self.assertEqual(bridge.current_instructions(), bridge.AGENT_INSTRUCTIONS)
-        self.assertEqual(bridge.format_memory_context(), "")
-
-    def test_a_failed_refresh_keeps_the_last_profile(self):
-        from unittest.mock import patch
-        bridge._live_profile.update({"instructions": "Kept."})
-        with patch.object(bridge, "api", side_effect=RuntimeError("down")):
-            bridge.refresh_live_profile(force=True)
-        self.assertEqual(bridge.current_instructions(), "Kept.")
-
-    def test_memory_stays_within_budget_and_keeps_the_newest(self):
-        entries = [{"kind": "lesson", "content": f"note {i} " + "x" * 280} for i in range(40)]
-        text = bridge.format_memory_context(entries)
-        self.assertLessEqual(len(text), bridge.MAX_MEMORY_PROMPT_CHARS + 200)
-        self.assertIn("note 39", text)
-        self.assertNotIn("note 0 ", text)
-
-
-class TestPromptEconomics(unittest.TestCase):
-    """Static/dynamic prompt split: the static block is sent once per session."""
-
-    def _run(self, state, message=None, roster="ROSTER"):
-        import subprocess
-        from unittest.mock import patch
-        stream = '{"type": "result", "session_id": "sess-1", "text": "ACK"}'
-        completed = subprocess.CompletedProcess(["hermes"], 0, stream, "")
-        with patch.object(bridge, "format_agent_roster", return_value=roster), \
-             patch.object(bridge, "fetch_company_brain_context", return_value={"sources": []}), \
-             patch.object(bridge, "is_direct_thread", return_value=False), \
-             patch.object(bridge, "format_main_chat_context", return_value=""), \
-             patch.object(bridge, "format_group_context", return_value=""), \
-             patch.object(bridge, "format_my_open_tasks", return_value="MY TASKS"), \
-             patch.object(bridge, "refresh_live_profile"), \
-             patch.object(bridge, "current_instructions", return_value=""), \
-             patch.object(bridge, "format_memory_context", return_value=""), \
-             patch.object(bridge, "invoke_hermes", return_value=completed) as invoke:
-            bridge.run_hermes(message or {"threadId": "t1", "threadType": "team", "text": "hello"}, state)
-            return invoke.call_args.args[0]
-
-    def test_first_turn_sends_static_and_resumed_turn_skips_it(self):
-        state = {}
-        cmd1 = self._run(state)
-        prompt1 = cmd1[cmd1.index("-q") + 1]
-        self.assertIn("ROSTER", prompt1)
-        self.assertIn("MY TASKS", prompt1)
-        self.assertNotIn("--resume", cmd1)
-
-        cmd2 = self._run(state)
-        prompt2 = cmd2[cmd2.index("-q") + 1]
-        self.assertIn("--resume", cmd2)
-        self.assertIn("MY TASKS", prompt2, "the dynamic block repeats every turn")
-        self.assertNotIn("ROSTER", prompt2, "the static block must not repeat on a resumed turn")
-
-    def test_reprimes_when_static_block_changes(self):
-        state = {}
-        self._run(state)
-        # A resumed turn reuses its primed hash instead of rebuilding the block
-        # (see the static-block cache); a known change is signalled explicitly,
-        # otherwise the background refresh picks it up within its window.
-        bridge.invalidate_static_block()
-        cmd = self._run(state, roster="ROSTER-V2")
-        prompt = cmd[cmd.index("-q") + 1]
-        self.assertIn("ROSTER-V2", prompt)
-
-    def test_rotates_after_max_turns(self):
-        state = {
-            "sessions": {"TestAgent:t1": "old-session"},
-            "primed": {"TestAgent:t1": {"staticHash": "x", "turns": bridge.SESSION_MAX_TURNS, "startedAt": 0.0}},
-        }
-        cmd = self._run(state)
-        self.assertNotIn("--resume", cmd, "a rotated session starts fresh")
-        prompt = cmd[cmd.index("-q") + 1]
-        self.assertIn("ROSTER", prompt, "a fresh session sends the static block again")
-
-    def test_roster_shows_role_and_skills(self):
-        from unittest.mock import patch
-        with patch.object(bridge, "fetch_agent_roster", return_value=[
-            {"id": "1", "name": "Ada", "role": "developer", "skillsJson": ["web", "api"]},
-        ]):
-            roster = bridge.format_agent_roster("2")
-        self.assertIn("developer", roster)
-        self.assertIn("web", roster)
-        self.assertIn("@Ada", roster)
-
-    def test_open_tasks_lists_active_and_skips_done(self):
-        from unittest.mock import patch
-        payload = {"tasks": [
-            {"id": "t1", "state": "in_progress", "taskType": "write", "assignedAgentId": bridge.AGENT_ID, "inputJson": {"title": "Write the report"}},
-            {"id": "t2", "state": "done", "taskType": "x", "assignedAgentId": bridge.AGENT_ID, "inputJson": {"title": "Closed"}},
-        ]}
-        with patch.object(bridge, "api", return_value=payload):
-            text = bridge.format_my_open_tasks()
-        self.assertIn("Write the report", text)
-        self.assertIn("t1", text)
-        self.assertNotIn("t2", text)
-        self.assertNotIn("Closed", text)
-
-    def test_open_tasks_filters_out_other_agents_tasks(self):
-        """Old servers ignore the assignedAgentId query filter; the bridge must
-        still only show THIS agent's tasks."""
-        from unittest.mock import patch
-        payload = {"tasks": [
-            {"id": "mine", "state": "in_progress", "taskType": "write", "assignedAgentId": bridge.AGENT_ID, "inputJson": {"title": "My task"}},
-            {"id": "theirs", "state": "in_progress", "taskType": "write", "assignedAgentId": "other-agent-id", "inputJson": {"title": "Their task"}},
-            {"id": "unassigned", "state": "in_progress", "taskType": "write", "inputJson": {"title": "No assignee"}},
-        ]}
-        with patch.object(bridge, "api", return_value=payload):
-            text = bridge.format_my_open_tasks()
-        self.assertIn("My task", text)
-        self.assertNotIn("Their task", text)
-        self.assertNotIn("unassigned", text)
-
-    def test_open_tasks_sanitizes_and_quotes_titles(self):
-        from unittest.mock import patch
-        payload = {"tasks": [
-            {"id": "t1", "state": "in_progress", "taskType": "write", "assignedAgentId": bridge.AGENT_ID,
-             "inputJson": {"title": "multi\nline   title"}},
-        ]}
-        with patch.object(bridge, "api", return_value=payload):
-            text = bridge.format_my_open_tasks()
-        self.assertIn('"multi line title"', text)
-        self.assertNotIn("multi\nline", text)
-
-    def test_clean_task_text_collapses_and_caps(self):
-        self.assertEqual(bridge.clean_task_text("a\n\n  b   c"), "a b c")
-        self.assertLessEqual(len(bridge.clean_task_text("x" * 500)), bridge.MAX_TASK_TEXT_CHARS)
-        self.assertEqual(bridge.clean_task_text(""), "")
-
-    def test_fresh_session_without_resume_id_is_primed(self):
-        """A dropped session (no resume id) must still send the static block.
-
-        Simulates the "Session not found" recovery: the session id is popped but
-        the primed entry (with a matching static hash) survives. Without the
-        `not resume_id` guard, that fresh session would skip the static block.
-        """
-        state = {}
-        self._run(state)  # primes the session with the real static hash
-        state["sessions"] = {}  # the session id is gone; primed entry remains
-        cmd = self._run(state)
-        self.assertNotIn("--resume", cmd)
-        prompt = cmd[cmd.index("-q") + 1]
-        self.assertIn("ROSTER", prompt, "a fresh session with no resume id is primed with the static block")
-
-    def test_open_tasks_graceful_fallback(self):
-        from unittest.mock import patch
-        with patch.object(bridge, "api", side_effect=RuntimeError("offline")):
-            self.assertEqual(bridge.format_my_open_tasks(), "")
-        with patch.object(bridge, "api", return_value={"tasks": []}):
-            self.assertIn("none", bridge.format_my_open_tasks())
-
-
-class TestOperatingGuideFallback(unittest.TestCase):
-    """The built-in fallback guide must not teach @mention delegation."""
-
-    def test_builtin_does_not_teach_mention_delegation(self):
-        guide = bridge.BUILTIN_OPERATING_GUIDE
-        for phrase in ("send one concrete @SiblingName", "look up GET /agents", "@SiblingName request"):
-            self.assertNotIn(phrase, guide)
-        self.assertIn("assign it a task", guide)
-        self.assertIn("targetAgentId", guide)
-
-    def test_builtin_matches_packaged_doctrine_on_ownership(self):
-        self.assertIn("Every task has exactly one owner", bridge.BUILTIN_OPERATING_GUIDE)
-        self.assertIn("A chat @mention is not an assignment", bridge.BUILTIN_OPERATING_GUIDE)
+    def test_team_roles_are_scoped_and_bounded(self):
+        details = {f"g{i}": {"type": "group", "title": f"Team {i}", "members": [{"kind": "agent", "id": AGENT}]}
+                   for i in range(6)}
+        roles = ctx.format_team_roles(details, AGENT, "Viktor")
+        self.assertIn("Plus 2 other teams", roles)
+        self.assertEqual(roles.count("you are member"), 4)
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

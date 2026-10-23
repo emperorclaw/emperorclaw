@@ -1,0 +1,10 @@
+# Files that run on Linux hosts (Pi, PC, containers) must keep LF endings even when the repo is
+# checked out on Windows with core.autocrlf=true: a CRLF script or unit breaks with
+# "$'\r': command not found" and systemd rejects CR in unit files.
+*.sh                               text eol=lf
+*.service                          text eol=lf
+*.py                               text eol=lf
+integrations/hermes/install/*      text eol=lf
+integrations/hermes/entrypoint.sh  text eol=lf
+integrations/hermes/Dockerfile     text eol=lf
+tests/contract/hermes/Dockerfile*  text eol=lf

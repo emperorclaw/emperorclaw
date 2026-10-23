@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages } from "@/db/schema";
-import { eq, and, gt, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
+import { eq, and, gt, asc, desc, sql, ne, inArray, isNull, lte } from "drizzle-orm";
+import { SYNC_CURSOR_SLACK_MS, SYNC_PAGE_SIZE, selectSyncPage } from "@/lib/sync-page";
 import { GROUP_THREAD_TYPE, isAgentPairThread, loadGroupMembers, pairThreadPurpose } from "@/lib/groups";
 import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, answeredCutoffByThread, decideDelivery, filterAnsweredMessages, isLoopGuardResume, noteProgressResets, type RouteDecision } from "@/lib/message-routing";
 import { touchAgentLiveness } from "@/lib/lifecycle";
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
 
             if (isValidSince) {
                 // Safety buffer: subtract 10ms to handle sub-millisecond precision drift between servers/DBs
-                const bufferDate = new Date(sinceDate.getTime() - 10);
+                const bufferDate = new Date(sinceDate.getTime() - SYNC_CURSOR_SLACK_MS);
                 const sinceCondition = scopeAgentId
                     ? sql`(${gt(threadMessages.createdAt, bufferDate)} OR (${threadMessages.targetAgentId} = ${scopeAgentId}::uuid AND ${threadMessages.senderType} IN ('human', 'system') AND ${threadMessages.deliveryState} IN ('queued', 'seen', 'acting')))`
                     : gt(threadMessages.createdAt, bufferDate);
@@ -108,11 +109,16 @@ export async function GET(req: NextRequest) {
                     : sinceCondition);
             }
 
-            const messages = await db.select()
+            // Oldest first after the cursor, one row more than a page to detect `hasMore` (M7).
+            const rows = await db.select()
                 .from(threadMessages)
                 .where(and(...conditions))
-                .orderBy(desc(threadMessages.createdAt))
-                .limit(100);
+                .orderBy(asc(threadMessages.createdAt), asc(threadMessages.id))
+                .limit(SYNC_PAGE_SIZE + 1);
+            const { page: messages, hasMore, hasNew, nextSince } = selectSyncPage(rows, {
+                since: isValidSince ? sinceDate : null,
+                retryIds: retryMessageIds,
+            });
 
             if (messages.length > 0) {
                 // Dedup: if agentId is provided, exclude messages in threads where
@@ -164,7 +170,16 @@ export async function GET(req: NextRequest) {
                     }
                 }
 
-                if (filtered.length > 0) {
+                // Always-included open messages alone do not end the long poll (lib/sync-page.ts):
+                // they go out with the next new message, or on the poll's last iteration so a
+                // runtime still recovers them.
+                const lastIteration = Date.now() - startTime + POLL_INTERVAL_MS >= MAX_POLL_TIME_MS;
+                if (filtered.length === 0 && hasMore) {
+                    // A whole page was already answered: hand back the cursor at once so the
+                    // runtime moves on to the next page instead of holding 25 s on this one.
+                    return NextResponse.json({ ok: true, mode, messages: [], hasMore, nextSince });
+                }
+                if (filtered.length > 0 && (hasNew || lastIteration)) {
                     const [comp] = await db.select({ contextNotes: companies.contextNotes }).from(companies).where(eq(companies.id, companyId));
                     // Say which kind of thread each message is in. Runtimes
                     // route on it (team/group answer only when @mentioned,
@@ -203,7 +218,9 @@ export async function GET(req: NextRequest) {
                         mode,
                         contextNotes: comp?.contextNotes || null,
                         threads,
-                        messages: filtered.reverse().map((m) => ({
+                        hasMore,
+                        nextSince,
+                        messages: filtered.map((m) => ({
                             ...m,
                             threadType: threadInfo.get(m.threadId)?.type ?? null,
                             threadTitle: threadInfo.get(m.threadId)?.title ?? null,

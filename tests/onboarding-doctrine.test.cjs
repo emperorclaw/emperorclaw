@@ -56,7 +56,7 @@ test("Provisioning passes role doctrine to the Hermes runtime", () => {
     provisioning.includes("EMPEROR_CLAW_AGENT_INSTRUCTIONS"),
     "provisioning should set the role-doctrine env var for the container",
   );
-  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_hermes_bridge.py");
+  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_bridge/config.py");
   assert.ok(
     bridge.includes("EMPEROR_CLAW_AGENT_INSTRUCTIONS"),
     "the bridge should read the role-doctrine env var",
@@ -91,7 +91,7 @@ test("Agents are told not to double-post via emperor_send_message", () => {
     /Never call emperor_send_message to deliver your own reply/i,
     "the operating guide should forbid self-reply via the tool",
   );
-  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_hermes_bridge.py");
+  const bridge = read("integrations/hermes/emperor-claw/bridge/emperor_bridge/context.py");
   assert.match(
     bridge,
     /Do NOT call emperor_send_message to reply/i,
@@ -102,8 +102,9 @@ test("Agents are told not to double-post via emperor_send_message", () => {
 test("Hermes entrypoint points the bridge at the profile home", () => {
   const entrypoint = read("integrations/hermes/entrypoint.sh");
   assert.ok(
-    entrypoint.includes('export HERMES_HOME="$HOME/.hermes/profiles/$PROFILE_NAME"'),
-    "HERMES_HOME must be set so the bridge can read the session store and logs",
+    entrypoint.includes('PROFILE_HOME="$HOME/.hermes/profiles/$PROFILE_NAME"') &&
+      entrypoint.includes('HERMES_HOME="$PROFILE_HOME"'),
+    "profile config must be applied against the agent's own profile home",
   );
 });
 
@@ -115,14 +116,10 @@ test("Hermes entrypoint enables the tool-loop guardrail hard stop", () => {
   );
 });
 
-test("Hermes entrypoint recreates the profile wrapper when it is missing", () => {
+test("Hermes entrypoint backs up the session store before the v0.22 upgrade", () => {
   const entrypoint = read("integrations/hermes/entrypoint.sh");
-  assert.ok(entrypoint.includes("WRAPPER="), "the entrypoint should track the profile wrapper path");
-  assert.match(entrypoint, /if \[ ! -x "\$WRAPPER" \]/, "the entrypoint should recreate a missing wrapper");
-  assert.ok(
-    entrypoint.includes('exec /home/hermes/.local/bin/hermes -p'),
-    "the recreated wrapper should exec the profile-scoped hermes",
-  );
+  assert.ok(entrypoint.includes("state.db.pre-v0.22"), "the entrypoint should keep a pre-upgrade copy of state.db");
+  assert.ok(entrypoint.includes('PLUGIN_DIR="$PROFILE_HOME/plugins/emperor-claw"'), "the plugin should live in the profile");
 });
 
 test("Onboarding gates the direct chat on the agent coming online", () => {
@@ -155,11 +152,12 @@ test("Onboarding is server-owned, not hidden by stale localStorage", () => {
 test("Local agent provisioning allows long turns and bounds inactive ones", () => {
   const provisioning = read("src/lib/hermes-provisioning.ts");
   assert.ok(
-    provisioning.includes("EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS=0") &&
-      provisioning.includes("EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS=900"),
+    provisioning.includes("EMPEROR_CLAW_HERMES_TURN_TIMEOUT_SECONDS=0") &&
+      provisioning.includes("EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS=900"),
     "provisioning must allow long work while stopping turns with no progress",
   );
-  assert.ok(provisioning.includes("EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS=3"));
+  const bridgeConfig = read("integrations/hermes/emperor-claw/bridge/emperor_bridge/config.py");
+  assert.ok(bridgeConfig.includes('"EMPEROR_CLAW_HERMES_MAX_RETRY_ATTEMPTS", 3'), "failed turns are retried a bounded number of times");
 });
 
 test("Provisioning hands the Hermes profile config defaults to the runtime", () => {
@@ -173,7 +171,9 @@ test("Provisioning hands the Hermes profile config defaults to the runtime", () 
     '["compression.threshold_tokens", "80000"]',
     '["compression.proactive_prune_tokens", "48000"]',
     '["compression.idle_compact_after_seconds", "0"]',
-    '["approvals.single_query_mode", "approve"]',
+    '["approvals.timeout", "60"]',
+    '["agent.clarify_timeout", "60"]',
+    '["agent.restart_drain_timeout", "30"]',
     '["tools.tool_search.enabled", "off"]',
   ]) {
     assert.ok(defaults.includes(pair), `missing profile default ${pair}`);

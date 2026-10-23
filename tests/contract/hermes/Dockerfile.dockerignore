@@ -1,0 +1,5 @@
+*
+!integrations/hermes/emperor-claw/
+integrations/hermes/emperor-claw/**/__pycache__
+!tests/contract/hermes/
+tests/contract/hermes/results/

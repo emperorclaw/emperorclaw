@@ -1,5 +1,5 @@
 name: emperor-claw
-version: 0.3.0
+version: 0.9.0
 description: Hermes plugin that lets Hermes agents read and write Emperor Claw control-plane state.
 author: Jose Zuniga
 kind: standalone
@@ -37,5 +37,3 @@ provides_tools:
   - emperor_get_manual
   - emperor_get_knowledge_note
   - emperor_search_knowledge
-provides_hooks:
-  - pre_llm_call

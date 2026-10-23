@@ -161,7 +161,7 @@ class TestServerDedup(unittest.TestCase):
         
         is_dedup = resp2.get("deduplicated") == True or resp2.get("message_id") is None
         self.assertTrue(is_dedup, f"Second identical message was NOT deduplicated! resp={resp2}")
-        print(f"  Second send: deduplicated=True — OK")
+        print("  Second send: deduplicated=True — OK")
 
     def test_different_message_is_not_deduped(self):
         """Different messages should NOT be deduplicated."""
@@ -183,7 +183,7 @@ class TestServerDedup(unittest.TestCase):
         self.assertIsNotNone(resp1.get("message_id"), f"First unique msg was deduped: {resp1}")
         self.assertIsNotNone(resp2.get("message_id"), f"Second unique msg was deduped: {resp2}")
         self.assertNotEqual(resp1.get("message_id"), resp2.get("message_id"))
-        print(f"  Both unique messages have different IDs — OK")
+        print("  Both unique messages have different IDs — OK")
 
 
 class TestSyncFiltering(unittest.TestCase):

@@ -21,24 +21,6 @@ class HermesHiringTests(unittest.TestCase):
             self.assertEqual(body["deploymentMode"], "local")
             self.assertNotIn("llmApiKey", body)
 
-    def test_baseline_loads_without_kb_or_network(self):
-        with patch.object(plugin, "_request", side_effect=AssertionError("baseline must not fetch KB")):
-            context = plugin.emperor_context_hook()["context"]
-        for phrase in ["Emperor minimum operating practices", "Human mentions never route to an agent", "3–8 words", "isShared=true", "status=\"draft\"", "Common scenarios"]:
-            self.assertIn(phrase, context)
-
-    def test_bridge_turn_does_not_inject_operating_guide_twice(self):
-        with patch.dict(os.environ, {"EMPEROR_CLAW_PROMPT_INCLUDES_OPERATING_GUIDE": "1"}, clear=False):
-            os.environ.pop("EMPEROR_CLAW_CONTEXT_MODE", None)
-            context = plugin.emperor_context_hook()["context"]
-        self.assertNotIn("Emperor minimum operating practices", context)
-        self.assertIn("durable state", context)
-
-    def test_lean_mode_hook_injects_nothing(self):
-        with patch.dict(os.environ, {"EMPEROR_CLAW_CONTEXT_MODE": "lean"}), patch.object(plugin, "_request", side_effect=AssertionError("hook must not fetch")):
-            context = plugin.emperor_context_hook()["context"]
-        self.assertEqual(context, "")
-
     def test_tier2_tools_hit_the_lean_endpoints(self):
         with patch.object(plugin, "_request", return_value={"ok": True}) as request:
             plugin.emperor_get_manual({"section": "storage"})
@@ -145,6 +127,7 @@ class HermesHiringTests(unittest.TestCase):
 
 
 class AcknowledgeTests(unittest.TestCase):
+    # Acks inside a turn (turn file + bound_client_env) are covered by tests/hermes-plugin-context.test.py.
     TURN = {
         "EMPEROR_CLAW_TURN_THREAD_ID": "thread-1",
         "EMPEROR_CLAW_TURN_MESSAGE_ID": "msg-1",
@@ -169,15 +152,6 @@ class AcknowledgeTests(unittest.TestCase):
             result = json.loads(plugin.emperor_send_message({"text": "On it", "acknowledge": True}))
         self.assertIn("error", result)
         request.assert_not_called()
-
-    def test_ack_inside_a_turn_is_flagged_and_anchored(self):
-        with patch.dict(os.environ, {**self._clean_env(), **self.TURN}, clear=True), \
-             patch.object(plugin, "_request", return_value={"ok": True}) as request:
-            plugin.emperor_send_message({"text": "On it", "acknowledge": True})
-        body = request.call_args.kwargs["body"]
-        self.assertEqual(body["thread_id"], "thread-1")
-        self.assertEqual(body["replyToMessageId"], "msg-1")
-        self.assertIs(body["ack"], True)
 
     def test_ack_into_another_thread_is_refused(self):
         with patch.dict(os.environ, {**self._clean_env(), **self.TURN}, clear=True), \
