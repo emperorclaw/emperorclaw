@@ -4,6 +4,7 @@ import { parse } from 'url';
 import next from 'next';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Pool, PoolClient } from 'pg';
+import { UTC_SESSION_OPTIONS } from "./src/db/pg-utc";
 import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
 import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
 
@@ -122,7 +123,7 @@ app.prepare().then(() => {
   });
   
   // Setup Postgres LISTEN/NOTIFY for ws broadcasts
-  const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING });
+  const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING, options: UTC_SESSION_OPTIONS });
   let listenerClient: PoolClient | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
 

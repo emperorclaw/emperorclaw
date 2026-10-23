@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { lt, and, eq, inArray, isNotNull, isNull, ne, notInArray, or } from "drizzle-orm";
 import { tasks, taskEvents, incidents } from "@/db/schema";
 import { Pool } from "pg";
+import { UTC_SESSION_OPTIONS } from "@/db/pg-utc";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "./task-state";
 import { broadcastMcpEvent } from "./pubsub";
 import { notifyIncident } from "@/lib/notifications";
@@ -14,6 +15,7 @@ const ADVISORY_LOCK_ID = 20261010; // Unique ID for our watchdog lock
 // Helper for raw pg connection to hold lock reliably around transaction
 const pool = new Pool({
     connectionString: process.env.POSTGRES_CONNECTION_STRING,
+    options: UTC_SESSION_OPTIONS,
 });
 
 export function startWatchdog() {

@@ -1,5 +1,6 @@
 import { and, count, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { Pool } from "pg";
+import { UTC_SESSION_OPTIONS } from "@/db/pg-utc";
 import { db } from "@/db";
 import { agentSessions, agents, tasks, threadMessages } from "@/db/schema";
 import { notifyAgentDown } from "./notifications";
@@ -45,6 +46,7 @@ let lastRetentionCheck = 0;
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_CONNECTION_STRING,
+  options: UTC_SESSION_OPTIONS,
 });
 
 export function nextCheckinDeadline(from = new Date()) {
