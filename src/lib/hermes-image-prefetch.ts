@@ -148,6 +148,18 @@ export function pullHermesImage(image: string, platform: string | undefined, pul
     return run;
 }
 
+/**
+ * Delay before the next attempt when this release's runtime image is not
+ * available yet. On a release the app image is published before the Hermes
+ * image (which waits on the bridge contract), so an auto-updated server boots
+ * first and has to come back for the runtime: 5, 10, 20, 40 then every 60
+ * minutes, for up to a day. Returns null once it should stop.
+ */
+export function imageRetryDelayMs(attempt: number): number | null {
+    if (attempt < 1 || attempt > 27) return null;
+    return Math.min(5 * 2 ** (attempt - 1), 60) * 60_000;
+}
+
 export type PrefetchDeps = {
     image: string;
     platform?: string;
@@ -158,21 +170,24 @@ export type PrefetchDeps = {
 
 /**
  * Boot-time prefetch: pull the image in the background when it is not already
- * local. Never throws; logs once on start, finish, and error.
+ * local. Never throws; logs once on start, finish, and error. Resolves true
+ * when the image is local afterwards, so the caller can retry later.
  */
-export async function prefetchHermesImage(deps: PrefetchDeps): Promise<void> {
+export async function prefetchHermesImage(deps: PrefetchDeps): Promise<boolean> {
     const log = deps.log ?? ((message: string) => console.log(`[hermes-prefetch] ${message}`));
     try {
         if (await deps.imageExists(deps.image)) {
             markHermesImageReady(deps.image);
-            return;
+            return true;
         }
         log(`pulling ${deps.image} in the background`);
         const started = Date.now();
         await pullHermesImage(deps.image, deps.platform, deps.pull);
         log(`${deps.image} ready after ${Math.round((Date.now() - started) / 1000)}s`);
+        return true;
     } catch (err) {
         log(`pull of ${deps.image} failed: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
     }
 }
 

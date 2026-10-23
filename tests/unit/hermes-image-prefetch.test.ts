@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
     PullProgress,
     getHermesImagePullState,
+    imageRetryDelayMs,
     prefetchHermesImage,
     pullHermesImage,
     resetHermesImagePrefetchForTests,
@@ -133,4 +134,20 @@ test("progress label shows gigabytes downloaded of the total when known", () => 
     assert.equal(hermesImageProgressLabel({ downloadedBytes: 1_200_000_000, totalBytes: 3_800_000_000 }), "Downloading the agent runtime (one time) — 1.2 of 3.8 GB");
     assert.equal(hermesImageProgressLabel({ downloadedBytes: 600_000_000 }), "Downloading the agent runtime (one time) — 0.6 GB so far");
     assert.equal(hermesImageProgressLabel({}), "Downloading the agent runtime (one time)…");
+});
+
+test("prefetch reports whether the image is local afterwards", async () => {
+    assert.equal(await prefetchHermesImage({ image: IMAGE, pull: async () => "ok", imageExists: async () => true, log: () => {} }), true);
+    resetHermesImagePrefetchForTests();
+    assert.equal(await prefetchHermesImage({
+        image: IMAGE, pull: async () => { throw new Error("HTTP 404 not found"); }, imageExists: async () => false, log: () => {},
+    }), false);
+});
+
+test("a missing runtime image is retried with backoff for about a day, then given up", () => {
+    assert.equal(imageRetryDelayMs(0), null);
+    assert.deepEqual([1, 2, 3, 4, 5, 6].map(imageRetryDelayMs), [5, 10, 20, 40, 60, 60].map((m) => m * 60_000));
+    let total = 0;
+    for (let attempt = 1; imageRetryDelayMs(attempt) !== null; attempt++) total += imageRetryDelayMs(attempt)!;
+    assert.ok(total >= 24 * 3_600_000 && total <= 26 * 3_600_000, `retries span ${total / 3_600_000} h`);
 });

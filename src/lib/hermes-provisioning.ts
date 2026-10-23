@@ -21,7 +21,7 @@ import {
     stopContainer,
     type ContainerMount,
 } from "@/lib/docker";
-import { prefetchHermesImage, pullHermesImage, type DockerPullRecord } from "@/lib/hermes-image-prefetch";
+import { imageRetryDelayMs, prefetchHermesImage, pullHermesImage, type DockerPullRecord } from "@/lib/hermes-image-prefetch";
 
 export const HERMES_IMAGE_REPOSITORY = "ghcr.io/emperorclaw/emperorclaw-hermes";
 
@@ -558,12 +558,23 @@ export async function reconcileManagedHermesRuntimes(): Promise<ReconcileResult>
 export function startManagedHermesReconciler(delayMs = RECONCILE_DELAY_MS): void {
     if (reconcileStarted || process.env.EMPEROR_CLAW_HERMES_RECONCILE === "0") return;
     reconcileStarted = true;
-    const timer = setTimeout(() => {
-        reconcileManagedHermesRuntimes().catch((err) => {
+    let attempt = 0;
+    const run = async () => {
+        let imageMissing = false;
+        try {
+            const result = await reconcileManagedHermesRuntimes();
+            imageMissing = result.skipped !== null && result.skipped !== "no Docker socket";
+        } catch (err) {
             reconcileLog(`aborted: ${err instanceof Error ? err.message : String(err)}`);
-        });
-    }, delayMs);
-    timer.unref?.();
+        }
+        // The runtime image may not be published yet when the app updates first.
+        const retryIn = imageMissing ? imageRetryDelayMs(++attempt) : null;
+        if (retryIn !== null) {
+            reconcileLog(`retrying in ${Math.round(retryIn / 60_000)} min`);
+            setTimeout(run, retryIn).unref?.();
+        }
+    };
+    setTimeout(run, delayMs).unref?.();
 }
 
 /**
@@ -574,10 +585,17 @@ export function startManagedHermesReconciler(delayMs = RECONCILE_DELAY_MS): void
 export function startHermesImagePrefetch(): void {
     if (process.env.EMPEROR_HERMES_PREFETCH === "0") return;
     if (!isDocker() || !fs.existsSync(DOCKER_SOCKET)) return;
-    void prefetchHermesImage({
-        image: HERMES_IMAGE,
-        platform: HERMES_IMAGE_PLATFORM,
-        pull: (name, platform, onRecord) => dockerPull(name, platform, (record) => onRecord(record as DockerPullRecord)),
-        imageExists,
-    });
+    let attempt = 0;
+    const run = async () => {
+        const ready = await prefetchHermesImage({
+            image: HERMES_IMAGE,
+            platform: HERMES_IMAGE_PLATFORM,
+            pull: (name, platform, onRecord) => dockerPull(name, platform, (record) => onRecord(record as DockerPullRecord)),
+            imageExists,
+        });
+        // The runtime image may not be published yet when the app updates first.
+        const retryIn = ready ? null : imageRetryDelayMs(++attempt);
+        if (retryIn !== null) setTimeout(() => void run(), retryIn).unref?.();
+    };
+    void run();
 }
