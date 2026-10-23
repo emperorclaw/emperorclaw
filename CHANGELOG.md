@@ -9,6 +9,19 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.9.3] — 2026-10-23
+
+### Added
+- **Private direct chats.** A new company setting, Settings → Direct chats, chooses between one shared chat per agent and a private chat per person. In private mode each person gets their own conversation with each agent (with its own context), and work the system starts on its own goes to a shared "Operations" chat per agent. Existing companies stay shared; new companies start private.
+- See what an agent is doing while it works: the chat status row shows the current step ("Running write_file · report.md") or the agent's current thought ("Thinking · QA is 11/12 green…") instead of a bare "Thinking…".
+- "Show thoughts" on the dashboard works with Hermes 0.9 agents again, showing each working agent's latest step and refreshing every 2 seconds while someone is working.
+
+### Changed
+- In a private chat, Replace only stops that chat's work; Kill and Replace in shared chats still stop everything (requires bridge 0.9.3).
+
+### Security
+- Private chats stay private everywhere: realtime events, agent tokens, the delivery inspector, display screens, run events and Slack/Discord/webhook notifications (which only get a content-free title). Removing a member archives their private chats.
+
 ## [0.9.2] — 2026-10-23
 
 ### Changed
