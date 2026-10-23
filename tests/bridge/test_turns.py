@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -275,14 +276,16 @@ class TurnRunnerFixtureTest(unittest.IsolatedAsyncioTestCase):
             # The "crash" point: keep the state as persisted now. The replayed turn may
             # finish before the cancel lands (seen on Python 3.14), which must not change
             # what the second process starts from.
-            state_file = self.home / "emperor" / "bridge-state.json"
-            crashed = state_file.read_bytes()
+            emperor_dir = self.home / "emperor"
+            crashed = self.home / "emperor-at-crash"
+            shutil.copytree(emperor_dir, crashed)  # state, outbox and receipts as of the crash
             task.cancel()
             try:
                 await task
             except BaseException:
                 pass
-        state_file.write_bytes(crashed)
+        shutil.rmtree(emperor_dir)
+        shutil.copytree(crashed, emperor_dir)
         # Second process: a new harness on the persisted state, replaying the second connection.
         h2 = Harness("reconnect_replay", self.home)
         h2.gw.index = 0  # the next connect uses the recording's reconnect segment
