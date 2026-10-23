@@ -272,9 +272,17 @@ class TurnRunnerFixtureTest(unittest.IsolatedAsyncioTestCase):
             await h.wait_for(lambda: h.state.get_turn(turn.submission_id) is not None
                              and h.state.get_turn(turn.submission_id).get("admissionId"))
             await h.state.save()
+            # The "crash" point: keep the state as persisted now. The replayed turn may
+            # finish before the cancel lands (seen on Python 3.14), which must not change
+            # what the second process starts from.
+            state_file = self.home / "emperor" / "bridge-state.json"
+            crashed = state_file.read_bytes()
             task.cancel()
-            with self.assertRaises(BaseException):
+            try:
                 await task
+            except BaseException:
+                pass
+        state_file.write_bytes(crashed)
         # Second process: a new harness on the persisted state, replaying the second connection.
         h2 = Harness("reconnect_replay", self.home)
         h2.gw.index = 0  # the next connect uses the recording's reconnect segment
