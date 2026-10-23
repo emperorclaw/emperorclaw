@@ -38,7 +38,7 @@ Requirements: Linux with systemd, `curl`, `git`, `tar`, `python3`, and a user ac
 
    ```bash
    mkdir -p ~/.local/bin
-   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.2/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+   curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.3/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
    chmod +x ~/.local/bin/emperor-hermes
    ```
 
@@ -301,7 +301,7 @@ I need to connect a Hermes agent to Emperor Claw, an open-source AI workforce co
 
 Repository & docs: https://github.com/emperorclaw/emperorclaw
 Hermes runtime docs: docs/v1.1/hermes-runtime.md in that repository
-Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.2/emperor-hermes.sh
+Installer: https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.3/emperor-hermes.sh
 
 My agent role is: [DESCRIBE YOUR AGENT'S ROLE HERE, e.g. "SEO Specialist"]
 
