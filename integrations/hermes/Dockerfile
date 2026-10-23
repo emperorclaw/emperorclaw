@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Node.js via NodeSource, system-wide, so the Hermes installer finds a working node/npm on PATH
 # and skips its own download-and-extract fallback (that fallback fails in this image with a
 # silent exit 127 when unpacking into the non-root user's $HOME).
-RUN curl -fsSL https://deb.nodesource.com/setup_26.x | bash - \
+RUN curl -fsSL --retry 6 --retry-delay 15 --retry-all-errors https://deb.nodesource.com/setup_26.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,7 +39,7 @@ ENV PATH="/home/hermes/.local/bin:${PATH}"
 # healthcheck all run on it. The stable path is an exec wrapper, NOT a symlink: Python looks for
 # pyvenv.cfg next to the unresolved executable path, so a symlink outside the venv starts the bare
 # base interpreter without the venv's site-packages (no websockets).
-RUN curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_SHA}/scripts/install.sh" \
+RUN curl -fsSL --retry 6 --retry-delay 15 --retry-all-errors "https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_SHA}/scripts/install.sh" \
       | bash -s -- --skip-setup --skip-computer-use --branch "${HERMES_REF}" \
  && sha="$(git -C /home/hermes/.hermes/hermes-agent rev-parse HEAD)" \
  && echo "hermes-agent HEAD=${sha}" \
