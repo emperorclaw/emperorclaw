@@ -3,27 +3,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
-import { getCompanyId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberCustomerCondition, memberMaySeeCustomer } from "@/lib/member-scope";
 
 export async function GET() {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const rows = await db.select({ id: customers.id, name: customers.name })
         .from(customers)
-        .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt)))
+        .where(and(eq(customers.companyId, companyId), isNull(customers.deletedAt), memberCustomerCondition(access.ctx.scope, customers.id)))
         .orderBy(desc(customers.createdAt));
 
     return NextResponse.json({ customers: rows });
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const body = await req.json();
@@ -38,6 +37,10 @@ export async function POST(req: NextRequest) {
             isNull(customers.deletedAt),
         )).limit(1);
 
+        if (existing && !memberMaySeeCustomer(access.ctx.scope, existing.id)) {
+            // Upsert-by-name must not let a restricted member touch a customer outside their scope.
+            return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+        }
         if (existing) {
             return NextResponse.json({ error: "Customer already exists" }, { status: 409 });
         }

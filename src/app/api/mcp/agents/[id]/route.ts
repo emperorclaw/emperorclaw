@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpAgentUpdateDenial } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -59,6 +60,9 @@ export async function PATCH(
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
         const body = parsed.data as Record<string, unknown>;
+        // An agent token may only update itself, and never its budget/model/scope.
+        const denial = await mcpAgentUpdateDenial(companyId, auth.companyToken!, agentId, body);
+        if (denial) return NextResponse.json({ error: denial }, { status: 403 });
         const { name, role, skillsJson, memory, modelPolicyJson, concurrencyLimit, avatarUrl, avatarAppearance } = body as {
             name?: string; role?: string; skillsJson?: unknown[]; memory?: string;
             modelPolicyJson?: Record<string, unknown>; concurrencyLimit?: number; avatarUrl?: string; avatarAppearance?: unknown;
@@ -120,6 +124,10 @@ export async function DELETE(
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
     const endpoint = `/api/mcp/agents/${agentId}`;
+    // Deleting an agent is an owner/admin action: agent tokens never do it, not even to themselves.
+    if (auth.companyToken!.agentId) {
+        return NextResponse.json({ error: "Access denied: agents cannot delete agents" }, { status: 403 });
+    }
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
     if (error) return NextResponse.json({ error }, { status });

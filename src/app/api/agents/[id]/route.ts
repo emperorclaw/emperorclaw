@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId, getUserId } from "@/lib/auth";
 import { deleteAgentAndData } from "@/lib/agent-deletion";
 import { db } from "@/db";
 import {
@@ -20,6 +19,9 @@ import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { validAvatarUrl } from "@/lib/avatar";
 import { legacyAvatarToAppearance, normalizeAppearance } from "@/lib/character/model";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeAgent } from "@/lib/member-scope";
+import { canAdmin } from "@/lib/role-matrix";
 
 function redactAgent<T extends { llmApiKeyEncrypted?: unknown; llmApiKeyVersion?: unknown }>(agent: T) {
     const { llmApiKeyEncrypted: _e, llmApiKeyVersion: _v, ...safe } = agent;
@@ -34,10 +36,12 @@ export async function PATCH(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const { id } = await params;
+    if (!memberMaySeeAgent(access.ctx.scope, id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     const body = await req.json().catch(() => ({}));
 
     if (body.provider !== undefined || body.deploymentMode !== undefined) {
@@ -90,6 +94,10 @@ export async function PATCH(
         updates.budgetStatus = body.budgetStatus;
     }
     if (body.scopeJson && typeof body.scopeJson === "object") {
+        // An agent's data scope is a security boundary: only owners/admins set it.
+        if (!canAdmin(access.ctx.role)) {
+            return NextResponse.json({ error: "Only owners and admins can change an agent's data scope" }, { status: 403 });
+        }
         const mode = body.scopeJson.mode;
         if (mode !== "all" && mode !== "restricted") {
             return NextResponse.json({ error: "scopeJson.mode must be 'all' or 'restricted'" }, { status: 400 });
@@ -155,10 +163,13 @@ export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const [companyId, viewerId] = await Promise.all([getCompanyId(), getUserId()]);
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const viewerId = access.ctx.userId;
 
     const { id } = await params;
+    if (!memberMaySeeAgent(access.ctx.scope, id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     const [agent] = await db.select().from(agents).where(
         and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))
     ).limit(1);
@@ -233,10 +244,13 @@ export async function DELETE(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const [companyId, userId] = await Promise.all([getCompanyId(), getUserId()]);
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     const { id } = await params;
+    if (!memberMaySeeAgent(access.ctx.scope, id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     const body = await req.json().catch(() => ({}));
     const confirmName = typeof body.confirmName === "string" ? body.confirmName.trim() : "";
 

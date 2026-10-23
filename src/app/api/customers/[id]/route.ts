@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
-import { getCompanyId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeCustomer } from "@/lib/member-scope";
 
 export async function PATCH(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const { id } = await params;
@@ -24,7 +24,7 @@ export async function PATCH(
             isNull(customers.deletedAt),
         )).limit(1);
 
-        if (!existing) {
+        if (!existing || !memberMaySeeCustomer(access.ctx.scope, existing.id)) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
 

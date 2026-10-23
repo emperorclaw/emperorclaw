@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { messageThreads, threadMessages, threadParticipants } from "@/db/schema";
-import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, count, eq, gt, isNull, or } from "drizzle-orm";
+import { companyRouteAccess } from "@/lib/company-access";
 
 // Total unread agent messages across every thread (direct + shared team
 // thread) the current human is a participant in. Used for the sidebar badge.
 export async function GET() {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     try {
         const [row] = await db

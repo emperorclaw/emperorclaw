@@ -1,27 +1,18 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { getValidatedServerSession } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { db } from "@/db";
-import { companyMembers, pipelines } from "@/db/schema";
+import { pipelines } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
 
+/** Pipeline status changes are writes: members and up, never viewers. */
 async function getMembership() {
-    const session = await getValidatedServerSession();
-    const sessionUserId = session?.user?.id;
-    if (!sessionUserId) {
-        return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-    }
-
-    const [membership] = await db.select().from(companyMembers)
-        .where(eq(companyMembers.userId, sessionUserId))
-        .limit(1);
-    if (!membership) {
-        return { error: NextResponse.json({ error: "Company not found" }, { status: 404 }) };
-    }
-
-    return { membership };
+    const access = await companyRouteAccess("member");
+    if (access.response) return { error: access.response };
+    return { membership: access.ctx };
 }
 
 // PATCH /api/pipelines/[id] - UI status changes: pause / activate / retire.
@@ -45,7 +36,7 @@ export async function PATCH(
         const [pipeline] = await db.select().from(pipelines).where(
             and(eq(pipelines.id, id), eq(pipelines.companyId, membership.companyId), isNull(pipelines.deletedAt))
         ).limit(1);
-        if (!pipeline) {
+        if (!pipeline || !(await memberMaySeeRecord(membership.companyId, membership.scope, pipeline))) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
 
@@ -83,7 +74,7 @@ export async function DELETE(
         const [pipeline] = await db.select().from(pipelines).where(
             and(eq(pipelines.id, id), eq(pipelines.companyId, membership.companyId), isNull(pipelines.deletedAt))
         ).limit(1);
-        if (!pipeline) {
+        if (!pipeline || !(await memberMaySeeRecord(membership.companyId, membership.scope, pipeline))) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
 

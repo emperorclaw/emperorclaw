@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
-import { buildLiveFeed, clampMessageCount, etagMatches, liveFeedEtag } from "@/lib/live-feed";
+import { buildLiveFeed, clampMessageCount, etagMatches, liveFeedEtag, scopeLiveFeed } from "@/lib/live-feed";
+import { getScopedAgentIds, loadMemberScope } from "@/lib/member-scope";
 
 /**
  * GET /api/mcp/live — the live agent feed for screens and dashboards.
@@ -25,7 +26,10 @@ export async function GET(req: NextRequest) {
         const token = auth.companyToken;
         const privateChatsUserId = token.scope === "read_only" && token.includePrivateChats ? token.createdByUserId : null;
         const agentThoughts = token.scope === "read_only" && token.includeAgentThoughts === true;
-        const feed = await buildLiveFeed(token.companyId, { messages, privateChatsUserId, agentThoughts });
+        // A screen shows what its creator may see: a token minted by someone who
+        // is now a restricted member carries that member's current agent scope.
+        const creatorScope = token.createdByUserId ? await loadMemberScope(token.createdByUserId, token.companyId) : null;
+        const feed = scopeLiveFeed(await buildLiveFeed(token.companyId, { messages, privateChatsUserId, agentThoughts }), getScopedAgentIds(creatorScope));
         const etag = liveFeedEtag(feed);
         const headers = { ETag: etag, "Cache-Control": "no-store" };
         if (etagMatches(req.headers.get("if-none-match"), etag)) {

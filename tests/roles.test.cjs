@@ -18,7 +18,7 @@ function assertContains(source, needle, message) {
 
 test("roles.ts exports core types and functions", () => {
   assert.ok(existsSync(resolve(root, "src/lib/roles.ts")), "roles.ts must exist");
-  const source = read("src/lib/roles.ts");
+  const source = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   assertContains(source, "ROLE_HIERARCHY", "must export role hierarchy");
   assertContains(source, "PERMISSION_MATRIX", "must export permission matrix");
   assertContains(source, "hasPermission", "must export hasPermission function");
@@ -29,7 +29,7 @@ test("roles.ts exports core types and functions", () => {
 });
 
 test("roleGte enforces correct hierarchy: instance_admin > owner > admin > member > viewer", () => {
-  const source = read("src/lib/roles.ts");
+  const source = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   // The hierarchy array must have the correct ordering
   assertContains(source, '"instance_admin"', "hierarchy must include instance_admin");
   assertContains(source, '"owner"', "hierarchy must include owner");
@@ -54,7 +54,7 @@ test("roleGte enforces correct hierarchy: instance_admin > owner > admin > membe
 });
 
 test("PERMISSION_MATRIX covers all required permissions per FR-21", () => {
-  const source = read("src/lib/roles.ts");
+  const source = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   const requiredPermissions = [
     "users:invite",
     "users:remove",
@@ -73,7 +73,7 @@ test("PERMISSION_MATRIX covers all required permissions per FR-21", () => {
 });
 
 test("hasPermission implementation uses O(1) Set lookups", () => {
-  const source = read("src/lib/roles.ts");
+  const source = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   // Must use Set or Map for constant-time lookups (NFR-6)
   const usesSetOrMap = source.includes("new Set") || source.includes("new Map") || source.includes(".has(");
   assert.ok(usesSetOrMap, "permission checks must use Set/Map for O(1) lookups (NFR-6)");
@@ -86,13 +86,13 @@ test("hasPermission implementation uses O(1) Set lookups", () => {
 });
 
 test("AuthError class has statusCode property for 401/403 routing", () => {
-  const source = read("src/lib/roles.ts");
+  const source = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   assertContains(source, "AuthError", "must define AuthError class");
   assertContains(source, "statusCode", "AuthError must have statusCode property");
 });
 
 test("requireRole accepts variadic roles and throws 403 on insufficient role", () => {
-  const source = read("src/lib/roles.ts");
+  const source = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   assertContains(source, "requireRole", "must export requireRole");
   assertContains(source, "403", "requireRole must return 403 for insufficient role");
   assertContains(source, "401", "requireRole must return 401 for unauthenticated");
@@ -118,7 +118,7 @@ test("members API enforces last-admin constraint (EC-4, EC-5)", () => {
     );
   }
   // Also check in roles.ts for the guard function
-  const rolesSource = read("src/lib/roles.ts");
+  const rolesSource = (read("src/lib/role-matrix.ts") + read("src/lib/roles.ts"));
   const hasLastAdminGuard =
     rolesSource.includes("last") && rolesSource.includes("admin") ||
     rolesSource.includes("cannot demote");

@@ -1,7 +1,8 @@
 import { db } from "@/db";
-import { messageThreads } from "@/db/schema";
+import { messageThreads, tasks } from "@/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { eventThreadIds, mostRestrictiveAudience, type RealtimeAudience } from "@/lib/direct-chat-mode";
+import type { RealtimeSubject } from "@/lib/realtime-delivery";
 
 /**
  * Broadcasts an event to connected MCP WebSocket clients for a specific company.
@@ -35,15 +36,59 @@ export async function realtimeAudienceFor(companyId: string, payload: unknown): 
     return mostRestrictiveAudience(threads);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Which projects/customers an event is about, so server.ts can keep it from
+ * the sockets of agents scoped away from them (lib/realtime-delivery.ts).
+ * Reads the ids the payload carries, plus the project of every task and
+ * thread it names. Throws on a lookup failure (the caller then broadcasts
+ * nothing rather than fanning scoped data out).
+ */
+export async function realtimeSubjectFor(companyId: string, payload: unknown): Promise<RealtimeSubject> {
+    const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, any>;
+    const projectIds = new Set<string>();
+    const customerIds = new Set<string>();
+    const taskIds = new Set<string>();
+    const add = (set: Set<string>, value: unknown) => { if (typeof value === "string" && UUID_RE.test(value)) set.add(value); };
+    add(projectIds, p.projectId);
+    add(customerIds, p.customerId);
+    add(taskIds, p.taskId);
+    add(projectIds, p.project?.id);
+    add(customerIds, p.project?.customerId);
+    add(customerIds, p.customer?.id);
+    add(taskIds, p.task?.id);
+    add(projectIds, p.task?.projectId);
+    for (const key of ["artifact", "memory", "incident", "approval", "pipeline", "folder", "schedule", "definition"]) {
+        add(projectIds, p[key]?.projectId);
+        add(customerIds, p[key]?.customerId);
+        add(taskIds, p[key]?.taskId);
+    }
+    const threadIds = eventThreadIds(payload).filter((id) => UUID_RE.test(id));
+    if (threadIds.length > 0) {
+        const threads = await db.select({ projectId: messageThreads.projectId, taskId: messageThreads.taskId }).from(messageThreads)
+            .where(and(inArray(messageThreads.id, threadIds), eq(messageThreads.companyId, companyId)));
+        for (const thread of threads) { add(projectIds, thread.projectId); add(taskIds, thread.taskId); }
+    }
+    if (taskIds.size > 0) {
+        const rows = await db.select({ projectId: tasks.projectId }).from(tasks)
+            .where(and(inArray(tasks.id, [...taskIds]), eq(tasks.companyId, companyId)));
+        for (const row of rows) add(projectIds, row.projectId);
+    }
+    return { projectIds: [...projectIds], customerIds: [...customerIds] };
+}
+
 export async function broadcastMcpEvent(companyId: string, payload: any) {
     if (!companyId) return;
     try {
         const audience = await realtimeAudienceFor(companyId, payload);
-        let message = JSON.stringify({ companyId, audience, payload });
+        const subject = await realtimeSubjectFor(companyId, payload);
+        let message = JSON.stringify({ companyId, audience, subject, payload });
         if (Buffer.byteLength(message, "utf8") > NOTIFY_PAYLOAD_LIMIT) {
             const compact = {
                 companyId,
                 audience,
+                subject,
                 payload: {
                     type: payload?.type ?? "event",
                     truncated: true,

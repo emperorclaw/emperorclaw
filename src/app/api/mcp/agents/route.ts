@@ -49,6 +49,11 @@ export async function POST(req: NextRequest) {
     }
     const { companyToken } = authResult;
     const companyId = companyToken.companyId;
+    // Registering or hiring agents is an owner/admin action: an agent token
+    // could otherwise mint an unscoped agent with owner-only settings.
+    if (companyToken.agentId) {
+        return NextResponse.json({ error: "Access denied: agents cannot create agents" }, { status: 403 });
+    }
 
     const idempotencyResult = await checkIdempotency(req, companyId, "/api/mcp/agents");
     if ("error" in idempotencyResult) {

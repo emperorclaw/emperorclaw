@@ -4,6 +4,8 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberCustomerCondition, memberMaySeeAgent, memberMaySeeCustomer } from "@/lib/member-scope";
 
 async function validateScopedRelation(companyId: string, table: typeof customers | typeof agents, id?: unknown) {
     if (!id) return true;
@@ -17,24 +19,22 @@ async function validateScopedRelation(companyId: string, table: typeof customers
 }
 
 export async function GET() {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const rows = await db.select({ id: projects.id, goal: projects.goal, customerId: projects.customerId })
         .from(projects)
-        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt)))
+        .where(and(eq(projects.companyId, companyId), isNull(projects.deletedAt), memberCustomerCondition(access.ctx.scope, projects.customerId)))
         .orderBy(desc(projects.createdAt));
 
     return NextResponse.json({ projects: rows });
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const body = await req.json();
@@ -42,10 +42,12 @@ export async function POST(req: NextRequest) {
         if (!goal) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
         }
-        if (!(await validateScopedRelation(companyId, customers, body.customerId))) {
+        if (!(await validateScopedRelation(companyId, customers, body.customerId))
+            || (access.ctx.scope && !memberMaySeeCustomer(access.ctx.scope, body.customerId))) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
-        if (!(await validateScopedRelation(companyId, agents, body.leadAgentId))) {
+        if (!(await validateScopedRelation(companyId, agents, body.leadAgentId))
+            || (body.leadAgentId && !memberMaySeeAgent(access.ctx.scope, body.leadAgentId))) {
             return NextResponse.json({ error: "Lead agent not found" }, { status: 404 });
         }
 

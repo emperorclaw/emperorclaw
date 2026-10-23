@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { canAdmin } from "@/lib/role-matrix";
 import { loadRunThoughts } from "@/lib/dashboard-live";
-import { getScopeFromSession, getScopedAgentIds } from "@/lib/member-scope";
+import { getScopedAgentIds } from "@/lib/member-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,18 +15,17 @@ export const dynamic = "force-dynamic";
  * generic label.
  */
 export async function GET() {
-    const session = await getValidatedServerSession();
-    const companyId = session ? await getCompanyId() : null;
-    if (!session || !companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
-    const instanceRole = session.user.instanceRole ?? "member";
-    const companyRole = session.user.companyRole ?? null;
-    const includePairThreads = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
+    // Role from the DB (requireRole), not the login-time JWT claim.
+    const includePairThreads = canAdmin(access.ctx.role);
     const now = new Date();
     const thoughts = await loadRunThoughts(companyId, {
         now,
-        agentIds: getScopedAgentIds(getScopeFromSession(session)),
-        viewerUserId: session.user.id ?? null,
+        agentIds: getScopedAgentIds(access.ctx.scope),
+        viewerUserId: access.ctx.userId,
         includePairThreads,
     });
     return NextResponse.json({ ts: now.toISOString(), thoughts });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
 import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
+import { mcpMayWriteResourceScope, mcpRouteAccess } from "@/lib/mcp-access";
 
 function sanitizeResource(resource: PublicResource) {
   return {
@@ -139,15 +140,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "scopeId is required for agent scope" }, { status: 400 });
     }
 
-    if (agentId && (finalScopeType === "project" || finalScopeType === "customer") && finalScopeId) {
-      const actingAgentId = await resolveAgentId(companyId, agentId);
-      const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, actingAgentId);
-      const allowed = finalScopeType === "project"
-        ? isProjectAllowed(allowedProjectIds, finalScopeId)
-        : isCustomerAllowed(allowedCustomerIds, finalScopeId);
-      if (!allowed) {
-        return NextResponse.json({ error: "Scope is outside this agent's scope" }, { status: 403 });
-      }
+    // The writer's scope comes from the token binding (or the named agent for
+    // an operator token): it may only write into projects/customers it can
+    // see, and only into its own private agent scope.
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+    if (scoped.response) return scoped.response;
+    if (!mcpMayWriteResourceScope(scoped.access, finalScopeType, finalScopeId)) {
+      return NextResponse.json({ error: "Scope is outside this agent's scope" }, { status: 403 });
     }
 
     const resource = await createScopedResource({

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
+    companyTokens,
     actionRuns,
     agentIntegrations,
     agentMemoryEntries,
@@ -133,6 +134,10 @@ export async function deleteAgentAndData(input: {
             and(eq(scopedResources.companyId, companyId), eq(scopedResources.scopeType, "agent"), eq(scopedResources.scopeId, agentId), isNull(scopedResources.deletedAt))
         );
 
+        // Its runtime tokens die with it: a leaked bound token must not outlive the agent.
+        await tx.update(companyTokens).set({ revokedAt: now }).where(
+            and(eq(companyTokens.companyId, companyId), eq(companyTokens.agentId, agentId), isNull(companyTokens.revokedAt))
+        );
         await tx.update(agents).set({
             deletedAt: now,
             status: "offline",

@@ -1,21 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { messageThreads, threadParticipants } from "@/db/schema";
-import { getCompanyId, getUserId } from "@/lib/auth";
 import { and, eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { normalizeExecutionState } from "@/lib/project-workflow";
 import { canUseDirectThread, markThreadRead, updateThreadExecutionState } from "@/lib/control-plane";
 import { isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
+import { companyRouteAccess } from "@/lib/company-access";
+import { canWrite } from "@/lib/role-matrix";
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read receipts and typing are the viewer's own presence (any role);
+    // changing a message's execution state is a write (members and up).
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     try {
         const { threadId, typing, markRead, executionState } = await req.json();
         if (!threadId) return NextResponse.json({ error: "threadId is required" }, { status: 400 });
+        if (executionState !== undefined && executionState !== null && !canWrite(access.ctx.role)) {
+            return NextResponse.json({ error: "Forbidden — viewers cannot change message state." }, { status: 403 });
+        }
 
         // Someone else's private direct thread: no read, typing or state changes.
         const [privateThread] = await db.select({ type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })

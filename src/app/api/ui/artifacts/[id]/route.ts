@@ -5,6 +5,7 @@ import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 
 type ArtifactRecord = InferModel<typeof artifacts>;
 
@@ -13,7 +14,7 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { companyId, userId } = await requireCompanyFromSession();
+        const { companyId, userId, scope } = await requireCompanyFromSession("viewer");
         const { id: artifactId } = await params;
 
         const [artifact] = await db.select({
@@ -62,7 +63,7 @@ export async function GET(
             ))
             .limit(1);
 
-        if (!artifact) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
@@ -81,7 +82,7 @@ export async function GET(
         return NextResponse.json({ artifact: sanitizeArtifactClientPayload(artifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : mapErrorStatus(error) });
     }
 }
 
@@ -90,14 +91,14 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("member");
         const { id: artifactId } = await params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         )).limit(1);
-        if (!artifact) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
         const artifactRecord = artifact as ArtifactRecord;
@@ -166,7 +167,7 @@ export async function PATCH(
         return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : mapErrorStatus(error) });
     }
 }
 

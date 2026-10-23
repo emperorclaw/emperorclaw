@@ -3,6 +3,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agentMemoryEntries, agents } from "@/db/schema";
 import { AuthError, requireRole } from "@/lib/roles";
+import { memberMaySeeAgent } from "@/lib/member-scope";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { MEMORY_KINDS, MAX_MEMORY_LENGTH } from "@/lib/agent-memory";
 
@@ -26,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     try {
         const ctx = await requireRole("member")();
         const { id } = await params;
-        if (!(await agentFor(ctx.companyId, id))) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        if (!memberMaySeeAgent(ctx.scope, id) || !(await agentFor(ctx.companyId, id))) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         const entries = await db.select().from(agentMemoryEntries)
             .where(and(eq(agentMemoryEntries.companyId, ctx.companyId), eq(agentMemoryEntries.agentId, id)))
             .orderBy(desc(agentMemoryEntries.createdAt)).limit(100);
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
         const ctx = await requireRole("admin")();
         const { id } = await params;
-        if (!(await agentFor(ctx.companyId, id))) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        if (!memberMaySeeAgent(ctx.scope, id) || !(await agentFor(ctx.companyId, id))) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         const body = await req.json().catch(() => ({}));
         const content = typeof body.content === "string" ? body.content.trim() : "";
         if (!content) return NextResponse.json({ error: "Write what the agent should remember" }, { status: 400 });

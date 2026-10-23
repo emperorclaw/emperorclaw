@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken } from "@/lib/mcp";
+import { mcpMayUseRecord, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { artifactFolders, projects, customers } from "@/db/schema";
 import { and, eq, isNull, ilike, or, desc, type InferModel, type SQL } from "drizzle-orm";
@@ -42,6 +43,11 @@ export async function GET(req: NextRequest) {
         if (agentId) {
             conditions.push(eq(artifactFolders.agentId, agentId));
         }
+        // `agentId` here filters by folder creator; the scope comes from the token binding.
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, null);
+        if (scoped.response) return scoped.response;
+        const scopeOr = mcpRecordCondition(scoped.access, { projectId: artifactFolders.projectId, customerId: artifactFolders.customerId });
+        if (scopeOr) conditions.push(scopeOr);
         if (search) {
             const likeValue = `%${search}%`;
             const searchCondition = or(
@@ -102,7 +108,13 @@ export async function POST(req: NextRequest) {
 
         const projectId = await resolveScopedProject(companyId, body.projectId);
         const customerId = await resolveScopedCustomer(companyId, body.customerId);
-        const agentId = body.agentId ? await resolveAgentId(companyId, body.agentId) : null;
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
+        if (scoped.response) return scoped.response;
+        const agentId = scoped.access.agentId;
+        if (!mcpMayUseRecord(scoped.access, { projectId, customerId })
+            || (parentFolder && !mcpMayUseRecord(scoped.access, parentFolder))) {
+            return NextResponse.json({ error: "Project/customer is outside this agent's scope" }, { status: 403 });
+        }
 
         const safeParentPath = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
         const safeName = typeof name === "string" ? name : "";

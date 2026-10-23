@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpBoundAgentMismatch, mcpTokenMayActOnAgent } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { agentSessions, agents, runtimeNodes } from "@/db/schema";
 import { getCompanyContext, readAgentMemory, startAgentSession } from "@/lib/control-plane";
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+    if (!(await mcpTokenMayActOnAgent(companyId, auth.companyToken!, agentId))) return mcpBoundAgentMismatch();
 
     try {
         const body = await req.json();

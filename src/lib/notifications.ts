@@ -16,6 +16,7 @@ import { getAppUrl } from "@/lib/env";
 import { mentionedAgentIds } from "@/lib/message-routing";
 import { directThreadLink, isPrivateDirectThread } from "@/lib/direct-chat-mode";
 import { decryptSecretPayload } from "@/lib/secrets";
+import { taskHref } from "@/lib/task-story";
 
 /**
  * Notifications: what a person needs to know without watching the app.
@@ -385,7 +386,7 @@ export async function notifyTaskAssigned(companyId: string, task: { id: string; 
             kind: "task_assigned",
             title: `Task assigned to you: ${title}`,
             body: typeof input.description === "string" ? input.description : null,
-            link: `/projects?project=${task.projectId}&task=${task.id}`,
+            link: taskHref(task.id),
             sourceType: "task",
             sourceId: task.id,
             dedupeKey: `task_assigned:${task.id}`,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
 import { loadAgentActivity } from "@/lib/agent-activity";
-import { getScopeFromSession, getScopedAgentIds } from "@/lib/member-scope";
+import { getScopedAgentIds } from "@/lib/member-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
  * Agents page.
  */
 export async function GET() {
-    const session = await getValidatedServerSession();
-    const companyId = session ? await getCompanyId() : null;
-    if (!session || !companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
-    const agentIds = getScopedAgentIds(getScopeFromSession(session));
-    const agents = await loadAgentActivity(companyId, { viewerUserId: session.user.id ?? null, agentIds });
+    const agentIds = getScopedAgentIds(access.ctx.scope);
+    const agents = await loadAgentActivity(companyId, { viewerUserId: access.ctx.userId, agentIds });
     return NextResponse.json({ ts: new Date().toISOString(), agents });
 }

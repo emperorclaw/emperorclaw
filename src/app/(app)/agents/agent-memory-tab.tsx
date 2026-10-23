@@ -6,6 +6,7 @@ import { IconBrain, IconLoader2, IconTrash, IconUser, IconRobot } from "@tabler/
 import { Button } from "@/components/ui/button";
 import { MAX_MEMORY_LENGTH, MEMORY_KINDS, MEMORY_KIND_LABELS, type MemoryKind } from "@/lib/agent-memory";
 import { cn } from "@/lib/utils";
+import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 
 type Entry = { id: string; kind: string; content: string; summary: string | null; metadataJson: Record<string, unknown> | null; createdAt: string };
 
@@ -27,6 +28,8 @@ export function AgentMemoryTab({ agentId, agentName }: { agentId: string; agentN
     const [kind, setKind] = useState<MemoryKind>("preference");
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState<string | null>(null);
+    // Teaching and forgetting are owner/admin actions (the API refuses others).
+    const { canAdmin } = useViewerPermissions();
 
     const load = useCallback(async () => {
         const res = await fetch(`/api/agents/${agentId}/memory`, { cache: "no-store" }).catch(() => null);
@@ -63,7 +66,7 @@ export function AgentMemoryTab({ agentId, agentName }: { agentId: string; agentN
 
     return (
         <div className="space-y-4">
-            <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            {canAdmin && <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <h3 className="text-sm font-medium text-zinc-200">Teach {agentName} something</h3>
                 <p className="text-xs leading-5 text-zinc-500">A preference or rule about how it should work. It reads its memory at the start of every turn. Company facts belong in Knowledge &amp; Rules.</p>
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={2} maxLength={MAX_MEMORY_LENGTH}
@@ -80,7 +83,7 @@ export function AgentMemoryTab({ agentId, agentName }: { agentId: string; agentN
                         {saving && <IconLoader2 className="h-4 w-4 animate-spin" />}Remember this
                     </Button>
                 </div>
-            </section>
+            </section>}
             <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <div className="mb-3 flex items-center gap-2">
                     <IconBrain className="h-4 w-4 text-cyan-400" />
@@ -107,10 +110,10 @@ export function AgentMemoryTab({ agentId, agentName }: { agentId: string; agentN
                                             {fromPerson ? <IconUser className="h-3 w-3" /> : <IconRobot className="h-3 w-3" />}
                                             {fromPerson ? "Taught by a person" : "Saved by the agent"} · {new Date(entry.createdAt).toLocaleDateString()}
                                         </span>
-                                        <button type="button" onClick={() => void forget(entry.id)} disabled={deleting === entry.id}
+                                        {canAdmin && <button type="button" onClick={() => void forget(entry.id)} disabled={deleting === entry.id}
                                             className="ml-auto rounded p-1 text-zinc-600 opacity-0 transition hover:bg-zinc-800 hover:text-rose-300 focus:opacity-100 group-hover:opacity-100" aria-label="Forget this">
                                             {deleting === entry.id ? <IconLoader2 className="h-3.5 w-3.5 animate-spin" /> : <IconTrash className="h-3.5 w-3.5" />}
-                                        </button>
+                                        </button>}
                                     </div>
                                     {entry.summary && <p className="text-xs font-medium text-zinc-200">{entry.summary}</p>}
                                     <p className="whitespace-pre-wrap text-xs leading-5 text-zinc-400">{entry.content}</p>

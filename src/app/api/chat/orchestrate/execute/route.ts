@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCompanyId, getUserId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
 
 export async function POST() {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
 
     return NextResponse.json({
         error: "Mission execution has been retired. Use explicit project/task CRUD or direct agent threads instead.",

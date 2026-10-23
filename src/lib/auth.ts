@@ -198,8 +198,10 @@ export async function getCompanyId() {
         return membership.companyId;
     }
 
-    // Self-hosted: fall back to instance company if user has no membership yet (NFR-8)
-    if (isSelfHosted()) {
+    // Self-hosted: fall back to the instance company only for an instance admin
+    // without a membership yet (NFR-8). Anyone else without a membership (e.g.
+    // a removed member with a live session) gets no company at all.
+    if (isSelfHosted() && typedSession.user.instanceRole === "instance_admin") {
         const company = await getInstanceCompany();
         return company?.id ?? null;
     }

@@ -6,6 +6,7 @@ import { messageThreads, threadParticipants, projects, tasks } from "@/db/schema
 import { ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { createGroup, GroupError, GROUP_THREAD_TYPE, isAgentPairThread } from "@/lib/groups";
 import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
+import { mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask, mcpMayUseThread } from "@/lib/mcp-access";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -42,9 +43,15 @@ export async function GET(req: NextRequest) {
     if (projectId) conditions.push(eq(messageThreads.projectId, projectId));
     if (taskId) conditions.push(eq(messageThreads.taskId, taskId));
 
-    // Private direct threads are listed only to a token bound to their agent.
-    const threads = (await db.select().from(messageThreads).where(and(...conditions)))
-        .filter((thread) => agentTokenMayUseThread(thread, auth.companyToken!.agentId));
+    // Private direct threads are listed only to a token bound to their agent;
+    // project/task threads only when that project is in the caller's scope.
+    const access = await mcpAccessForAgent(companyId, agentId);
+    const threads: (typeof messageThreads.$inferSelect)[] = [];
+    for (const thread of await db.select().from(messageThreads).where(and(...conditions))) {
+        if (agentTokenMayUseThread(thread, auth.companyToken!.agentId) && await mcpMayUseThread(companyId, access, thread)) {
+            threads.push(thread);
+        }
+    }
 
     if (!agentId) {
         // No participant scoping → an everything-listing. Private agent pair
@@ -113,6 +120,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ thread }, { status: 201 });
         }
 
+        // A scoped agent may only open threads on projects/tasks it can see.
+        const access = await mcpAccessForAgent(companyId, auth.companyToken!.agentId);
+        if ((projectId && !mcpMayUseProject(access, projectId)) || (taskId && !(await mcpMayUseTask(companyId, access, taskId)))) {
+            return NextResponse.json({ error: projectId ? "Project not found" : "Task not found" }, { status: 404 });
+        }
         // Reject project/task references from another tenant before persisting.
         if (projectId) {
             if (typeof projectId !== "string" || !UUID_RE.test(projectId)) {

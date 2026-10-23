@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { requireProjectInScope } from "@/lib/agent-scope";
 import { spawnRecurringTaskInstance } from "@/lib/openclaw/tasks";
 
 export async function POST(
@@ -13,6 +14,8 @@ export async function POST(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId, recurringTaskId } = await params;
+  const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+  if (projectScopeDenied) return projectScopeDenied;
   const endpoint = `/api/mcp/projects/${projectId}/recurring-tasks/${recurringTaskId}/spawn`;
 
   const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);

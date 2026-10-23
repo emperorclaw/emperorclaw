@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { llmPricing } from "@/db/schema";
-import { getCompanyId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
 
 const pricingSchema = z.object({
     provider: z.string().trim().min(1),
@@ -15,16 +15,16 @@ const pricingSchema = z.object({
 });
 
 export async function GET() {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
 
     const pricing = await db.select().from(llmPricing).orderBy(llmPricing.provider, llmPricing.model);
     return NextResponse.json({ pricing });
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("admin");
+    if (access.response) return access.response;
 
     const parsed = pricingSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid pricing data" }, { status: 400 });

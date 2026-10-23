@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { IconShieldLock, IconDeviceFloppy } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 
 type AgentScope = {
     mode?: "all" | "restricted";
@@ -27,6 +28,9 @@ export function AgentScopeTab({ agentId, initialScope }: Props) {
     const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
     const [projects, setProjects] = useState<{ id: string; goal: string; customerId: string | null }[]>([]);
     const [saving, setSaving] = useState(false);
+    // Only owners/admins may change an agent's data scope (the API refuses others).
+    const { canAdmin, loaded } = useViewerPermissions();
+    const readOnly = !canAdmin;
 
     useEffect(() => {
         fetch("/api/customers").then((r) => r.json()).then((d) => setCustomers(d.customers || [])).catch(() => {});
@@ -41,10 +45,13 @@ export function AgentScopeTab({ agentId, initialScope }: Props) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ scopeJson: { mode, customerIds, projectIds } }),
             });
-            if (!res.ok) throw new Error("Failed to save");
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(typeof data.error === "string" ? data.error : "Failed to save scope");
+            }
             toast.success("Scope saved");
-        } catch {
-            toast.error("Failed to save scope");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to save scope");
         } finally {
             setSaving(false);
         }
@@ -64,9 +71,15 @@ export function AgentScopeTab({ agentId, initialScope }: Props) {
                 are always visible regardless of scope.
             </p>
 
+            {loaded && readOnly && (
+                <p className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
+                    Only owners and admins can change this agent&apos;s data scope.
+                </p>
+            )}
             <label className="flex items-center gap-3 cursor-pointer">
                 <input
                     type="checkbox"
+                    disabled={readOnly}
                     checked={mode === "restricted"}
                     onChange={(e) => setMode(e.target.checked ? "restricted" : "all")}
                     className="rounded border-zinc-700 bg-zinc-900 text-cyan-400 focus:ring-cyan-400"
@@ -90,6 +103,7 @@ export function AgentScopeTab({ agentId, initialScope }: Props) {
                                 <label key={c.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800/50">
                                     <input
                                         type="checkbox"
+                                        disabled={readOnly}
                                         checked={customerIds.includes(c.id)}
                                         onChange={() => toggleId(c.id, customerIds, setCustomerIds)}
                                         className="rounded border-zinc-700 bg-zinc-900 text-cyan-400"
@@ -107,6 +121,7 @@ export function AgentScopeTab({ agentId, initialScope }: Props) {
                                 <label key={p.id} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-zinc-800/50">
                                     <input
                                         type="checkbox"
+                                        disabled={readOnly}
                                         checked={projectIds.includes(p.id)}
                                         onChange={() => toggleId(p.id, projectIds, setProjectIds)}
                                         className="rounded border-zinc-700 bg-zinc-900 text-cyan-400"
@@ -123,7 +138,7 @@ export function AgentScopeTab({ agentId, initialScope }: Props) {
                 size="sm"
                 variant="outline"
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || readOnly}
                 className="h-8 text-xs border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             >
                 <IconDeviceFloppy className="h-3.5 w-3.5 mr-1" />

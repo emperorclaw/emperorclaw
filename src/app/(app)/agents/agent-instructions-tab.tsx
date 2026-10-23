@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useViewerPermissions } from "@/lib/use-viewer-permissions";
 import { IconFileText, IconPlus, IconTrash, IconDeviceFloppy, IconPencil } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -18,6 +19,8 @@ type Props = {
 const BUILT_IN_FILES = ["SOUL.md", "AGENTS.md", "BOOTSTRAP.md", "IDENTITY.md", "TOOLS.md", "HEARTBEAT.md"];
 
 export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
+    // Viewers read the instructions; saving needs member or above (the API refuses viewers).
+    const { canWrite } = useViewerPermissions();
     const [files, setFiles] = useState<DoctrineFile[]>(() =>
         Object.entries(initialDoctrine).map(([name, content]) => ({ name, content }))
     );
@@ -199,13 +202,13 @@ export function AgentInstructionsTab({ agentId, initialDoctrine }: Props) {
                                     size="sm"
                                     variant="outline"
                                     onClick={handleSave}
-                                    disabled={saving}
+                                    disabled={saving || !canWrite}
                                     className="h-7 text-xs border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                                 >
                                     <IconDeviceFloppy className="h-3 w-3 mr-1" />
                                     {saving ? "Saving..." : "Save"}
                                 </Button>
-                                {!BUILT_IN_FILES.includes(editingFile) && (
+                                {canWrite && !BUILT_IN_FILES.includes(editingFile) && (
                                     <Button
                                         size="sm"
                                         variant="outline"

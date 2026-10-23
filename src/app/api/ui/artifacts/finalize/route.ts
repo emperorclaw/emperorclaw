@@ -4,6 +4,7 @@ import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { prepareArtifactRecord } from "@/lib/artifacts";
@@ -19,7 +20,7 @@ import {
 
 export async function POST(req: NextRequest) {
     try {
-        const { companyId, userId } = await requireCompanyFromSession();
+        const { companyId, userId, scope } = await requireCompanyFromSession("member");
         const body = await req.json();
         const {
             projectId,
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Select a customer or project" }, { status: 400 });
         }
 
+        if (!(await memberMaySeeRecord(companyId, scope, { projectId: project?.id ?? null, customerId: project?.customerId ?? customer?.id ?? null }))) {
+            return NextResponse.json({ error: project ? "Project not found" : "Customer not found" }, { status: 404 });
+        }
         const folder = folderId ? await findActiveFolder(companyId, folderId) : null;
         if (folderId && !folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
@@ -137,7 +141,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
         }
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }
 

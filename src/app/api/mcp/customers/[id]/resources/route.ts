@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
-import { checkIdempotency, saveIdempotencyResponse, verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { checkIdempotency, saveIdempotencyResponse, verifyMcpToken } from "@/lib/mcp";
 import { createScopedResource, listScopedResources, resolveResourceScope, toPublicResource } from "@/lib/resources";
-import { loadAgentScopeContext, isCustomerAllowed } from "@/lib/agent-scope";
+import { mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(
     req: NextRequest,
@@ -29,17 +29,10 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
-    const agentIdParam = searchParams.get("agentId");
-    if (agentIdParam) {
-        try {
-            const resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
-            const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-            if (!isCustomerAllowed(allowedCustomerIds, id)) {
-                return NextResponse.json({ error: "Customer not found" }, { status: 404 });
-            }
-        } catch {
-            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-        }
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseCustomer(scoped.access, id)) {
+        return NextResponse.json({ error: "Customer not found" }, { status: 404 });
     }
     const isSharedParam = searchParams.get("isShared");
     const isShared = isSharedParam === null ? undefined : isSharedParam === "true";
@@ -95,16 +88,10 @@ export async function POST(
             return NextResponse.json({ error: "provider, resourceType, and name are required" }, { status: 400 });
         }
 
-        if (agentId) {
-            try {
-                const resolvedAgentId = await resolveAgentId(companyId, agentId);
-                const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-                if (!isCustomerAllowed(allowedCustomerIds, id)) {
-                    return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
-                }
-            } catch {
-                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-            }
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+        if (scoped.response) return scoped.response;
+        if (!mcpMayUseCustomer(scoped.access, id)) {
+            return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
 
         const resource = await createScopedResource({

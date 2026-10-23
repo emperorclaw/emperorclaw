@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveMcpActorContext } from "@/lib/mcp";
 import { getScopedResource, leaseScopedResource, resolveResourceScope } from "@/lib/resources";
+import { mcpAccessForAgent, mcpMayUseTask } from "@/lib/mcp-access";
 
 export async function POST(
   req: NextRequest,
@@ -21,6 +22,12 @@ export async function POST(
       taskId: typeof body.taskId === "string" ? body.taskId : null,
       tokenAgentId: auth.companyToken!.agentId,
     });
+
+    // The task context that unlocks a project/customer secret must itself be
+    // inside the leasing agent's scope.
+    if (actor.task && !(await mcpMayUseTask(companyId, await mcpAccessForAgent(companyId, actor.callerAgentId), actor.task.id))) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
 
     const leasedResource = await leaseScopedResource({
       companyId,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { incidents, tasks } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, logAudit } from "@/lib/mcp";
+import { mcpDenyOutOfScope } from "@/lib/mcp-access";
 import { eq, and } from "drizzle-orm";
 import { notifyIncident } from "@/lib/notifications";
 
@@ -49,6 +50,8 @@ export async function POST(req: NextRequest) {
         if (!resolvedProjectId) {
             return NextResponse.json({ error: "Missing projectId (must be provided directly or inferred via taskId)" }, { status: 400 });
         }
+        const incidentDenied = await mcpDenyOutOfScope(req, companyId, companyToken, { projectId: resolvedProjectId }, "Project");
+        if (incidentDenied) return incidentDenied;
 
         const [incident] = await db.insert(incidents).values({
             companyId,

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prepareArtifactRecord } from "@/lib/artifacts";
+import { mcpMayUseCustomer, mcpMayUseProject, mcpMayUseRecord, mcpRouteAccess } from "@/lib/mcp-access";
 import {
     verifyMcpToken,
     checkIdempotency,
     saveIdempotencyResponse,
     logAudit,
-    resolveAgentId,
 } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifacts, customers, projects, tasks } from "@/db/schema";
@@ -81,7 +81,16 @@ export async function POST(req: NextRequest) {
         }
 
         const agentId = getFormStringValue(form, "agentId");
-        const internalAgentId = agentId ? await resolveAgentId(companyId, agentId) : null;
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+        if (scoped.response) return scoped.response;
+        const internalAgentId = scoped.access.agentId;
+        const effectiveProjectId = project?.id ?? null;
+        const effectiveCustomerId = project?.customerId ?? customer?.id ?? null;
+        if ((effectiveProjectId && !mcpMayUseProject(scoped.access, effectiveProjectId))
+            || (effectiveCustomerId && !mcpMayUseCustomer(scoped.access, effectiveCustomerId))
+            || (folder && !mcpMayUseRecord(scoped.access, folder))) {
+            return NextResponse.json({ error: "Project/customer is outside this agent's scope" }, { status: 403 });
+        }
 
         const metadataJson = parseJsonMetadata(form.get("metadataJson"));
         const title = getFormStringValue(form, "title") || fileEntry.name;

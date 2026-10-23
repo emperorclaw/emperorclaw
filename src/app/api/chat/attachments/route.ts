@@ -2,12 +2,12 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getCompanyId, getUserId } from "@/lib/auth";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { storageAdapter, getStorageProviderName } from "@/lib/storage";
 import { prepareArtifactRecord } from "@/lib/artifacts";
 import { sanitizeFilenameSegment } from "@/lib/storage/path-sanitizer";
+import { companyRouteAccess } from "@/lib/company-access";
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -37,9 +37,10 @@ const ALLOWED_MIME: ReadonlySet<string> = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     try {
         const form = await req.formData();

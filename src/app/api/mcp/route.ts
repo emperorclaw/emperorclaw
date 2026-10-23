@@ -81,6 +81,11 @@ export async function POST(req: NextRequest) {
                         and(eq(agents.companyId, companyId), eq(agents.name, agentName), isNull(agents.deletedAt))
                     ).limit(1);
 
+                    // An agent token may upsert only its own record.
+                    const bound = auth.companyToken.agentId || null;
+                    if (bound && existingAgent?.id !== bound) {
+                        return NextResponse.json({ jsonrpc: "2.0", id, error: { code: -32003, message: "Access denied: an agent can only update its own record" } });
+                    }
                     if (existingAgent) {
                         await db.update(agents).set({
                             role: params.role || "operator",

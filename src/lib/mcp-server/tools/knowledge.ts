@@ -3,6 +3,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveCompanyBrainContext, listScopedResources, createScopedResource, updateScopedResource, canAgentReadResource, loadAgentResourceAccess, getVisibleKnowledgeNote, searchVisibleKnowledgeNotes, resolveResourceScope, toPublicResource } from "@/lib/resources";
 import { EMPEROR_MANUAL, EMPEROR_MANUAL_VERSION, getEmperorManualSection, listEmperorManualSections } from "@/lib/emperor-manual";
 import { jsonResult, errorResult } from "../result";
+import { getScopedResource } from "@/lib/resources";
+import { mcpAccessForAgent, mcpMayUseResource, mcpMayWriteResourceScope } from "@/lib/mcp-access";
 
 export function registerKnowledgeTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("get_knowledge_context", {
@@ -74,6 +76,9 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
         },
     }, async ({ name, content, scopeType, scopeId, isShared, status }) => {
         try {
+            if (!mcpMayWriteResourceScope(await mcpAccessForAgent(companyId, callerAgentId ?? null), scopeType, scopeId)) {
+                throw new Error("That scope is outside your scope");
+            }
             const resource = await createScopedResource({
                 companyId, name, scopeType, scopeId,
                 provider: "knowledge", resourceType: "knowledge_base",
@@ -97,6 +102,11 @@ export function registerKnowledgeTools(server: McpServer, companyId: string, cal
         },
     }, async ({ resourceId, content, name, isShared, status }) => {
         try {
+            // Only notes this agent may read can be edited (same rule as get_knowledge_note).
+            const existing = await getScopedResource(companyId, resourceId);
+            if (existing && !mcpMayUseResource(await mcpAccessForAgent(companyId, callerAgentId ?? null), existing)) {
+                throw new Error("Knowledge note not found or outside your scope");
+            }
             const resource = await updateScopedResource({
                 companyId, resourceId,
                 patch: { configText: content, name, isShared, status },

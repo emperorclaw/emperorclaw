@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines } from "@/db/schema";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpAccessForAgent, mcpMayUseRecord } from "@/lib/mcp-access";
 import { buildPipelineContextParams } from "@/lib/pipelines";
 import { resolveCompanyBrainContext } from "@/lib/resources";
 import { and, eq, isNull } from "drizzle-orm";
@@ -23,7 +24,7 @@ export async function GET(
         and(eq(pipelines.id, id), eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt))
     ).limit(1);
 
-    if (!pipeline) {
+    if (!pipeline || !mcpMayUseRecord(await mcpAccessForAgent(companyId, auth.companyToken!.agentId), pipeline)) {
         return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
     }
 

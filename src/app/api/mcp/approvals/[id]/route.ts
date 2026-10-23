@@ -3,6 +3,8 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { requireRole, AuthError } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
 import { mayProceed } from "@/lib/approval-status";
+import { memberMaySeeProjectId } from "@/lib/member-scope";
+import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(
     req: NextRequest,
@@ -16,7 +18,9 @@ export async function GET(
     const companyId = auth.companyToken!.companyId;
     const { id } = await params;
     const detail = await getApprovalDetail(companyId, id);
-    if (!detail) {
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
+    if (!detail || !mcpMayUseProject(scoped.access, detail.approval.projectId)) {
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
 
@@ -43,6 +47,11 @@ export async function PATCH(
 
     try {
         const { id } = await params;
+        // A restricted member decides only approvals on projects they can see.
+        const current = await getApprovalDetail(ctx.companyId, id);
+        if (!current || !(await memberMaySeeProjectId(ctx.companyId, ctx.scope, current.approval.projectId))) {
+            return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+        }
         const body = await _req.json();
         const { status, resolutionNote } = body;
 

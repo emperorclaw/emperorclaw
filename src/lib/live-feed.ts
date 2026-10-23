@@ -121,6 +121,38 @@ export interface LiveFeed {
     needs: LiveNeed[];
 }
 
+/**
+ * Narrow a feed to the agents a restricted viewer may see (the token
+ * creator's member scope): agents, their messages, DMs, events and needs, and
+ * the agent tallies. Company-wide task/approval totals become 0 for a scoped
+ * viewer rather than leaking counts. `agentIds` undefined = unrestricted.
+ */
+export function scopeLiveFeed(feed: LiveFeed, agentIds: readonly string[] | undefined): LiveFeed {
+    if (!agentIds) return feed;
+    const allowed = new Set(agentIds);
+    const agents = feed.agents.filter((a) => allowed.has(a.id));
+    const tally = (status: HealthStatus) => agents.filter((a) => a.health === status).length;
+    return {
+        ...feed,
+        summary: {
+            agents: agents.length,
+            healthy: tally("healthy"),
+            attention: tally("attention"),
+            down: tally("down"),
+            idle: tally("idle"),
+            working: agents.filter((a) => a.state === "typing" || a.state === "working").length,
+            pendingApprovals: 0,
+            tasksInProgress: 0,
+            tasksOverdue: 0,
+        },
+        agents,
+        messages: feed.messages.filter((m) => m.agentId !== null && allowed.has(m.agentId)),
+        dm: feed.dm.filter((d) => allowed.has(d.agentId)),
+        events: feed.events.filter((e) => allowed.has(e.a) && (!e.b || allowed.has(e.b))),
+        needs: feed.needs.filter((n) => allowed.has(n.agentId)),
+    };
+}
+
 // ─── Pure helpers (unit-tested) ────────────────────────────────────────────
 
 /** Truncate by code point (never splitting an emoji), ending in ASCII "..." — screen fonts rarely have "…". */

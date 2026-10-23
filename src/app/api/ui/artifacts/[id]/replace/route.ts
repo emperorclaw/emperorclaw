@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { buildChildPath, deriveArtifactLogicalPath, sanitizePathSegment } from "@/lib/path-utils";
 import { storageAdapter } from "@/lib/storage";
@@ -18,7 +19,7 @@ import {
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/replace">) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("member");
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -26,7 +27,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             isNull(artifacts.deletedAt),
         )).limit(1);
 
-        if (!artifact) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
@@ -123,6 +124,6 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             return NextResponse.json(buildArtifactQuotaErrorResponse(error), { status: 413 });
         }
         const message = error instanceof Error ? error.message : "Unable to replace artifact";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }

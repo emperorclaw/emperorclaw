@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken } from "@/lib/mcp";
 import { createScopedResource, listScopedResources, resolveResourceScope, toPublicResource, type PublicResource } from "@/lib/resources";
-import { requireProjectInScope, loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+import { requireProjectInScope } from "@/lib/agent-scope";
+import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 function sanitizeResource(resource: PublicResource) {
   return {
@@ -21,7 +22,7 @@ export async function GET(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId } = await params;
-  const scopeDenied = await requireProjectInScope(req, companyId, projectId);
+  const scopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
   if (scopeDenied) return scopeDenied;
   const { searchParams } = new URL(req.url);
   const resourceType = searchParams.get("resourceType");
@@ -67,16 +68,10 @@ export async function POST(
       return NextResponse.json({ error: "name, resourceType, and provider are required" }, { status: 400 });
     }
 
-    if (body.agentId) {
-      try {
-        const resolvedAgentId = await resolveAgentId(companyId, body.agentId);
-        const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-        if (!isProjectAllowed(allowedProjectIds, projectId)) {
-          return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
-        }
-      } catch {
-        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-      }
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseProject(scoped.access, projectId)) {
+      return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
     }
 
     const resource = await createScopedResource({

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { companyTokens, idempotencyKeys, auditLog, agents, agentSessions, projects, tasks } from "@/db/schema";
+import { companyTokens, companyMembers, idempotencyKeys, auditLog, agents, agentSessions, projects, tasks } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import * as crypto from "crypto";
 import { consumeRateLimit, getClientIp } from "./rate-limit";
@@ -192,6 +192,19 @@ async function verifyStoredCompanyToken(
 
     if (options.requiredScope && !hasRequiredCompanyTokenScope(companyToken.scope, options.requiredScope)) {
         return { error: `Token scope ${normalizeCompanyTokenScope(companyToken.scope)} cannot access this endpoint`, status: 403 as const };
+    }
+
+    if (companyToken.agentId) {
+        const [agent] = await db.select({ id: agents.id }).from(agents).where(and(
+            eq(agents.id, companyToken.agentId), eq(agents.companyId, companyToken.companyId), isNull(agents.deletedAt),
+        )).limit(1);
+        if (!agent) return { error: "This token's agent no longer exists", status: 401 as const };
+    }
+    if (companyToken.createdByUserId) {
+        const [creator] = await db.select({ id: companyMembers.id }).from(companyMembers).where(and(
+            eq(companyMembers.userId, companyToken.createdByUserId), eq(companyMembers.companyId, companyToken.companyId),
+        )).limit(1);
+        if (!creator) return { error: "This token's creator is no longer a member", status: 401 as const };
     }
 
     db.update(companyTokens).set({ lastUsedAt: new Date() }).where(eq(companyTokens.id, companyToken.id)).execute().catch(console.error);

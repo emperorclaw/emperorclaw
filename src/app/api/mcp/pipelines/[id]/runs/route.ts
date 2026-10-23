@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { extractRunContextSourceIds, PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
 
@@ -21,6 +22,10 @@ export async function GET(
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
 
     try {
+        const [owner] = await db.select({ projectId: pipelines.projectId, customerId: pipelines.customerId }).from(pipelines)
+            .where(and(eq(pipelines.id, id), eq(pipelines.companyId, companyId))).limit(1);
+        const runsDenied = owner ? await mcpDenyOutOfScope(req, companyId, auth.companyToken!, owner, "Pipeline") : null;
+        if (runsDenied) return runsDenied;
         const runs = await db.select().from(pipelineRuns)
             .where(and(eq(pipelineRuns.pipelineId, id), eq(pipelineRuns.companyId, companyId)))
             .orderBy(desc(pipelineRuns.startedAt))
@@ -65,6 +70,8 @@ export async function POST(
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+        const pipelineDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, pipeline, "Pipeline");
+        if (pipelineDenied) return pipelineDenied;
 
         const body = await req.json();
         const status: string = body.status || "running";

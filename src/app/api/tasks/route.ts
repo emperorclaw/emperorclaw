@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { createTaskForProject, updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMayAssignAgents, memberMaySeeProjectId } from "@/lib/member-scope";
 
 function splitLines(value: unknown) {
     if (Array.isArray(value)) {
@@ -12,20 +13,24 @@ function splitLines(value: unknown) {
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const body = await req.json();
-        const session = await getValidatedServerSession();
         const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
         const title = typeof body.title === "string" ? body.title.trim() : "";
         const taskType = typeof body.taskType === "string" && body.taskType.trim() ? body.taskType.trim() : "manual_task";
 
         if (!projectId) {
             return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+        }
+        if (!(await memberMaySeeProjectId(companyId, access.ctx.scope, projectId))) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
+        if (!memberMayAssignAgents(access.ctx.scope, body)) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         }
         if (!title) {
             return NextResponse.json({ error: "title is required" }, { status: 400 });
@@ -53,7 +58,7 @@ export async function POST(req: NextRequest) {
             assignedAgentId: body.assignedAgentId || undefined,
             source: "browser_ui",
             actorType: "human",
-            actorId: session?.user?.id || null,
+            actorId: access.ctx.userId,
         });
 
         if (body.state) {
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
                 taskId: task.id,
                 state: body.state,
                 actorType: "human",
-                actorId: session?.user?.id || null,
+                actorId: access.ctx.userId,
             });
             if ("error" in result) {
                 return NextResponse.json({ error: result.error }, { status: result.status });

@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { verifyMcpToken } from "@/lib/mcp";
+import { requireProjectInScope } from "@/lib/agent-scope";
 import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource } from "@/lib/resources";
 
 export async function PATCH(
@@ -16,6 +17,8 @@ export async function PATCH(
 
     const companyId = auth.companyToken!.companyId;
     const { projectId, resourceId } = await params;
+    const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+    if (projectScopeDenied) return projectScopeDenied;
 
     const [project] = await db.select({ id: projects.id }).from(projects).where(and(
         eq(projects.companyId, companyId),
@@ -58,6 +61,8 @@ export async function DELETE(
 
     const companyId = auth.companyToken!.companyId;
     const { projectId, resourceId } = await params;
+    const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+    if (projectScopeDenied) return projectScopeDenied;
     const resource = await getScopedResource(companyId, resourceId);
 
     if (!resource || resource.scopeType !== "project" || resource.scopeId !== projectId) {

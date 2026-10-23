@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
+import { BOUND_AGENT_MISMATCH, mcpAccessForAgent, mcpMayUseThread } from "@/lib/mcp-access";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { ensureAgentPairThread, GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
 import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds } from "@/lib/message-routing";
@@ -102,10 +103,15 @@ export async function sendThreadMessageFromMcp(input: {
   ack?: boolean;
   idempotencyKey?: string | null;
 }) {
-  const senderId = input.fromUserId || input.agentId || null;
+  const senderId = input.fromUserId || input.agentId || input.callerAgentId || null;
   const resolvedSenderId = senderId
     ? await resolveAgentId(input.companyId, senderId)
     : null;
+  // A token bound to an agent only ever speaks as that agent (agentId or
+  // from_user_id naming another agent would impersonate it).
+  if (input.callerAgentId && resolvedSenderId !== input.callerAgentId) {
+    throw new Error(BOUND_AGENT_MISMATCH);
+  }
   const resolvedTargetAgentId = input.targetAgentId
     ? await resolveAgentId(input.companyId, input.targetAgentId)
     : null;
@@ -141,6 +147,11 @@ export async function sendThreadMessageFromMcp(input: {
     // A person's private direct thread reads as missing to anyone but its own agent.
     if (!existingThread || !agentTokenMayUseThread(existingThread, input.callerAgentId)
       || (isPrivateDirectThread(existingThread) && resolvedSenderId && resolvedSenderId !== existingThread.directAgentId)) {
+      throw new Error("Thread not found");
+    }
+
+    // A project/task thread is reachable only inside the sender's data scope.
+    if (!(await mcpMayUseThread(input.companyId, await mcpAccessForAgent(input.companyId, resolvedSenderId), existingThread))) {
       throw new Error("Thread not found");
     }
 

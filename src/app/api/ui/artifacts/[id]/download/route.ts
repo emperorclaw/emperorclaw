@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -8,7 +9,7 @@ import { deriveArtifactLogicalPath } from "@/lib/path-utils";
 
 export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/download">) {
     try {
-        const { companyId, userId } = await requireCompanyFromSession();
+        const { companyId, userId, scope } = await requireCompanyFromSession("viewer");
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
             isNull(artifacts.deletedAt),
         )).limit(1);
 
-        if (!artifact) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
@@ -77,6 +78,6 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/ui/artif
         return new NextResponse(responseBody, { headers });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to download artifact";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }

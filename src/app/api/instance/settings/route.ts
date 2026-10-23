@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/roles";
+import { canAdmin } from "@/lib/role-matrix";
 import { getInstanceSettings, setInstanceSettingsBatch, isSelfHosted } from "@/lib/instance";
 
 // ── GET /api/instance/settings — Retrieve all instance settings (any authenticated role) ──
@@ -21,9 +22,12 @@ export async function GET(_req: NextRequest) {
 
         const settings = await getInstanceSettings();
 
-        // Filter out sensitive keys from the response (e.g., smtp_password)
+        // Filter out sensitive keys from the response (e.g., smtp_password).
+        // Mail server settings are instance administration: only owners/admins see them.
+        const isAdmin = canAdmin(session.role);
         const safeSettings: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(settings)) {
+            if (key.startsWith("smtp_") && !isAdmin) continue;
             if (key === "smtp_password") {
                 safeSettings[key] = "********"; // Never expose the actual SMTP password
             } else {

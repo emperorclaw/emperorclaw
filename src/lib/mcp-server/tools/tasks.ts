@@ -5,8 +5,17 @@ import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { jsonResult, errorResult } from "../result";
 import { requestApprovalForTasks } from "@/lib/approvals";
 import { resolveAgentId } from "@/lib/mcp";
+import { BOUND_AGENT_MISMATCH, mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask } from "@/lib/mcp-access";
 
 export function registerTaskTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+    // Every task tool runs under the bound agent's data scope (lib/mcp-access.ts).
+    const access = () => mcpAccessForAgent(companyId, callerAgentId ?? null);
+    const requireTask = async (taskId: string) => {
+        if (!(await mcpMayUseTask(companyId, await access(), taskId))) throw new Error(`Task ${taskId} not found`);
+    };
+    const requireProject = async (projectId: string) => {
+        if (!mcpMayUseProject(await access(), projectId)) throw new Error(`Project ${projectId} not found`);
+    };
     server.registerTool("request_approval", {
         title: "Request Approval",
         description: "Ask a person to sign off before you act: spending money, sending anything outside the company (emails, posts, messages with customers), publishing, deleting, or closing a task that requires approval. Moves the task to review and notifies owners and admins; the decision and the person's note arrive in your direct chat. Status meanings: approved task_done closes the task; any other approved action comes back in_progress for you to do and then close; rejected comes back in_progress with the reason to revise; dismissed means the request is obsolete — DO NOT ACT; expired (an external action left pending more than 48h) means DO NOT ACT, ask again if still needed. Don't ask in chat instead, and don't act unless the response says mayProceed (approved).",
@@ -18,6 +27,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ taskId, rationale, actionType, agentId }) => {
         try {
+            await requireTask(taskId);
             const requester = callerAgentId ?? (agentId ? await resolveAgentId(companyId, agentId) : null);
             const approval = await requestApprovalForTasks({ companyId, taskIds: [taskId], requesterAgentId: requester, rationale, actionType });
             return jsonResult({ approval, status: "pending", next: "Wait for the decision; check it with get_task." });
@@ -35,7 +45,9 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ projectId, maxItems }) => {
         try {
-            return jsonResult({ overview: await getTaskOverviewForCompany({ companyId, projectId, maxItems }) });
+            if (projectId) await requireProject(projectId);
+            const projectIdFilter = (await access()).allowedProjectIds;
+            return jsonResult({ overview: await getTaskOverviewForCompany({ companyId, projectId, maxItems, projectIdFilter }) });
         } catch (e) {
             return errorResult(e);
         }
@@ -51,7 +63,9 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ projectId, state, limit }) => {
         try {
-            const tasks = await listTasksForCompany({ companyId, limit: limit || 25, state, projectId });
+            if (projectId) await requireProject(projectId);
+            const projectIdFilter = (await access()).allowedProjectIds;
+            const tasks = await listTasksForCompany({ companyId, limit: limit || 25, state, projectId, projectIdFilter: projectId ? null : projectIdFilter });
             return jsonResult({ tasks });
         } catch (e) {
             return errorResult(e);
@@ -67,7 +81,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
     }, async ({ taskId }) => {
         try {
             const task = await getTaskDetailForCompany(companyId, taskId);
-            if (!task) return errorResult(new Error(`Task ${taskId} not found`));
+            if (!task || !mcpMayUseProject(await access(), task.projectId)) return errorResult(new Error(`Task ${taskId} not found`));
             return jsonResult({ task });
         } catch (e) {
             return errorResult(e);
@@ -90,6 +104,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ projectId, taskType, inputJson, priority, assignee, assignedAgentId }) => {
         try {
+            await requireProject(projectId);
             const { task } = await createTaskForProject({
                 companyId, projectId, taskType, inputJson, priority, assignee, assignedAgentId,
                 source: "mcp_server", actorType: "agent", actorId: callerAgentId ?? null,
@@ -119,6 +134,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson }) => {
         try {
+            await requireTask(taskId);
             const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, actorType: "agent", actorId: callerAgentId ?? null });
             return jsonResult({ message: "Task updated", task });
         } catch (e) {
@@ -154,6 +170,8 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         },
     }, async ({ agentId, strictOwnerRole }) => {
         try {
+            // A bound connection claims only for its own agent.
+            if (callerAgentId && (await resolveAgentId(companyId, agentId)) !== callerAgentId) throw new Error(BOUND_AGENT_MISMATCH);
             const result = await claimNextTaskForAgent({ companyId, agentId, strictOwnerRole });
             return jsonResult(result);
         } catch (e) {

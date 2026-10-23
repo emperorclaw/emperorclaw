@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { AuthError, requireRole } from "@/lib/roles";
+import { memberMaySeeAgent } from "@/lib/member-scope";
 import { recreateHermesContainer } from "@/lib/hermes-provisioning";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export async function POST(
         and(eq(agents.id, id), eq(agents.companyId, ctx.companyId), isNull(agents.deletedAt))
     ).limit(1);
 
-    if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    if (!agent || !memberMaySeeAgent(ctx.scope, agent.id)) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     if (agent.provider !== "hermes" || agent.deploymentMode !== "local") {
         return NextResponse.json({ error: "Recreate Runtime is only available for local Hermes agents." }, { status: 400 });
     }

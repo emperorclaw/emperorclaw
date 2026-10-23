@@ -3,16 +3,17 @@ import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { buildFolderPath, findActiveFolder, isDescendantPath, sanitizeFolderName } from "@/lib/artifact-folders";
 import { moveFolderArtifactBlobs } from "@/lib/folder-artifact-moves";
 import { storageAdapter } from "@/lib/storage";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("member");
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
-        if (!folder) {
+        if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
 
@@ -139,7 +140,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/fol
         return NextResponse.json({ folder: updatedFolder }, { status: 200 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : mapErrorStatus(error) });
     }
 }
 
@@ -158,10 +159,10 @@ function mapErrorStatus(error: unknown) {
 
 export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/folders/[id]">) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("member");
         const { id: folderId } = await context.params;
         const folder = await findActiveFolder(companyId, folderId);
-        if (!folder) {
+        if (!folder || !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
 
@@ -228,7 +229,7 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/ui/fo
         return NextResponse.json({ success: true });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : mapErrorStatus(error) });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : mapErrorStatus(error) });
     }
 }
 

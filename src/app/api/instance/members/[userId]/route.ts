@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/roles";
 import { db } from "@/db";
-import { companyMembers, tasks, users } from "@/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { companyMembers, companyTokens, sessions, tasks, users } from "@/db/schema";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { isSelfHosted } from "@/lib/instance";
 import { archivePrivateThreadsOf } from "@/lib/control-plane";
+
+/** How many owners the company has besides `exceptUserId`. */
+async function otherOwnerCount(companyId: string, exceptUserId: string): Promise<number> {
+    const rows = await db.select({ id: companyMembers.id }).from(companyMembers).where(and(
+        eq(companyMembers.companyId, companyId),
+        eq(companyMembers.role, "owner"),
+        ne(companyMembers.userId, exceptUserId),
+    ));
+    return rows.length;
+}
 
 // ── PUT /api/instance/members/[userId]/role — Change role ─────────────────
 
@@ -64,6 +74,24 @@ export async function PUT(
             if (!targetMembership) {
                 return NextResponse.json({ error: "Member not found" }, { status: 404 });
             }
+        }
+
+        // Every change (role, profile) targets a member of the caller's company.
+        const [target] = await db
+            .select({ role: companyMembers.role })
+            .from(companyMembers)
+            .where(and(eq(companyMembers.userId, userId), eq(companyMembers.companyId, ctx.companyId)))
+            .limit(1);
+        if (!target) {
+            return NextResponse.json({ error: "Member not found" }, { status: 404 });
+        }
+
+        // Last-owner guard: a company always keeps at least one owner.
+        if (role && role !== "owner" && target.role === "owner" && (await otherOwnerCount(ctx.companyId, userId)) === 0) {
+            return NextResponse.json(
+                { error: "Cannot demote the last owner. Make another member an owner first." },
+                { status: 422 }
+            );
         }
 
         // Last-admin guard (FR-24, EC-4, EC-5)
@@ -154,6 +182,27 @@ export async function DELETE(
 
         const { userId } = await params;
 
+        const [targetMembership] = await db
+            .select({ role: companyMembers.role })
+            .from(companyMembers)
+            .where(and(eq(companyMembers.userId, userId), eq(companyMembers.companyId, ctx.companyId)))
+            .limit(1);
+        if (!targetMembership) {
+            return NextResponse.json({ error: "Member not found" }, { status: 404 });
+        }
+        // Only an owner (or instance admin) may remove an owner, and never the last one.
+        if (targetMembership.role === "owner") {
+            if (ctx.role !== "owner" && ctx.role !== "instance_admin") {
+                return NextResponse.json({ error: "Only an owner can remove another owner." }, { status: 403 });
+            }
+            if ((await otherOwnerCount(ctx.companyId, userId)) === 0) {
+                return NextResponse.json(
+                    { error: "Cannot remove the last owner. Make another member an owner first." },
+                    { status: 422 }
+                );
+            }
+        }
+
         // Last-admin guard
         const [targetUser] = await db
             .select({ instanceRole: users.instanceRole })
@@ -210,6 +259,15 @@ export async function DELETE(
             ));
             // Their private chats with agents are kept but hidden from everyone.
             await archivePrivateThreadsOf(ctx.companyId, userId, tx);
+            // Tokens they minted (screens, integrations) stop working too.
+            await tx.update(companyTokens).set({ revokedAt: new Date() }).where(and(
+                eq(companyTokens.companyId, ctx.companyId),
+                eq(companyTokens.createdByUserId, userId),
+                isNull(companyTokens.revokedAt),
+            ));
+            // Sign them out everywhere: an open browser session must not keep
+            // reaching company data after removal.
+            await tx.delete(sessions).where(eq(sessions.userId, userId));
         });
 
         return NextResponse.json({ success: true }, { status: 200 });

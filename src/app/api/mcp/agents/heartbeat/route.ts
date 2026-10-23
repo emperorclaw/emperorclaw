@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpBoundAgentMismatch, mcpTokenMayActOnAgent } from "@/lib/mcp-access";
 import { nextCheckinDeadline } from "@/lib/lifecycle";
 import { acknowledgeAgentHeartbeat } from "@/lib/openclaw/runtime";
 import { touchRuntimeNode } from "@/lib/control-plane";
@@ -19,6 +20,9 @@ export async function POST(req: NextRequest) {
         if (!agentId || currentLoad === undefined) {
             return NextResponse.json({ error: "agentId and currentLoad required" }, { status: 400 });
         }
+
+        // A bound token only reports its own agent's liveness.
+        if (!(await mcpTokenMayActOnAgent(companyId, auth.companyToken!, String(agentId)))) return mcpBoundAgentMismatch();
 
         nextCheckinDeadline();
         const agent = await acknowledgeAgentHeartbeat({

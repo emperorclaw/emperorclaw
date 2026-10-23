@@ -6,7 +6,6 @@ import {
     checkIdempotency,
     saveIdempotencyResponse,
     logAudit,
-    resolveAgentId,
 } from "@/lib/mcp";
 import { and, desc, eq, ilike, isNull, or, gte, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
@@ -14,7 +13,7 @@ import { prepareArtifactRecord } from "@/lib/artifacts";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { getStorageProviderName } from "@/lib/storage";
 import { parseJsonBody, optionalString } from "@/lib/validation";
-import { loadAgentScopeContext, isProjectAllowed, isCustomerAllowed } from "@/lib/agent-scope";
+import { mcpMayUseCustomer, mcpMayUseProject, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 
 const createArtifactSchema = z.object({
     kind: z.string().min(1, "kind is required"),
@@ -107,26 +106,10 @@ export async function GET(req: NextRequest) {
         // additionally treat it as "the acting agent" for scope enforcement: an
         // artifact with neither projectId nor customerId is company-wide/general
         // and stays visible to everyone, same exemption team chat gets.
-        if (agentId) {
-            try {
-                const resolvedCallerId = await resolveAgentId(companyId, agentId);
-                const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedCallerId);
-                if (allowedProjectIds !== null || allowedCustomerIds !== null) {
-                    const scopeOr = or(
-                        and(isNull(artifacts.projectId), isNull(artifacts.customerId)),
-                        allowedProjectIds && allowedProjectIds.size > 0
-                            ? or(...[...allowedProjectIds].map((id) => eq(artifacts.projectId, id)))
-                            : undefined,
-                        allowedCustomerIds && allowedCustomerIds.size > 0
-                            ? or(...[...allowedCustomerIds].map((id) => eq(artifacts.customerId, id)))
-                            : undefined,
-                    );
-                    if (scopeOr) conditions.push(scopeOr);
-                }
-            } catch {
-                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-            }
-        }
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+        if (scoped.response) return scoped.response;
+        const scopeOr = mcpRecordCondition(scoped.access, { projectId: artifacts.projectId, customerId: artifacts.customerId });
+        if (scopeOr) conditions.push(scopeOr);
 
         const startDate = startDateParam ? new Date(startDateParam) : null;
         if (startDate && !Number.isNaN(startDate.getTime())) {
@@ -253,10 +236,9 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        let internalAgentId = null;
-        if (agentId) {
-            internalAgentId = await resolveAgentId(companyId, agentId);
-        }
+        const scoped = await mcpRouteAccess(companyId, companyToken, agentId);
+        if (scoped.response) return scoped.response;
+        const internalAgentId = scoped.access.agentId;
 
         if (!kind || !contentType) {
             return NextResponse.json({ error: "Missing required fields (kind, contentType)" }, { status: 400 });
@@ -299,13 +281,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "customerId or projectId is required." }, { status: 400 });
         }
 
-        if (internalAgentId) {
+        {
             const effectiveProjectId = project?.id ?? null;
             const effectiveCustomerId = project?.customerId ?? customer?.id ?? null;
-            const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, internalAgentId);
             const allowed =
-                (!effectiveProjectId || isProjectAllowed(allowedProjectIds, effectiveProjectId)) &&
-                (!effectiveCustomerId || isCustomerAllowed(allowedCustomerIds, effectiveCustomerId));
+                (!effectiveProjectId || mcpMayUseProject(scoped.access, effectiveProjectId)) &&
+                (!effectiveCustomerId || mcpMayUseCustomer(scoped.access, effectiveCustomerId));
             if (!allowed) {
                 return NextResponse.json({ error: "Project/customer is outside this agent's scope" }, { status: 403 });
             }

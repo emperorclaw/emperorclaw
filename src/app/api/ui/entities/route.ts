@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, artifacts, scopedResources, companyMembers, projects, tasks, users } from "@/db/schema";
-import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { getScopeFromSession, getScopedAgentIds } from "@/lib/member-scope";
+import { getValidatedServerSession } from "@/lib/auth";
+import { filterResourcesForMember, getScopedAgentIds, memberMaySeeRecord, memberVisibleProjectIds } from "@/lib/member-scope";
 import {
     entityKey,
     CHAT_IMAGE_TYPES,
@@ -14,6 +14,7 @@ import {
     type EntityRef,
     type EntitySummary,
 } from "@/lib/emperor-entities";
+import { companyRouteAccess } from "@/lib/company-access";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +29,16 @@ export const dynamic = "force-dynamic";
  * as null, indistinguishable from one that doesn't exist.
  */
 export async function GET(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
     const session = await getValidatedServerSession();
-    const scopedAgentIds = session ? getScopedAgentIds(getScopeFromSession(session)) : undefined;
+    const memberScope = access.ctx.scope;
+    const scopedAgentIds = getScopedAgentIds(memberScope);
+    // Restricted members resolve only records inside their scope (others read as null).
+    const visibleProjects = await memberVisibleProjectIds(companyId, memberScope);
+    const inVisibleProjects = (column: typeof tasks.projectId | typeof projects.id) =>
+        visibleProjects ? inArray(column, [...visibleProjects]) : undefined;
 
     const refs: EntityRef[] = [];
     const seen = new Set<string>();
@@ -57,10 +64,10 @@ export async function GET(req: NextRequest) {
     try {
         const [taskRows, projectRows, agentRows] = await Promise.all([
             taskIds.length
-                ? db.select().from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds), isNull(tasks.deletedAt)))
+                ? db.select().from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds), isNull(tasks.deletedAt), inVisibleProjects(tasks.projectId)))
                 : Promise.resolve([]),
             projectIds.length
-                ? db.select().from(projects).where(and(eq(projects.companyId, companyId), inArray(projects.id, projectIds), isNull(projects.deletedAt)))
+                ? db.select().from(projects).where(and(eq(projects.companyId, companyId), inArray(projects.id, projectIds), isNull(projects.deletedAt), inVisibleProjects(projects.id)))
                 : Promise.resolve([]),
             agentIds.length
                 ? db.select().from(agents).where(and(eq(agents.companyId, companyId), inArray(agents.id, agentIds), isNull(agents.deletedAt)))
@@ -69,24 +76,29 @@ export async function GET(req: NextRequest) {
 
         const knowledgeIds = idsOf("knowledge");
         const artifactIds = idsOf("artifact");
-        const [notes, files] = await Promise.all([
+        const [noteRows, files] = await Promise.all([
             knowledgeIds.length ? db.select({ id: scopedResources.id, name: scopedResources.name,
-                status: scopedResources.status, scope: scopedResources.scopeType, updatedAt: scopedResources.updatedAt })
+                status: scopedResources.status, scope: scopedResources.scopeType, updatedAt: scopedResources.updatedAt,
+                scopeType: scopedResources.scopeType, scopeId: scopedResources.scopeId })
                 .from(scopedResources).where(and(eq(scopedResources.companyId, companyId),
                     inArray(scopedResources.id, knowledgeIds), eq(scopedResources.resourceType, "knowledge_base"),
                     isNull(scopedResources.deletedAt))) : Promise.resolve([]),
             artifactIds.length ? db.select({ id: artifacts.id, title: artifacts.title, originalFilename: artifacts.originalFilename,
                 contentType: artifacts.contentType, sizeBytes: artifacts.sizeBytes, storageKey: artifacts.storageKey,
-                visibility: artifacts.visibility, createdByType: artifacts.createdByType, createdById: artifacts.createdById })
+                visibility: artifacts.visibility, createdByType: artifacts.createdByType, createdById: artifacts.createdById,
+                projectId: artifacts.projectId, customerId: artifacts.customerId })
                 .from(artifacts).where(and(eq(artifacts.companyId, companyId), inArray(artifacts.id, artifactIds),
                     isNull(artifacts.deletedAt))) : Promise.resolve([]),
         ]);
+        const notes = await filterResourcesForMember(companyId, memberScope, noteRows);
         for (const note of notes) entities[`knowledge:${note.id}`] = {
             kind: "knowledge", id: note.id, title: note.name, status: note.status,
             scope: note.scope, updatedAt: note.updatedAt.toISOString(), href: `/resources?resource=${note.id}`,
         };
         for (const file of files) {
             if (!canViewSharedArtifact(file, session?.user?.id)) continue;
+            // A restricted member resolves only files of their customers/projects.
+            if (!(await memberMaySeeRecord(companyId, memberScope, file))) continue;
             const downloadUrl = file.storageKey ? `/api/ui/artifacts/${file.id}/download` : null;
             entities[`artifact:${file.id}`] = {
                 kind: "artifact", id: file.id, title: file.title || file.originalFilename || "File",

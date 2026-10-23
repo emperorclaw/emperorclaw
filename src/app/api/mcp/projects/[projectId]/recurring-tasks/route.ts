@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { requireProjectInScope } from "@/lib/agent-scope";
 import {
   createRecurringTaskDefinition,
   listRecurringTaskDefinitionsForProject,
@@ -16,6 +17,8 @@ export async function GET(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId } = await params;
+  const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+  if (projectScopeDenied) return projectScopeDenied;
 
   try {
     const definitions = await listRecurringTaskDefinitionsForProject(companyId, projectId);
@@ -37,6 +40,8 @@ export async function POST(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId } = await params;
+  const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+  if (projectScopeDenied) return projectScopeDenied;
   const endpoint = `/api/mcp/projects/${projectId}/recurring-tasks`;
 
   const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);

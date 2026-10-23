@@ -9,6 +9,7 @@ import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCou
 import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata } from "@/lib/message-routing";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
+import { mcpAccessForAgent, mcpMayUseThread } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -29,8 +30,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
     ).limit(1);
 
-    // A person's private direct thread: only a token bound to its agent.
-    if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)) {
+    // A person's private direct thread: only a token bound to its agent. A
+    // project/task thread: only when that project is in the bound agent's scope.
+    if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)
+        || !(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, auth.companyToken!.agentId), thread))) {
         return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
@@ -68,7 +71,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
         ).limit(1);
 
-        if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)) {
+        if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)
+            || !(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, auth.companyToken!.agentId), thread))) {
             return NextResponse.json({ error: "Thread not found" }, { status: 404 });
         }
 
@@ -87,9 +91,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             return NextResponse.json({ error: "MCP callers cannot post as a human or system sender" }, { status: 403 });
         }
 
+        // A bound token always posts as its own agent: naming another agent
+        // as the sender would let one agent speak for (and wake work as) another.
+        const boundAgentId = auth.companyToken!.agentId || null;
         const resolvedSenderId = senderType === "agent" && senderId
             ? await resolveAgentId(companyId, senderId)
-            : senderId || null;
+            : senderId || (senderType === "agent" ? boundAgentId : null);
+        if (boundAgentId && senderType === "agent" && resolvedSenderId !== boundAgentId) {
+            return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
+        }
         if (isPrivateDirectThread(thread) && resolvedSenderId && resolvedSenderId !== thread.directAgentId) {
             return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
         }

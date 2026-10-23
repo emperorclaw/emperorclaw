@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { incidents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -42,6 +43,8 @@ export async function PATCH(
         if (!existing) {
             return NextResponse.json({ error: "Incident not found." }, { status: 404 });
         }
+        const incidentDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, existing, "Incident");
+        if (incidentDenied) return incidentDenied;
 
         const [updated] = await db.update(incidents).set({
             status: nextStatus,
@@ -86,6 +89,8 @@ export async function DELETE(
         if (!existing) {
             return NextResponse.json({ error: "Incident not found or already deleted." }, { status: 404 });
         }
+        const incidentDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, existing, "Incident");
+        if (incidentDenied) return incidentDenied;
 
         const [deleted] = await db.update(incidents).set({
             deletedAt: new Date(),

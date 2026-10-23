@@ -3,10 +3,11 @@ import { artifacts, customers, projects, tasks } from "@/db/schema";
 import { db } from "@/db";
 import { and, desc, eq, gte, ilike, isNull, lte, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberRecordCondition } from "@/lib/member-scope";
 
 export async function GET(req: NextRequest) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("viewer");
         const { searchParams } = new URL(req.url);
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
         const projectId = searchParams.get("projectId");
@@ -27,6 +28,8 @@ export async function GET(req: NextRequest) {
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         ];
+        const scoped = memberRecordCondition(scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId });
+        if (scoped) conditions.push(scoped);
         if (projectId) conditions.push(eq(artifacts.projectId, projectId));
         if (taskId) conditions.push(eq(artifacts.taskId, taskId));
         if (folderId) conditions.push(eq(artifacts.folderId, folderId));
@@ -95,6 +98,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ artifacts: rows });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }

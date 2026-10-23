@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { requireProjectInScope } from "@/lib/agent-scope";
 import {
   archiveProjectAgentProfile,
   getProjectAgentProfile,
@@ -17,6 +18,8 @@ export async function GET(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId, profileId } = await params;
+  const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+  if (projectScopeDenied) return projectScopeDenied;
   const profile = await getProjectAgentProfile(companyId, projectId, profileId);
 
   if (!profile) {
@@ -37,6 +40,8 @@ export async function PATCH(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId, profileId } = await params;
+  const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+  if (projectScopeDenied) return projectScopeDenied;
   const body = await req.json();
   const profile = await updateProjectAgentProfile({
     companyId,
@@ -69,6 +74,8 @@ export async function DELETE(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId, profileId } = await params;
+  const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+  if (projectScopeDenied) return projectScopeDenied;
   const profile = await archiveProjectAgentProfile(companyId, projectId, profileId);
 
   if (!profile) {

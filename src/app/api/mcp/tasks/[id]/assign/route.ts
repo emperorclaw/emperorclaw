@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { assignTaskToAgent } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyMcpToken(req);
@@ -25,6 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
+    // The acting (bound) agent must be able to see the task it hands out; the
+    // assignee's own scope is checked by assignTaskToAgent. In claim mode the
+    // claimer is the actor, so a bound token may only claim for itself.
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, mode === "claim" ? agentId : null);
+    if (scoped.response) return scoped.response;
+    if (!(await mcpMayUseTask(companyId, scoped.access, taskId))) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
     const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, actorAgentId: auth.companyToken!.agentId ?? null });
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });

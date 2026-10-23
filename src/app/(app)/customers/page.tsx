@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { customers, projects, tasks, incidents, approvals, pipelines } from "@/db/schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { getScopeFromSession, getScopedCustomerIds } from "@/lib/member-scope";
+import { getMemberScopeForSession, getScopedCustomerIds } from "@/lib/member-scope";
 import { redirect } from "next/navigation";
 import CustomersClient from "./customers-client";
 
@@ -13,7 +13,7 @@ export default async function CustomersPage() {
     if (!companyId) redirect("/login");
 
     const session = await getValidatedServerSession();
-    const scope = session ? getScopeFromSession(session) : null;
+    const scope = session ? await getMemberScopeForSession(session) : null;
     const scopedCustomerIds = getScopedCustomerIds(scope);
 
     const customerConditions: any[] = [eq(customers.companyId, companyId), isNull(customers.deletedAt)];

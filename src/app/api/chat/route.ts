@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { artifacts, threadMessages, threadParticipants } from "@/db/schema";
-import { getCompanyId, getUserId } from "@/lib/auth";
+import { getUserId } from "@/lib/auth";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { appendThreadMessage, ensureDirectThread, ensureTeamThread, getDirectThreadForUser, getThreadMessages, type ThreadMessageAttachment } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
 import { parseObjectiveCommand, replyObjectiveStatus, requestAgentObjective } from "@/lib/agent-objective";
-import { requireRole, AuthError } from "@/lib/roles";
+import { AuthError } from "@/lib/roles";
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
 import { DirectThreadNotAllowedError, requestAgentControl } from "@/lib/agent-control";
 import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
 import { parseEventsSince } from "@/lib/run-events";
 import { loadChatRunState } from "@/lib/run-ledger-reads";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeAgent } from "@/lib/member-scope";
+import { requireGroupInScope } from "@/lib/group-route";
 
 type ThreadMessageLike = {
     fromUserId?: string | null;
@@ -45,8 +48,9 @@ async function directThreadFor(companyId: string, agentId: string, userId: strin
 }
 
 export async function GET(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const { searchParams } = new URL(req.url);
@@ -58,6 +62,11 @@ export async function GET(req: NextRequest) {
         const directThreadId = searchParams.get("directThreadId");
         const sinceDate = since ? new Date(since) : null;
         const beforeDate = before ? new Date(before) : null;
+        // A restricted member only reads chats with agents in their scope.
+        if (targetAgentId && !memberMaySeeAgent(access.ctx.scope, await resolveAgentId(companyId, targetAgentId))) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+        if (groupId && access.ctx.scope) await requireGroupInScope(companyId, groupId, access.ctx.userId, access.ctx.scope);
 
         // `threadId` selects a group; without it this is the team channel or,
         // with targetAgentId, an agent's direct thread — exactly as before.
@@ -111,17 +120,29 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     try {
         const { text, targetAgentId, attachments, threadId: groupId, directThreadId } = await req.json();
         if (text !== undefined && typeof text !== "string") return NextResponse.json({ error: "Text must be a string" }, { status: 400 });
         if (groupId !== undefined && typeof groupId !== "string") return NextResponse.json({ error: "threadId must be a string" }, { status: 400 });
+        // A restricted member only talks to (and controls) agents in their scope.
+        if (typeof targetAgentId === "string" && targetAgentId && !memberMaySeeAgent(access.ctx.scope, await resolveAgentId(companyId, targetAgentId))) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+        if (typeof groupId === "string" && groupId && access.ctx.scope) {
+            try {
+                await requireGroupInScope(companyId, groupId, userId, access.ctx.scope);
+            } catch (error) {
+                if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
+                throw error;
+            }
+        }
         const goalCommand = typeof text === "string" ? parseObjectiveCommand(text) : null;
         if (goalCommand) {
-            await requireRole("member")();
             if (Array.isArray(attachments) && attachments.length) return NextResponse.json({error:"Send attachments as a normal message before setting an objective"},{status:400});
             if (goalCommand.action === "unsupported") return NextResponse.json({error:"Supported commands: /goal <objective>, status, pause, resume, stop. Describe the outcome and how to verify it in the objective."},{status:400});
             if (!targetAgentId || groupId) return NextResponse.json({error:"Use /goal in an agent's direct chat"},{status:400});
@@ -131,7 +152,6 @@ export async function POST(req: NextRequest) {
         }
         const command = typeof text === "string" ? parseAgentControlCommand(text) : null;
         if (command) {
-            await requireRole("member")();
             if (!targetAgentId || groupId) return NextResponse.json({ error: "Use runtime commands in an agent’s direct chat" }, { status: 400 });
             const error = validateAgentControl(command.action, command.prompt);
             if (error) return NextResponse.json({ error }, { status: 400 });

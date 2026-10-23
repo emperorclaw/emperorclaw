@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { agents, tasks } from "@/db/schema";
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { getScopeFromSession, getScopedAgentIds } from "@/lib/member-scope";
+import { getMemberScopeForSession, getScopedAgentIds } from "@/lib/member-scope";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AgentsClient } from "./agents-client";
@@ -14,7 +14,7 @@ export default async function AgentsPage() {
     if (!companyId) redirect("/login");
 
     const session = await getValidatedServerSession();
-    const scope = session ? getScopeFromSession(session) : null;
+    const scope = session ? await getMemberScopeForSession(session) : null;
     const scopedAgentIds = getScopedAgentIds(scope);
 
     const agentConditions: any[] = [eq(agents.companyId, companyId), isNull(agents.deletedAt)];

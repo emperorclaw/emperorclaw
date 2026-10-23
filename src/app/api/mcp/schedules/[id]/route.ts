@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { schedules, playbooks } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -37,6 +38,8 @@ export async function PATCH(
         if (!existing) {
             return NextResponse.json({ error: "Schedule not found or unauthorized." }, { status: 404 });
         }
+        const scheduleDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, { projectId: existing.targetProjectId, customerId: existing.targetCustomerId }, "Schedule");
+        if (scheduleDenied) return scheduleDenied;
 
         const updateData: any = { updatedAt: new Date() };
         if (name !== undefined) updateData.name = name;
@@ -90,6 +93,8 @@ export async function DELETE(
         if (!existing) {
             return NextResponse.json({ error: "Schedule not found or already deleted." }, { status: 404 });
         }
+        const scheduleDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, { projectId: existing.targetProjectId, customerId: existing.targetCustomerId }, "Schedule");
+        if (scheduleDenied) return scheduleDenied;
 
         const [deletedItem] = await db.update(schedules).set({
             deletedAt: new Date(),

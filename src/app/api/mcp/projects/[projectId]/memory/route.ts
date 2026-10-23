@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { projectMemory, projects } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken } from "@/lib/mcp";
 import { broadcastMcpEvent } from "@/lib/pubsub";
-import { requireProjectInScope, loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+import { requireProjectInScope } from "@/lib/agent-scope";
+import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
     try {
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 
-        const scopeDenied = await requireProjectInScope(req, companyId, projectId);
+        const scopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
         if (scopeDenied) return scopeDenied;
 
         const memoryItems = await db.select()
@@ -59,18 +60,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
         const body = await req.json();
         const { content, tags, agentId } = body;
 
-        let internalAgentId = null;
-        if (agentId) {
-            try {
-                internalAgentId = await resolveAgentId(companyId, agentId);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : "Agent not found";
-                return NextResponse.json({ error: message }, { status: 404 });
-            }
-            const { allowedProjectIds } = await loadAgentScopeContext(companyId, internalAgentId);
-            if (!isProjectAllowed(allowedProjectIds, projectId)) {
-                return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
-            }
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+        if (scoped.response) return scoped.response;
+        const internalAgentId = scoped.access.agentId;
+        if (!mcpMayUseProject(scoped.access, projectId)) {
+            return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
         }
 
         if (!content || typeof content !== 'string') {

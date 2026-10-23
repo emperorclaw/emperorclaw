@@ -3,6 +3,7 @@ import { artifactFolders, projects, customers } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull, type InferModel } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { buildFolderPath, sanitizeFolderName, findActiveFolder } from "@/lib/artifact-folders";
 import { storageAdapter } from "@/lib/storage";
 
@@ -10,7 +11,7 @@ type ArtifactFolderRecord = InferModel<typeof artifactFolders>;
 
 export async function POST(req: NextRequest) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("member");
         const body = await req.json();
         const name = sanitizeFolderName(body.name);
         if (!name) {
@@ -25,6 +26,11 @@ export async function POST(req: NextRequest) {
 
         const projectId = await resolveScopedProject(companyId, body.projectId);
         const customerId = await resolveScopedCustomer(companyId, body.customerId);
+        // A restricted member creates folders only inside their scope.
+        if (!(await memberMaySeeRecord(companyId, scope, { projectId, customerId }))
+            || (parentFolder && !(await memberMaySeeRecord(companyId, scope, { projectId: parentFolder.projectId as string | null, customerId: parentFolder.customerId as string | null })))) {
+            return NextResponse.json({ error: projectId ? "Project not found" : customerId ? "Customer not found" : "Folder not found" }, { status: 404 });
+        }
 
         const parentPathValue = parentFolder && typeof parentFolder.path === "string" ? parentFolder.path : null;
         const safeName = typeof name === "string" ? name : "";
@@ -60,7 +66,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ folder }, { status: 201 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }
 

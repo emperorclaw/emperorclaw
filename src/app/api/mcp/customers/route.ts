@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { randomUUID } from "crypto";
 import { eq, and, desc, isNull } from "drizzle-orm";
-import { loadAgentScopeContext, scopeCondition } from "@/lib/agent-scope";
+import { mcpAccessErrorResponse, mcpCustomerCondition, mcpMayUseCustomer, resolveMcpAgentAccess } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -18,17 +18,9 @@ export async function GET(req: NextRequest) {
     const agentIdParam = searchParams.get("agentId");
 
     try {
-        let resolvedAgentId: string | null = null;
-        if (agentIdParam) {
-            try {
-                resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
-            } catch {
-                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-            }
-        }
-        const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        const access = await resolveMcpAgentAccess(companyId, auth.companyToken!, agentIdParam);
         const conditions = [eq(customers.companyId, companyId), isNull(customers.deletedAt)];
-        const scoped = scopeCondition(allowedCustomerIds, customers.id);
+        const scoped = mcpCustomerCondition(access, customers.id);
         if (scoped) conditions.push(scoped);
 
         const rows = await db.select()
@@ -39,6 +31,8 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ customers: rows });
     } catch (err) {
+        const denied = mcpAccessErrorResponse(err);
+        if (denied) return denied;
         console.error("Error fetching customers:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -64,6 +58,7 @@ export async function POST(req: NextRequest) {
         if (!name) {
             return NextResponse.json({ error: "name is required" }, { status: 400 });
         }
+        const access = await resolveMcpAgentAccess(companyId, auth.companyToken!, body.agentId);
 
         // Check if customer exists by name to avoid duplicates (naive approach for this example)
         let customer;
@@ -71,6 +66,10 @@ export async function POST(req: NextRequest) {
             and(eq(customers.name, name), eq(customers.companyId, companyId))
         ).limit(1);
 
+        if (existing && !mcpMayUseCustomer(access, existing.id)) {
+            // Upsert-by-name must not let a scoped agent overwrite a customer it cannot see.
+            return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
+        }
         if (existing) {
             [customer] = await db.update(customers).set({
                 notes: notes || existing.notes
@@ -88,6 +87,8 @@ export async function POST(req: NextRequest) {
         await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
         return NextResponse.json(res, { status: existing ? 200 : 201 });
     } catch (err) {
+        const denied = mcpAccessErrorResponse(err);
+        if (denied) return denied;
         console.error("Error creating customer:", err);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

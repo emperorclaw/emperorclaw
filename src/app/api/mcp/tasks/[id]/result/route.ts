@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { finalizeTaskForAgent } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -26,6 +27,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     try {
+        // Only the bound agent may report its own result, and only on a task in scope.
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+        if (scoped.response) return scoped.response;
+        if (!(await mcpMayUseTask(companyId, scoped.access, taskId))) {
+            return NextResponse.json({ error: "Task not found" }, { status: 404 });
+        }
         const result = await finalizeTaskForAgent({
             companyId,
             taskId,

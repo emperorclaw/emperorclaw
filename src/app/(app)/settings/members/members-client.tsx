@@ -285,7 +285,8 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                             onChange={(e) => setInviteRole(e.target.value)}
                             className="min-h-11 bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                         >
-                            {ROLE_OPTIONS.map((r) => (
+                            {/* Only owners grant admin, by invite or role change. */}
+                            {ROLE_OPTIONS.filter((r) => r !== "admin" || canChangeRoles).map((r) => (
                                 <option key={r} value={r} className="bg-muted">
                                     {r.charAt(0).toUpperCase() + r.slice(1)}
                                 </option>
@@ -351,7 +352,7 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
                                                         <IconUserCog className="w-4 h-4" />
                                                     </button>
                                                 )}
-                                                {canInvite && (
+                                                {canInvite && (member.companyRole !== "owner" || canChangeRoles) && (
                                                     <button
                                                         onClick={(event) => { dialogOpener.current = event.currentTarget; setRemovingMember(member.id); }}
                                                         className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
@@ -531,6 +532,19 @@ export default function MembersClient({ currentUserId, currentUserRole, initialM
 
                             {scopeMode === "restricted" && (
                                 <>
+                                    <p className="text-xs text-muted-foreground">
+                                        A restricted member sees only what is ticked: the chosen agents, and the projects, tasks,
+                                        files and knowledge of the chosen customers. Nothing ticked in a list means nothing from it.
+                                    </p>
+                                    {(scopeAgentIds.length === 0 || scopeCustomerIds.length === 0) && (
+                                        <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-300" role="status">
+                                            {scopeAgentIds.length === 0 && scopeCustomerIds.length === 0
+                                                ? "No agents or customers selected: this member will see no agents and no customer work."
+                                                : scopeAgentIds.length === 0
+                                                    ? "No agents selected: this member will see no agents or their chats."
+                                                    : "No customers selected: this member will see no projects, tasks or customer files."}
+                                        </div>
+                                    )}
                                     <div>
                                         <h4 className="text-sm font-medium text-foreground mb-2">Visible Agents</h4>
                                         <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border bg-muted/50 p-2">

@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { updateProjectForCompany } from "@/lib/projects-crud";
-import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
-async function checkAgentScopeOrForbidden(companyId: string, agentId: unknown, projectId: string): Promise<NextResponse | null> {
-    if (typeof agentId !== "string" || !agentId) return null;
-    let resolvedAgentId: string;
-    try {
-        resolvedAgentId = await resolveAgentId(companyId, agentId);
-    } catch {
-        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    }
-    const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-    if (!isProjectAllowed(allowedProjectIds, projectId)) {
+async function checkAgentScopeOrForbidden(companyId: string, token: { agentId?: string | null }, agentId: unknown, projectId: string): Promise<NextResponse | null> {
+    const scoped = await mcpRouteAccess(companyId, token, agentId);
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseProject(scoped.access, projectId)) {
         return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
     }
     return null;
@@ -62,7 +56,7 @@ export async function PATCH(
             return NextResponse.json({ error: "Project not found or unauthorized." }, { status: 404 });
         }
 
-        const scopeDenied = await checkAgentScopeOrForbidden(companyId, agentId, projectId);
+        const scopeDenied = await checkAgentScopeOrForbidden(companyId, auth.companyToken!, agentId, projectId);
         if (scopeDenied) return scopeDenied;
 
         let project;
@@ -130,7 +124,7 @@ export async function DELETE(
         } catch {
             // No body — DELETE typically has none, treat as unscoped caller.
         }
-        const scopeDenied = await checkAgentScopeOrForbidden(companyId, agentId, projectId);
+        const scopeDenied = await checkAgentScopeOrForbidden(companyId, auth.companyToken!, agentId, projectId);
         if (scopeDenied) return scopeDenied;
 
         const [deleted] = await db.update(projects).set({

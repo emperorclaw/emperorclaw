@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
 import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord, memberRecordCondition } from "@/lib/member-scope";
 import { findActiveFolder } from "@/lib/artifact-folders";
 import { discoverDirectStorageEntries, isStorageDiscoveryEnabled } from "@/lib/storage/discovery";
 import { reconcileTrackedLocalArtifacts } from "@/lib/storage/artifact-reconciliation";
@@ -18,7 +19,7 @@ type FolderDto = {
 
 export async function GET(req: NextRequest) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("viewer");
         const { searchParams } = new URL(req.url);
         const folderId = searchParams.get("folderId");
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
@@ -27,6 +28,12 @@ export async function GET(req: NextRequest) {
         const folder = folderId
             ? await findActiveFolder(companyId, folderId)
             : null;
+
+        if (folder && !(await memberMaySeeRecord(companyId, scope, { projectId: folder.projectId as string | null, customerId: folder.customerId as string | null }))) {
+
+            return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+
+        }
 
         const parentFolderIdValue = folder && typeof folder.parentFolderId === "string" ? folder.parentFolderId : null;
         const ancestors = folder ? await buildAncestors(companyId, parentFolderIdValue) : [];
@@ -63,6 +70,7 @@ export async function GET(req: NextRequest) {
                     ? eq(artifactFolders.parentFolderId, folder.id)
                     : isNull(artifactFolders.parentFolderId),
                 isNull(artifactFolders.deletedAt),
+                memberRecordCondition(scope, { projectId: artifactFolders.projectId, customerId: artifactFolders.customerId }),
             ))
             .orderBy(artifactFolders.createdAt);
 
@@ -70,6 +78,8 @@ export async function GET(req: NextRequest) {
             eq(artifacts.companyId, companyId),
             isNull(artifacts.deletedAt),
         ];
+        const scopedArtifacts = memberRecordCondition(scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId });
+        if (scopedArtifacts) artifactConditions.push(scopedArtifacts);
         if (folder) {
             artifactConditions.push(eq(artifacts.folderId, folder.id));
         } else {
@@ -152,7 +162,7 @@ export async function GET(req: NextRequest) {
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }
 

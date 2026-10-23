@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         eq(artifacts.id, id), eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt),
     )).limit(1);
     if (!artifact) return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+    const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scopedAccess.response) return scopedAccess.response;
+    if (!mcpMayUseRecord(scopedAccess.access, artifact)) return mcpOutOfScope("Artifact");
     if (!artifact.storageKey || !artifact.path) {
         return NextResponse.json({ ok: false, artifactId: artifact.id, error: "Artifact has no file-backed storage" }, { status: 409 });
     }

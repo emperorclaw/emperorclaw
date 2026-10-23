@@ -35,6 +35,10 @@ export const POST = withRoleApi("admin")(async (req, ctx) => {
                 { status: 400 }
             );
         }
+        // Same rule as role changes: only owners (and instance admins) grant admin.
+        if ((role === "admin" || role === "owner") && ctx.role !== "owner" && ctx.role !== "instance_admin") {
+            return NextResponse.json({ error: "Only an owner can invite an admin." }, { status: 403 });
+        }
 
         // Rate limit: 20/hr per admin user (NFR-5)
         const rateLimit = consumeRateLimit({

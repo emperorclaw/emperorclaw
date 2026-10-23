@@ -4,11 +4,12 @@ import { taskEvents, tasks } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeTaskId } from "@/lib/member-scope";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         // Require authenticated session and resolve company
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, userId, scope } = await requireCompanyFromSession("member");
 
         const resolvedParams = await params;
         const taskId = resolvedParams.id;
@@ -22,8 +23,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
         // Tenant isolation: ensure the task belongs to the caller's company
-        if (task.companyId !== companyId) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        if (task.companyId !== companyId || !(await memberMaySeeTaskId(companyId, scope, taskId))) {
+            return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
         const [newEvent] = await db.insert(taskEvents).values({
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             taskId,
             eventType: "task_note",
             actorType: "human",
+            actorId: userId,
             payloadJson: { note: comment },
         }).returning();
 
@@ -43,6 +45,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         return NextResponse.json({ success: true, event: newEvent });
     } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message === "Unauthorized") return NextResponse.json({ error: message }, { status: 401 });
+        if (message.startsWith("Forbidden")) return NextResponse.json({ error: message }, { status: 403 });
         console.error("Task note error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

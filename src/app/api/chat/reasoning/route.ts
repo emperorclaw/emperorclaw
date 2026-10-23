@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { messageThreads, threadMessages } from "@/db/schema";
-import { getCompanyId, getUserId } from "@/lib/auth";
 import { canUseDirectThread, getThreadMessageReasoning } from "@/lib/control-plane";
+import { companyRouteAccess } from "@/lib/company-access";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -16,9 +16,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * collapsed by default and calls this only when a reader expands it.
  */
 export async function GET(req: NextRequest) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     const messageId = new URL(req.url).searchParams.get("messageId");
     if (!messageId) return NextResponse.json({ error: "messageId is required" }, { status: 400 });

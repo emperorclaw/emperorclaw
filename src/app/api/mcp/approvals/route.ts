@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { ApprovalRequestError, listApprovalsForCompany, requestApprovalForTasks } from "@/lib/approvals";
+import { mcpMayUseProject, mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -13,9 +14,12 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get("projectId");
     const status = searchParams.get("status");
 
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
     const approvals = await listApprovalsForCompany(companyId);
     return NextResponse.json({
         approvals: approvals.filter((approval) => {
+            if (!mcpMayUseProject(scoped.access, approval.projectId)) return false;
             if (projectId && approval.projectId !== projectId) return false;
             if (status && approval.status !== status) return false;
             return true;
@@ -36,6 +40,14 @@ export async function POST(req: NextRequest) {
 
         // The token's bound agent is the requester; an operator token may name one.
         const resolvedRequesterAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, requesterAgentId || null);
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, resolvedRequesterAgentId);
+        if (scoped.response) return scoped.response;
+        const requestedTaskIds: unknown[] = Array.isArray(taskIds) ? taskIds : taskId ? [taskId] : [];
+        for (const id of requestedTaskIds) {
+            if (typeof id === "string" && !(await mcpMayUseTask(companyId, scoped.access, id))) {
+                return NextResponse.json({ error: "Task not found" }, { status: 404 });
+            }
+        }
         const approval = await requestApprovalForTasks({
             companyId,
             taskIds: Array.isArray(taskIds) ? taskIds : taskId ? [taskId] : [],

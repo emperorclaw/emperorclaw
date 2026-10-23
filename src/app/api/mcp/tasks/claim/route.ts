@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { ensureTeamThread } from "@/lib/control-plane";
 import { claimNextTaskForAgent } from "@/lib/openclaw/tasks";
+import { mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function POST(req: NextRequest) {
   const auth = await verifyMcpToken(req);
@@ -16,7 +17,11 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error }, { status });
   if (cachedResponse) return NextResponse.json(cachedResponse);
 
-  const { agentId, strictOwnerRole = true, allowedRoles = [] } = await req.json();
+  const { agentId: requestedAgentId, strictOwnerRole = true, allowedRoles = [] } = await req.json();
+  // A bound token claims only for its own agent (whose scope then applies).
+  const scoped = await mcpRouteAccess(companyId, auth.companyToken!, requestedAgentId);
+  if (scoped.response) return scoped.response;
+  const agentId = scoped.access.agentId;
   if (!agentId) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }

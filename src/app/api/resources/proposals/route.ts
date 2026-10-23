@@ -1,20 +1,32 @@
 ﻿import { NextResponse } from "next/server";
 import { createResourceProposal, listResourceProposals } from "@/lib/resources";
-import { getResourceMembership, unauthorizedResourceResponse } from "../_shared";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeProposal } from "../_shared";
 
 export async function GET(request: Request) {
-  const membership = await getResourceMembership();
-  if (!membership) return unauthorizedResourceResponse();
+  const access = await companyRouteAccess("viewer");
+  if (access.response) return access.response;
+  const membership = access.ctx;
   const { searchParams } = new URL(request.url);
-  return NextResponse.json({ proposals: await listResourceProposals(membership.companyId, searchParams.get("status")) });
+  const proposals = await listResourceProposals(membership.companyId, searchParams.get("status"));
+  const visible = [];
+  for (const proposal of proposals) {
+    if (await memberMaySeeProposal(membership, proposal)) visible.push(proposal);
+  }
+  return NextResponse.json({ proposals: visible });
 }
 
 export async function POST(request: Request) {
-  const membership = await getResourceMembership();
-  if (!membership) return unauthorizedResourceResponse();
+  const access = await companyRouteAccess("member");
+  if (access.response) return access.response;
+  const membership = access.ctx;
   const body = await request.json().catch(() => ({}));
   if (!body.title || typeof body.title !== "string") {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
+  }
+  const target = { scopeType: body.scopeType || "company", scopeId: body.scopeId || null, targetResourceId: body.targetResourceId || null };
+  if (!(await memberMaySeeProposal(membership, target))) {
+    return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });
   }
   const proposal = await createResourceProposal({
     companyId: membership.companyId,

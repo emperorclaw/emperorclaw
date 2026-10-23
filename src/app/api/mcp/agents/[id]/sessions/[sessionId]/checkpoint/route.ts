@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpBoundAgentMismatch, mcpTokenMayActOnAgent } from "@/lib/mcp-access";
 import { checkpointAgentSession } from "@/lib/control-plane";
 
 export async function POST(
@@ -13,6 +14,7 @@ export async function POST(
 
     const companyId = auth.companyToken!.companyId;
     const { sessionId } = await params;
+    if (!(await mcpTokenMayActOnAgent(companyId, auth.companyToken!, (await params).id))) return mcpBoundAgentMismatch();
 
     try {
         const body = await req.json();

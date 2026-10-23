@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { mcpMayUseResource, type McpAgentAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import {
   agents,
@@ -72,7 +73,13 @@ export async function getTaskDetailForCompany(companyId: string, taskId: string)
   };
 }
 
-export async function getTaskContextForCompany(companyId: string, taskId: string) {
+/**
+ * `access` is the calling agent's scope (lib/mcp-access.ts): every knowledge
+ * resource in the pack goes through the same read rule as the knowledge index,
+ * so a shared note of another project or another agent's private note never
+ * rides along with an in-scope task.
+ */
+export async function getTaskContextForCompany(companyId: string, taskId: string, access?: McpAgentAccess) {
   const detail = await getTaskDetailForCompany(companyId, taskId);
   if (!detail) return null;
 
@@ -163,17 +170,20 @@ export async function getTaskContextForCompany(companyId: string, taskId: string
     }
   }
 
+  const visible = <T extends { scopeType: string; scopeId: string | null }>(rows: T[]) =>
+    access ? rows.filter((row) => mcpMayUseResource(access, row)) : rows;
+
   return {
     task: detail,
     notes,
     projectMemory: projectMemoryItems,
     resources: {
       // This pack is fetched by agent runtimes: never expose secret columns.
-      project: projectResources.map(toPublicResource),
-      customer: customerResources.map(toPublicResource),
-      shared: sharedAndCompanyResources.filter(r => r.isShared).map(toPublicResource),
-      company: sharedAndCompanyResources.filter(r => r.scopeType === "company").map(toPublicResource),
-      agent: agentResources.map(toPublicResource),
+      project: visible(projectResources).map(toPublicResource),
+      customer: visible(customerResources).map(toPublicResource),
+      shared: visible(sharedAndCompanyResources.filter(r => r.isShared)).map(toPublicResource),
+      company: visible(sharedAndCompanyResources.filter(r => r.scopeType === "company")).map(toPublicResource),
+      agent: visible(agentResources).map(toPublicResource),
     },
     relatedThreads: Array.from(threadMap.values()),
     agentProfile: relatedProfile,

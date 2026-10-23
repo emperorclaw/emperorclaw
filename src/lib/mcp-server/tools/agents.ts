@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listAgentsForCompany, getAgentForCompany, createAgentForCompany, updateAgentForCompany } from "@/lib/agents-crud";
 import { jsonResult, errorResult } from "../result";
+import { mcpAgentUpdateDenial } from "@/lib/mcp-access";
 import { computeCompanyHealth } from "@/lib/agent-health";
 
 export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
@@ -67,6 +68,8 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
         },
     }, async ({ name, role, skillsJson, llmProvider, llmModel, deploymentMode, sourceAgentId, doctrineJson }) => {
         try {
+            // Agents never create agents (a new agent would be unscoped, with owner-only settings).
+            if (callerAgentId) throw new Error("Access denied: agents cannot create agents");
             if (deploymentMode === "local") {
                 sourceAgentId = callerAgentId || sourceAgentId;
                 if (!sourceAgentId) throw new Error("sourceAgentId is required for local Hermes hiring");
@@ -92,6 +95,9 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
         },
     }, async ({ agentId, name, role, skillsJson, llmProvider, llmModel }) => {
         try {
+            // A bound connection may only update its own agent, and never its model.
+            const denial = await mcpAgentUpdateDenial(companyId, { agentId: callerAgentId ?? null }, agentId, { llmProvider, llmModel });
+            if (denial) throw new Error(denial);
             const agent = await updateAgentForCompany({ companyId, agentId, name, role, skillsJson, llmProvider, llmModel });
             return jsonResult({ message: "Agent updated", agent });
         } catch (e) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
 import { archiveScopedResource, getScopedResource, resolveResourceScope, toPublicResource, updateScopedResource } from "@/lib/resources";
 
 export async function PATCH(
@@ -16,6 +17,11 @@ export async function PATCH(
     const resource = await getScopedResource(companyId, resourceId);
 
     if (!resource || resource.scopeType !== "customer" || resource.scopeId !== id) {
+        return NextResponse.json({ error: "Scoped resource not found" }, { status: 404 });
+    }
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseCustomer(scoped.access, id)) {
         return NextResponse.json({ error: "Scoped resource not found" }, { status: 404 });
     }
 
@@ -48,6 +54,11 @@ export async function DELETE(
     const resource = await getScopedResource(companyId, resourceId);
 
     if (!resource || resource.scopeType !== "customer" || resource.scopeId !== id) {
+        return NextResponse.json({ error: "Scoped resource not found" }, { status: 404 });
+    }
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseCustomer(scoped.access, id)) {
         return NextResponse.json({ error: "Scoped resource not found" }, { status: 404 });
     }
 

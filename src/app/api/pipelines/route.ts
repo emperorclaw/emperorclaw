@@ -2,31 +2,21 @@ export const dynamic = "force-dynamic";
 
 // Web API for the pipelines registry UI.
 import { NextResponse } from "next/server";
-import { getValidatedServerSession } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberRecordCondition } from "@/lib/member-scope";
 import { db } from "@/db";
-import { companyMembers, pipelines, pipelineRuns, agents, projects, customers } from "@/db/schema";
+import { pipelines, pipelineRuns, agents, projects, customers } from "@/db/schema";
 import { eq, desc, and, isNull, inArray } from "drizzle-orm";
 
 export async function GET() {
     try {
-        const session = await getValidatedServerSession();
-        const sessionUserId = session?.user?.id;
-        if (!sessionUserId) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        const [membership] = await db.select().from(companyMembers)
-            .where(eq(companyMembers.userId, sessionUserId))
-            .limit(1);
-
-        if (!membership) {
-            return NextResponse.json({ error: "Company not found" }, { status: 404 });
-        }
-
-        const companyId = membership.companyId;
+        const access = await companyRouteAccess("viewer");
+        if (access.response) return access.response;
+        const companyId = access.ctx.companyId;
 
         const pipelineList = await db.select().from(pipelines)
-            .where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt)))
+            .where(and(eq(pipelines.companyId, companyId), isNull(pipelines.deletedAt),
+                memberRecordCondition(access.ctx.scope, { projectId: pipelines.projectId, customerId: pipelines.customerId })))
             .orderBy(desc(pipelines.updatedAt));
 
         const pipelineIds = pipelineList.map(p => p.id);

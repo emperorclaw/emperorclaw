@@ -14,7 +14,7 @@ export async function GET(
 
   const companyId = auth.companyToken!.companyId;
   const { projectId } = await params;
-  const scopeDenied = await requireProjectInScope(req, companyId, projectId);
+  const scopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
   if (scopeDenied) return scopeDenied;
   const profiles = await listProjectAgentProfiles(companyId, projectId);
   return NextResponse.json({ profiles });
@@ -32,6 +32,8 @@ export async function POST(
   try {
     const companyId = auth.companyToken!.companyId;
     const { projectId } = await params;
+    const projectScopeDenied = await requireProjectInScope(req, companyId, projectId, auth.companyToken!);
+    if (projectScopeDenied) return projectScopeDenied;
     const body = await req.json();
 
     if (!body.agentId) {

@@ -2,13 +2,17 @@ import { redirect } from "next/navigation";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-    agentRuns, agents, companies, companyMembers, incidents, messageThreads, projects, taskEvents, tasks, threadMessages, threadParticipants, tokenUsageLog, users,
+    agentRuns, agents, companies, companyMembers, messageThreads, projects, taskEvents, tasks, threadMessages, threadParticipants, tokenUsageLog, users,
 } from "@/db/schema";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { computeCompanyHealth, OFFLINE_AFTER_MS } from "@/lib/agent-health";
 import { listPendingDecisions } from "@/lib/approvals";
 import { SLA_TRACKED_TASK_STATES, TASK_STATES } from "@/lib/task-state";
-import { AGENT_PAIR_DESCRIPTION, isAgentPairThread, listGroups } from "@/lib/groups";
+import { AGENT_PAIR_DESCRIPTION, listGroups } from "@/lib/groups";
+import { attentionAccessFromGuard, buildAttention } from "@/lib/attention";
+import { requireRole } from "@/lib/roles";
+import { canAdmin, canWrite } from "@/lib/role-matrix";
+import { getScopedAgentIds, memberAgentCondition, memberVisibleProjectIds } from "@/lib/member-scope";
 import { SetupWizard } from "@/components/setup-wizard";
 import { BUSINESS_TYPES } from "@/lib/onboarding-shared";
 import { sceneMessagePreview } from "@/lib/observatory";
@@ -16,8 +20,8 @@ import { loadDashboardLive, pendingApprovalRows } from "@/lib/dashboard-live";
 import { loadOrganization } from "@/lib/organization";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
 import {
-    dashboardActivity, attentionUrgency, buildFeed, classifyIncident, DONE_TODAY_MS, filterPausedNotices, isIncidentStale, skillNames,
-    type SceneCommunication, type ActivityEvent, type AttentionEntry, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type PausedNotice, type ThroughputSummary,
+    dashboardActivity, buildFeed, DONE_TODAY_MS, skillNames,
+    type SceneCommunication, type ActivityEvent, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type ThroughputSummary,
 } from "@/lib/team-scene";
 
 export const dynamic = "force-dynamic";
@@ -34,14 +38,6 @@ function excerpt(text: string, max = 60): string {
     return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-const humanize = (value: string) => value.replace(/_/g, " ");
-
-/** A short human reason for a "stuck" incident, from its structured code. */
-function shortReason(reasonCode: string): string {
-    const code = reasonCode.replace(/_/g, " ").trim();
-    if (code === "max retries exceeded") return "task exceeded retries";
-    return code;
-}
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
     const session = await getValidatedServerSession();
@@ -60,15 +56,24 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const weekAgo = new Date(now.getTime() - 7 * DONE_TODAY_MS);
 
     // Role gating for the inline actions: viewers read only; owners/admins may
-    // also open machine-managed pair threads.
-    const instanceRole = session?.user?.instanceRole ?? "member";
-    const companyRole = session?.user?.companyRole ?? null;
-    const canAct = instanceRole === "instance_admin" || companyRole !== "viewer";
-    const isOwnerOrAdmin = instanceRole === "instance_admin" || companyRole === "owner" || companyRole === "admin";
+    // also open machine-managed pair threads. Role and member scope come from
+    // the DB (requireRole), never the session's login-time copies.
+    const guard = await requireRole("viewer")().catch(() => null);
+    if (!guard) redirect("/login");
+    const canAct = canWrite(guard.role);
+    const isOwnerOrAdmin = canAdmin(guard.role);
+    const attentionAccess = attentionAccessFromGuard(guard);
+    // A restricted member sees only their agents, and work on their customers' projects.
+    const memberScope = guard.scope;
+    const visibleProjects = await memberVisibleProjectIds(companyId, memberScope);
+    const projectScope = (column: typeof tasks.projectId | typeof projects.id) =>
+        visibleProjects ? inArray(column, [...visibleProjects]) : undefined;
+    const agentScope = (column: typeof agents.id | typeof tokenUsageLog.agentId | typeof agentRuns.agentId | typeof threadParticipants.participantId) =>
+        memberAgentCondition(memberScope, column);
 
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const usageSince = new Date(Math.min(monthStart.getTime(), dayAgo.getTime()));
-    const [[company], [currentUser], members, agentRows, openTasks, decisions, openIncidents, typing, health, projectRows, recentEvents, usageToday, blockedCount, openRuns] = await Promise.all([
+    const [[company], [currentUser], members, agentRows, openTasks, decisions, typing, health, projectRows, recentEvents, usageToday, blockedCount, openRuns] = await Promise.all([
         db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId)).limit(1),
         userId
             ? db.select({ onboardingCompletedAt: users.onboardingCompletedAt, onboardingDismissedAt: users.onboardingDismissedAt }).from(users).where(eq(users.id, userId)).limit(1)
@@ -78,36 +83,33 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             .where(and(eq(companyMembers.companyId, companyId), isNull(users.deletedAt))),
         db.select({ id: agents.id, name: agents.name, role: agents.role, avatarUrl: agents.avatarUrl, avatarAppearance: agents.avatarAppearance, provider: agents.provider, deploymentMode: agents.deploymentMode, skillsJson: agents.skillsJson, createdAt: agents.createdAt, monthlyBudgetCents: agents.monthlyBudgetCents, monthlyCostCents: agents.monthlyCostCents, lastResetMonth: agents.lastResetMonth })
             .from(agents)
-            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt))),
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), agentScope(agents.id))),
         db.select({ id: tasks.id, projectId: tasks.projectId, state: tasks.state, inputJson: tasks.inputJson, taskType: tasks.taskType, slaDueAt: tasks.slaDueAt, priority: tasks.priority, updatedAt: tasks.updatedAt, processingStartedAt: tasks.processingStartedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
-            .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt)))
+            .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [...SLA_TRACKED_TASK_STATES]), isNull(tasks.deletedAt), projectScope(tasks.projectId)))
             .orderBy(desc(tasks.priority), tasks.createdAt),
         // Same definition as the sidebar badge and the Approvals page.
         listPendingDecisions(companyId),
-        db.select({ id: incidents.id, summary: incidents.summary, severity: incidents.severity, projectId: incidents.projectId, taskId: incidents.taskId, reasonCode: incidents.reasonCode, createdAt: incidents.createdAt, taskState: tasks.state, taskDeletedAt: tasks.deletedAt, taskType: tasks.taskType, inputJson: tasks.inputJson, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
-            .from(incidents).leftJoin(tasks, and(eq(tasks.id, incidents.taskId), eq(tasks.companyId, companyId)))
-            .where(and(eq(incidents.companyId, companyId), eq(incidents.status, "open"), isNull(incidents.deletedAt))).orderBy(desc(incidents.createdAt)).limit(50),
         db.select({ agentId: threadParticipants.participantId, activity: threadParticipants.currentActivity, threadType: messageThreads.type }).from(threadParticipants)
             .innerJoin(messageThreads, eq(messageThreads.id, threadParticipants.threadId))
-            .where(and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), gte(threadParticipants.typingUntil, now))),
-        computeCompanyHealth(companyId, { now }),
-        db.select({ id: projects.id, goal: projects.goal }).from(projects).where(eq(projects.companyId, companyId)),
+            .where(and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.participantType, "agent"), gte(threadParticipants.typingUntil, now), agentScope(threadParticipants.participantId))),
+        computeCompanyHealth(companyId, { now, agentIds: getScopedAgentIds(memberScope) }),
+        db.select({ id: projects.id, goal: projects.goal }).from(projects).where(and(eq(projects.companyId, companyId), projectScope(projects.id))),
         db.select({ id: taskEvents.id, eventType: taskEvents.eventType, actorType: taskEvents.actorType, actorId: taskEvents.actorId, taskId: taskEvents.taskId, createdAt: taskEvents.createdAt, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
             .from(taskEvents).innerJoin(tasks, eq(tasks.id, taskEvents.taskId))
-            .where(and(eq(taskEvents.companyId, companyId), gte(taskEvents.createdAt, dayAgo))).orderBy(desc(taskEvents.createdAt)).limit(120),
+            .where(and(eq(taskEvents.companyId, companyId), gte(taskEvents.createdAt, dayAgo), projectScope(tasks.projectId))).orderBy(desc(taskEvents.createdAt)).limit(120),
         db.select({ agentId: tokenUsageLog.agentId, costCents: sql<number>`COALESCE(SUM(${tokenUsageLog.costCents}) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${dayAgo}), 0)`.mapWith(Number), monthCostCents: sql<number>`COALESCE(SUM(${tokenUsageLog.costCents}) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${monthStart}), 0)`.mapWith(Number), reports: sql<number>`COUNT(*) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${dayAgo})`.mapWith(Number), tokens: sql<number>`COALESCE(SUM(${tokenUsageLog.inputTokens} + ${tokenUsageLog.outputTokens}) FILTER (WHERE ${tokenUsageLog.reportedAt} >= ${dayAgo}), 0)`.mapWith(Number) })
-            .from(tokenUsageLog).where(and(eq(tokenUsageLog.companyId, companyId), gte(tokenUsageLog.reportedAt, usageSince)))
+            .from(tokenUsageLog).where(and(eq(tokenUsageLog.companyId, companyId), gte(tokenUsageLog.reportedAt, usageSince), agentScope(tokenUsageLog.agentId)))
             .groupBy(tokenUsageLog.agentId),
-        db.select({ count: sql<number>`COUNT(*)::int` }).from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [TASK_STATES.failed, TASK_STATES.deadLetter]), isNull(tasks.deletedAt))),
+        db.select({ count: sql<number>`COUNT(*)::int` }).from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.state, [TASK_STATES.failed, TASK_STATES.deadLetter]), isNull(tasks.deletedAt), projectScope(tasks.projectId))),
         // A freshly opened run is live evidence too, like in agent-activity.ts:
         // an open run counts when the runtime is online (already covered by
         // health) or the run started within the offline window. An older open
         // run on a silent runtime is almost surely dead, so it must not mask
         // the "offline with work in progress" alert.
         db.selectDistinct({ agentId: agentRuns.agentId }).from(agentRuns)
-            .where(and(eq(agentRuns.companyId, companyId), eq(agentRuns.status, "running"), gte(agentRuns.startedAt, new Date(now.getTime() - OFFLINE_AFTER_MS)), isNotNull(agentRuns.agentId))),
+            .where(and(eq(agentRuns.companyId, companyId), eq(agentRuns.status, "running"), gte(agentRuns.startedAt, new Date(now.getTime() - OFFLINE_AFTER_MS)), isNotNull(agentRuns.agentId), agentScope(agentRuns.agentId))),
     ]);
-    const pendingApprovals = decisions.approvals.map(({ approval, tasks: linked }) => ({
+    const pendingApprovals = decisions.approvals.filter(({ approval }) => !visibleProjects || visibleProjects.has(approval.projectId)).map(({ approval, tasks: linked }) => ({
         id: approval.id, requestedAt: approval.requestedAt, actionType: approval.actionType, rationale: approval.rationale, projectId: approval.projectId,
         requesterAgentId: approval.requesterAgentId, taskInput: linked[0].inputJson as unknown, taskType: linked[0].taskType as string | null,
     }));
@@ -118,22 +120,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // time stay exact on large teams.
     const [doneThisWeekRow, doneTodayRow, doneTodayAgentRows, doneTodayMemberRows, medianCycleRow, sparkRows, doneRecentTasks] = await Promise.all([
         db.select({ count: sql<number>`COUNT(*)::int` }).from(tasks)
-            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, weekAgo), isNull(tasks.deletedAt))),
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, weekAgo), isNull(tasks.deletedAt))),
         db.select({ count: sql<number>`COUNT(*)::int` }).from(tasks)
-            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt))),
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt))),
         db.select({ agentId: tasks.assignedAgentId, count: sql<number>`COUNT(*)::int` }).from(tasks)
-            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt), isNotNull(tasks.assignedAgentId)))
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt), isNotNull(tasks.assignedAgentId)))
             .groupBy(tasks.assignedAgentId),
         db.select({ memberId: tasks.assignedMemberId, count: sql<number>`COUNT(*)::int` }).from(tasks)
-            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt), isNotNull(tasks.assignedMemberId)))
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt), isNotNull(tasks.assignedMemberId)))
             .groupBy(tasks.assignedMemberId),
         db.select({ ms: sql<number | null>`percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${tasks.updatedAt} - ${tasks.processingStartedAt}))) * 1000` }).from(tasks)
-            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, weekAgo), gte(tasks.updatedAt, tasks.processingStartedAt), isNull(tasks.deletedAt), isNotNull(tasks.processingStartedAt))),
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, weekAgo), gte(tasks.updatedAt, tasks.processingStartedAt), isNull(tasks.deletedAt), isNotNull(tasks.processingStartedAt))),
         db.select({ bucket: sql<number>`FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - ${tasks.updatedAt})) / ${DONE_TODAY_MS / 1000})::int`, count: sql<number>`COUNT(*)::int` }).from(tasks)
-            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, weekAgo), isNull(tasks.deletedAt)))
+            .where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, weekAgo), isNull(tasks.deletedAt)))
             .groupBy(sql`1`),
         db.select({ id: tasks.id, projectId: tasks.projectId, inputJson: tasks.inputJson, taskType: tasks.taskType, updatedAt: tasks.updatedAt, assignedAgentId: tasks.assignedAgentId, assignedMemberId: tasks.assignedMemberId })
-            .from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt)))
+            .from(tasks).where(and(eq(tasks.companyId, companyId), eq(tasks.state, TASK_STATES.done), projectScope(tasks.projectId), gte(tasks.updatedAt, dayAgo), isNull(tasks.deletedAt)))
             .orderBy(desc(tasks.updatedAt)).limit(BOARD_LIMIT),
     ]);
 
@@ -151,6 +153,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         console.error("[dashboard] live office data failed:", error);
         return { thoughts: [], liveEvents: [] };
     });
+
+    // Started now so its queries overlap the ones below.
+    const attentionPromise = buildAttention(companyId, attentionAccess, { now, health, decisions });
 
     // The company leader sits on the Emperor's throne. Reuse the organization
     // resolver (same as GET /api/mcp/organization); a failure must never take
@@ -206,47 +211,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         return key.startsWith("agent:") ? doneTodayByAgent.get(id) ?? 0 : doneTodayByMember.get(id) ?? 0;
     };
 
-    // Latest assignment/claim event per incident task, so a watchdog incident
-    // predating the task's current assignment reads as stale.
-    const incidentTaskIds = [...new Set(openIncidents.map((i) => i.taskId).filter((id): id is string => Boolean(id)))];
-    const assignmentEvents = incidentTaskIds.length
-        ? await db.select({ taskId: taskEvents.taskId, createdAt: taskEvents.createdAt })
-            .from(taskEvents).where(and(eq(taskEvents.companyId, companyId), inArray(taskEvents.taskId, incidentTaskIds), inArray(taskEvents.eventType, ["task_generated", "task_assigned", "task_reassigned", "task_claimed"])))
-            .orderBy(desc(taskEvents.createdAt))
-        : [];
-    const latestAssignmentAt = new Map<string, string>();
-    for (const e of assignmentEvents) {
-        if (!latestAssignmentAt.has(e.taskId)) latestAssignmentAt.set(e.taskId, e.createdAt.toISOString());
-    }
-
-    // Recent loop-guard pause notices, so the operator can Resume in one click.
-    const pausedNoticeRows = await db.select({
-        id: threadMessages.id, threadId: threadMessages.threadId, createdAt: threadMessages.createdAt,
-        description: messageThreads.description, createdByType: messageThreads.createdByType,
-    }).from(threadMessages)
-        .innerJoin(messageThreads, eq(messageThreads.id, threadMessages.threadId))
-        .where(and(eq(threadMessages.companyId, companyId), eq(threadMessages.senderType, "system"), sql`${threadMessages.metadataJson}->>'loopGuard' = 'true'`, gte(threadMessages.createdAt, dayAgo)))
-        .orderBy(desc(threadMessages.createdAt)).limit(10);
-
-    // A "Resume" marker newer than a notice means the loop is no longer paused.
-    const pausedThreadIds = [...new Set(pausedNoticeRows.map((n) => n.threadId))];
-    const resumeRows = pausedThreadIds.length
-        ? await db.select({ threadId: threadMessages.threadId, createdAt: threadMessages.createdAt })
-            .from(threadMessages).where(and(eq(threadMessages.companyId, companyId), inArray(threadMessages.threadId, pausedThreadIds), sql`${threadMessages.metadataJson}->>'loopGuardResume' = 'true'`))
-            .orderBy(desc(threadMessages.createdAt))
-        : [];
-    const latestResumeByThread = new Map<string, string>();
-    for (const r of resumeRows) {
-        if (!latestResumeByThread.has(r.threadId)) latestResumeByThread.set(r.threadId, r.createdAt.toISOString());
-    }
-    const pausedNotices: PausedNotice[] = filterPausedNotices(
-        pausedNoticeRows.map((n) => ({
-            id: n.id, threadId: n.threadId, createdAt: n.createdAt.toISOString(),
-            isPairThread: isAgentPairThread({ description: n.description, createdByType: n.createdByType }),
-        })),
-        latestResumeByThread,
-        isOwnerOrAdmin,
-    );
 
     // Pair-thread activity (agent ↔ agent handoff conversations) for the feed.
     const pairThreadIds = pairThreads.map((t) => t.id);
@@ -305,93 +269,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         });
     }
 
-    // Things only a person can unblock, most urgent kinds first.
-    const attention: AttentionEntry[] = [];
-    for (const i of openIncidents) {
-        const cls = classifyIncident(i.reasonCode, i.summary);
-        const title = i.inputJson || i.taskType ? taskTitle(i.inputJson, i.taskType ?? "task") : excerpt(i.summary);
-        const stale = isIncidentStale({
-            classification: cls,
-            taskState: i.taskState ?? null,
-            incidentCreatedAt: i.createdAt.toISOString(),
-            currentAssignmentAt: i.taskId ? latestAssignmentAt.get(i.taskId) ?? null : null,
-            taskDeleted: i.taskDeletedAt !== null,
-        });
-        if (stale) continue;
-        const key = assigneeKey(i);
-        const href = i.taskId ? `/projects?project=${i.projectId}&task=${i.taskId}` : `/projects?project=${i.projectId}`;
-        const at = i.createdAt.toISOString();
-        if (cls === "problem") {
-            attention.push({
-                id: `incident:${i.id}`, kind: "incident", title, reason: shortReason(i.reasonCode),
-                memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null,
-                area: projectName.get(i.projectId) ?? null, at, actionLabel: "Open task", href,
-                taskId: i.taskId,
-            });
-        } else if (cls === "late") {
-            attention.push({
-                id: `incident:${i.id}`, kind: "late", title, memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null,
-                area: projectName.get(i.projectId) ?? null, at, actionLabel: "Open task", href, taskId: i.taskId,
-            });
-        } else {
-            attention.push({
-                id: `incident:${i.id}`, kind: "not_started", title, memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null,
-                area: projectName.get(i.projectId) ?? null, at, actionLabel: "Open task", href, taskId: i.taskId, actionRequired: !key,
-            });
-        }
-    }
-    // Offline agents with work waiting: unanswered messages (health "down") or
-    // in-progress tasks they hold but cannot be working on.
-    const holdsInProgress = (agentId: string) => openTasks.some((t) => t.assignedAgentId === agentId && t.state === TASK_STATES.inProgress);
-    for (const a of health.agents.filter((h) => !activityByAgent.has(h.id)
-        && (h.status === "down" || (!h.online && !agentsWithOpenRun.has(h.id) && holdsInProgress(h.id))))) {
-        attention.push({
-            id: `agent:${a.id}`, kind: "agent", title: a.status === "down" ? `${a.name} has no recent connection with work waiting` : `${a.name} is offline with work in progress`, memberKey: `agent:${a.id}`, memberName: a.name,
-            area: a.role, at: a.lastSeenAt ?? now.toISOString(), actionLabel: "Inspect connection", href: `/agents?agent=${a.id}`,
-            agentId: a.id, canRestartRuntime: agentRows.some((agent) => agent.id === a.id && agent.provider === "hermes" && agent.deploymentMode === "local"),
-        });
-    }
-    const seenApprovals = new Set<string>();
-    for (const a of pendingApprovals) {
-        if (seenApprovals.has(a.id)) continue;
-        seenApprovals.add(a.id);
-        const what = a.taskType ? taskTitle(a.taskInput, a.taskType) : a.rationale ? excerpt(a.rationale, 48) : humanize(a.actionType);
-        const key = a.requesterAgentId ? `agent:${a.requesterAgentId}` : null;
-        attention.push({
-            id: `approval:${a.id}`, kind: "approval", title: a.actionType === "task_done" ? `Approve ${excerpt(what, 52)}` : `Approve ${humanize(a.actionType)}: ${excerpt(what, 40)}`,
-            memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null, area: projectName.get(a.projectId) ?? null,
-            at: a.requestedAt.toISOString(), actionLabel: a.actionType === "task_done" ? "Review work" : "Review request", href: "/approvals",
-            approvalId: a.id,
-        });
-    }
-    // Tasks that require approval and have no request yet: decided on the Approvals page.
-    for (const t of decisions.implicit) {
-        const key = assigneeKey(t);
-        attention.push({
-            id: `approval:task:${t.id}`, kind: "approval", title: `Approve ${excerpt(taskTitle(t.inputJson, t.taskType), 52)}`,
-            memberKey: key, memberName: key ? nameByKey.get(key) ?? null : null, area: projectName.get(t.projectId) ?? null,
-            at: t.updatedAt.toISOString(), actionLabel: "Review work", href: "/approvals", taskId: t.id,
-        });
-    }
-    for (const item of health.attention) {
-        attention.push({
-            id: `message:${item.messageId}`, kind: "message",
-            title: item.kind === "failed" ? `Message failed: “${excerpt(item.text, 40)}”` : `Awaiting agent response: “${excerpt(item.text, 36)}”`,
-            memberKey: `agent:${item.agentId}`, memberName: item.agentName, area: "Messages", at: item.since,
-            actionLabel: item.kind === "failed" ? "Inspect delivery" : "Open chat", href: item.link,
-            actionRequired: item.kind === "failed",
-        });
-    }
-    for (const n of pausedNotices) {
-        attention.push({
-            id: `paused:${n.id}`, kind: "paused",
-            title: "Agents were going back and forth without progress",
-            memberKey: null, memberName: null, area: "Team chat", at: n.createdAt,
-            actionLabel: "Resume", href: "/messages", threadId: n.threadId,
-        });
-    }
-    // Most urgent first: stuck > offline > late > approval > reply > not started.
-    attention.sort((a, b) => attentionUrgency(a.kind) - attentionUrgency(b.kind) || a.at.localeCompare(b.at));
+    // Things only a person can unblock: the same builder as /inbox and the
+    // Inbox badge (src/lib/attention.ts), limited to the kinds this panel shows.
+    const { entries: attention, workingNow } = await attentionPromise;
 
     // Who passed work to whom in the last day, and the activity ticker.
     const collaborations: CollaborationEvent[] = [];
@@ -473,6 +353,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             done: doneTasks.slice(0, BOARD_LIMIT),
         },
         attention,
+        workingNow,
         collaborations,
         activity,
         cost,

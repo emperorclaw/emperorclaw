@@ -4,8 +4,9 @@ import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { jsonResult, errorResult } from "../result";
+import { mcpAccessForAgent, mcpRecordCondition } from "@/lib/mcp-access";
 
-export function registerStorageTools(server: McpServer, companyId: string) {
+export function registerStorageTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     server.registerTool("list_storage_files", {
         title: "List Storage Files",
         description: "Find uploaded files, reports, and photos to present in chat. Returns real IDs and shareUrl; send a standalone [label](shareUrl) in message text for an Open/Download card and image preview. Does not grant access or expose private human uploads. Upload local files through /artifacts/upload before sharing.",
@@ -15,6 +16,8 @@ export function registerStorageTools(server: McpServer, companyId: string) {
         },
     }, async ({ search, limit }) => {
         try {
+            // Files of projects/customers outside the bound agent's scope are not listed.
+            const scope = mcpRecordCondition(await mcpAccessForAgent(companyId, callerAgentId ?? null), { projectId: artifacts.projectId, customerId: artifacts.customerId });
             const files = await db.select({
                 id: artifacts.id, title: artifacts.title, name: artifacts.originalFilename,
                 contentType: artifacts.contentType, sizeBytes: artifacts.sizeBytes,
@@ -22,6 +25,7 @@ export function registerStorageTools(server: McpServer, companyId: string) {
                 eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt),
                 or(ne(artifacts.visibility, "private"), ne(artifacts.createdByType, "human")),
                 search ? or(ilike(artifacts.title, `%${search}%`), ilike(artifacts.originalFilename, `%${search}%`)) : undefined,
+                scope,
             )).orderBy(desc(artifacts.updatedAt)).limit(limit);
             return jsonResult({ files: files.map(file => ({ ...file, shareUrl: `emperor://artifact/${file.id}` })) });
         } catch (error) {

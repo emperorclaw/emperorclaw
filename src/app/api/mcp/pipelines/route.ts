@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines, projects, customers } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus } from "@/lib/pipelines";
 
@@ -25,6 +26,10 @@ export async function GET(req: NextRequest) {
         if (name) conditions.push(eq(pipelines.name, name));
         if (status) conditions.push(eq(pipelines.status, status));
         if (projectId) conditions.push(eq(pipelines.projectId, projectId));
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, searchParams.get("agentId"));
+        if (scoped.response) return scoped.response;
+        const scopeOr = mcpRecordCondition(scoped.access, { projectId: pipelines.projectId, customerId: pipelines.customerId });
+        if (scopeOr) conditions.push(scopeOr);
 
         const rows = await db.select()
             .from(pipelines)

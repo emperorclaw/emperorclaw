@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, logAudit } from "@/lib/mcp";
+import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { artifacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -32,6 +33,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/ar
     if (!artifact) {
         return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
     }
+    const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scopedAccess.response) return scopedAccess.response;
+    if (!mcpMayUseRecord(scopedAccess.access, artifact)) return mcpOutOfScope("Artifact");
     const artifactIdValue = artifact.id as string;
 
     try {

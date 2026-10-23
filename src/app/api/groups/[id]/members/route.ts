@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { addGroupMembers, removeGroupMember } from "@/lib/groups";
-import { announceGroup, groupRoute } from "@/lib/group-route";
+import { announceGroup, groupRoute, requireAgentsInScope, requireGroupInScope } from "@/lib/group-route";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,9 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, { params }: Params) {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    return groupRoute(async ({ companyId }) => {
+    return groupRoute(async ({ companyId, userId, scope }) => {
+        await requireGroupInScope(companyId, id, userId, scope);
+        requireAgentsInScope(scope, body.agentIds);
         const group = await addGroupMembers(companyId, id, body);
         announceGroup(companyId, id, "members");
         return { group };
@@ -21,7 +23,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    return groupRoute(async ({ companyId }) => {
+    return groupRoute(async ({ companyId, userId, scope }) => {
+        await requireGroupInScope(companyId, id, userId, scope);
         const group = await removeGroupMember(companyId, id, body);
         announceGroup(companyId, id, "members");
         return { group };

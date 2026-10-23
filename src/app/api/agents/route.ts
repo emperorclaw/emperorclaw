@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
-import { getCompanyId } from "@/lib/auth";
 import { and, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { legacyAvatarToAppearance, normalizeAppearance, resolveAvatarPhoto } from "@/lib/character/model";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberAgentCondition } from "@/lib/member-scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const allAgents = await db.select({
@@ -23,7 +25,7 @@ export async function GET() {
             status: agents.status,
             lastSeenAt: agents.lastSeenAt,
         }).from(agents)
-            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+            .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(access.ctx.scope, agents.id)));
 
         return NextResponse.json({ agents: allAgents });
     } catch (error: unknown) {
@@ -33,8 +35,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     try {
         const body = await req.json();

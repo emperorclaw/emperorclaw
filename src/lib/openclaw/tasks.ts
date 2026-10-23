@@ -17,7 +17,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { isTerminalTaskState, normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
 import { normalizeTaskSpec } from "@/lib/openclaw/task-spec";
 import { getTaskAssignee, resolveTaskAssignee } from "@/lib/task-assignee";
-import { getAgentScope, getAllowedProjectIds, isProjectAllowed } from "@/lib/agent-scope";
+import { getAgentScope, getAllowedProjectIds, isProjectAllowed, scopeCondition } from "@/lib/agent-scope";
 import { notifyTaskAssigned } from "@/lib/notifications";
 import { wakeAgentOnTaskAssignment } from "@/lib/task-wake";
 
@@ -669,6 +669,8 @@ export async function getTaskOverviewForCompany(input: {
   companyId: string;
   projectId?: string | null;
   maxItems?: number;
+  /** Restrict to these projects (a scoped agent); null/undefined = no restriction. */
+  projectIdFilter?: Set<string> | null;
 }) {
   const maxItems = Math.min(Math.max(input.maxItems || 10, 1), 25);
   const baseConditions: SQL<unknown>[] = [
@@ -676,6 +678,8 @@ export async function getTaskOverviewForCompany(input: {
     isNull(tasks.deletedAt),
   ];
   if (input.projectId) baseConditions.push(eq(tasks.projectId, input.projectId));
+  const scopedProjects = scopeCondition(input.projectIdFilter ?? null, tasks.projectId);
+  if (scopedProjects) baseConditions.push(scopedProjects);
 
   const isActive = sql`${tasks.state} NOT IN (${TASK_STATES.done}, ${TASK_STATES.failed})`;
   const hasUnresolvedDependency = sql`EXISTS (

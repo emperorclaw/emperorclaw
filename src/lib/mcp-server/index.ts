@@ -19,9 +19,9 @@ export async function buildMcpServer(companyId: string, callerAgentId?: string |
 
     registerAgentTools(server, companyId, callerAgentId);
     registerTaskTools(server, companyId, callerAgentId);
-    registerProjectTools(server, companyId);
+    registerProjectTools(server, companyId, callerAgentId);
     registerKnowledgeTools(server, companyId, callerAgentId);
-    registerStorageTools(server, companyId);
+    registerStorageTools(server, companyId, callerAgentId);
     registerMessagingTools(server, companyId, callerAgentId);
     registerObjectiveTools(server, companyId, callerAgentId);
     // Handing work to an agent from outside is an operator action, not an agent one.

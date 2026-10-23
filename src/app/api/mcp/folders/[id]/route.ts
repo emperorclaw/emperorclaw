@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mcpMayUseRecord, mcpOutOfScope, mcpRouteAccess } from "@/lib/mcp-access";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers } from "@/db/schema";
@@ -19,6 +20,9 @@ export async function GET(req: NextRequest, context: RouteContext<"/api/mcp/fold
     if (!folder) {
         return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
+    const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scopedAccess.response) return scopedAccess.response;
+    if (!mcpMayUseRecord(scopedAccess.access, folder)) return mcpOutOfScope("Folder");
     return NextResponse.json({ folder });
 }
 
@@ -35,6 +39,9 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/mcp/fo
         if (!folder) {
             return NextResponse.json({ error: "Folder not found" }, { status: 404 });
         }
+        const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+        if (scopedAccess.response) return scopedAccess.response;
+        if (!mcpMayUseRecord(scopedAccess.access, folder)) return mcpOutOfScope("Folder");
 
         const body = await req.json();
         const newName = body.name ? sanitizeFolderName(body.name) : folder.name;
@@ -196,6 +203,9 @@ export async function DELETE(req: NextRequest, context: RouteContext<"/api/mcp/f
     if (!folder) {
         return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
+    const scopedAccess = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scopedAccess.response) return scopedAccess.response;
+    if (!mcpMayUseRecord(scopedAccess.access, folder)) return mcpOutOfScope("Folder");
 
     // Collect all artifacts in this folder tree that have a Bunny blob before wiping DB records.
     const matchPattern = `${folder.path}/%`;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpMayUseRecord, mcpOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { artifactFolders, artifacts, projects, customers, tasks } from "@/db/schema";
 import { and, eq, isNull, desc, ilike } from "drizzle-orm";
@@ -23,6 +24,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const [currentFolder] = folder;
+    // Folder ids are not secret: the caller's scope decides what it may open
+    // and which entries it sees inside.
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseRecord(scoped.access, currentFolder)) return mcpOutOfScope("Folder");
+    const folderScope = mcpRecordCondition(scoped.access, { projectId: artifactFolders.projectId, customerId: artifactFolders.customerId });
+    const artifactScope = mcpRecordCondition(scoped.access, { projectId: artifacts.projectId, customerId: artifacts.customerId });
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100", 10), 1), 500);
     const query = searchParams.get("search");
@@ -37,6 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         eq(artifactFolders.companyId, companyId),
         eq(artifactFolders.parentFolderId, currentFolder.id),
         isNull(artifactFolders.deletedAt),
+        folderScope,
     )).orderBy(artifactFolders.name);
 
     const artifactConditions = [
@@ -44,6 +53,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         eq(artifacts.folderId, currentFolder.id),
         isNull(artifacts.deletedAt),
     ];
+    if (artifactScope) artifactConditions.push(artifactScope);
     if (query) {
         artifactConditions.push(ilike(artifacts.title, `%${query}%`));
     }

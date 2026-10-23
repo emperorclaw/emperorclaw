@@ -1,5 +1,5 @@
 import { getValidatedServerSession } from "@/lib/auth";
-import { getScopeFromSession, getScopedCustomerIds } from "@/lib/member-scope";
+import { getMemberScopeForSession, getScopedCustomerIds } from "@/lib/member-scope";
 import { db } from "@/db";
 import { projects, tasks, companyMembers, customers } from "@/db/schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
@@ -24,7 +24,7 @@ export default async function ArtifactsPage() {
     }
 
     const companyId = membership.companyId;
-    const scope = session ? getScopeFromSession(session) : null;
+    const scope = session ? await getMemberScopeForSession(session) : null;
     const scopedCustomerIds = getScopedCustomerIds(scope);
 
     const projectConditions: any[] = [eq(projects.companyId, companyId), isNull(projects.deletedAt)];

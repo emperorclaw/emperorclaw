@@ -1,36 +1,20 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { getValidatedServerSession } from "@/lib/auth";
-import { db } from "@/db";
-import { companyMembers } from "@/db/schema";
 import { buildResourceFolderTree, createScopedResource, listScopedResources, resolveResourceScope } from "@/lib/resources";
+import { companyRouteAccess } from "@/lib/company-access";
+import { filterResourcesForMember, memberMaySeeResource } from "@/lib/member-scope";
 
-async function getMembership() {
-  const session = await getValidatedServerSession();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return null;
-  }
-
-  const [membership] = await db.select().from(companyMembers)
-    .where(eq(companyMembers.userId, userId))
-    .limit(1);
-
-  return membership || null;
-}
 
 export async function GET() {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const membership = access.ctx;
 
-    const rows = await listScopedResources({
+    const rows = await filterResourcesForMember(membership.companyId, membership.scope, await listScopedResources({
       companyId: membership.companyId,
-    });
+    }));
 
     return NextResponse.json({
       resources: rows.map((resource) => ({
@@ -48,10 +32,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const membership = access.ctx;
 
     const body = await request.json();
     if (!body || typeof body !== "object") {
@@ -61,6 +44,14 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
       return NextResponse.json({ error: "Resource name is required" }, { status: 400 });
+    }
+
+    const targetScope = {
+      scopeType: typeof body.scopeType === "string" ? body.scopeType : "company",
+      scopeId: typeof body.scopeId === "string" ? body.scopeId : null,
+    };
+    if (!(await memberMaySeeResource(membership.companyId, membership.scope, targetScope))) {
+      return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });
     }
 
     const resource = await createScopedResource({

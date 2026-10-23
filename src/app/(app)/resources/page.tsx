@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
-import { getScopeFromSession, getScopedAgentIds, getScopedCustomerIds } from "@/lib/member-scope";
+import { getMemberScopeForSession, getScopedAgentIds, getScopedCustomerIds } from "@/lib/member-scope";
 import { listScopedResources, resolveResourceScope } from "@/lib/resources";
 import ResourcesClient from "./resources-client";
 
@@ -15,7 +15,7 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
     if (!companyId) redirect("/login");
 
     const session = await getValidatedServerSession();
-    const scope = session ? getScopeFromSession(session) : null;
+    const scope = session ? await getMemberScopeForSession(session) : null;
     const scopedAgentIds = getScopedAgentIds(scope);
     const scopedCustomerIds = getScopedCustomerIds(scope);
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { listProjectsForCompany, createProjectForCompany } from "@/lib/projects-crud";
-import { loadAgentScopeContext, isCustomerAllowed } from "@/lib/agent-scope";
+import { mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -16,16 +16,9 @@ export async function GET(req: NextRequest) {
     const agentIdParam = searchParams.get("agentId");
 
     try {
-        let resolvedAgentId: string | null = null;
-        if (agentIdParam) {
-            try {
-                resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
-            } catch {
-                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-            }
-        }
-        const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-        const result = await listProjectsForCompany({ companyId, limit, status, projectIdFilter: allowedProjectIds });
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentIdParam);
+        if (scoped.response) return scoped.response;
+        const result = await listProjectsForCompany({ companyId, limit, status, projectIdFilter: scoped.access.allowedProjectIds });
         return NextResponse.json({ projects: result });
     } catch (err) {
         console.error("Error fetching projects:", err);
@@ -66,16 +59,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
         }
 
-        if (agentId && customerId) {
-            try {
-                const resolvedAgentId = await resolveAgentId(companyId, agentId);
-                const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-                if (!isCustomerAllowed(allowedCustomerIds, customerId)) {
-                    return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
-                }
-            } catch {
-                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-            }
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentId);
+        if (scoped.response) return scoped.response;
+        if (customerId && !mcpMayUseCustomer(scoped.access, customerId)) {
+            return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
 
         const project = await createProjectForCompany({

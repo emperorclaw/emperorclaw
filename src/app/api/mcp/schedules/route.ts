@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { schedules, playbooks, projects, customers } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -20,9 +21,12 @@ export async function GET(req: NextRequest) {
     const offset = (page - 1) * limit;
 
     try {
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, searchParams.get("agentId"));
+        if (scoped.response) return scoped.response;
         const whereClause = and(
             eq(schedules.companyId, companyId),
             isNull(schedules.deletedAt),
+            mcpRecordCondition(scoped.access, { projectId: schedules.targetProjectId, customerId: schedules.targetCustomerId }),
         );
 
         const [summary] = await db.select({ total: count() })
@@ -88,6 +92,9 @@ export async function POST(req: NextRequest) {
             const [cust] = await db.select().from(customers).where(and(eq(customers.id, targetCustomerId), eq(customers.companyId, companyId)));
             if (!cust) return NextResponse.json({ error: "RELATIONSHIP_VIOLATION", details: "targetCustomerId not found" }, { status: 400 });
         }
+
+        const scheduleDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, { projectId: targetProjectId || null, customerId: targetCustomerId || null }, "Project");
+        if (scheduleDenied) return scheduleDenied;
 
         const nextRunDate = nextRunAt ? new Date(nextRunAt) : null;
 

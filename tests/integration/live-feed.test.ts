@@ -314,12 +314,12 @@ maybe("dm carries only the token creator's own exchanges with each agent", async
     assert.deepEqual(JSON.parse(await (await getLive(on)).text()).dm, [], "a demoted creator's chats leave the screen");
     await db.update(companyMembers).set({ role: "owner" }).where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, creator)));
 
-    // The creator leaves the company: the screen behaves as if the flag were off.
+    // The creator leaves the company: the tokens they minted stop working at all
+    // (a removed person's screen must not keep showing company activity).
     await db.delete(companyMembers).where(and(eq(companyMembers.companyId, companyId), eq(companyMembers.userId, creator)));
-    const removedRaw = await (await getLive(on)).text();
-    const removed = JSON.parse(removedRaw);
-    assert.deepEqual(removed.dm, []);
-    assert.equal(removed.agents.find((a: { id: string }) => a.id === ada.id).activity, "Working in a private chat");
+    const removedRes = await getLive(on);
+    assert.equal(removedRes.status, 401);
+    const removedRaw = await removedRes.text();
     assert.ok(!removedRaw.includes("Creator question") && !removedRaw.includes("launch plan"));
 });
 

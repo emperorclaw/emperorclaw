@@ -3,6 +3,7 @@ import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib
 import { createTaskForProject } from "@/lib/openclaw/tasks";
 import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -36,6 +37,11 @@ export async function POST(req: NextRequest) {
 
     if (!projectId || !taskType) {
         return NextResponse.json({ error: "projectId and taskType are required" }, { status: 400 });
+    }
+    const scoped = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseProject(scoped.access, projectId)) {
+        return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
     }
 
     if (!allowUnderspecified) {

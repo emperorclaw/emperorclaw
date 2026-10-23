@@ -13,7 +13,7 @@ import { sanitizeLogicalPath } from "@/lib/storage/path-sanitizer";
 
 export async function DELETE(req: NextRequest) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId } = await requireCompanyFromSession("admin");
         if (!isStorageDiscoveryEnabled()) {
             return NextResponse.json({ error: "Storage discovery is not enabled" }, { status: 400 });
         }
@@ -69,6 +69,6 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ success: true });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to remove untracked Storage entry";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }

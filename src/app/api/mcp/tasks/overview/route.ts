@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { getTaskOverviewForCompany } from "@/lib/openclaw/tasks";
+import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -12,10 +13,16 @@ export async function GET(req: NextRequest) {
     const maxItems = Number.isFinite(requestedMax) ? Math.min(Math.max(requestedMax, 1), 25) : 10;
 
     try {
+        const scoped = await mcpRouteAccess(auth.companyToken!.companyId, auth.companyToken!, searchParams.get("agentId"));
+        if (scoped.response) return scoped.response;
+        if (projectId && !mcpMayUseProject(scoped.access, projectId)) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
         const overview = await getTaskOverviewForCompany({
             companyId: auth.companyToken!.companyId,
             projectId,
             maxItems,
+            projectIdFilter: scoped.access.allowedProjectIds,
         });
         return NextResponse.json({ overview });
     } catch (error) {

@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId } from "@/lib/auth";
 import { AuthError, requireRole } from "@/lib/roles";
 import { getApprovalDetail, resolveApproval } from "@/lib/approvals";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeProjectId } from "@/lib/member-scope";
 
 export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const { id } = await params;
     const detail = await getApprovalDetail(companyId, id);
-    if (!detail) {
+    if (!detail || !(await memberMaySeeProjectId(companyId, access.ctx.scope, detail.approval.projectId))) {
         return NextResponse.json({ error: "Approval not found" }, { status: 404 });
     }
 
@@ -35,6 +35,11 @@ export async function PATCH(
 
     try {
         const { id } = await params;
+        // A restricted member decides only approvals on projects they can see.
+        const current = await getApprovalDetail(ctx.companyId, id);
+        if (!current || !(await memberMaySeeProjectId(ctx.companyId, ctx.scope, current.approval.projectId))) {
+            return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+        }
         const body = await req.json();
         const { status, resolutionNote } = body;
 

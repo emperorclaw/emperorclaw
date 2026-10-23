@@ -235,6 +235,8 @@ export interface ReplyRunSummary {
     inputTokens: number | null;
     outputTokens: number | null;
     model: string | null;
+    /** The task the run worked on: the footer links to its task page. */
+    taskId: string | null;
 }
 
 /** Finished runs re-sent to chat this long after they end (see loadChatRunState). */
@@ -296,6 +298,7 @@ export async function loadChatRunState(
                 inputTokens: agentRuns.inputTokens,
                 outputTokens: agentRuns.outputTokens,
                 model: agentRuns.model,
+                taskId: agentRuns.taskId,
             })
             .from(agentRuns)
             .where(and(
@@ -328,6 +331,7 @@ export async function loadChatRunState(
             inputTokens: row.inputTokens,
             outputTokens: row.outputTokens,
             model: row.model,
+            taskId: row.taskId,
         };
     }
     return { liveRuns, replyRuns };

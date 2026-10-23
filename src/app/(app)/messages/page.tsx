@@ -8,6 +8,8 @@ import { ensureTeamThread, getDirectChatMode, getThreadMessages } from "@/lib/co
 import { listGroupsForUser } from "@/lib/groups";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
+import { loadMemberScope, memberAgentCondition } from "@/lib/member-scope";
+import { memberMaySeeGroup } from "@/lib/group-route";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +34,10 @@ export default async function MessagesPage() {
     if (!userId) redirect("/login");
 
     const directChatMode = await getDirectChatMode(companyId);
+    // A restricted member only sees (and chats with) the agents in their scope.
+    const memberScope = await loadMemberScope(userId, companyId);
     const allAgents = await db.select().from(agents).where(
-        and(eq(agents.companyId, companyId), isNull(agents.deletedAt))
+        and(eq(agents.companyId, companyId), isNull(agents.deletedAt), memberAgentCondition(memberScope, agents.id))
     );
 
     const directThreads = await db.select().from(messageThreads).where(
@@ -169,7 +173,7 @@ export default async function MessagesPage() {
     // still renders Messages; it just shows no groups.
     let groups: Awaited<ReturnType<typeof listGroupsForUser>> = [];
     try {
-        groups = await listGroupsForUser(companyId, userId);
+        groups = (await listGroupsForUser(companyId, userId)).filter((g) => memberMaySeeGroup(memberScope, g));
     } catch (error) {
         if (!isMissingSchemaError(error)) throw error;
     }

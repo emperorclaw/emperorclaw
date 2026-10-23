@@ -2,8 +2,14 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listProjectsForCompany, getProjectForCompany, createProjectForCompany, updateProjectForCompany } from "@/lib/projects-crud";
 import { jsonResult, errorResult } from "../result";
+import { mcpAccessForAgent, mcpMayUseCustomer, mcpMayUseProject } from "@/lib/mcp-access";
 
-export function registerProjectTools(server: McpServer, companyId: string) {
+export function registerProjectTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
+    // Every project tool runs under the bound agent's data scope (lib/mcp-access.ts).
+    const access = () => mcpAccessForAgent(companyId, callerAgentId ?? null);
+    const requireProject = async (projectId: string) => {
+        if (!mcpMayUseProject(await access(), projectId)) throw new Error(`Project ${projectId} not found`);
+    };
     server.registerTool("list_projects", {
         title: "List Projects",
         description: "List projects for this company, most recently created first.",
@@ -13,7 +19,7 @@ export function registerProjectTools(server: McpServer, companyId: string) {
         },
     }, async ({ status, limit }) => {
         try {
-            const projects = await listProjectsForCompany({ companyId, status, limit });
+            const projects = await listProjectsForCompany({ companyId, status, limit, projectIdFilter: (await access()).allowedProjectIds });
             return jsonResult({ projects });
         } catch (e) {
             return errorResult(e);
@@ -28,7 +34,7 @@ export function registerProjectTools(server: McpServer, companyId: string) {
         },
     }, async ({ projectId }) => {
         try {
-            const project = await getProjectForCompany(companyId, projectId);
+            const project = mcpMayUseProject(await access(), projectId) ? await getProjectForCompany(companyId, projectId) : null;
             if (!project) return errorResult(new Error(`Project ${projectId} not found`));
             return jsonResult({ project });
         } catch (e) {
@@ -48,6 +54,7 @@ export function registerProjectTools(server: McpServer, companyId: string) {
         },
     }, async ({ goal, customerId, leadAgentId, requireApprovalForDone, maxActiveAgents }) => {
         try {
+            if (customerId && !mcpMayUseCustomer(await access(), customerId)) throw new Error(`Customer ${customerId} not found`);
             const project = await createProjectForCompany({ companyId, goal, customerId, leadAgentId, requireApprovalForDone, maxActiveAgents });
             return jsonResult({ message: "Project created", project });
         } catch (e) {
@@ -66,6 +73,7 @@ export function registerProjectTools(server: McpServer, companyId: string) {
         },
     }, async ({ projectId, goal, status, leadAgentId }) => {
         try {
+            await requireProject(projectId);
             const project = await updateProjectForCompany({ companyId, projectId, goal, status, leadAgentId });
             return jsonResult({ message: "Project updated", project });
         } catch (e) {

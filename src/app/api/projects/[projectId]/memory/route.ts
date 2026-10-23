@@ -4,13 +4,14 @@ import { db } from "@/db";
 import { projectMemory, projects } from "@/db/schema";
 import { getCompanyId, getUserId } from "@/lib/auth";
 import { broadcastMcpEvent } from "@/lib/pubsub";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeProject } from "@/lib/member-scope";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     try {
         const { projectId } = await params;
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
             and(eq(projects.id, projectId), eq(projects.companyId, companyId))
         ).limit(1);
 
-        if (!project) {
+        if (!project || !memberMaySeeProject(access.ctx.scope, project)) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 

@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, resolveAgentId } from "@/lib/mcp";
 import { createScopedResource, toPublicResource } from "@/lib/resources";
+import { mcpMayWriteResourceScope, mcpRouteAccess } from "@/lib/mcp-access";
 
 function slugify(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "knowledge-note";
@@ -24,6 +25,11 @@ export async function POST(req: NextRequest) {
   const scopeType = typeof body.scopeType === "string" ? body.scopeType : "company";
   const scopeId = scopeType === "agent" && body.scopeId ? await resolveAgentId(companyId, body.scopeId) : body.scopeId || null;
   const owner = typeof body.agentId === "string" ? body.agentId : "agent";
+  const scoped = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
+  if (scoped.response) return scoped.response;
+  if (!mcpMayWriteResourceScope(scoped.access, scopeType, scopeId)) {
+    return NextResponse.json({ error: "Scope is outside this agent's scope" }, { status: 403 });
+  }
   const resource = await createScopedResource({
     companyId,
     scopeType,

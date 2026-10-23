@@ -32,10 +32,12 @@ test("Settings is runtime-neutral for operators and hides dangerous details behi
 });
 
 test("Operator navigation and docs expose the right pages without hiding key manuals", () => {
-  const sidebar = read("src/components/app-sidebar.tsx");
-  assertContains(sidebar, 'name: "Dashboard"', "sidebar should include Dashboard");
+  // The sidebar renders the shared IA in src/lib/navigation.ts.
+  const sidebar = read("src/lib/navigation.ts");
+  assertContains(sidebar, 'name: "Home"', "sidebar should include Home");
+  assertContains(sidebar, 'name: "Inbox"', "sidebar should include the Inbox (approvals are its filter)");
+  assertContains(sidebar, '"/approvals"', "the Approvals page should stay reachable through the Inbox");
   assertContains(sidebar, 'name: "Projects"', "sidebar should include Projects");
-  assertContains(sidebar, 'name: "Approvals"', "sidebar should include Approvals");
   assertContains(sidebar, 'name: "Agents"', "sidebar should include Agents");
   assertContains(sidebar, 'name: "Files"', "sidebar should include Files");
   assertNotContains(sidebar, 'name: "Attention"', "sidebar should no longer route to the removed Attention/Incidents page");

@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getValidatedServerSession } from "@/lib/auth";
+import { requireRole } from "@/lib/roles";
+import { canAdmin, canWrite } from "@/lib/role-matrix";
 
 // GET /api/user/profile — read own profile
 export async function GET() {
@@ -18,7 +20,16 @@ export async function GET() {
         .limit(1);
 
     if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(user);
+    // The caller's effective company role (from the DB), so the UI can hide
+    // actions the server would refuse. Routes still enforce it themselves.
+    const access = await requireRole("viewer")().catch(() => null);
+    return NextResponse.json({
+        ...user,
+        role: access?.role ?? null,
+        canWrite: canWrite(access?.role),
+        canAdmin: canAdmin(access?.role),
+        restricted: Boolean(access?.scope),
+    });
 }
 
 // PATCH /api/user/profile — update own display name and role title

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId, getUserId } from "@/lib/auth";
 import { createApprovalRequest, listApprovalsForCompany } from "@/lib/approvals";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeProjectId, memberVisibleProjectIds } from "@/lib/member-scope";
 
 interface CreateApprovalRequestBody {
     projectId: string;
@@ -10,17 +11,18 @@ interface CreateApprovalRequestBody {
 }
 
 export async function GET(req: NextRequest) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
     const status = searchParams.get("status");
 
     const approvals = await listApprovalsForCompany(companyId);
+    const visibleProjects = await memberVisibleProjectIds(companyId, access.ctx.scope);
     const filtered = approvals.filter((approval) => {
+        if (visibleProjects && !visibleProjects.has(approval.projectId)) return false;
         if (projectId && approval.projectId !== projectId) return false;
         if (status && approval.status !== status) return false;
         return true;
@@ -30,11 +32,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
+    const userId = access.ctx.userId;
 
     try {
         const body = (await req.json()) as CreateApprovalRequestBody;
@@ -42,6 +43,9 @@ export async function POST(req: NextRequest) {
 
         if (!projectId || !Array.isArray(taskIds) || taskIds.length === 0) {
             return NextResponse.json({ error: "projectId and taskIds are required" }, { status: 400 });
+        }
+        if (!(await memberMaySeeProjectId(companyId, access.ctx.scope, projectId))) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 
         const approval = await createApprovalRequest({

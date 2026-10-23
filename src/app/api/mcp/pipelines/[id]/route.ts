@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateMermaid, parsePipelineContextConfig, parsePipelineSteps, validateForActivation, PIPELINE_STATUSES, PipelineStatus, PipelineStep } from "@/lib/pipelines";
 
@@ -30,6 +31,8 @@ export async function GET(
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+        const pipelineDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, pipeline, "Pipeline");
+        if (pipelineDenied) return pipelineDenied;
 
         const runs = await db.select().from(pipelineRuns)
             .where(eq(pipelineRuns.pipelineId, pipeline.id))
@@ -67,6 +70,8 @@ export async function PATCH(
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+        const pipelineDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, pipeline, "Pipeline");
+        if (pipelineDenied) return pipelineDenied;
 
         const body = await req.json();
         const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -175,6 +180,8 @@ export async function DELETE(
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found or already retired" }, { status: 404 });
         }
+        const pipelineDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, pipeline, "Pipeline");
+        if (pipelineDenied) return pipelineDenied;
 
         const [retired] = await db.update(pipelines).set({
             status: "retired",

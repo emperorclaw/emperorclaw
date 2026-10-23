@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
+import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { loadAgentScopeContext, isCustomerAllowed } from "@/lib/agent-scope";
+import { mcpAccessErrorResponse, mcpMayUseCustomer, resolveMcpAgentAccess } from "@/lib/mcp-access";
 
-async function resolveScopedAgent(companyId: string, agentIdParam: unknown): Promise<
-    { ok: true; allowedCustomerIds: Set<string> | null } | { ok: false; response: NextResponse }
+async function resolveScopedAgent(companyId: string, token: { agentId?: string | null }, agentIdParam: unknown): Promise<
+    { ok: true; access: Awaited<ReturnType<typeof resolveMcpAgentAccess>> } | { ok: false; response: NextResponse }
 > {
-    if (typeof agentIdParam !== "string" || !agentIdParam) {
-        return { ok: true, allowedCustomerIds: null };
-    }
     try {
-        const resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
-        const { allowedCustomerIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-        return { ok: true, allowedCustomerIds };
-    } catch {
-        return { ok: false, response: NextResponse.json({ error: "Agent not found" }, { status: 404 }) };
+        return { ok: true, access: await resolveMcpAgentAccess(companyId, token, agentIdParam) };
+    } catch (error) {
+        return { ok: false, response: mcpAccessErrorResponse(error) ?? NextResponse.json({ error: "Agent not found" }, { status: 404 }) };
     }
 }
 
@@ -54,9 +49,9 @@ export async function PATCH(
             return NextResponse.json({ error: "Customer not found or unauthorized." }, { status: 404 });
         }
 
-        const scoped = await resolveScopedAgent(companyId, agentId);
+        const scoped = await resolveScopedAgent(companyId, auth.companyToken!, agentId);
         if (!scoped.ok) return scoped.response;
-        if (!isCustomerAllowed(scoped.allowedCustomerIds, customerId)) {
+        if (!mcpMayUseCustomer(scoped.access, customerId)) {
             return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
 
@@ -108,9 +103,9 @@ export async function DELETE(
         } catch {
             // No body / not JSON — DELETE typically has none, treat as unscoped caller.
         }
-        const scoped = await resolveScopedAgent(companyId, agentId);
+        const scoped = await resolveScopedAgent(companyId, auth.companyToken!, agentId);
         if (!scoped.ok) return scoped.response;
-        if (!isCustomerAllowed(scoped.allowedCustomerIds, customerId)) {
+        if (!mcpMayUseCustomer(scoped.access, customerId)) {
             return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
 

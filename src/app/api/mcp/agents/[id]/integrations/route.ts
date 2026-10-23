@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpBoundAgentMismatch, mcpTokenMayActOnAgent } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { agentIntegrations, agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -16,6 +17,7 @@ export async function GET(
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+    if (!(await mcpTokenMayActOnAgent(companyId, auth.companyToken!, agentId))) return mcpBoundAgentMismatch();
 
     try {
         // Verify agent exists and belongs to company
@@ -55,6 +57,7 @@ export async function POST(
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+    if (!(await mcpTokenMayActOnAgent(companyId, auth.companyToken!, agentId))) return mcpBoundAgentMismatch();
     const endpoint = `/api/mcp/agents/${agentId}/integrations`;
 
     const { requestHash, cachedResponse, error, status } = await checkIdempotency(req, companyId, endpoint);
@@ -115,6 +118,7 @@ export async function DELETE(
 
     const companyId = auth.companyToken!.companyId;
     const { id: agentId } = await params;
+    if (!(await mcpTokenMayActOnAgent(companyId, auth.companyToken!, agentId))) return mcpBoundAgentMismatch();
     const { searchParams } = new URL(req.url);
     const integrationId = searchParams.get('integrationId');
 

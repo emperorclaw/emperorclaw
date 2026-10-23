@@ -1,11 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { getValidatedServerSession } from "@/lib/auth";
-import { db } from "@/db";
-import { companyMembers } from "@/db/schema";
 import { buildResourceFolderTree, listScopedResources, moveResourceFolder, deleteResourceFolder } from "@/lib/resources";
+import { companyRouteAccess } from "@/lib/company-access";
+import { filterResourcesForMember } from "@/lib/member-scope";
 
 function readScope(body: Record<string, unknown>): { scopeType: string | null; scopeId: string | null } {
   return {
@@ -14,29 +12,15 @@ function readScope(body: Record<string, unknown>): { scopeType: string | null; s
   };
 }
 
-async function getMembership() {
-  const session = await getValidatedServerSession();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return null;
-  }
-
-  const [membership] = await db.select().from(companyMembers)
-    .where(eq(companyMembers.userId, userId))
-    .limit(1);
-
-  return membership || null;
-}
 
 /** The Knowledge & Rules folder tree, derived from note paths. */
 export async function GET() {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("viewer");
+    if (access.response) return access.response;
+    const membership = access.ctx;
 
-    const rows = await listScopedResources({ companyId: membership.companyId });
+    const rows = await await filterResourcesForMember(membership.companyId, membership.scope, await listScopedResources({ companyId: membership.companyId }));
     return NextResponse.json({ folders: buildResourceFolderTree(rows) });
   } catch (error) {
     console.error("Error building resource folder tree:", error);
@@ -52,9 +36,13 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const membership = access.ctx;
+    // Folder moves/deletes touch every note under a path, across scopes: only
+    // members without a restricted scope may reorganise the vault.
+    if (membership.scope) {
+      return NextResponse.json({ error: "Restricted members cannot reorganise Knowledge folders" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -86,9 +74,13 @@ export async function POST(request: Request) {
 /** Delete a folder and every note inside it (and its subfolders), scoped. */
 export async function DELETE(request: Request) {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const membership = access.ctx;
+    // Folder moves/deletes touch every note under a path, across scopes: only
+    // members without a restricted scope may reorganise the vault.
+    if (membership.scope) {
+      return NextResponse.json({ error: "Restricted members cannot reorganise Knowledge folders" }, { status: 403 });
     }
 
     const body = await request.json();

@@ -11,85 +11,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-// ---------------------------------------------------------------------------
-// Inline implementations (tested directly to avoid DB dependencies)
-// These mirror the production code in src/lib/roles.ts and src/lib/invitations.ts
-// but operate on pure data so tests run without a database.
-// ---------------------------------------------------------------------------
-
-// ── Role types ────────────────────────────────────────────────────────────
-
-type InstanceRole = "instance_admin" | "member";
-type CompanyRole = "owner" | "admin" | "member" | "viewer";
-type Role = InstanceRole | CompanyRole;
-
-type Permission =
-    | "instance:settings:write"
-    | "users:invite"
-    | "users:remove"
-    | "users:role:change"
-    | "projects:all:write"
-    | "projects:own:write"
-    | "projects:read"
-    | "tokens:manage"
-    | "agents:manage";
-
-// ── Role hierarchy ────────────────────────────────────────────────────────
-
-const ROLE_HIERARCHY: Role[] = [
-    "instance_admin",
-    "owner",
-    "admin",
-    "member",
-    "viewer",
-];
-
-const ROLE_INDEX = new Map<Role, number>(
-    ROLE_HIERARCHY.map((r, i) => [r, i]),
-);
-
-function roleGte(a: Role, b: Role): boolean {
-    const idxA = ROLE_INDEX.get(a) ?? ROLE_HIERARCHY.length;
-    const idxB = ROLE_INDEX.get(b) ?? ROLE_HIERARCHY.length;
-    return idxA <= idxB;
-}
-
-// ── Permission matrix ─────────────────────────────────────────────────────
-
-const PERMISSION_MATRIX: Record<Permission, ReadonlySet<Role>> = {
-    "instance:settings:write": new Set<Role>(["instance_admin"]),
-    "users:invite": new Set<Role>(["instance_admin", "owner", "admin"]),
-    "users:remove": new Set<Role>(["instance_admin", "owner", "admin"]),
-    "users:role:change": new Set<Role>(["instance_admin", "owner"]),
-    "projects:all:write": new Set<Role>(["instance_admin", "owner", "admin"]),
-    "projects:own:write": new Set<Role>(["instance_admin", "owner", "admin", "member"]),
-    "projects:read": new Set<Role>(["instance_admin", "owner", "admin", "member", "viewer"]),
-    "tokens:manage": new Set<Role>(["instance_admin", "owner", "admin"]),
-    "agents:manage": new Set<Role>(["instance_admin", "owner", "admin", "member"]),
-};
-
-// ── Permission check ──────────────────────────────────────────────────────
-
-function getEffectiveRole(instanceRole: InstanceRole, companyRole: CompanyRole | null): Role {
-    if (instanceRole === "instance_admin") return "instance_admin";
-    if (!companyRole) return instanceRole;
-    return roleGte(companyRole, instanceRole) ? companyRole : instanceRole;
-}
-
-function hasPermission(
-    instanceRole: InstanceRole,
-    companyRole: CompanyRole | null,
-    permission: Permission,
-): boolean {
-    const effective = getEffectiveRole(instanceRole, companyRole);
-    const allowedRoles = PERMISSION_MATRIX[permission];
-    if (!allowedRoles) return false;
-
-    for (const allowedRole of allowedRoles) {
-        if (roleGte(effective, allowedRole)) return true;
-    }
-    return false;
-}
+// The role rules are imported from the production module (pure, no DB), so
+// these tests exercise the code the route guards actually run.
+import {
+    PERMISSION_MATRIX,
+    ROLE_HIERARCHY,
+    canAdmin,
+    canWrite,
+    getEffectiveRole,
+    hasPermission,
+    roleGte,
+    type Permission,
+    type Role,
+} from "../src/lib/role-matrix";
 
 // ── Invitation token helpers (pure, no DB) ────────────────────────────────
 
@@ -233,13 +167,21 @@ describe("Permission Matrix (hasPermission)", () => {
 
     // ── viewer ─────────────────────────────────────────────────────────
 
-    it("viewer companyRole with member instanceRole gets member-level permissions (floor)", () => {
-        // Effective role = max(member, viewer) = member.
-        // So a "viewer" at company level still inherits member-level permissions.
+    it("a company viewer only reads: the default instance role never lifts them to member", () => {
         assert.ok(hasPermission("member", "viewer", "projects:read"));
-        assert.ok(hasPermission("member", "viewer", "projects:own:write"));
-        assert.ok(hasPermission("member", "viewer", "agents:manage"));
+        assert.ok(!hasPermission("member", "viewer", "projects:own:write"));
+        assert.ok(!hasPermission("member", "viewer", "agents:manage"));
         assert.ok(!hasPermission("member", "viewer", "users:invite"));
+        assert.equal(canWrite(getEffectiveRole("member", "viewer")), false);
+    });
+
+    it("canWrite / canAdmin follow the hierarchy", () => {
+        assert.equal(canWrite("viewer"), false);
+        assert.equal(canWrite("member"), true);
+        assert.equal(canAdmin("member"), false);
+        assert.equal(canAdmin("admin"), true);
+        assert.equal(canAdmin("instance_admin"), true);
+        assert.equal(canWrite(null), false);
     });
 });
 
@@ -255,7 +197,7 @@ describe("getEffectiveRole", () => {
         assert.equal(getEffectiveRole("member", "owner"), "owner");
         assert.equal(getEffectiveRole("member", "admin"), "admin");
         assert.equal(getEffectiveRole("member", "member"), "member");
-        assert.equal(getEffectiveRole("member", "viewer"), "member"); // member > viewer
+        assert.equal(getEffectiveRole("member", "viewer"), "viewer");
     });
 
     it("null company role falls back to instance role", () => {
@@ -263,11 +205,10 @@ describe("getEffectiveRole", () => {
         assert.equal(getEffectiveRole("instance_admin", null), "instance_admin");
     });
 
-    it("effective role is always the higher of the two", () => {
-        // member instance + owner company = owner (company role is higher)
+    it("the company role decides unless the user is an instance admin", () => {
         assert.equal(getEffectiveRole("member", "owner"), "owner");
-        // member instance + viewer company = member (instance role is higher)
-        assert.equal(getEffectiveRole("member", "viewer"), "member");
+        // The default instance tier "member" is not a company permission level.
+        assert.equal(getEffectiveRole("member", "viewer"), "viewer");
     });
 });
 
@@ -418,11 +359,11 @@ describe("Edge Cases", () => {
         assert.ok(justExpired.getTime() <= now);
     });
 
-    it("viewer instance_role defaults to member for permission floor", () => {
+    it("a viewer keeps the viewer role despite the default member instance role", () => {
         const effective = getEffectiveRole("member", "viewer");
-        assert.equal(effective, "member");
+        assert.equal(effective, "viewer");
         assert.ok(hasPermission("member", "viewer", "projects:read"));
-        assert.ok(hasPermission("member", "viewer", "agents:manage"));
+        assert.ok(!hasPermission("member", "viewer", "agents:manage"));
     });
 
     it("unknown roles in roleGte default to lowest rank", () => {

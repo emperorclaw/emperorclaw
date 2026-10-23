@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyFromSession } from "@/lib/company-session";
+import { memberMaySeeRecord } from "@/lib/member-scope";
 import { artifacts } from "@/db/schema";
 import { db } from "@/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -10,7 +11,7 @@ import { sanitizeArtifactClientPayload } from "@/lib/artifacts";
 
 export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/artifacts/[id]/move">) {
     try {
-        const { companyId } = await requireCompanyFromSession();
+        const { companyId, scope } = await requireCompanyFromSession("member");
         const { id: artifactId } = await context.params;
         const [artifact] = await db.select().from(artifacts).where(and(
             eq(artifacts.id, artifactId),
@@ -18,7 +19,7 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
             isNull(artifacts.deletedAt),
         )).limit(1);
 
-        if (!artifact) {
+        if (!artifact || !(await memberMaySeeRecord(companyId, scope, artifact))) {
             return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
         }
 
@@ -63,6 +64,6 @@ export async function PATCH(req: NextRequest, context: RouteContext<"/api/ui/art
         return NextResponse.json({ artifact: sanitizeArtifactClientPayload(updatedArtifact) });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to move artifact";
-        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+        return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500 });
     }
 }

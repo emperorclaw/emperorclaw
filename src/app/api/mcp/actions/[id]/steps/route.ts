@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { verifyMcpToken } from "@/lib/mcp";
+import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { actionRuns, actionSteps } from "@/db/schema";
 
@@ -19,6 +20,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ).limit(1);
 
         if (!actionRun) {
+            return NextResponse.json({ error: "Action run not found" }, { status: 404 });
+        }
+        const actionDenied = await mcpDenyOutOfScope(req, companyId, auth.companyToken!, actionRun, "Action run");
+        if (actionDenied) return actionDenied;
+        // A bound token only records steps of its own agent's action runs.
+        if (auth.companyToken!.agentId && actionRun.agentId && actionRun.agentId !== auth.companyToken!.agentId) {
             return NextResponse.json({ error: "Action run not found" }, { status: 404 });
         }
 

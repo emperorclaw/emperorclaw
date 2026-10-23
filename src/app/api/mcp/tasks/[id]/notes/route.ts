@@ -4,6 +4,7 @@ import { projectMemory, taskEvents, tasks } from "@/db/schema";
 import { eq, and, asc } from "drizzle-orm";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveBoundAgentId } from "@/lib/mcp";
 import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+import { mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
 import { TASK_NOTE_MAX_CHARS } from "@/lib/openclaw/tasks";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
@@ -36,6 +37,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     try {
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, req.nextUrl.searchParams.get("agentId"));
+        if (scoped.response) return scoped.response;
+        if (!(await mcpMayUseTask(companyId, scoped.access, taskId))) {
+            return NextResponse.json({ error: "Task not found" }, { status: 404 });
+        }
         const events = await db.select().from(taskEvents).where(
             and(
                 eq(taskEvents.taskId, taskId),

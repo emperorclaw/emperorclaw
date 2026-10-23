@@ -1,28 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { getValidatedServerSession } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberRecordCondition } from "@/lib/member-scope";
 import { db } from "@/db";
-import { companyMembers, artifacts, projects, tasks, customers } from "@/db/schema";
+import { artifacts, projects, tasks, customers } from "@/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
 
 export async function GET() {
     try {
-        const session = await getValidatedServerSession();
-        const sessionUserId = session?.user?.id;
-        if (!sessionUserId) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        const [membership] = await db.select().from(companyMembers)
-            .where(eq(companyMembers.userId, sessionUserId))
-            .limit(1);
-
-        if (!membership) {
-            return NextResponse.json({ error: "Company not found" }, { status: 404 });
-        }
-
-        const companyId = membership.companyId;
+        const access = await companyRouteAccess("viewer");
+        if (access.response) return access.response;
+        const companyId = access.ctx.companyId;
 
         const results = await db.select({
             id: artifacts.id,
@@ -45,7 +34,8 @@ export async function GET() {
             .leftJoin(projects, eq(artifacts.projectId, projects.id))
             .leftJoin(customers, eq(projects.customerId, customers.id))
             .leftJoin(tasks, eq(artifacts.taskId, tasks.id))
-            .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt)))
+            .where(and(eq(artifacts.companyId, companyId), isNull(artifacts.deletedAt),
+                memberRecordCondition(access.ctx.scope, { projectId: artifacts.projectId, customerId: artifacts.customerId, projectCustomerId: projects.customerId })))
             .orderBy(desc(artifacts.createdAt));
 
         return NextResponse.json({ artifacts: results });

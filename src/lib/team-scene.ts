@@ -63,7 +63,10 @@ export interface DashboardMember {
     canRestartRuntime?: boolean;
 }
 
-export type AttentionKind = "approval" | "incident" | "message" | "agent" | "late" | "not_started" | "paused";
+export type AttentionKind =
+    | "approval" | "incident" | "message" | "agent" | "late" | "not_started" | "paused"
+    // Inbox-only kinds (src/lib/attention.ts): the dashboard panel keeps the seven above.
+    | "decision" | "mention" | "run_failed" | "task_blocked" | "request" | "stalled";
 
 /**
  * An incident's classification, derived from its structured `reasonCode`
@@ -93,6 +96,17 @@ export interface AttentionEntry {
     /** Explicit override for delivery failures and queue items. */
     actionRequired?: boolean;
     canRestartRuntime?: boolean;
+    /** Context for the inbox and member-scope filtering (src/lib/attention.ts). */
+    projectId?: string | null;
+    customerId?: string | null;
+    customerName?: string | null;
+    /** A multi-task approval: how many live tasks one decision resolves. */
+    taskCount?: number;
+    /** A mention/decision notification that "Mark read" clears. */
+    notificationId?: string | null;
+    runId?: string | null;
+    /** Rationale or failure detail shown under the title on the inbox. */
+    detail?: string | null;
 }
 
 export interface CollaborationEvent {
@@ -180,6 +194,8 @@ export interface DashboardData {
     members: DashboardMember[];
     board: { inProgress: DashboardTask[]; review: DashboardTask[]; done: DashboardTask[] };
     attention: AttentionEntry[];
+    /** Agent ids working now (src/lib/attention.ts): the "working now" card, same as the Home badge. */
+    workingNow?: string[];
     collaborations: CollaborationEvent[];
     activity: ActivityEvent[];
     cost: CostSummary;
@@ -242,7 +258,7 @@ export function isBlockingAttention(kind: AttentionKind): boolean {
 
 /** Timing and delivery observations do not imply that a human owes a response. */
 export function requiresHumanAction(entry: AttentionEntry): boolean {
-    return entry.actionRequired ?? ["approval", "incident", "agent", "paused"].includes(entry.kind);
+    return entry.actionRequired ?? ["approval", "decision", "incident", "agent", "paused", "run_failed", "task_blocked", "request", "stalled"].includes(entry.kind);
 }
 
 export function attentionForMember(entries: AttentionEntry[], memberKey: string): AttentionEntry[] {
@@ -262,6 +278,12 @@ export function attentionUrgency(kind: AttentionKind): number {
         case "message": return 4;
         case "paused": return 5;
         case "not_started": return 6;
+        case "run_failed": return 1;
+        case "task_blocked": return 2;
+        case "request": return 2;
+        case "stalled": return 2;
+        case "decision": return 3;
+        case "mention": return 7;
     }
 }
 
@@ -415,6 +437,12 @@ const BLOCKED_COPY: Record<AttentionKind, string> = {
     late: "Running late",
     not_started: "Hasn't started",
     paused: "Conversation paused",
+    decision: "Waiting on a decision",
+    mention: "Mentioned someone",
+    run_failed: "Last run failed",
+    task_blocked: "Task is blocked",
+    request: "Request failed",
+    stalled: "No progress",
 };
 
 function sentence(text: string): string {
@@ -1350,9 +1378,9 @@ export function deriveSceneAgents(data: Pick<DashboardData, "members" | "attenti
     });
 }
 
-export function kpiCounts(agents: SceneAgent[], data: Pick<DashboardData, "board" | "attention">): Record<KpiFilter, number> {
+export function kpiCounts(agents: SceneAgent[], data: Pick<DashboardData, "board" | "attention" | "workingNow">): Record<KpiFilter, number> {
     return {
-        working: agents.filter((a) => a.status === "working").length,
+        working: data.workingNow ? data.workingNow.length : agents.filter((a) => a.status === "working").length,
         waiting: agents.filter((a) => a.status === "waiting").length,
         done: agents.filter((a) => a.member.doneToday > 0).length,
         attention: data.attention.filter(requiresHumanAction).length,

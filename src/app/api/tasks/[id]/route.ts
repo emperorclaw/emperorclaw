@@ -6,6 +6,7 @@ import { AuthError, requireRole } from "@/lib/roles";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
+import { memberMayAssignAgents, memberMaySeeTaskId } from "@/lib/member-scope";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     let ctx;
@@ -17,8 +18,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { id: taskId } = await params;
+    if (!(await memberMaySeeTaskId(ctx.companyId, ctx.scope, taskId))) {
+        return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
     try {
         const body = await req.json();
+        // A restricted member reassigns work only to agents in their scope.
+        if (!memberMayAssignAgents(ctx.scope, body)) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
         const inputJson = body.inputJson && typeof body.inputJson === "object" ? body.inputJson : undefined;
         const result = await updateTaskForCompany({
             companyId: ctx.companyId,
@@ -57,6 +65,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id: taskId } = await params;
+    if (!(await memberMaySeeTaskId(ctx.companyId, ctx.scope, taskId))) {
+        return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
     try {
         const [existing] = await db.select().from(tasks).where(and(
             eq(tasks.id, taskId),

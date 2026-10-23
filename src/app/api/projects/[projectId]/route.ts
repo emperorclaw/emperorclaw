@@ -3,6 +3,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberMaySeeProject } from "@/lib/member-scope";
 
 const validStatuses = new Set(["active", "paused", "killed", "completed"]);
 
@@ -18,10 +20,9 @@ async function validateScopedRelation(companyId: string, table: typeof customers
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const { projectId } = await params;
     try {
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
             isNull(projects.deletedAt),
         )).limit(1);
 
-        if (!existing) {
+        if (!existing || !memberMaySeeProject(access.ctx.scope, existing)) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 
@@ -74,10 +75,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
-    const companyId = await getCompanyId();
-    if (!companyId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const companyId = access.ctx.companyId;
 
     const { projectId } = await params;
     try {
@@ -87,7 +87,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
             isNull(projects.deletedAt),
         )).limit(1);
 
-        if (!existing) {
+        if (!existing || !memberMaySeeProject(access.ctx.scope, existing)) {
             return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 

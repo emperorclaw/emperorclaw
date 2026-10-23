@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCompanyId, getUserId } from "@/lib/auth";
+import { companyRouteAccess } from "@/lib/company-access";
 import { updateDirectMessageQueueItem } from "@/lib/direct-message-queue";
 
 async function update(req: NextRequest, params: Promise<{ id: string }>, action: "cancel" | "retry") {
-    const companyId = await getCompanyId();
-    const userId = await getUserId();
-    if (!companyId || !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const { companyId, userId } = access.ctx;
 
     try {
         const { id } = await params;

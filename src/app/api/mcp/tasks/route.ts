@@ -7,6 +7,7 @@ import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
+import { mcpRouteAccess } from "@/lib/mcp-access";
 
 const createTaskSchema = z.object({
     projectId: z.string().min(1, "projectId is required"),
@@ -50,14 +51,8 @@ export async function GET(req: NextRequest) {
     const assignedAgentId = searchParams.get("assignedAgentId");
 
     try {
-        let resolvedAgentId: string | null = null;
-        if (agentIdParam) {
-            try {
-                resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
-            } catch {
-                return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-            }
-        }
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, agentIdParam);
+        if (scoped.response) return scoped.response;
         // The assignee filter accepts an id or a name (company-scoped). An
         // unknown agent is a caller error, never an internal 500.
         let resolvedAssignedAgentId: string | null = null;
@@ -68,7 +63,7 @@ export async function GET(req: NextRequest) {
                 return NextResponse.json({ error: "Agent not found" }, { status: 400 });
             }
         }
-        const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
+        const { allowedProjectIds } = scoped.access;
         if (projectId) {
             // Caller explicitly asked for one project — 404 if it's out of scope,
             // rather than silently returning an empty list for an explicit ask.

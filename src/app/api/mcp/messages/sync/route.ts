@@ -10,6 +10,7 @@ import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 import { recordInterestingVerdicts, type VerdictRecord } from "@/lib/run-ledger";
 import { privateThreadsHiddenFromToken } from "@/lib/thread-access";
+import { BOUND_AGENT_MISMATCH, mcpAccessForAgent, mcpThreadIdCondition } from "@/lib/mcp-access";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,17 +41,26 @@ export async function GET(req: NextRequest) {
     // so a message directed at one agent gets picked up and answered by others,
     // and their replies land in the wrong direct thread (messages appear to
     // "jump" between agents' chats).
-    let resolvedAgentId: string | null = null;
+    // A bound token always syncs as its own agent: it can neither name
+    // another agent (and receive that agent's threads) nor omit the agent to
+    // get the unscoped company-wide stream.
+    const boundAgentId = auth.companyToken!.agentId || null;
+    let resolvedAgentId: string | null = boundAgentId;
     if (agentId) {
         try {
             resolvedAgentId = await resolveAgentId(companyId, agentId);
         } catch {
             resolvedAgentId = UUID_RE.test(agentId) ? agentId : null;
         }
+        if (boundAgentId && resolvedAgentId !== boundAgentId) {
+            return NextResponse.json({ error: BOUND_AGENT_MISMATCH }, { status: 403 });
+        }
     }
     // Polling is a sign of life: a runtime syncing is not down.
     if (resolvedAgentId && UUID_RE.test(resolvedAgentId)) await touchAgentLiveness(companyId, resolvedAgentId);
     const scopeAgentId = resolvedAgentId && UUID_RE.test(resolvedAgentId) ? resolvedAgentId : null;
+    // Project/task threads outside the agent's data scope never reach it.
+    const threadScope = mcpThreadIdCondition(companyId, await mcpAccessForAgent(companyId, scopeAgentId), threadMessages.threadId);
 
     const MAX_POLL_TIME_MS = 25000;
     const POLL_INTERVAL_MS = 1000;
@@ -92,6 +102,7 @@ export async function GET(req: NextRequest) {
             // A person's private direct thread reaches only a token bound to its
             // own agent: never a company-wide token, whatever agentId it names.
             conditions.push(privateThreadsHiddenFromToken(companyId, auth.companyToken!.agentId ?? null));
+            if (threadScope) conditions.push(threadScope);
 
             if (scopeAgentId) {
                 conditions.push(sql`${threadMessages.threadId} IN (

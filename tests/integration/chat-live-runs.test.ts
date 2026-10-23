@@ -104,7 +104,7 @@ maybe("chat gets live runs (eventsSince-aware) and the runs behind agent replies
 
     assert.deepEqual(state.replyRuns[reply.id], {
         runId: state.replyRuns[reply.id].runId, status: "succeeded", durationMs: 42_000, toolCalls: 6,
-        inputTokens: 18_000, outputTokens: 200, model: "deepseek-v4",
+        inputTokens: 18_000, outputTokens: 200, model: "deepseek-v4", taskId: null,
     });
     // An incremental poll (no reply ids) still gets runs that just finished.
     const fresh = await seedRun({ companyId, agentId: agent.id, threadId: thread.id, status: "succeeded", endedAt: new Date(), replyMessageId: randomUUID() });

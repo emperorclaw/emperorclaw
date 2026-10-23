@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { agents, projects } from "@/db/schema";
 import { and, eq, inArray, isNull, sql, type AnyColumn, type SQL } from "drizzle-orm";
-import { resolveAgentId } from "@/lib/mcp";
 
 export type AgentScope = {
     mode?: "all" | "restricted";
@@ -112,25 +111,20 @@ export function scopeCondition(allowedIds: Set<string> | null, column: AnyColumn
 
 /**
  * Route guard for the common "single project by path param, ?agentId= in query"
- * shape. Returns a NextResponse to return immediately (404 unknown agent, or 404
- * if the project isn't in that agent's scope), or null if the caller may proceed
- * (including when no agentId query param was supplied at all — unscoped callers).
+ * shape. The acting agent comes from the token binding (lib/mcp-access.ts), so
+ * a bound token is scoped even when it names no agent. Returns a NextResponse
+ * to return immediately (403/404), or null if the caller may proceed.
  */
 export async function requireProjectInScope(
     req: NextRequest,
     companyId: string,
     projectId: string,
+    token: { agentId?: string | null } | null | undefined,
 ): Promise<NextResponse | null> {
-    const agentIdParam = req.nextUrl.searchParams.get("agentId");
-    if (!agentIdParam) return null;
-    let resolvedAgentId: string;
-    try {
-        resolvedAgentId = await resolveAgentId(companyId, agentIdParam);
-    } catch {
-        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    }
-    const { allowedProjectIds } = await loadAgentScopeContext(companyId, resolvedAgentId);
-    if (!isProjectAllowed(allowedProjectIds, projectId)) {
+    const { mcpRouteAccess, mcpMayUseProject } = await import("@/lib/mcp-access");
+    const scoped = await mcpRouteAccess(companyId, token, req.nextUrl.searchParams.get("agentId"));
+    if (scoped.response) return scoped.response;
+    if (!mcpMayUseProject(scoped.access, projectId)) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
     return null;

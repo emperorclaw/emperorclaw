@@ -1,37 +1,24 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { getValidatedServerSession } from "@/lib/auth";
-import { db } from "@/db";
-import { companyMembers } from "@/db/schema";
 import { archiveScopedResource, resolveResourceScope, updateScopedResource } from "@/lib/resources";
+import { companyRouteAccess } from "@/lib/company-access";
+import { memberResourceDenied } from "../_shared";
+import { memberMaySeeResource } from "@/lib/member-scope";
 
-async function getMembership() {
-  const session = await getValidatedServerSession();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return null;
-  }
-
-  const [membership] = await db.select().from(companyMembers)
-    .where(eq(companyMembers.userId, userId))
-    .limit(1);
-
-  return membership || null;
-}
 
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const membership = access.ctx;
 
     const { id } = await params;
+    const denied = await memberResourceDenied(membership, id);
+    if (denied) return denied;
     const archived = await archiveScopedResource(membership.companyId, id);
     if (!archived) {
       return NextResponse.json({ error: "Resource not found" }, { status: 404 });
@@ -50,12 +37,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const membership = await getMembership();
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await companyRouteAccess("member");
+    if (access.response) return access.response;
+    const membership = access.ctx;
 
     const { id } = await params;
+    const denied = await memberResourceDenied(membership, id);
+    if (denied) return denied;
     const body = await request.json();
 
     const patch: {
@@ -91,6 +79,10 @@ export async function PATCH(
     if (body.scopeType !== undefined) patch.scopeType = typeof body.scopeType === "string" ? body.scopeType : "company";
     if (body.scopeId !== undefined) patch.scopeId = typeof body.scopeId === "string" && body.scopeId.trim() ? body.scopeId.trim() : null;
     if (body.changeSummary !== undefined && typeof body.changeSummary === "string") patch.changeSummary = body.changeSummary.trim();
+    if ((patch.scopeType !== undefined || patch.scopeId !== undefined)
+      && !(await memberMaySeeResource(membership.companyId, membership.scope, { scopeType: patch.scopeType ?? "company", scopeId: patch.scopeId ?? null }))) {
+      return NextResponse.json({ error: "That scope is outside your access" }, { status: 403 });
+    }
     patch.createdByType = "user";
     patch.createdById = membership.userId;
 

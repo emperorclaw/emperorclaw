@@ -8,6 +8,7 @@ import { UTC_SESSION_OPTIONS } from "./src/db/pg-utc";
 import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
 import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
 import { parseRealtimeNotification, socketReceives } from './src/lib/realtime-delivery';
+import { loadAgentScopeContext } from './src/lib/agent-scope';
 
 const dev = process.env.NODE_ENV === 'development';
 const hostname = '0.0.0.0'; // Bind to all interfaces for VPS
@@ -45,7 +46,15 @@ function resolveClientIp(req: IncomingMessage): string {
 }
 
 // agentId: the agent the token is bound to (null for a company-wide token).
-type CompanySocket = WebSocket & { companyId?: string; agentId?: string | null };
+// allowedProjectIds/allowedCustomerIds: that agent's data scope (null = unrestricted),
+// refreshed periodically so an owner's scope edit reaches open sockets.
+type CompanySocket = WebSocket & {
+  companyId?: string;
+  agentId?: string | null;
+  allowedProjectIds?: Set<string> | null;
+  allowedCustomerIds?: Set<string> | null;
+};
+const SOCKET_SCOPE_REFRESH_MS = 60_000;
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -95,10 +104,31 @@ app.prepare().then(() => {
                 return;
             }
 
+            // A scoped agent's socket only receives events about its own
+            // projects/customers. Loaded before the upgrade completes so no
+            // event is delivered unfiltered.
+            const companyId = auth.companyToken.companyId;
+            const agentId = auth.companyToken.agentId ?? null;
+            const initialScope = await loadAgentScopeContext(companyId, agentId);
             wss.handleUpgrade(request, socket, head, (ws) => {
                 const companySocket = ws as CompanySocket;
-                companySocket.companyId = auth.companyToken.companyId;
-                companySocket.agentId = auth.companyToken.agentId ?? null;
+                companySocket.companyId = companyId;
+                companySocket.agentId = agentId;
+                companySocket.allowedProjectIds = initialScope.allowedProjectIds;
+                companySocket.allowedCustomerIds = initialScope.allowedCustomerIds;
+                if (agentId) {
+                    const refresh = setInterval(() => {
+                        loadAgentScopeContext(companyId, agentId).then((scope) => {
+                            companySocket.allowedProjectIds = scope.allowedProjectIds;
+                            companySocket.allowedCustomerIds = scope.allowedCustomerIds;
+                        }).catch(() => {
+                            // Fail closed: if the scope cannot be read, deliver nothing scoped.
+                            companySocket.allowedProjectIds = new Set();
+                            companySocket.allowedCustomerIds = new Set();
+                        });
+                    }, SOCKET_SCOPE_REFRESH_MS);
+                    companySocket.on('close', () => clearInterval(refresh));
+                }
                 wss.emit('connection', companySocket, request);
             });
         } catch(e) {

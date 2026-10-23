@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { companyMembers } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireRole, AuthError } from "@/lib/roles";
+import { normalizeMemberScope } from "@/lib/member-scope";
 
 // Authorization is resolved from the DB via requireRole (not the stale JWT
 // companyRole claim), and every query is scoped to the caller's company so a
@@ -42,8 +43,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ user
     }
 
     const { userId } = await params;
-    const body = await req.json();
-    const scopeJson = body.scope || {};
+    const body = await req.json().catch(() => ({}));
+    const raw = body?.scope;
+    if (raw !== undefined && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
+        return NextResponse.json({ error: "scope must be an object" }, { status: 400 });
+    }
+    if (raw?.mode !== undefined && raw.mode !== "all" && raw.mode !== "restricted") {
+        return NextResponse.json({ error: "scope.mode must be 'all' or 'restricted'" }, { status: 400 });
+    }
+    // Store only the known shape: { mode: "all" } or the normalized restricted lists.
+    const scopeJson = normalizeMemberScope(raw) ?? { mode: "all" };
 
     const [updated] = await db.update(companyMembers)
         .set({ scopeJson })
