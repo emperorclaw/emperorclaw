@@ -7,7 +7,8 @@ import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
 import { db } from "@/db";
 import { threadMessages, threadParticipants } from "@/db/schema";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import { broadcastMcpEvent } from "@/lib/pubsub";
 
 const sendMessageSchema = z.object({
     text: z.string().min(1, "text is required"),
@@ -24,7 +25,48 @@ const sendMessageSchema = z.object({
     // An "acknowledge first" post: it does not answer its replyToMessageId, so
     // the sync's answered cutoff ignores it (see answeredCutoffByThread).
     ack: z.boolean().optional(),
+    // Coalesced replies (capability "coalesced-replies: 1"): queued messages of
+    // the same thread this reply also answers. Resolved together with the reply.
+    alsoResolvesMessageIds: z.array(z.string().uuid()).max(20).optional(),
 }).loose();
+
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Mark the messages a coalesced reply also answers as resolved, scoped to the
+ * reply's thread and to work this agent was handed: human/system messages
+ * addressed to it or untargeted, not newer than the message it answers, and
+ * not already resolved or cancelled. An agent can never resolve a message
+ * targeted at another agent. Runs in the reply transaction.
+ */
+async function resolveCoalesced(
+    tx: DbTx,
+    input: {
+        companyId: string; threadId: string; agentId: string; replyMessageId: string;
+        replyToMessageId: string; sourceCreatedAt: Date; ids: string[];
+    },
+) {
+    const ids = [...new Set(input.ids)];
+    if (ids.length === 0) return [];
+    return tx.update(threadMessages).set({
+        deliveryState: "resolved",
+        metadataJson: sql`coalesce(${threadMessages.metadataJson}, '{}'::jsonb) || ${JSON.stringify({
+            executionStateUpdatedAt: new Date().toISOString(),
+            executionStateUpdatedBy: "agent",
+            executionActorId: input.agentId,
+            resolvedByMessageId: input.replyMessageId,
+            coalescedIntoMessageId: input.replyToMessageId,
+        })}::jsonb`,
+    }).where(and(
+        eq(threadMessages.companyId, input.companyId),
+        eq(threadMessages.threadId, input.threadId),
+        inArray(threadMessages.id, ids),
+        inArray(threadMessages.senderType, ["human", "system"]),
+        notInArray(threadMessages.deliveryState, ["resolved", "cancelled"]),
+        or(isNull(threadMessages.targetAgentId), eq(threadMessages.targetAgentId, input.agentId)),
+        lte(threadMessages.createdAt, input.sourceCreatedAt),
+    )).returning();
+}
 
 // A retried reply (bridge outbox) reuses its Idempotency-Key; a stored message
 // with the same key from the same agent in the same thread is returned instead
@@ -81,7 +123,7 @@ export async function POST(req: NextRequest) {
         if (parsed.error !== undefined) {
             return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId, private: isPrivate, ack } = parsed.data;
+        const { chat_id, text, thread_id, from_user_id, agentId, targetAgentId, target_agent_id, thread_type, replyToMessageId, private: isPrivate, ack, alsoResolvesMessageIds } = parsed.data;
         // Only replies are made idempotent: they are what the bridge retries.
         const idempotencyKey = replyToMessageId ? idempotencyKeyFrom(req) : null;
 
@@ -113,6 +155,10 @@ export async function POST(req: NextRequest) {
             idempotencyKey,
         });
 
+        // An acknowledgement answers nothing, so it never resolves coalesced messages.
+        const coalescedIds = ack === true ? [] : (alsoResolvesMessageIds ?? []);
+        let coalescedResolved: Array<typeof threadMessages.$inferSelect> = [];
+
         // Serialize a reply with /kill and /replace on the same agent row.
         // This closes the completion race: cancelled work cannot post a late reply.
         const result = replyToMessageId && effectiveAgentId ? await db.transaction(async (tx) => {
@@ -130,7 +176,14 @@ export async function POST(req: NextRequest) {
                     sql`${threadMessages.metadataJson}->>'idempotencyKey' = ${idempotencyKey}`,
                 )).limit(1);
                 // Already stored by an earlier attempt whose response was lost.
-                if (existing) return { ok: true, messageId: existing.id, threadId: existing.threadId, replayed: true as const };
+                if (existing) {
+                    // Idempotent: a replay re-applies the (no-op) coalesced resolution.
+                    coalescedResolved = await resolveCoalesced(tx, {
+                        companyId, threadId: existing.threadId, agentId: effectiveAgentId,
+                        replyMessageId: existing.id, replyToMessageId, sourceCreatedAt: source.createdAt, ids: coalescedIds,
+                    });
+                    return { ok: true, messageId: existing.id, threadId: existing.threadId, replayed: true as const };
+                }
             }
             if (source.deliveryState === "cancelled") return null;
             const [stop] = await tx.select({ id: threadMessages.id }).from(threadMessages).where(and(
@@ -139,7 +192,14 @@ export async function POST(req: NextRequest) {
                 sql`${threadMessages.metadataJson}->'runtimeControl'->>'action' IN ('kill', 'replace')`,
             )).limit(1);
             if (stop) return null;
-            return send();
+            const sent = await send();
+            if (sent.ok && sent.messageId && sent.threadId) {
+                coalescedResolved = await resolveCoalesced(tx, {
+                    companyId, threadId: sent.threadId, agentId: effectiveAgentId,
+                    replyMessageId: sent.messageId, replyToMessageId, sourceCreatedAt: source.createdAt, ids: coalescedIds,
+                });
+            }
+            return sent;
         }) : await send();
         if (!result) return NextResponse.json({ ok: true, message_id: null, thread_id, cancelled: true });
 
@@ -167,6 +227,10 @@ export async function POST(req: NextRequest) {
                 .catch((error) => console.error("Clearing typing after reply failed:", error));
         }
 
+        for (const message of coalescedResolved) {
+            await broadcastMcpEvent(companyId, { type: "thread_message", threadId: message.threadId, message });
+        }
+
         // Record only after the send succeeded so a failed send does not poison
         // the key and make the bridge's retry look like a duplicate.
         if (key && result.ok) recordSent(key);
@@ -176,6 +240,7 @@ export async function POST(req: NextRequest) {
             message_id: result.messageId,
             thread_id: result.threadId,
             ...("replayed" in result ? { replayed: true } : {}),
+            ...(coalescedIds.length > 0 ? { resolvedMessageIds: coalescedResolved.map((message) => message.id) } : {}),
         });
     } catch (error) {
         console.error("Chat send webhook error:", error);

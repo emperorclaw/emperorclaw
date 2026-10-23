@@ -428,6 +428,13 @@
       "when": 1791927794387,
       "tag": "0060_knowledge-injection-modes",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1792702721429,
+      "tag": "0061_agent-run-events",
+      "breakpoints": true
     }
   ]
 }

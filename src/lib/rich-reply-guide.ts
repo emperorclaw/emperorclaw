@@ -75,4 +75,33 @@ export const RUNS_CAPABILITY = "runs: 1";
  */
 export const LEAN_CONTEXT_CAPABILITY = "lean-context: 1";
 
-export const SERVER_CAPABILITIES = [RICH_BLOCKS_CAPABILITY, RUNS_CAPABILITY, LEAN_CONTEXT_CAPABILITY] as const;
+/**
+ * Run events (0.9): POST /api/mcp/agents/runs/[id]/events accepts batched live
+ * steps, and their ingestion drives the typing row, so a bridge seeing it stops
+ * sending activity pings to /chat/status. Bridge 0.9 refuses to start without
+ * it. Contract: docs/design/hermes-persistent-runtime.md §4.2–4.3.
+ */
+export const RUN_EVENTS_CAPABILITY = "run-events: 1";
+
+/**
+ * Run usage v2 (0.9): the run finish takes cache/reasoning tokens, api calls,
+ * model, provider, queue and first-token latency, compactions and dropped
+ * events (§4.4).
+ */
+export const RUN_USAGE_CAPABILITY = "run-usage: 2";
+
+/**
+ * Coalesced replies (0.9): POST /api/mcp/messages/send takes
+ * `alsoResolvesMessageIds`, resolved with the reply in one transaction (§4.5).
+ * Without it the bridge resolves them through /chat/status.
+ */
+export const COALESCED_REPLIES_CAPABILITY = "coalesced-replies: 1";
+
+export const SERVER_CAPABILITIES = [
+    RICH_BLOCKS_CAPABILITY,
+    RUNS_CAPABILITY,
+    LEAN_CONTEXT_CAPABILITY,
+    RUN_EVENTS_CAPABILITY,
+    RUN_USAGE_CAPABILITY,
+    COALESCED_REPLIES_CAPABILITY,
+] as const;

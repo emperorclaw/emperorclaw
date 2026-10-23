@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickActivity, PRIVATE_ACTIVITY, PRIVATE_RUN_ERROR, redactRunForViewer, threadVisibleToViewer, type TypingRow } from "../../src/lib/agent-activity";
+import { pickActivity, PRIVATE_ACTIVITY, PRIVATE_RUN_ERROR, redactRunForViewer, redactRunLiveForViewer, threadVisibleToViewer, type AgentRunLiveView, type TypingRow } from "../../src/lib/agent-activity";
 
 const at = (s: number) => new Date(Date.UTC(2026, 9, 22, 12, 0, s));
 const row = (over: Partial<TypingRow>): TypingRow => ({
@@ -53,4 +53,20 @@ test("a run in a hidden thread loses its thread id and raw error", () => {
     assert.deepEqual(redactRunForViewer(run, false), { id: "r1", threadId: null, error: PRIVATE_RUN_ERROR });
     assert.deepEqual(redactRunForViewer({ id: "r2", threadId: "t-dm", error: null }, false), { id: "r2", threadId: null, error: null });
     assert.equal(redactRunForViewer(run, true), run);
+});
+
+test("a live run in a hidden thread keeps only a private line and its usage", () => {
+    const view: AgentRunLiveView = {
+        current: { kind: "tool.start", toolName: "terminal", summary: "Running terminal · cat salaries.csv", sinceMs: 3_000 },
+        steps: [{ seq: 4, ts: at(1).toISOString(), kind: "reasoning", summary: "the customer card is 4111" }],
+        usage: { input: 1_000, output: 20, cacheRead: 600, contextPercent: 12 },
+    };
+    const hidden = redactRunLiveForViewer(view, false);
+    assert.deepEqual(hidden, {
+        current: { kind: "tool.start", summary: PRIVATE_ACTIVITY, sinceMs: 3_000 },
+        steps: [],
+        usage: view.usage,
+    });
+    assert.equal(JSON.stringify(hidden).includes("terminal"), false);
+    assert.equal(redactRunLiveForViewer(view, true), view);
 });

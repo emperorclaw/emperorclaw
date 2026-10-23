@@ -945,6 +945,21 @@ export async function readAgentMemory(companyId: string, agentId: string, limit 
     };
 }
 
+/**
+ * Versions a runtime reports on register (bridge 0.9+). A field the runtime
+ * omits is stored as null, so rolling a host back to bridge 0.3.x (which sends
+ * none) shows it as legacy again.
+ */
+export interface RuntimeNodeVersions {
+    bridgeVersion?: string | null;
+    bridgeProtocol?: number | null;
+    hermesVersion?: string | null;
+    transport?: string | null;
+    deployMode?: string | null;
+    gatewayTopology?: string | null;
+    hostFingerprint?: string | null;
+}
+
 export async function registerRuntimeNode(input: {
     companyId: string;
     runtimeId: string;
@@ -953,7 +968,18 @@ export async function registerRuntimeNode(input: {
     gatewayVersion?: string | null;
     capabilitiesJson?: unknown[];
     startedAt?: Date | null;
-}) {
+    /** The agent the registering token is bound to (null: company-wide token). */
+    agentId?: string | null;
+} & RuntimeNodeVersions) {
+    const versions = {
+        bridgeVersion: input.bridgeVersion || null,
+        bridgeProtocol: input.bridgeProtocol ?? null,
+        hermesVersion: input.hermesVersion || null,
+        transport: input.transport || null,
+        deployMode: input.deployMode || null,
+        gatewayTopology: input.gatewayTopology || null,
+        hostFingerprint: input.hostFingerprint || null,
+    };
     const [existing] = await db.select().from(runtimeNodes).where(
         and(eq(runtimeNodes.companyId, input.companyId), eq(runtimeNodes.runtimeId, input.runtimeId))
     ).limit(1);
@@ -968,6 +994,9 @@ export async function registerRuntimeNode(input: {
             startedAt: input.startedAt || existing.startedAt,
             lastSeenAt: new Date(),
             deletedAt: null,
+            // A company-wide token keeps the agent a bound token recorded.
+            agentId: input.agentId || existing.agentId,
+            ...versions,
         }).where(eq(runtimeNodes.id, existing.id)).returning();
 
         return updated;
@@ -982,9 +1011,128 @@ export async function registerRuntimeNode(input: {
         capabilitiesJson: input.capabilitiesJson || [],
         startedAt: input.startedAt || null,
         lastSeenAt: new Date(),
+        agentId: input.agentId || null,
+        ...versions,
     }).returning();
 
     return created;
+}
+
+/** Another runtime counts as active for the same agent this long after its last sign of life. */
+export const DUPLICATE_RUNTIME_WINDOW_MS = 120_000;
+
+/** `duplicateRuntime` in the register response (null when none). */
+export interface DuplicateRuntime {
+    runtimeId: string;
+    hostname: string | null;
+    bridgeVersion: string | null;
+    lastSeenAt: string;
+}
+
+/**
+ * One runtime per agent (D19): another runtime id for the same agent that
+ * showed a sign of life within the window — it registered/heartbeated
+ * (`runtime_nodes.last_seen_at`) or opened/finished a run (`agent_runs`, which
+ * also catches a 0.3.x bridge between its 10-minute re-registers). Returns the
+ * most recent one, or null.
+ */
+export async function findDuplicateRuntime(input: {
+    companyId: string;
+    agentId: string;
+    runtimeId: string;
+    now?: Date;
+    windowMs?: number;
+}): Promise<DuplicateRuntime | null> {
+    const now = input.now ?? new Date();
+    const since = new Date(now.getTime() - (input.windowMs ?? DUPLICATE_RUNTIME_WINDOW_MS));
+
+    const [node] = await db.select({
+        runtimeId: runtimeNodes.runtimeId,
+        hostname: runtimeNodes.hostname,
+        bridgeVersion: runtimeNodes.bridgeVersion,
+        lastSeenAt: runtimeNodes.lastSeenAt,
+    }).from(runtimeNodes).where(and(
+        eq(runtimeNodes.companyId, input.companyId),
+        eq(runtimeNodes.agentId, input.agentId),
+        ne(runtimeNodes.runtimeId, input.runtimeId),
+        isNull(runtimeNodes.deletedAt),
+        gte(runtimeNodes.lastSeenAt, since),
+    )).orderBy(desc(runtimeNodes.lastSeenAt)).limit(1);
+
+    // Timestamps are UTC `timestamp` columns: compare against an ISO string and
+    // read epoch millis back, so neither side depends on the process timezone.
+    const sinceUtc = since.toISOString();
+    const runRows = await db.execute<{ runtime_id: string; bridge_version: string | null; seen_ms: string | number }>(sql`
+        SELECT runtime_id, bridge_version,
+               extract(epoch from greatest(started_at, coalesce(ended_at, started_at))) * 1000 AS seen_ms
+        FROM agent_runs
+        WHERE company_id = ${input.companyId} AND agent_id = ${input.agentId}
+          AND runtime_id IS NOT NULL AND runtime_id <> ${input.runtimeId}
+          AND (started_at >= ${sinceUtc}::timestamp OR ended_at >= ${sinceUtc}::timestamp)
+        ORDER BY seen_ms DESC
+        LIMIT 1`);
+    const run = runRows.rows[0];
+    const runSeenAt = run ? new Date(Math.round(Number(run.seen_ms))) : null;
+
+    if (node && (!runSeenAt || node.lastSeenAt >= runSeenAt)) {
+        return {
+            runtimeId: node.runtimeId,
+            hostname: node.hostname,
+            bridgeVersion: node.bridgeVersion,
+            lastSeenAt: node.lastSeenAt.toISOString(),
+        };
+    }
+    if (run && runSeenAt) {
+        return { runtimeId: run.runtime_id, hostname: null, bridgeVersion: run.bridge_version, lastSeenAt: runSeenAt.toISOString() };
+    }
+    return null;
+}
+
+export const GATEWAY_TOPOLOGIES = ["standalone", "shared", "managed"] as const;
+export type GatewayTopology = (typeof GATEWAY_TOPOLOGIES)[number];
+
+/** A shared-topology node from another company blocks a host only while this recent. */
+export const SHARED_HOST_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * D21: a shared Hermes gateway may only serve one Emperor company. False only
+ * when the registering runtime runs in `shared` topology and another
+ * company's live `shared` runtime reported the same host fingerprint. The
+ * self-reported hostname is never trusted across tenants. Crosses tenants on
+ * purpose and returns only a boolean. No fingerprint (or not shared) → true,
+ * so this never blocks a runtime that cannot identify its host. Nodes unseen
+ * for SHARED_HOST_WINDOW_MS are ignored so a stale row cannot lock a host.
+ */
+export async function sharedHostOk(input: {
+    companyId: string;
+    hostFingerprint: string | null | undefined;
+    gatewayTopology: string | null | undefined;
+    now?: Date;
+}): Promise<boolean> {
+    const fingerprint = input.hostFingerprint?.trim();
+    if (!fingerprint || input.gatewayTopology !== "shared") return true;
+    const since = new Date((input.now ?? new Date()).getTime() - SHARED_HOST_WINDOW_MS);
+    const [foreign] = await db.select({ id: runtimeNodes.id }).from(runtimeNodes).where(and(
+        eq(runtimeNodes.hostFingerprint, fingerprint),
+        eq(runtimeNodes.gatewayTopology, "shared"),
+        ne(runtimeNodes.companyId, input.companyId),
+        isNull(runtimeNodes.deletedAt),
+        gte(runtimeNodes.lastSeenAt, since),
+    )).limit(1);
+    return !foreign;
+}
+
+/**
+ * Refresh a runtime node's liveness (for a heartbeat that names its runtime),
+ * so duplicate detection sees runtimes between their register calls. No-op
+ * for an unknown runtime id.
+ */
+export async function touchRuntimeNode(companyId: string, runtimeId: string, now: Date = new Date()): Promise<void> {
+    await db.update(runtimeNodes).set({ lastSeenAt: now, status: "active" }).where(and(
+        eq(runtimeNodes.companyId, companyId),
+        eq(runtimeNodes.runtimeId, runtimeId),
+        isNull(runtimeNodes.deletedAt),
+    ));
 }
 
 export async function startAgentSession(input: {

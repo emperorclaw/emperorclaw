@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
     IconArrowUpRight,
     IconChartHistogram,
+    IconChevronRight,
     IconLoader2,
     IconRefresh,
 } from "@tabler/icons-react";
 import { RunStatusChip } from "@/components/run-status-chip";
+import { RunTimeline } from "@/components/run-timeline";
+import { cacheHitPercent } from "@/lib/live-activity";
 import { cn } from "@/lib/utils";
 import { formatCents } from "@/lib/team-scene";
 import {
@@ -48,6 +51,12 @@ interface AgentRunRow {
     costCents: number | null;
     toolCalls: number | null;
     error: string | null;
+    // 0.9 run usage (run-usage: 2); null for older runtimes.
+    cacheReadTokens?: number | null;
+    model?: string | null;
+    queueMs?: number | null;
+    firstTokenMs?: number | null;
+    exitReason?: string | null;
 }
 
 type DailyRow = RunDailyDay;
@@ -313,7 +322,44 @@ function TriggerCell({ run }: { run: AgentRunRow }) {
     return <span className="text-zinc-300">{label}</span>;
 }
 
+function cacheLabel(run: AgentRunRow): string {
+    const hit = cacheHitPercent(run.inputTokens, run.cacheReadTokens);
+    return hit == null ? "—" : `${hit}%`;
+}
+
+function msLabel(ms: number | null | undefined): string {
+    return ms == null ? "—" : formatRunDuration(ms);
+}
+
+function ExpandButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-expanded={open}
+            aria-label={open ? "Hide run steps" : "Show run steps"}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+        >
+            <IconChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} aria-hidden="true" />
+        </button>
+    );
+}
+
+function useExpanded() {
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+    const toggle = useCallback((id: string) => {
+        setExpanded((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+    return { expanded, toggle };
+}
+
 function RunTable({ runs }: { runs: AgentRunRow[] }) {
+    const { expanded, toggle } = useExpanded();
     return (
         <div className="overflow-x-auto">
             <table className="hidden w-full border-collapse text-left text-xs sm:table">
@@ -326,22 +372,46 @@ function RunTable({ runs }: { runs: AgentRunRow[] }) {
                         <th scope="col" className="py-2 pr-3 text-right font-medium">Duration</th>
                         <th scope="col" className="py-2 pr-3 text-right font-medium">Tokens</th>
                         <th scope="col" className="py-2 pr-3 text-right font-medium">Tools</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium" title="Time spent queued before the turn started">Queue</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium" title="Time to the model's first token">First token</th>
+                        <th scope="col" className="py-2 pr-3 text-right font-medium" title="Share of prompt tokens served from the provider cache">Cache</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">Model</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">Exit</th>
                         <th scope="col" className="py-2 font-medium">Error</th>
                     </tr>
                 </thead>
                 <tbody>
                     {runs.map((run) => (
-                        <tr key={run.id} className="border-b border-zinc-800/60 align-top last:border-0">
-                            <td className="whitespace-nowrap py-2 pr-3 text-zinc-400">{formatRunTime(run.startedAt)}</td>
+                        <Fragment key={run.id}>
+                        <tr className={cn("align-top", expanded.has(run.id) ? "" : "border-b border-zinc-800/60")}>
+                            <td className="whitespace-nowrap py-2 pr-3 text-zinc-400">
+                                <span className="inline-flex items-center gap-1">
+                                    <ExpandButton open={expanded.has(run.id)} onClick={() => toggle(run.id)} />
+                                    {formatRunTime(run.startedAt)}
+                                </span>
+                            </td>
                             <td className="py-2 pr-3"><TriggerCell run={run} /></td>
                             <td className="py-2 pr-3"><RunStatusChip status={run.status} /></td>
                             <td className="py-2 pr-3 text-right tabular-nums text-zinc-300">{formatRunDuration(run.durationMs)}</td>
                             <td className="py-2 pr-3 text-right tabular-nums text-zinc-300">{formatRunTokens(run.inputTokens, run.outputTokens)}</td>
                             <td className="py-2 pr-3 text-right tabular-nums text-zinc-300">{run.toolCalls ?? "—"}</td>
+                            <td className="whitespace-nowrap py-2 pr-3 text-right tabular-nums text-zinc-300">{msLabel(run.queueMs)}</td>
+                            <td className="whitespace-nowrap py-2 pr-3 text-right tabular-nums text-zinc-300">{msLabel(run.firstTokenMs)}</td>
+                            <td className="py-2 pr-3 text-right tabular-nums text-zinc-300">{cacheLabel(run)}</td>
+                            <td className="max-w-[10rem] py-2 pr-3 text-zinc-400"><span className="block truncate" title={run.model ?? undefined}>{run.model || "—"}</span></td>
+                            <td className="max-w-[10rem] py-2 pr-3 text-zinc-400"><span className="block truncate" title={run.exitReason ?? undefined}>{run.exitReason || "—"}</span></td>
                             <td className="max-w-[16rem] py-2 text-rose-300">
                                 {run.error ? <span className="line-clamp-2 break-words">{run.error}</span> : <span className="text-zinc-600">—</span>}
                             </td>
                         </tr>
+                        {expanded.has(run.id) && (
+                            <tr className="border-b border-zinc-800/60">
+                                <td colSpan={12} className="pb-3 pl-7 pr-3">
+                                    <RunTimeline runId={run.id} />
+                                </td>
+                            </tr>
+                        )}
+                        </Fragment>
                     ))}
                 </tbody>
             </table>
@@ -350,6 +420,7 @@ function RunTable({ runs }: { runs: AgentRunRow[] }) {
 }
 
 function RunCards({ runs }: { runs: AgentRunRow[] }) {
+    const { expanded, toggle } = useExpanded();
     return (
         <ul className="space-y-2 sm:hidden">
             {runs.map((run) => (
@@ -375,8 +446,44 @@ function RunCards({ runs }: { runs: AgentRunRow[] }) {
                             <dt className="text-zinc-500">Tools</dt>
                             <dd className="tabular-nums text-zinc-300">{run.toolCalls ?? "—"}</dd>
                         </div>
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-zinc-500">Queue</dt>
+                            <dd className="tabular-nums text-zinc-300">{msLabel(run.queueMs)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-zinc-500">First token</dt>
+                            <dd className="tabular-nums text-zinc-300">{msLabel(run.firstTokenMs)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-zinc-500">Cache</dt>
+                            <dd className="tabular-nums text-zinc-300">{cacheLabel(run)}</dd>
+                        </div>
+                        <div className="flex min-w-0 justify-between gap-2">
+                            <dt className="text-zinc-500">Model</dt>
+                            <dd className="min-w-0 truncate text-zinc-300">{run.model || "—"}</dd>
+                        </div>
+                        {run.exitReason && (
+                            <div className="col-span-2 flex min-w-0 justify-between gap-2">
+                                <dt className="text-zinc-500">Exit</dt>
+                                <dd className="min-w-0 truncate text-zinc-300" title={run.exitReason}>{run.exitReason}</dd>
+                            </div>
+                        )}
                     </dl>
                     {run.error && <p className="mt-1.5 break-words text-[11px] text-rose-300">{run.error}</p>}
+                    <button
+                        type="button"
+                        onClick={() => toggle(run.id)}
+                        aria-expanded={expanded.has(run.id)}
+                        className="mt-2 inline-flex min-h-9 items-center gap-1 text-[11px] text-zinc-400 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+                    >
+                        <IconChevronRight className={cn("h-3.5 w-3.5 transition-transform", expanded.has(run.id) && "rotate-90")} aria-hidden="true" />
+                        {expanded.has(run.id) ? "Hide steps" : "Show steps"}
+                    </button>
+                    {expanded.has(run.id) && (
+                        <div className="mt-1.5 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2">
+                            <RunTimeline runId={run.id} />
+                        </div>
+                    )}
                 </li>
             ))}
         </ul>

@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import type { AgentNow } from "@/lib/agent-activity";
+import type { AgentNow, AgentRuntimeInfo } from "@/lib/agent-activity";
+import { RunTimelineList } from "@/components/run-timeline";
+import { bridgeBadgeCopy, cacheHitPercent, HERMES_MIGRATION_DOC_HREF, isTimedStepKind, liveUsageLine } from "@/lib/live-activity";
+import { formatTokenCount } from "@/lib/run-ledger-copy";
 
 const STATE_PILL: Record<AgentNow["state"], { label: string; className: string }> = {
     working: { label: "Working", className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" },
@@ -43,6 +46,10 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
 
     const pill = STATE_PILL[now.state] ?? STATE_PILL.idle;
     const elapsedMs = now.run ? nowMs - Date.parse(now.run.startedAt) : 0;
+    const live = now.run?.live;
+    // The step timer counts from when this snapshot was taken (the card poll).
+    const activityText = live?.current.summary ?? now.activity;
+    const lastRunCache = now.lastRun ? cacheHitPercent(now.lastRun.inputTokens, now.lastRun.cacheReadTokens) : null;
 
     return (
         <section className="emperor-panel rounded-2xl p-4 sm:p-5">
@@ -61,14 +68,24 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
             </div>
 
             <div className="mt-3">
-                {now.activity ? (
-                    <p className="font-mono text-xs text-zinc-300 line-clamp-3 whitespace-pre-wrap">{now.activity}</p>
+                {activityText ? (
+                    <p className="font-mono text-xs text-zinc-300 line-clamp-3 whitespace-pre-wrap">
+                        {activityText}
+                        {live && isTimedStepKind(live.current.kind) && <StepElapsed key={`${live.current.kind}:${live.current.summary}`} sinceMs={live.current.sinceMs} />}
+                    </p>
                 ) : now.state === "idle" ? (
                     <p className="text-xs text-zinc-500">Idle — waiting for work.</p>
                 ) : now.state === "offline" ? (
                     <p className="text-xs text-zinc-500">{now.lastSeenAt ? `Last seen ${formatAgo(now.lastSeenAt, nowMs)}` : "Never connected"}</p>
                 ) : null}
             </div>
+
+            {live && live.steps.length > 0 && (
+                <div className="mt-2">
+                    <RunTimelineList steps={live.steps} />
+                </div>
+            )}
+            {live?.usage && <p className="mt-1.5 text-[11px] tabular-nums text-zinc-500">{liveUsageLine(live.usage)}</p>}
 
             {now.task && (
                 <div className="mt-3 flex items-center gap-2 text-xs">
@@ -88,8 +105,12 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                         <span>ended {formatAgo(now.lastRun.endedAt ?? now.lastRun.startedAt, nowMs)}</span>
                         {now.lastRun.durationMs != null && <span>{formatDuration(now.lastRun.durationMs)}</span>}
                         {now.lastRun.tokens != null && <span>{now.lastRun.tokens.toLocaleString()} tokens</span>}
+                        {now.lastRun.cacheReadTokens != null && now.lastRun.cacheReadTokens > 0 && (
+                            <span>{formatTokenCount(now.lastRun.cacheReadTokens)} cached{lastRunCache != null ? ` (${lastRunCache}%)` : ""}</span>
+                        )}
                         {now.lastRun.costCents != null && <span>${(now.lastRun.costCents / 100).toFixed(2)}</span>}
                         {now.lastRun.toolCalls != null && <span>{now.lastRun.toolCalls} {now.lastRun.toolCalls === 1 ? "tool" : "tools"}</span>}
+                        {now.lastRun.model && <span className="max-w-full truncate">{now.lastRun.model}</span>}
                     </div>
                     {now.lastRun.error && <p className="text-xs text-rose-400 line-clamp-2">{now.lastRun.error}</p>}
                 </div>
@@ -111,6 +132,52 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                 </Link>
             </div>
         </section>
+    );
+}
+
+/** The current step's age, counted on from the snapshot's `sinceMs`. Ticks on its own. */
+function StepElapsed({ sinceMs }: { sinceMs: number }) {
+    const [origin] = useState(() => Date.now() - sinceMs);
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+        return () => window.clearInterval(id);
+    }, []);
+    return <span className="text-zinc-500 tabular-nums"> · {formatDuration(nowMs - origin)}</span>;
+}
+
+const BADGE_TONE: Record<ReturnType<typeof bridgeBadgeCopy>["tone"], string> = {
+    ok: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+    warn: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    bad: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+    muted: "border-zinc-700 bg-zinc-800/60 text-zinc-400",
+};
+
+/**
+ * The Hermes bridge version badge (current / update available / unsupported /
+ * legacy). Outdated states link the upgrade guide unless `compact`.
+ */
+export function BridgeBadge({ runtime, compact = false }: { runtime: AgentRuntimeInfo | null | undefined; compact?: boolean }) {
+    if (!runtime) return null;
+    const managed = runtime.deployMode === "managed";
+    const copy = bridgeBadgeCopy(runtime.updateState, runtime.bridgeVersion, managed);
+    if (compact && runtime.updateState === "current") return null;
+    return (
+        <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
+            <span title={copy.hint} className={cn("inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", BADGE_TONE[copy.tone])}>
+                {copy.label}
+            </span>
+            {!compact && copy.showGuide && (
+                <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-[10px] text-cyan-400 underline underline-offset-2 hover:text-cyan-300">
+                    {managed ? "How to update" : "Update guide"}
+                </a>
+            )}
+            {!compact && runtime.gatewayTopology === "shared" && (
+                <span title="This runtime shares one Hermes gateway with other agents on the same host." className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
+                    Shared gateway
+                </span>
+            )}
+        </span>
     );
 }
 

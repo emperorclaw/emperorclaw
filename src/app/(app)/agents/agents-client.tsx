@@ -7,7 +7,7 @@ import { IconArrowLeft, IconHierarchy2, IconHeartbeat, IconLoader2, IconRobot, I
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { EasySetupDialog } from "./easy-setup-dialog";
 import { AgentDetailPanel } from "./agent-detail-panel";
-import { AgentNowCard, formatDuration } from "./agent-now-card";
+import { AgentNowCard, BridgeBadge, formatDuration } from "./agent-now-card";
 import { useAgentActivity } from "./use-agent-activity";
 import { PageHeader } from "@/components/page-header";
 import { agentAvatarSrc } from "@/lib/avatar";
@@ -177,6 +177,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                                     {agent.deadLetterCount + agent.failedCount}
                                                 </span>
                                             )}
+                                            <BridgeBadge runtime={activity[agent.id]?.runtime} compact />
                                         </span>
                                         <AgentSubtitle agent={agent} now={activity[agent.id]} />
                                     </span>
@@ -194,7 +195,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                                 All agents
                             </button>
                             <AgentNowCard now={activity[selectedAgent.id]} />
-                            <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} />
+                            <AgentDetailPanel agentId={selectedAgent.id} agentName={selectedAgent.name} runtime={activity[selectedAgent.id]?.runtime ?? null} />
                         </div>
                     ) : (
                         <main className="emperor-panel rounded-2xl p-6 flex items-center justify-center min-h-[400px]">

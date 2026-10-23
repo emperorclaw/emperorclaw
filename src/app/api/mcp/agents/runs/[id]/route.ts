@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { agentRuns } from "@/db/schema";
 import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
 import { consumeRateLimit } from "@/lib/rate-limit";
-import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
+import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, finishUsageColumns, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
 
 const RUNS_PER_MINUTE = 2_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -72,6 +72,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 toolCalls: input.toolCalls ?? undefined,
                 replyMessageId: input.replyMessageId ?? undefined,
                 error: error ?? undefined,
+                ...finishUsageColumns(input),
+                // Added to the server's own cap drops (events endpoint).
+                ...(input.eventsDropped ? { eventsDropped: sql`coalesce(${agentRuns.eventsDropped}, 0) + ${input.eventsDropped}` } : {}),
             })
             .where(and(
                 eq(agentRuns.id, id),
@@ -102,6 +105,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 toolCalls: input.toolCalls ?? null,
                 replyMessageId: input.replyMessageId ?? null,
                 error,
+                ...finishUsageColumns(input),
+                eventsDropped: input.eventsDropped ?? null,
             })
             .onConflictDoNothing({ target: agentRuns.id })
             .returning();

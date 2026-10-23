@@ -25,6 +25,17 @@ import { getAgentTemplate } from "@/lib/agent-templates";
 import { ModelSearchSelect } from "@/components/model-search-select";
 import { SetupOutputLog, type SetupOutputEntry } from "@/components/setup-output-log";
 import { cn } from "@/lib/utils";
+import { BridgeBadge } from "./agent-now-card";
+import type { AgentRuntimeInfo } from "@/lib/agent-activity";
+import { HERMES_MIGRATION_DOC_HREF } from "@/lib/live-activity";
+
+/** The 0.9 remote installer (src/content/docs/v1.1/hermes-runtime.md). */
+const HERMES_INSTALLER_URL = "https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh";
+
+/** A Hermes profile name suggestion for an agent: lowercase, dashes, no spaces. */
+function hermesProfileName(agentName: string): string {
+    return agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "<profile>";
+}
 import { toast } from "sonner";
 
 const LLM_PROVIDER_LABELS: Record<string, string> = {
@@ -90,7 +101,12 @@ type AgentDetailData = {
     }>;
 };
 
-export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agentName: string }) {
+export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
+    agentId: string;
+    agentName: string;
+    /** The agent's Hermes runtime (bridge version badge, shared gateway chip), from the activity poll. */
+    runtime?: AgentRuntimeInfo | null;
+}) {
     const [data, setData] = useState<AgentDetailData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -254,6 +270,7 @@ export function AgentDetailPanel({ agentId, agentName }: { agentId: string; agen
                                     {provider.id === "hermes" ? "👑" : provider.id === "openclaw" ? "🦀" : provider.id === "codex" ? "🧠" : "🔌"} {provider.name}
                                 </span>
                             )}
+                            {agent.provider === "hermes" && <BridgeBadge runtime={runtime} />}
                         </div>
                     </div>
                 </div>
@@ -807,13 +824,21 @@ function SetupBanner({ agentId, agentName, agentRole, agentStatus, providerId, d
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 space-y-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">🔧 What you need to do</span>
                     <ol className="space-y-1.5 text-[11px] text-amber-100/80 list-decimal list-inside">
-                        <li>Install Hermes: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">pip install hermes-agent</code></li>
-                        <li>Set your LLM key in <code className="text-amber-200 bg-amber-500/10 px-1 rounded">~/.hermes/.env</code></li>
-                        <li>Set up the bridge env at <code className="text-amber-200 bg-amber-500/10 px-1 rounded">~/.hermes/emperor-bridge/{agentName}/.env</code></li>
-                        <li>Run the bridge: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">python emperor_hermes_bridge.py</code></li>
+                        <li className="break-words">
+                            Download the installer on the host (Linux with systemd):
+                            <code className="mt-1 block overflow-x-auto whitespace-pre rounded bg-amber-500/10 px-2 py-1 text-amber-200">{`mkdir -p ~/.local/bin
+curl -fsSL ${HERMES_INSTALLER_URL} -o ~/.local/bin/emperor-hermes
+chmod +x ~/.local/bin/emperor-hermes`}</code>
+                        </li>
+                        <li className="break-words">
+                            Install this agent: <code className="text-amber-200 bg-amber-500/10 px-1 rounded">emperor-hermes install --profile {hermesProfileName(agentName)}</code>
+                            <span className="block text-amber-100/60">It creates a missing profile; put this agent&apos;s Emperor token and LLM key in the profile&apos;s <code className="text-amber-200/80">.env</code> and run it again.</span>
+                        </li>
                     </ol>
                     <p className="text-[10px] text-amber-100/60 mt-2">
-                        The bridge script is in <code className="text-amber-200/60 bg-amber-500/5 px-1 rounded">integrations/hermes/emperor-claw/bridge/</code>.
+                        Already running the 0.3 bridge? Follow the{" "}
+                        <a href={HERMES_MIGRATION_DOC_HREF} target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">0.9 migration guide</a>{" "}
+                        (<a href="/docs/v1.1/hermes-runtime" target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">full setup</a>).
                         Once running, this agent will appear <span className="text-emerald-300">online</span> here automatically.
                     </p>
                 </div>

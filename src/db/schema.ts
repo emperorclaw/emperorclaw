@@ -341,6 +341,19 @@ export const runtimeNodes = pgTable("runtime_nodes", {
     startedAt: timestamp("started_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     deletedAt: timestamp("deleted_at"),
+    // 0.9: the agent the registering token is bound to (null for company-wide
+    // tokens), so one-runtime-per-agent (duplicateRuntime) and the version
+    // badges can find an agent's runtime. Bridge 0.3.x never sends versions.
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    bridgeVersion: text("bridge_version"),
+    bridgeProtocol: integer("bridge_protocol"),
+    hermesVersion: text("hermes_version"),
+    transport: text("transport"), // gateway-ws | …
+    deployMode: text("deploy_mode"), // remote | managed
+    gatewayTopology: text("gateway_topology"), // standalone | shared | managed
+    // Opaque runtime-supplied host id (e.g. sha256 of /etc/machine-id). Only
+    // used to find shared gateways on the same machine (D21), never displayed.
+    hostFingerprint: text("host_fingerprint"),
 });
 
 export const agentSessions = pgTable("agent_sessions", {
@@ -1169,6 +1182,19 @@ export const agentRuns = pgTable("agent_runs", {
     costCents: integer("cost_cents"),
     toolCalls: integer("tool_calls"),
     error: text("error"), // truncated to 500 chars, redacted with the live-feed redactor
+    // 0.9 run usage (run-usage: 2). Not rolled up into agent_run_daily yet.
+    cacheReadTokens: integer("cache_read_tokens"),
+    cacheWriteTokens: integer("cache_write_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    apiCalls: integer("api_calls"),
+    model: text("model"),
+    provider: text("provider"),
+    exitReason: text("exit_reason"), // receipt turn_exit_reason, ≤ 120 chars
+    queueMs: integer("queue_ms"),
+    firstTokenMs: integer("first_token_ms"),
+    compactions: integer("compactions"),
+    // Run events dropped by the per-run cap (server) plus the bridge spool cap.
+    eventsDropped: integer("events_dropped"),
 }, (table) => ({
     // The Agent → Runs tab and the per-agent rollup read newest-first per agent.
     agentStartedIdx: index("agent_runs_company_agent_started_idx").on(table.companyId, table.agentId, table.startedAt.desc()),
@@ -1176,6 +1202,40 @@ export const agentRuns = pgTable("agent_runs", {
     triggerMessageIdx: index("agent_runs_trigger_message_idx").on(table.triggerMessageId),
     // The lost-run closer only ever touches still-running rows.
     runningIdx: index("agent_runs_running_idx").on(table.status).where(sql`${table.status} = 'running'`),
+    // Chat reads a thread's live and recent runs (liveRuns).
+    threadStartedIdx: index("agent_runs_thread_started_idx").on(table.threadId, table.startedAt.desc()),
+}));
+
+// ─── Run events (0.9) ───────────────────────────────────────────────────────
+// Live steps of one run (tool start/end, reasoning lines, usage, compaction),
+// streamed by the runtime in batches. The id is client-generated and (run_id,
+// seq) is unique, so a replayed batch is deduplicated. Summaries and data are
+// redacted and capped; raw tool args and results are never stored. The
+// retention job prunes rows after EMPEROR_RUN_EVENT_RETENTION_DAYS (default 7).
+export const agentRunEvents = pgTable("agent_run_events", {
+    id: uuid("id").primaryKey(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+    runId: uuid("run_id").notNull().references(() => agentRuns.id, { onDelete: 'cascade' }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: 'set null' }),
+    threadId: uuid("thread_id"),
+    seq: integer("seq").notNull(), // bridge-assigned, monotonic per run
+    ts: timestamp("ts").notNull(), // event time on the runtime host (clamped)
+    kind: text("kind").notNull(), // see RUN_EVENT_KINDS in src/lib/run-events.ts
+    toolName: text("tool_name"),
+    toolCallId: text("tool_call_id"),
+    status: text("status"), // ok | error | running | interrupted
+    durationMs: integer("duration_ms"),
+    summary: text("summary"), // ≤ 500 chars, redacted
+    data: jsonb("data"), // ≤ 2 KiB serialized, redacted
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+    runSeqUnique: uniqueIndex("agent_run_events_run_seq_uq").on(table.runId, table.seq),
+    // The retention job prunes by created_at.
+    companyCreatedIdx: index("agent_run_events_company_created_idx").on(table.companyId, table.createdAt),
+    // The retention delete is company-agnostic: WHERE created_at < cutoff.
+    createdIdx: index("agent_run_events_created_idx").on(table.createdAt),
+    // ON DELETE SET NULL from agents scans by agent_id.
+    agentIdx: index("agent_run_events_agent_idx").on(table.agentId),
 }));
 
 // Delivery verdicts that matter (14-day TTL). One row per (message, agent) only

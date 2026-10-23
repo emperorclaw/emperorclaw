@@ -15,6 +15,9 @@ import { isPersistedUuid } from "@/lib/run-ledger-copy";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import { LiveStatusRow } from "@/components/live-status-row";
+import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
+import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningLine, mergeLiveRuns, type ClientLiveRun } from "@/lib/live-activity";
+import type { RunLive } from "@/lib/run-events";
 
 const CHAT_PAGE_SIZE = 25;
 
@@ -79,6 +82,8 @@ type ChatResponse = {
     participants?: TeamParticipant[];
     hasMore?: boolean;
     message?: TeamMessage;
+    liveRuns?: RunLive[];
+    replyRuns?: Record<string, ReplyRun>;
 };
 
 // --- Grouping helpers ---
@@ -151,6 +156,11 @@ export function AgentTeamChat({
     const preserveScrollHeightRef = useRef<number | null>(null);
     const [messages, setMessages] = useState<TeamMessage[]>(initialMessages);
     const [participants, setParticipants] = useState<TeamParticipant[]>([]);
+    // 0.9 run events: live runs in this thread (merged across polls) and the
+    // run behind each agent reply. Both stay empty against older servers.
+    const [liveRuns, setLiveRuns] = useState<ClientLiveRun[]>([]);
+    const liveRunsRef = useRef<ClientLiveRun[]>([]);
+    const [replyRuns, setReplyRuns] = useState<Record<string, ReplyRun>>({});
     const [draft, setDraft] = useState("");
     const [isSending, setIsSending] = useState(false);
     const [hasOlderMessages, setHasOlderMessages] = useState(initialHasMore);
@@ -211,18 +221,40 @@ export function AgentTeamChat({
         }
     }, [hasOlderMessages, isLoadingOlder, messages, withThread]);
 
+    const lastSeenAtRef = useRef(lastSeenAt);
     useEffect(() => {
+        lastSeenAtRef.current = lastSeenAt;
+    }, [lastSeenAt]);
+
+    useEffect(() => {
+        let active = true;
+        let timer: ReturnType<typeof setTimeout> | null = null;
         const fetchUpdates = async () => {
             try {
-                const res = await fetch(withThread(new URLSearchParams(lastSeenAt ? { since: lastSeenAt } : {})));
-                if (!res.ok) return;
+                const seen = lastSeenAtRef.current;
+                const params = new URLSearchParams(seen ? { since: seen } : {});
+                const eventsSince = eventsSinceParam(liveRunsRef.current);
+                if (eventsSince) params.set("eventsSince", eventsSince);
+                const res = await fetch(withThread(params));
+                if (!res.ok || !active) return;
                 const data = await res.json() as ChatResponse;
+                if (!active) return;
                 if (data.participants) {
                     setParticipants(data.participants);
                 }
+                const merged = mergeLiveRuns(liveRunsRef.current, data.liveRuns, Date.now());
+                liveRunsRef.current = merged;
+                setLiveRuns(merged);
+                if (data.replyRuns && Object.keys(data.replyRuns).length > 0) {
+                    const incoming = data.replyRuns;
+                    setReplyRuns((prev) => {
+                        const changed = Object.entries(incoming).some(([id, run]) => JSON.stringify(prev[id]) !== JSON.stringify(run));
+                        return changed ? { ...prev, ...incoming } : prev;
+                    });
+                }
                 // A group loads its history client-side; the first page tells
                 // us whether there is older history to page back through.
-                if (!lastSeenAt && typeof data.hasMore === "boolean") setHasOlderMessages(data.hasMore);
+                if (!seen && typeof data.hasMore === "boolean") setHasOlderMessages(data.hasMore);
                 const nextMessages = data.messages;
                 if (nextMessages && nextMessages.length > 0) {
                     setMessages((prev) => {
@@ -235,24 +267,46 @@ export function AgentTeamChat({
                         return [...prev, ...newMessages];
                     });
                     const latest = nextMessages[nextMessages.length - 1];
-                    setLastSeenAt((prevLast) => {
-                        const latestCreatedAt = messageCursor(latest.createdAt);
-                        return new Date(latestCreatedAt).getTime() > new Date(prevLast || 0).getTime()
-                            ? latestCreatedAt
-                            : prevLast;
-                    });
+                    const latestCreatedAt = messageCursor(latest.createdAt);
+                    if (new Date(latestCreatedAt).getTime() > new Date(lastSeenAtRef.current || 0).getTime()) {
+                        lastSeenAtRef.current = latestCreatedAt;
+                    }
+                    setLastSeenAt((prevLast) => (
+                        new Date(latestCreatedAt).getTime() > new Date(prevLast || 0).getTime() ? latestCreatedAt : prevLast
+                    ));
                 }
             } catch (err) {
                 console.error("Failed to poll agent chat", err);
             }
         };
 
+        // Adaptive poll (section 4.7): 2 s while a run is live, 5 s otherwise,
+        // and none while the tab is hidden (it resumes at once when shown).
+        const schedule = () => {
+            if (!active) return;
+            if (timer) clearTimeout(timer);
+            if (document.visibilityState === "hidden") { timer = null; return; }
+            const running = liveRunsRef.current.some((run) => run.status === "running");
+            timer = setTimeout(poll, chatPollDelayMs("team", running));
+        };
+        const poll = () => {
+            timer = null;
+            void fetchUpdates().finally(schedule);
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === "visible" && active && !timer) poll();
+        };
+        document.addEventListener("visibilitychange", onVisibility);
         // A group starts empty (no server-rendered history): load it now
         // instead of waiting for the first poll.
-        if (groupId && !lastSeenAt) void fetchUpdates();
-        const interval = setInterval(fetchUpdates, 5000);
-        return () => clearInterval(interval);
-    }, [lastSeenAt, isAtBottom, groupId, withThread]);
+        if (groupId && !lastSeenAtRef.current) poll();
+        else schedule();
+        return () => {
+            active = false;
+            if (timer) clearTimeout(timer);
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
+    }, [groupId, withThread]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -422,9 +476,18 @@ export function AgentTeamChat({
             activity: p.currentActivity?.trim() || null,
         }));
 
+    // Agents with a running run (bridge 0.9 events) count as working even
+    // between typing refreshes.
+    for (const run of liveRuns) {
+        if (run.status !== "running" || !run.agentId || typingAgents.some((a) => a.id === run.agentId)) continue;
+        typingAgents.push({ id: run.agentId, name: getAgentName(run.agentId), activity: null });
+    }
     // Only show the detail when a single agent is working: concatenating two
     // agents' reasoning would produce an unreadable wall in a one-line strip.
     const soloTypingActivity = typingAgents.length === 1 ? typingAgents[0].activity : null;
+    const soloLiveRun = typingAgents.length === 1
+        ? liveRuns.find((run) => run.status === "running" && run.agentId === typingAgents[0].id) ?? null
+        : null;
     // The live row covers the whole turn: the viewer's own prompt being handled
     // keeps it up even when a bridge typing refresh arrives late.
     let ownActingMessageId: string | null = null;
@@ -618,6 +681,9 @@ export function AgentTeamChat({
                                                 {!isHuman && hasStoredReasoning(msg) && (
                                                     <MessageReasoningDisclosure messageId={msg.id} />
                                                 )}
+                                                {msg.senderType === "agent" && replyRuns[msg.id] && (
+                                                    <ReplyRunFooter run={replyRuns[msg.id]} />
+                                                )}
                                                 {isPersistedUuid(msg.id) && (msg.senderType === "human" || msg.senderType === "agent") && (
                                                     <div className="mt-1.5">
                                                         <DeliveryInspector messageId={msg.id} />
@@ -678,7 +744,15 @@ export function AgentTeamChat({
                 idleVerb={typingAgents.length > 1 ? "are working" : "is working"}
                 fallbackText="Working on your message"
                 variant="team"
+                step={soloLiveRun?.current.summary ?? null}
+                stepStartedAt={soloLiveRun && isTimedStepKind(soloLiveRun.current.kind) ? soloLiveRun.currentStartedAt : null}
+                detail={soloLiveRun ? lastReasoningLine(soloLiveRun) : null}
             />
+            {liveActive && soloLiveRun && (
+                <div className="px-4 pb-1.5 pl-[42px]">
+                    <LiveRunSteps steps={soloLiveRun.steps} usage={soloLiveRun.usage} />
+                </div>
+            )}
 
             {sendable ? (
                 <form onSubmit={handleSend} className="border-t border-zinc-800/80 bg-zinc-900/30 p-2 sm:p-3">

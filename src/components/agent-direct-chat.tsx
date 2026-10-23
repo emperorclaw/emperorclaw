@@ -16,6 +16,9 @@ import { queuePromptPreview } from "@/lib/queue-prompt-preview";
 import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
+import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
+import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
+import type { RunLive } from "@/lib/run-events";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:opacity-50";
 
@@ -121,6 +124,11 @@ export function AgentDirectChat({
         }
     }, [messages, agentId, onAgentReply]);
     const [participants, setParticipants] = useState<DirectParticipant[]>([]);
+    // 0.9 run events: the thread's live runs (merged across polls) and the run
+    // behind each agent reply (footer). Both stay empty against older servers.
+    const [liveRuns, setLiveRuns] = useState<ClientLiveRun[]>([]);
+    const liveRunsRef = useRef<ClientLiveRun[]>([]);
+    const [replyRuns, setReplyRuns] = useState<Record<string, ReplyRun>>({});
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
@@ -168,6 +176,8 @@ export function AgentDirectChat({
         params.set("limit", String(CHAT_PAGE_SIZE));
         if (since) params.set("since", since);
         if (before) params.set("before", before);
+        const eventsSince = before ? null : eventsSinceParam(liveRunsRef.current);
+        if (eventsSince) params.set("eventsSince", eventsSince);
 
         const res = await fetch(`/api/chat?${params.toString()}`);
         if (!res.ok) {
@@ -179,7 +189,22 @@ export function AgentDirectChat({
             messages?: DirectMessage[];
             participants?: DirectParticipant[];
             hasMore?: boolean;
+            liveRuns?: RunLive[];
+            replyRuns?: Record<string, ReplyRun>;
         };
+
+        if (!before) {
+            const merged = mergeLiveRuns(liveRunsRef.current, data.liveRuns, Date.now());
+            liveRunsRef.current = merged;
+            setLiveRuns(merged);
+        }
+        if (data.replyRuns && Object.keys(data.replyRuns).length > 0) {
+            const incoming = data.replyRuns;
+            setReplyRuns((prev) => {
+                const changed = Object.entries(incoming).some(([id, run]) => JSON.stringify(prev[id]) !== JSON.stringify(run));
+                return changed ? { ...prev, ...incoming } : prev;
+            });
+        }
 
         if (data.thread) {
             setThread(data.thread);
@@ -284,6 +309,9 @@ export function AgentDirectChat({
             setMessages([]);
             setThread(null);
             setParticipants([]);
+            liveRunsRef.current = [];
+            setLiveRuns([]);
+            setReplyRuns({});
             lastSeenAtRef.current = null;
             forceScrollToBottomRef.current = true;
             isAtBottomRef.current = true;
@@ -303,19 +331,35 @@ export function AgentDirectChat({
             }
         };
 
-        void initialize();
-
-        const interval = setInterval(() => {
+        // Adaptive poll (§4.7): 1.5 s while a run is live, 3 s otherwise, and
+        // none while the tab is hidden (it resumes at once when shown again).
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const schedule = () => {
+            if (!active) return;
+            if (timer) clearTimeout(timer);
+            if (typeof document !== "undefined" && document.visibilityState === "hidden") { timer = null; return; }
+            const running = liveRunsRef.current.some((run) => run.status === "running");
+            timer = setTimeout(poll, chatPollDelayMs("direct", running));
+        };
+        const poll = () => {
+            timer = null;
             void loadMessages().catch((error) => {
                 if (active) {
                     console.error("Failed to poll direct chat", error);
                 }
-            });
-        }, 3000);
+            }).finally(schedule);
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === "visible" && active && !timer) poll();
+        };
+
+        void initialize().finally(schedule);
+        document.addEventListener("visibilitychange", onVisibility);
 
         return () => {
             active = false;
-            clearInterval(interval);
+            if (timer) clearTimeout(timer);
+            document.removeEventListener("visibilitychange", onVisibility);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         };
     }, [loadMessages]);
@@ -652,8 +696,10 @@ export function AgentDirectChat({
     // A single active turn is already represented in the transcript and typing
     // indicator. The separate panel is useful only when it explains a backlog.
     const hasQueueBacklog = queueItems.length >= 2;
+    // The agent's running run from real events (bridge 0.9+), when any.
+    const liveRun = runningRun(liveRuns, agentId);
     // The live row covers the whole turn, not just the bridge's typing window.
-    const liveActive = isAgentTyping || Boolean(activeQueueItem);
+    const liveActive = isAgentTyping || Boolean(activeQueueItem) || Boolean(liveRun);
     const recentlyCancelledItems = useMemo(() => messages
         .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
         .slice(-3).reverse(), [messages]);
@@ -811,6 +857,9 @@ export function AgentDirectChat({
                                                 {!isHuman && hasStoredReasoning(message) && (
                                                     <MessageReasoningDisclosure messageId={message.id} />
                                                 )}
+                                                {message.senderType === "agent" && replyRuns[message.id] && (
+                                                    <ReplyRunFooter run={replyRuns[message.id]} />
+                                                )}
                                                 {isPersistedUuid(message.id) && (message.senderType === "human" || message.senderType === "agent") && (
                                                     <div className="mt-1.5">
                                                         <DeliveryInspector messageId={message.id} tone={isHuman ? "light" : "dark"} />
@@ -864,7 +913,15 @@ export function AgentDirectChat({
                             idleVerb="is working"
                             fallbackText="Working"
                             variant="direct"
+                            step={liveRun?.current.summary ?? null}
+                            stepStartedAt={liveRun && isTimedStepKind(liveRun.current.kind) ? liveRun.currentStartedAt : null}
+                            detail={liveRun ? lastReasoningLine(liveRun) : null}
                         />
+                        {liveActive && liveRun && (
+                            <div className="mt-1 max-w-[88%] pl-4 sm:max-w-[80%]">
+                                <LiveRunSteps steps={liveRun.steps} usage={liveRun.usage} />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

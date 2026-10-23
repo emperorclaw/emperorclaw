@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, lt, sql, type SQL } from "drizzle-orm";
+import { and, eq, lt, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRunDaily, agentRuns, messageRoutes } from "@/db/schema";
 import { redactSensitive } from "@/lib/live-feed-v2";
@@ -91,8 +91,74 @@ export const finishRunSchema = z.object({
     toolCalls: boundedCount.nullish(),
     replyMessageId: z.string().uuid().nullish(),
     error: z.string().max(RUN_ERROR_RAW_MAX_CHARS).nullish(),
+    // run-usage: 2 (bridge 0.9). inputTokens = prompt incl. cached tokens.
+    cacheReadTokens: boundedCount.nullish(),
+    cacheWriteTokens: boundedCount.nullish(),
+    reasoningTokens: boundedCount.nullish(),
+    apiCalls: boundedCount.nullish(),
+    model: z.string().max(100).nullish(),
+    provider: z.string().max(100).nullish(),
+    /** Receipt `turn_exit_reason`, e.g. `text_response(finish_reason=stop)`. */
+    exitReason: z.string().max(120).nullish(),
+    queueMs: boundedCount.nullish(),
+    firstTokenMs: boundedCount.nullish(),
+    compactions: boundedCount.nullish(),
+    /** Events the runtime dropped (spool cap). Added to the server's own count. */
+    eventsDropped: boundedCount.nullish(),
 });
 export type FinishRunInput = z.infer<typeof finishRunSchema>;
+
+/**
+ * The run-usage columns a finish may set, in the shape both the update and the
+ * recovering insert use (`undefined` leaves a column untouched on update).
+ */
+export function finishUsageColumns(input: FinishRunInput) {
+    return {
+        cacheReadTokens: input.cacheReadTokens ?? undefined,
+        cacheWriteTokens: input.cacheWriteTokens ?? undefined,
+        reasoningTokens: input.reasoningTokens ?? undefined,
+        apiCalls: input.apiCalls ?? undefined,
+        model: input.model?.trim() || undefined,
+        provider: input.provider?.trim() || undefined,
+        exitReason: input.exitReason ? (truncateRunError(input.exitReason) ?? undefined) : undefined,
+        queueMs: input.queueMs ?? undefined,
+        firstTokenMs: input.firstTokenMs ?? undefined,
+        compactions: input.compactions ?? undefined,
+    };
+}
+
+/**
+ * Insert a run start (idempotent on id) and return the stored row, or null
+ * when the id belongs to another company. Shared by POST /agents/runs and the
+ * events endpoint's optional `run` header, so events never depend on the start
+ * POST having landed first.
+ */
+export async function insertRunStart(companyId: string, agentId: string, input: StartRunInput) {
+    await db
+        .insert(agentRuns)
+        .values({
+            id: input.id,
+            companyId,
+            agentId,
+            runtimeId: input.runtimeId ?? null,
+            runtimeKind: input.runtimeKind ?? "other",
+            bridgeVersion: input.bridgeVersion ?? null,
+            triggerKind: input.triggerKind ?? "other",
+            triggerMessageId: input.triggerMessageId ?? null,
+            threadId: input.threadId ?? null,
+            taskId: input.taskId ?? null,
+            status: "running",
+            // Clamped to [now − 48h, now + 5min]; an out-of-range start falls back to now.
+            startedAt: clampRunTimestamp(input.startedAt),
+        })
+        .onConflictDoNothing({ target: agentRuns.id });
+
+    const [run] = await db
+        .select()
+        .from(agentRuns)
+        .where(and(eq(agentRuns.id, input.id), eq(agentRuns.companyId, companyId)));
+    return run ?? null;
+}
 
 /** True when the raw body exceeds the size cap (UTF-8 bytes). */
 export function payloadTooLarge(raw: string, max: number = RUN_PAYLOAD_MAX_BYTES): boolean {

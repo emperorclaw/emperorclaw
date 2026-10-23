@@ -59,7 +59,7 @@ test("ttlCutoff subtracts whole hours from the run instant", () => {
 test("the default registry starts with the idempotency prune and adds the ledger steps in order", () => {
     assert.deepEqual(
         RETENTION_STEPS.map((entry) => entry.id),
-        ["idempotency_keys", "agent_runs_lost", "agent_run_daily_rollup", "agent_runs", "message_routes", "agent_run_daily"],
+        ["idempotency_keys", "agent_runs_lost", "agent_run_daily_rollup", "agent_run_events", "agent_runs", "message_routes", "agent_run_daily"],
     );
     const first = RETENTION_STEPS[0];
     assert.equal(isPrepareStep(first), false);

@@ -40,6 +40,8 @@ interface DeliveryRun {
     costCents: number | null;
     toolCalls: number | null;
     error: string | null;
+    /** Run events stored for the run (bridge 0.9+); 0 for older runtimes. */
+    eventsCount?: number;
 }
 
 interface DeliveryVerdict {
@@ -55,6 +57,10 @@ interface DeliveryVerdict {
 interface DeliveryView {
     verdicts: DeliveryVerdict[];
     runs: DeliveryRun[];
+    /** Queued messages a coalesced reply to this one also answered. */
+    coalescedMessageIds: string[];
+    /** This message was answered together with that one. */
+    coalescedInto: string | null;
 }
 
 function RunLine({ run }: { run: DeliveryRun }) {
@@ -70,6 +76,11 @@ function RunLine({ run }: { run: DeliveryRun }) {
                     </span>
                 )}
                 <span className="text-[11px] text-zinc-500">{triggerKindLabel(run.triggerKind)}</span>
+                {run.eventsCount ? (
+                    <span className="text-[11px] tabular-nums text-zinc-500">
+                        {run.eventsCount} {run.eventsCount === 1 ? "event" : "events"}
+                    </span>
+                ) : null}
             </div>
             {run.error && <p className="mt-1 break-words text-[11px] text-rose-300">{run.error}</p>}
         </div>
@@ -89,7 +100,12 @@ function DeliveryInspectorImpl({ messageId, tone = "dark" }: { messageId: string
             const res = await fetch(`/api/messages/${encodeURIComponent(messageId)}/delivery`);
             if (!res.ok) throw new Error(res.status === 404 ? "Message not found" : "Could not load delivery");
             const json = (await res.json()) as Partial<DeliveryView>;
-            setData({ verdicts: json.verdicts ?? [], runs: json.runs ?? [] });
+            setData({
+                verdicts: json.verdicts ?? [],
+                runs: json.runs ?? [],
+                coalescedMessageIds: json.coalescedMessageIds ?? [],
+                coalescedInto: json.coalescedInto ?? null,
+            });
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not load delivery");
         } finally {
@@ -207,6 +223,28 @@ function DeliveryBody({ data }: { data: DeliveryView }) {
                     <div className="mt-2 space-y-1.5">
                         {orphanRuns.map((run) => <RunLine key={run.id} run={run} />)}
                     </div>
+                </div>
+            )}
+
+            {(data.coalescedMessageIds.length > 0 || data.coalescedInto) && (
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-2.5 text-[11px] text-zinc-400">
+                    {data.coalescedInto ? (
+                        <p>
+                            Answered together with message{" "}
+                            <span className="font-mono text-zinc-300">{data.coalescedInto.slice(0, 8)}</span>.
+                        </p>
+                    ) : null}
+                    {data.coalescedMessageIds.length > 0 ? (
+                        <>
+                            <p>
+                                The reply also answered {data.coalescedMessageIds.length} queued{" "}
+                                {data.coalescedMessageIds.length === 1 ? "message" : "messages"}:
+                            </p>
+                            <p className="mt-1 break-all font-mono text-[10px] text-zinc-500">
+                                {data.coalescedMessageIds.map((id) => id.slice(0, 8)).join(", ")}
+                            </p>
+                        </>
+                    ) : null}
                 </div>
             )}
 

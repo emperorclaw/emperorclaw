@@ -16,7 +16,8 @@ import {
  * several ticks instead of one long lock.
  *
  * PR 2 adds the run-ledger tables (`agent_runs`, `message_routes`) and the
- * rollup step by appending entries to `RETENTION_STEPS`.
+ * rollup step by appending entries to `RETENTION_STEPS`; 0.9 adds
+ * `agent_run_events`.
  */
 
 /** Rows deleted per statement. Small enough to keep each batch's lock short. */
@@ -30,6 +31,8 @@ export const DEFAULT_IDEMPOTENCY_TTL_HOURS = 48;
 export const DEFAULT_RUN_RETENTION_DAYS = 30;
 /** Stored delivery verdicts live this long. */
 export const DEFAULT_ROUTE_RETENTION_DAYS = 14;
+/** Run events (live steps) live this long. */
+export const DEFAULT_RUN_EVENT_RETENTION_DAYS = 7;
 
 /** Shared parser for the per-table TTL env vars (invalid or sub-1 → default). */
 function ttlDaysFrom(env: Record<string, string | undefined>, name: string, fallback: number): number {
@@ -50,6 +53,11 @@ export function idempotencyTtlHours(env: Record<string, string | undefined> = pr
 /** How long `agent_runs` detail rows are kept. */
 export function runRetentionDays(env: Record<string, string | undefined> = process.env): number {
     return ttlDaysFrom(env, "EMPEROR_RUN_RETENTION_DAYS", DEFAULT_RUN_RETENTION_DAYS);
+}
+
+/** How long `agent_run_events` rows are kept. */
+export function runEventRetentionDays(env: Record<string, string | undefined> = process.env): number {
+    return ttlDaysFrom(env, "EMPEROR_RUN_EVENT_RETENTION_DAYS", DEFAULT_RUN_EVENT_RETENTION_DAYS);
 }
 
 /** How long `message_routes` verdicts are kept. */
@@ -138,6 +146,15 @@ export const RETENTION_STEPS: readonly RegisteredRetentionStep[] = [
         label: "Roll up finished runs",
         kind: "prepare",
         run: (now) => rollupFinishedRuns(now),
+    },
+    {
+        // Before agent_runs: events expire long before their run, and the run
+        // delete cascades to whatever is left.
+        id: "agent_run_events",
+        label: "Run events",
+        table: "agent_run_events",
+        timeColumn: "created_at",
+        cutoff: (now) => dayCutoff(now, runEventRetentionDays()),
     },
     {
         id: "agent_runs",

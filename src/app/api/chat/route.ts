@@ -12,6 +12,8 @@ import { requireRole, AuthError } from "@/lib/roles";
 import { parseAgentControlCommand, validateAgentControl } from "@/lib/agent-control-command";
 import { requestAgentControl } from "@/lib/agent-control";
 import { getGroupThread, GroupError, joinGroupAsHuman, isAgentPairThread, isCompanyOwnerOrAdmin } from "@/lib/groups";
+import { parseEventsSince } from "@/lib/run-events";
+import { loadChatRunState } from "@/lib/run-ledger-reads";
 
 type ThreadMessageLike = {
     fromUserId?: string | null;
@@ -75,7 +77,16 @@ export async function GET(req: NextRequest) {
             and(eq(threadParticipants.companyId, companyId), eq(threadParticipants.threadId, thread.id))
         );
 
-        return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore });
+        // 0.9 live runs (§4.7): the caller already passed the thread's access
+        // check above, so its runs and steps are visible to them as-is.
+        const { liveRuns, replyRuns } = await loadChatRunState(companyId, thread.id, {
+            since: parseEventsSince(searchParams.get("eventsSince")),
+            replyMessageIds: pagedMessages
+                .filter((message) => (message as { senderType?: string }).senderType === "agent")
+                .map((message) => String((message as { id?: unknown }).id ?? "")),
+        });
+
+        return NextResponse.json({ thread, messages: pagedMessages.map(serializeMessage), participants, hasMore, liveRuns, replyRuns });
     } catch (error: unknown) {
         if (error instanceof AuthError) return NextResponse.json({error:error.message},{status:error.statusCode});
         if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken } from "@/lib/mcp";
 import { nextCheckinDeadline } from "@/lib/lifecycle";
 import { acknowledgeAgentHeartbeat } from "@/lib/openclaw/runtime";
+import { touchRuntimeNode } from "@/lib/control-plane";
 
 export async function POST(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -28,6 +29,12 @@ export async function POST(req: NextRequest) {
 
         if (!agent) {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+
+        // 0.9+ bridges name their runtime on every heartbeat, so duplicate
+        // detection sees a live runtime between its (rarer) register calls.
+        if (typeof body.runtimeId === "string" && body.runtimeId.trim()) {
+            await touchRuntimeNode(companyId, body.runtimeId.trim().slice(0, 200));
         }
 
         return NextResponse.json({ message: "Heartbeat acknowledged", lastSeenAt: agent.lastSeenAt });

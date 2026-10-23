@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
-import { agentRuns } from "@/db/schema";
 import { verifyMcpToken, resolveBoundAgentId } from "@/lib/mcp";
 import { consumeRateLimit } from "@/lib/rate-limit";
-import { clampRunTimestamp, startRunSchema, payloadTooLarge } from "@/lib/run-ledger";
+import { insertRunStart, startRunSchema, payloadTooLarge } from "@/lib/run-ledger";
 
 /** Runtime turns are frequent but bounded; leave room for a busy fleet. */
 const RUNS_PER_MINUTE = 2_000;
@@ -56,29 +53,7 @@ export async function POST(req: NextRequest) {
     if (!limit.allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
     try {
-        await db
-            .insert(agentRuns)
-            .values({
-                id: input.id,
-                companyId,
-                agentId: effectiveAgentId,
-                runtimeId: input.runtimeId ?? null,
-                runtimeKind: input.runtimeKind ?? "other",
-                bridgeVersion: input.bridgeVersion ?? null,
-                triggerKind: input.triggerKind ?? "other",
-                triggerMessageId: input.triggerMessageId ?? null,
-                threadId: input.threadId ?? null,
-                taskId: input.taskId ?? null,
-                status: "running",
-                // Clamped to [now − 48h, now + 5min]; an out-of-range start falls back to now.
-                startedAt: clampRunTimestamp(input.startedAt),
-            })
-            .onConflictDoNothing({ target: agentRuns.id });
-
-        const [run] = await db
-            .select()
-            .from(agentRuns)
-            .where(and(eq(agentRuns.id, input.id), eq(agentRuns.companyId, companyId)));
+        const run = await insertRunStart(companyId, effectiveAgentId, input);
         if (!run) return NextResponse.json({ error: "Run id is already in use" }, { status: 409 });
         return NextResponse.json({ run });
     } catch (error) {

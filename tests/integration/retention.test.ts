@@ -64,3 +64,32 @@ maybe("the latest retention summary is readable for the Ops storage page", async
     assert.equal(runs[0].steps[0].table, "idempotency_keys");
     assert.equal(typeof runs[0].durationMs, "number");
 });
+
+maybe("retention prunes run events past their TTL before pruning runs", async () => {
+    await resetDb();
+    const db = await getDb();
+    const { agentRuns, agentRunEvents } = await getSchema();
+    const company = await seedCompany();
+    const { randomUUID } = await import("node:crypto");
+
+    const now = new Date();
+    const runId = randomUUID();
+    await db.insert(agentRuns).values({ id: runId, companyId: company.id, status: "succeeded", startedAt: new Date(now.getTime() - 2 * HOUR), endedAt: now });
+    const old = new Date(now.getTime() - 8 * 24 * HOUR); // past the 7-day default
+    await db.insert(agentRunEvents).values([
+        { id: randomUUID(), companyId: company.id, runId, seq: 1, ts: old, kind: "tool.start", createdAt: old },
+        { id: randomUUID(), companyId: company.id, runId, seq: 2, ts: old, kind: "tool.end", createdAt: old },
+        { id: randomUUID(), companyId: company.id, runId, seq: 3, ts: now, kind: "turn.completed", createdAt: now },
+    ]);
+
+    const { runScheduledRetention, RETENTION_STEPS } = await import("@/lib/retention");
+    const ids = RETENTION_STEPS.map((step) => step.id);
+    assert.ok(ids.indexOf("agent_run_events") >= 0 && ids.indexOf("agent_run_events") < ids.indexOf("agent_runs"));
+
+    const summary = await runScheduledRetention(now);
+    assert.ok(summary);
+    const step = summary.steps.find((entry) => entry.table === "agent_run_events");
+    assert.equal(step?.deleted, 2);
+    const rows = await db.select().from(agentRunEvents);
+    assert.deepEqual(rows.map((row) => row.seq), [3]);
+});
