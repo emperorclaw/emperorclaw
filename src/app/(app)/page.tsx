@@ -145,6 +145,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         agents: agentRows.map((a) => ({ id: a.id, name: a.name })),
         approvals: pendingApprovalRows(pendingApprovals),
         includePairThreads: isOwnerOrAdmin,
+        viewerUserId: userId,
     }).catch((error) => {
         // Thoughts and moments are decoration: the dashboard must render without them.
         console.error("[dashboard] live office data failed:", error);

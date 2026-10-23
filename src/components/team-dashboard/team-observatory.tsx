@@ -6,8 +6,9 @@ import { IconBubbleText, IconLayoutList, IconMessageCircle, IconUsersGroup } fro
 import { assignIdleRoutines, requiresHumanAction, type CompanyLeader, type DashboardTeam, type SceneActivity, type SceneAgent, type SceneCommunication, type SceneLiveEvent, type SceneThought } from "@/lib/team-scene";
 import { visibleCommunications, sceneMessagePreview } from "@/lib/observatory";
 import {
-    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, leaderMemberKey, orderDesks, plural, rotateSpeakers, urgencyBucket, visibleDesks, MAX_DESKS,
+    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, holdThoughts, leaderMemberKey, orderDesks, plural, rotateSpeakers, urgencyBucket, visibleDesks, MAX_DESKS,
 } from "@/lib/live-office";
+import { chatPollDelayMs } from "@/lib/live-activity";
 import { LivingDesk, Throne } from "./living-desk";
 import { useLiveLink } from "./live-link";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,9 @@ const CONFETTI_MS = 1400;
 const CELEBRATE_MS = 6000;
 const PULSE_MS = 3600;
 const MAX_PLANES = 3;
+/** Live steps poll between page refreshes while an agent works (chat's team cadence). */
+const THOUGHT_POLL_MS = chatPollDelayMs("team", true);
+const NO_THOUGHTS: ReadonlyMap<string, SceneThought> = new Map();
 
 /* "Show thoughts" lives in localStorage; storage can be unavailable (private mode). */
 const thoughtListeners = new Set<() => void>();
@@ -170,18 +174,48 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
     const pulsing = momentKeys("pulse");
 
     // ── Thought bubbles: one or two at a time, rotating among working agents.
+    // Each shows the agent's latest live step (or legacy thought), held until
+    // a newer one arrives so a refresh never blinks it out. While "Show
+    // thoughts" is on, the room is in view and someone works, live steps are
+    // polled between the 15 s page refreshes.
     const [tick, setTick] = useState(0);
+    const workingKeys = useMemo(() => new Set(shown.filter((a) => urgencyBucket(a, actionKeys) === "working" && !ghosts.has(a.member.key)).map((a) => a.member.key)), [shown, actionKeys, ghosts]);
+    const workingSignature = [...workingKeys].sort().join("|");
+    const pollThoughts = showThoughts && fresh && awake && workingKeys.size > 0;
+    const [polledThoughts, setPolledThoughts] = useState<SceneThought[]>([]);
+    useEffect(() => {
+        if (!pollThoughts) return;
+        let cancelled = false;
+        let timer = 0;
+        const poll = async () => {
+            try {
+                const response = await fetch("/api/dashboard/thoughts", { cache: "no-store" });
+                if (response.ok) {
+                    const body = await response.json() as { thoughts?: SceneThought[] };
+                    if (!cancelled && Array.isArray(body.thoughts)) setPolledThoughts(body.thoughts);
+                }
+            } catch { /* the next page refresh still carries thoughts */ }
+            if (!cancelled) timer = window.setTimeout(poll, THOUGHT_POLL_MS);
+        };
+        timer = window.setTimeout(poll, THOUGHT_POLL_MS);
+        return () => { cancelled = true; window.clearTimeout(timer); };
+    }, [pollThoughts]);
+    const [heldThoughts, setHeldThoughts] = useState<ReadonlyMap<string, SceneThought>>(NO_THOUGHTS);
+    useEffect(() => {
+        setHeldThoughts((prev) => holdThoughts(prev, [...thoughts, ...polledThoughts], workingKeys));
+        // workingSignature stands in for workingKeys (a new Set every render).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [thoughts, polledThoughts, workingSignature]);
     const speakingPool = useMemo(() => {
         if (!showThoughts || !fresh) return [];
-        const working = new Set(shown.filter((a) => urgencyBucket(a, actionKeys) === "working" && !ghosts.has(a.member.key)).map((a) => a.member.key));
-        return bubbleCandidates(thoughts, working, now.getTime());
-    }, [showThoughts, fresh, shown, actionKeys, ghosts, thoughts, now]);
+        return bubbleCandidates([...heldThoughts.values()], workingKeys, now.getTime());
+    }, [showThoughts, fresh, heldThoughts, workingKeys, now]);
     useEffect(() => {
         if (speakingPool.length <= 2 || !awake) return;
         const timer = window.setInterval(() => setTick((n) => n + 1), still ? 15_000 : 9_000);
         return () => window.clearInterval(timer);
     }, [speakingPool.length, awake, still]);
-    const speaking = new Map(rotateSpeakers(speakingPool, tick).map((t) => [t.memberKey, t.text]));
+    const speaking = new Map(rotateSpeakers(speakingPool, tick).map((t) => [t.memberKey, t]));
 
     const teamCount = team ? agents.length - ghosts.size : agents.length;
     const pointDesk = (key: string | null, hasActions: boolean) => {
@@ -219,7 +253,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
                     return <LivingDesk key={m.key} ref={deskRef(m.key)} agent={agent} bucket={bucket} label={deskStateLabel(agent, bucket)} status={deskStatusLine(agent, now)} activity={activity}
                         actions={actions} ghost={ghost} selected={selectedKey === m.key} linked={link.from === "inbox" && link.key === m.key}
                         celebrating={celebrating.has(m.key)} burst={confetti.has(m.key)} pulse={pulsing.has(m.key)} still={still}
-                        thought={ghost ? null : speaking.get(m.key) ?? null} bubbleAlign={column === 0 ? "start" : column === columns - 1 ? "end" : "center"}
+                        thought={ghost ? null : speaking.get(m.key)?.text ?? null} thoughtLabel={ghost ? null : speaking.get(m.key)?.label ?? null} bubbleAlign={column === 0 ? "start" : column === columns - 1 ? "end" : "center"}
                         ariaLabel={`${m.name}: ${agent.behavior.caption}${actions ? `, ${plural(actions, "pending action")}` : ""}${ghost ? ", outside this team chat" : ""}`}
                         onSelect={onSelect} onPoint={(key) => pointDesk(key, actions > 0)} />;
                 })}

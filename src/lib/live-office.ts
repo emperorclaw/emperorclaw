@@ -155,6 +155,31 @@ export function bubbleCandidates(thoughts: SceneThought[], workingKeys: Readonly
         .sort((a, b) => b.at.localeCompare(a.at) || a.memberKey.localeCompare(b.memberKey));
 }
 
+/**
+ * Fold fresh thought readings into the held ones so bubbles do not flicker:
+ * a member keeps its last thought until a reading at least as new arrives
+ * (a refresh that happens to carry none leaves it in place), and drops it
+ * once the member is no longer working. Returns `prev` itself when nothing
+ * changed, so a state setter can bail out.
+ */
+export function holdThoughts(prev: ReadonlyMap<string, SceneThought>, incoming: readonly SceneThought[], workingKeys: ReadonlySet<string>): ReadonlyMap<string, SceneThought> {
+    const next = new Map<string, SceneThought>();
+    let changed = false;
+    for (const [key, thought] of prev) {
+        if (workingKeys.has(key)) next.set(key, thought);
+        else changed = true;
+    }
+    for (const thought of incoming) {
+        if (!workingKeys.has(thought.memberKey)) continue;
+        const held = next.get(thought.memberKey);
+        if (held && held.at > thought.at) continue;
+        if (held && held.at === thought.at && held.text === thought.text && held.label === thought.label) continue;
+        next.set(thought.memberKey, thought);
+        changed = true;
+    }
+    return changed ? next : prev;
+}
+
 /** Which candidates speak in rotation slot `tick`: at most `max`, cycling through all. */
 export function rotateSpeakers<T>(candidates: T[], tick: number, max = MAX_BUBBLES): T[] {
     if (candidates.length <= max) return candidates;

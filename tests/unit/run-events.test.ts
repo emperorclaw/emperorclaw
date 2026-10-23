@@ -108,10 +108,10 @@ test("deriveActivityLine renders each kind as one short line", () => {
     assert.equal(deriveActivityLine(source(1, "tool.start", { toolName: "terminal", data: { target: "npm test" } })), "Running terminal · npm test");
     assert.equal(deriveActivityLine(source(1, "tool.progress", { toolName: "web", data: { percent: 41.6 } })), "Running web · 42%");
     assert.equal(deriveActivityLine(source(1, "tool.end", { toolName: "terminal", status: "error" })), "terminal failed");
-    assert.equal(deriveActivityLine(source(1, "tool.end", { toolName: "terminal", status: "ok" })), "Finished terminal");
+    assert.equal(deriveActivityLine(source(1, "tool.end", { toolName: "terminal", status: "ok" })), "terminal done");
     assert.equal(deriveActivityLine(source(1, "tool.start", { toolName: "read_file", summary: "hostname" })), "Running read_file · hostname");
     assert.equal(deriveActivityLine(source(1, "tool.prepare", { toolName: "read_file" })), "Preparing read_file");
-    assert.equal(deriveActivityLine(source(1, "reasoning", { summary: "Checking the tests" })), "Thinking…");
+    assert.equal(deriveActivityLine(source(1, "reasoning", { summary: "Checking the tests" })), "Thinking · Checking the tests");
     assert.equal(deriveActivityLine(source(1, "notice", { summary: "Retrying model call" })), "Retrying model call");
     assert.equal(deriveActivityLine(source(1, "notice")), null);
     assert.equal(deriveActivityLine(source(1, "status", { data: { kind: "compacting" } })), "Tidying memory…");
@@ -154,7 +154,7 @@ test("buildRunLive exposes current, the last steps and live usage", () => {
     assert.equal(live.steps.at(-1)?.kind, "reasoning");
     assert.ok(live.steps.every((step, i, all) => i === 0 || all[i - 1].seq < step.seq));
     assert.equal(live.current.kind, "reasoning");
-    assert.equal(live.current.summary, "Thinking…");
+    assert.equal(live.current.summary, "Thinking · Next I will run the build");
     assert.equal(live.current.sinceMs, 2_000);
     assert.deepEqual(live.usage, { input: 1200, output: 80, cacheRead: 900, contextPercent: 25 });
     assert.equal(live.startedAt, new Date(1_000_000).toISOString());

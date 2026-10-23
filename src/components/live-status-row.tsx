@@ -3,7 +3,7 @@
 import { memo, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useLiveActivity } from "@/components/use-live-activity";
-import { formatElapsed } from "@/lib/live-activity";
+import { formatElapsed, stepHeadline } from "@/lib/live-activity";
 
 type LiveStatusRowProps = {
     /** A prompt is being handled or the agent is typing. */
@@ -68,11 +68,14 @@ export const LiveStatusRow = memo(function LiveStatusRow({ active, activityKey, 
         </div>
     );
 
-    // Only name + activity are announced; the ticking timers sit outside the
-    // live region so they are not read every second. Activity is the model's
-    // own reasoning or tool line, so it keeps its case.
+    // The live region only carries the name and the step headline ("Thinking",
+    // "Running write_file"), so it speaks once per step rather than on every
+    // streamed thought or tick. The visible line below shows the full text.
+    // Activity is the model's own reasoning or tool line, so it keeps its case.
+    const headline = stepHeadline(live.activity);
+    const announcement = active ? (label ? `${label}: ${headline ?? idleVerb}` : headline ?? fallbackText) : "";
     const status = (
-        <span role="status" aria-live="polite" className={cn(active && "min-w-0 truncate text-[11px] text-zinc-400")} title={live.activity ?? undefined}>
+        <span className={cn(active && "min-w-0 truncate text-[11px] text-zinc-400")} title={live.activity ?? undefined}>
             {active && (label ? (
                 <>
                     <span className="font-bold text-zinc-500">{label}{live.activity ? ":" : ""}</span>{" "}
@@ -108,6 +111,7 @@ export const LiveStatusRow = memo(function LiveStatusRow({ active, activityKey, 
         <div className="flex min-w-0 items-center gap-2">
             {dots}
             <div className="flex min-w-0 flex-1 items-center">
+                <span role="status" aria-live="polite" className="sr-only">{announcement}</span>
                 {status}
                 {stepTimer}
             </div>

@@ -135,6 +135,8 @@ export const RUN_EVENTS_LATE_ACCEPT_MS = 10 * 60 * 1000;
 /** `thread_participants.typingUntil` window set by a non-terminal event. */
 export const RUN_EVENT_TYPING_TTL_MS = 20_000;
 export const RUN_ACTIVITY_MAX_CHARS = 200;
+/** The reasoning part of a "Thinking · …" activity line. */
+export const RUN_THOUGHT_MAX_CHARS = 110;
 /** Per-agent ingestion rate limit (requests per minute). */
 export const RUN_EVENTS_PER_MINUTE = 1_200;
 
@@ -369,6 +371,34 @@ function joinLine(head: string, tail: string | null | undefined): string {
     return clean ? `${head} · ${clean}` : head;
 }
 
+/** Hermes status kinds that mean the reply text itself is streaming. */
+const REPLY_STATUS_KINDS: ReadonlySet<string> = new Set(["writing", "responding", "streaming", "message"]);
+
+/**
+ * The headline of a reasoning summary: its first non-empty line, cut at the
+ * first sentence end when that leaves a real sentence, and clipped to
+ * `max` characters on a word boundary. Null when the summary is blank.
+ */
+export function reasoningHeadline(summary: string | null | undefined, max = RUN_THOUGHT_MAX_CHARS): string | null {
+    if (!summary) return null;
+    const line = summary.split(/\r?\n/).map((part) => part.replace(/\s+/g, " ").trim()).find(Boolean);
+    if (!line) return null;
+    // A sentence ends at . ! ? followed by a space, so "v0.9" or "file.ts" do not cut it.
+    const sentence = /^(.+?[.!?])\s/.exec(line)?.[1];
+    const text = sentence && sentence.length >= 12 ? sentence : line;
+    const chars = Array.from(text);
+    if (chars.length <= max) return text;
+    const cut = chars.slice(0, max - 1).join("");
+    const space = cut.lastIndexOf(" ");
+    return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s.,;:·-]+$/, "")}…`;
+}
+
+/** "Thinking · <headline>", or the bare "Thinking…" without a usable summary. */
+function thinkingLine(summary: string | null | undefined): string {
+    const headline = reasoningHeadline(summary);
+    return headline ? `Thinking · ${headline}` : "Thinking…";
+}
+
 /**
  * The one-line "what is the agent doing" text for an event (≤ 200 chars,
  * redacted), or null for kinds that do not change it (usage, terminal turn
@@ -388,7 +418,7 @@ export function deriveActivityLine(event: Pick<RunEventSource, "kind" | "toolNam
             line = "Working";
             break;
         case "reasoning":
-            line = "Thinking…";
+            line = thinkingLine(event.summary);
             break;
         case "notice":
             line = event.summary || null;
@@ -405,11 +435,15 @@ export function deriveActivityLine(event: Pick<RunEventSource, "kind" | "toolNam
             break;
         }
         case "tool.end":
-            line = event.status === "error" ? `${tool} failed` : `Finished ${tool}`;
+            line = event.status === "error" ? `${tool} failed` : `${tool} done`;
             break;
-        case "status":
-            line = dataString(event.data, "kind") === "compacting" ? "Tidying memory…" : (event.summary || "Working");
+        case "status": {
+            const kind = dataString(event.data, "kind");
+            line = kind === "compacting" ? "Tidying memory…"
+                : kind && REPLY_STATUS_KINDS.has(kind) ? "Writing the reply…"
+                : (event.summary || "Working");
             break;
+        }
         case "subagent.start":
             line = joinLine("Delegating", dataString(event.data, "name"));
             break;
@@ -432,6 +466,30 @@ export function deriveActivityLine(event: Pick<RunEventSource, "kind" | "toolNam
             line = null;
     }
     return line ? cleanSnippet(line, RUN_ACTIVITY_MAX_CHARS) : null;
+}
+
+/**
+ * The generic step label for a viewer who may not read the run's thread: the
+ * kind of step and the tool name only, never reasoning text, tool targets,
+ * notices or status text (those can quote the conversation).
+ */
+export function publicActivityLine(event: Pick<RunEventSource, "kind" | "toolName" | "status">): string {
+    const tool = event.toolName ? truncateChars(event.toolName, RUN_EVENT_TOOL_NAME_MAX_CHARS) : "a tool";
+    switch (event.kind) {
+        case "turn.queued": return "Queued";
+        case "reasoning": return "Thinking…";
+        case "tool.prepare": return `Preparing ${tool}`;
+        case "tool.start":
+        case "tool.progress": return `Running ${tool}`;
+        case "tool.end": return event.status === "error" ? `${tool} failed` : `${tool} done`;
+        case "compaction.start": return "Tidying memory…";
+        case "compaction.end": return "Memory tidied";
+        case "subagent.start": return "Delegating";
+        case "turn.completed": return "Done";
+        case "turn.failed": return "Failed";
+        case "turn.interrupted": return "Stopped";
+        default: return "Working";
+    }
 }
 
 /**
@@ -496,6 +554,20 @@ export function liveUsageFromData(data: unknown): RunLiveUsage | null {
     };
 }
 
+/** The newest summarized reasoning before `index`, unless another step came in between. */
+function earlierThought(ordered: readonly RunEventSource[], index: number): string | null {
+    for (let j = index - 1; j >= 0; j--) {
+        const event = ordered[j];
+        if (event.kind === "reasoning") {
+            if (reasoningHeadline(event.summary)) return thinkingLine(event.summary);
+            continue;
+        }
+        if (event.kind === "usage") continue;
+        if (deriveActivityLine(event) || isTerminalRunEventKind(event.kind)) return null;
+    }
+    return null;
+}
+
 /**
  * Build one `RunLive` from a run row and its events (any order; only the
  * newest matter). `current` is the newest event with a display line; a run
@@ -516,9 +588,12 @@ export function buildRunLive(run: RunLiveSource, events: readonly RunEventSource
         if (!usage && event.kind === "usage") usage = liveUsageFromData(event.data) ?? undefined;
         if (!current) {
             const terminal = isTerminalRunEventKind(event.kind);
-            const line = terminal
+            let line = terminal
                 ? (event.kind === "turn.completed" ? "Done" : event.kind === "turn.failed" ? "Failed" : "Stopped")
                 : deriveActivityLine(event);
+            // A reasoning beat without a summary keeps the last thought of the
+            // same thinking stretch (stopping at any other step) on screen.
+            if (event.kind === "reasoning" && !reasoningHeadline(event.summary)) line = earlierThought(ordered, i) ?? line;
             if (line) {
                 current = {
                     kind: event.kind as RunEventKind,

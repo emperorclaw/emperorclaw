@@ -162,6 +162,20 @@ export function lastReasoningLine(run: Pick<RunLive, "steps" | "current">): stri
     return null;
 }
 
+/**
+ * The part of an activity line worth announcing to a screen reader: the step
+ * itself ("Thinking", "Running write_file", "write_file done"), without the
+ * reasoning text or tool target after " · ". Consecutive reasoning beats share
+ * one headline, so a live region keyed on it speaks once per step, not once
+ * per streamed thought.
+ */
+export function stepHeadline(line: string | null | undefined): string | null {
+    const clean = clipActivity(line);
+    if (!clean) return null;
+    const head = clean.split(" · ")[0].replace(/(?:…|\.\.\.)$/, "").trim();
+    return head || clean;
+}
+
 // ─── Timeline rows ──────────────────────────────────────────────────────────
 
 /** A step as the timeline endpoint returns it: any event kind, not just live step kinds. */

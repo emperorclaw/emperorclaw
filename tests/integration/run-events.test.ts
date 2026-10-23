@@ -106,7 +106,7 @@ maybe("events are idempotent by id and (run, seq), and a missing run without hea
     const [participant] = await db.select().from(threadParticipants).where(and(
         eq(threadParticipants.threadId, thread.id), eq(threadParticipants.participantId, agent.id),
     ));
-    assert.equal(participant.currentActivity, "Finished terminal");
+    assert.equal(participant.currentActivity, "terminal done");
     assert.ok(participant.typingUntil && participant.typingUntil.getTime() > Date.now());
 
     // A terminal event clears it.

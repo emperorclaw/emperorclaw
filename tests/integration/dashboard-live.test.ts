@@ -62,3 +62,80 @@ maybe("dashboard thoughts and moments: team/group only, pair threads for admins,
     assert.ok(admin.liveEvents.some((e) => e.type === "handoff" && e.actorKey === `agent:${cy.id}` && e.targetKey === `agent:${ada.id}`));
     assert.ok(admin.thoughts.every((t) => !/salary|Another company/i.test(t.text)), "admins never see direct-thread or other-company reasoning either");
 });
+
+/**
+ * 0.9 bridges never fill thread_message_reasoning: their steps live in
+ * agent_run_events. The dashboard bubble reads the running run's newest step,
+ * from any thread, redacted to the generic label for a direct chat the viewer
+ * is not in.
+ */
+maybe("dashboard thoughts from 0.9 run events, direct runs redacted for non-participants", async () => {
+    await resetDb();
+    const { companyId, userId: ownerId } = await seedCompanyWithToken();
+    const db = await getDb();
+    const { messageThreads, threadParticipants, agentRuns, agentRunEvents, users } = await getSchema();
+    const { loadDashboardLive, loadRunThoughts } = await import("@/lib/dashboard-live");
+    const { randomUUID } = await import("node:crypto");
+    const now = Date.now();
+    const ago = (sec: number) => new Date(now - sec * 1000);
+
+    const ada = await seedAgent(companyId, { name: "Ada" });
+    const bob = await seedAgent(companyId, { name: "Bob" });
+    const cy = await seedAgent(companyId, { name: "Cy" });
+    const [other] = await db.insert(users).values({ email: `member-${randomUUID()}@example.com`, passwordHash: "x" }).returning();
+
+    const [team] = await db.insert(messageThreads).values({ companyId, type: "team", title: "Team" }).returning();
+    const [direct] = await db.insert(messageThreads).values({ companyId, type: "direct", title: "Owner and Bob" }).returning();
+    await db.insert(threadParticipants).values([
+        { companyId, threadId: direct.id, participantType: "human", participantRef: ownerId },
+        { companyId, threadId: direct.id, participantType: "agent", participantId: bob.id },
+    ]);
+
+    const adaRun = randomUUID();
+    const bobRun = randomUUID();
+    const cyRun = randomUUID();
+    const oldBobRun = randomUUID();
+    await db.insert(agentRuns).values([
+        { id: adaRun, companyId, agentId: ada.id, threadId: team.id, status: "running", startedAt: ago(40) },
+        { id: bobRun, companyId, agentId: bob.id, threadId: direct.id, status: "running", startedAt: ago(30) },
+        { id: oldBobRun, companyId, agentId: bob.id, threadId: team.id, status: "succeeded", startedAt: ago(300), endedAt: ago(200) },
+        // Running, but no events yet: no bubble from it.
+        { id: cyRun, companyId, agentId: cy.id, threadId: team.id, status: "running", startedAt: ago(5) },
+    ]);
+    const event = (runId: string, agentId: string, threadId: string, seq: number, sec: number, fields: Record<string, unknown>) => ({
+        id: randomUUID(), companyId, runId, agentId, threadId, seq, ts: ago(sec), ...fields,
+    });
+    await db.insert(agentRunEvents).values([
+        event(adaRun, ada.id, team.id, 1, 30, { kind: "turn.started" }),
+        event(adaRun, ada.id, team.id, 2, 20, { kind: "reasoning", summary: "The deploy logs show a missing env var. Next I check the compose file." }),
+        event(adaRun, ada.id, team.id, 3, 10, { kind: "tool.start", toolName: "read_file", summary: "docker-compose.yml", status: "running" }),
+        event(bobRun, bob.id, direct.id, 1, 25, { kind: "tool.end", toolName: "web", status: "ok" }),
+        event(bobRun, bob.id, direct.id, 2, 8, { kind: "reasoning", summary: "The owner's salary question needs a careful answer." }),
+        event(oldBobRun, bob.id, team.id, 1, 250, { kind: "reasoning", summary: "An old finished run" }),
+    ]);
+
+    const agents = [ada, bob, cy].map((a) => ({ id: a.id, name: a.name }));
+    const asMember = await loadDashboardLive(companyId, { now: new Date(now), agents, approvals: [], includePairThreads: false, viewerUserId: other.id });
+    const memberThoughts = new Map(asMember.thoughts.map((t) => [t.memberKey, t]));
+    assert.equal(memberThoughts.get(`agent:${ada.id}`)?.label, "Running read_file");
+    assert.equal(memberThoughts.get(`agent:${ada.id}`)?.text, "docker-compose.yml");
+    assert.equal(Math.round((now - Date.parse(memberThoughts.get(`agent:${ada.id}`)!.at)) / 1000), 10, "the bubble is as old as the step");
+    assert.equal(memberThoughts.get(`agent:${bob.id}`)?.label, "Thinking…", "a direct run the viewer is not in shows only the generic label");
+    assert.equal(memberThoughts.get(`agent:${bob.id}`)?.text, "");
+    assert.equal(memberThoughts.has(`agent:${cy.id}`), false, "a run without events gives no bubble");
+    assert.ok(asMember.thoughts.every((t) => !/salary|old finished/i.test(`${t.label} ${t.text}`)));
+
+    const asOwner = await loadDashboardLive(companyId, { now: new Date(now), agents, approvals: [], includePairThreads: true, viewerUserId: ownerId });
+    const ownerBob = asOwner.thoughts.find((t) => t.memberKey === `agent:${bob.id}`);
+    assert.equal(ownerBob?.label, "Thinking");
+    assert.equal(ownerBob?.text, "The owner's salary question needs a careful answer.", "the participant sees the full step");
+
+    // The fast poll path returns the same redacted steps.
+    const polled = await loadRunThoughts(companyId, { now: new Date(now), viewerUserId: other.id, includePairThreads: false });
+    assert.deepEqual(polled.map((t) => `${t.memberKey}|${t.label}|${t.text}`).sort(), [
+        `agent:${ada.id}|Running read_file|docker-compose.yml`,
+        `agent:${bob.id}|Thinking…|`,
+    ].sort());
+    const scoped = await loadRunThoughts(companyId, { now: new Date(now), agentIds: [ada.id], viewerUserId: other.id, includePairThreads: false });
+    assert.deepEqual(scoped.map((t) => t.memberKey), [`agent:${ada.id}`], "a member scope limits the agents read");
+});

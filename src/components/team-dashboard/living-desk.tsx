@@ -60,6 +60,8 @@ export interface DeskProps {
     pulse: boolean;
     still: boolean;
     thought: string | null;
+    /** Bubble heading for a live step ("Running terminal"); null reads "Thinking". */
+    thoughtLabel?: string | null;
     bubbleAlign: "start" | "center" | "end";
     ariaLabel: string;
     onSelect: (key: string) => void;
@@ -68,7 +70,7 @@ export interface DeskProps {
 
 /** One desk: the agent acting out its work, its name, a state label and the real task line. */
 export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDesk(props, ref) {
-    const { agent, bucket, label, status, activity, actions, ghost, selected, linked, celebrating, burst, pulse, still, thought, bubbleAlign, ariaLabel, onSelect, onPoint } = props;
+    const { agent, bucket, label, status, activity, actions, ghost, selected, linked, celebrating, burst, pulse, still, thought, thoughtLabel = null, bubbleAlign, ariaLabel, onSelect, onPoint } = props;
     const m = agent.member;
     const appearance = resolveAppearance({ id: m.id, avatarUrl: m.avatarUrl, avatarAppearance: m.avatarAppearance });
     const photo = resolveAvatarPhoto({ avatarUrl: m.avatarUrl });
@@ -91,7 +93,7 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
     const statusId = `desk-status-${m.id}`;
 
     return <li ref={ref} className={cn("living-desk relative min-w-0", ghost && "living-ghost")} data-bucket={bucket} style={vars}>
-        {thought && <ThoughtBubble key={thought} text={thought} still={still} align={bubbleAlign} />}
+        {(thought || thoughtLabel) && <ThoughtBubble key={`${thoughtLabel ?? ""}|${thought ?? ""}`} label={thoughtLabel ?? "Thinking"} text={thought ?? ""} still={still} align={bubbleAlign} />}
         <button type="button" onClick={() => onSelect(m.key)}
             onMouseEnter={() => onPoint(m.key)} onMouseLeave={() => onPoint(null)} onFocus={() => onPoint(m.key)} onBlur={() => onPoint(null)}
             aria-haspopup="dialog" aria-pressed={selected} aria-label={ariaLabel} aria-describedby={statusId}
@@ -134,14 +136,15 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
 });
 
 /**
- * A speech bubble that types out a short, redacted thought. It lives inside
+ * A speech bubble that types out a short, redacted thought (or a live step:
+ * the heading names the step, the body its detail, if any). It lives inside
  * its own desk cell, over the agent's own figure: it never reaches another
  * desk's name or status line, overhangs only into the gutter (never past the
  * room edge), and fades out while it sits in the bottom band of the viewport
  * where the floating chat button is.
  */
-function ThoughtBubble({ text, still, align }: { text: string; still: boolean; align: "start" | "center" | "end" }) {
-    const snippet = bubbleText(text);
+function ThoughtBubble({ label, text, still, align }: { label: string; text: string; still: boolean; align: "start" | "center" | "end" }) {
+    const snippet = text ? bubbleText(text) : "";
     const total = Array.from(snippet).length;
     const [shown, setShown] = useState(still ? total : 0);
     const [clear, setClear] = useState(true);
@@ -165,8 +168,8 @@ function ThoughtBubble({ text, still, align }: { text: string; still: boolean; a
     const visible = still ? snippet : Array.from(snippet).slice(0, shown).join("");
     return <div ref={ref} aria-hidden="true" className={cn("living-bubble pointer-events-none absolute top-0 z-20 max-h-[5.25rem] overflow-hidden rounded-xl border border-cyan-200/30 bg-[#0f2236] px-2 py-1 text-left text-[11px] leading-[1.3] text-cyan-50 shadow-[0_6px_18px_rgb(2_6_23/0.55)] transition-opacity duration-200",
         align === "start" ? "left-0 -right-1" : align === "end" ? "-left-1 right-0" : "-left-1 -right-1", !clear && "opacity-0")}>
-        <span className="block text-[10px] font-semibold leading-4 text-cyan-300/90">Thinking</span>
-        <span className="line-clamp-3 break-words">{visible}<span className="invisible">{Array.from(snippet).slice(visible.length).join("")}</span></span>
+        <span className="block truncate text-[10px] font-semibold leading-4 text-cyan-300/90">{label}</span>
+        {snippet && <span className="line-clamp-3 break-words">{visible}<span className="invisible">{Array.from(snippet).slice(visible.length).join("")}</span></span>}
     </div>;
 }
 

@@ -138,11 +138,18 @@ export interface SceneCommunication {
     href: string;
 }
 
-/** An agent's latest reasoning snippet, redacted, from team/group threads only. */
+/**
+ * An agent's latest thought for its desk bubble: a live run step (0.9 run
+ * events, redacted to a generic label for private threads) or, for older
+ * bridges, a redacted reasoning snippet from team/group threads.
+ */
 export interface SceneThought {
     memberKey: string;
+    /** Body text; may be empty when `label` says it all ("Running terminal"). */
     text: string;
     at: string;
+    /** Bubble heading for a live step ("Thinking", "Running terminal"); absent means "Thinking". */
+    label?: string;
 }
 
 /** A moment the living office plays once: same derivation as the device feed's `events`. */
