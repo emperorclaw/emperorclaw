@@ -7,7 +7,7 @@ import { parseJsonBody, optionalString } from "@/lib/validation";
 import crypto from "crypto";
 import { db } from "@/db";
 import { threadMessages, threadParticipants } from "@/db/schema";
-import { and, eq, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 
 const sendMessageSchema = z.object({
@@ -64,7 +64,10 @@ async function resolveCoalesced(
         inArray(threadMessages.senderType, ["human", "system"]),
         notInArray(threadMessages.deliveryState, ["resolved", "cancelled"]),
         or(isNull(threadMessages.targetAgentId), eq(threadMessages.targetAgentId, input.agentId)),
-        lte(threadMessages.createdAt, input.sourceCreatedAt),
+        // Strictly older: createdAt has millisecond precision, so a message in the
+        // same millisecond as the source may be newer. Leaving it open costs one
+        // more look from the agent; resolving it would drop it unanswered.
+        lt(threadMessages.createdAt, input.sourceCreatedAt),
     )).returning();
 }
 

@@ -352,23 +352,30 @@ maybe("a coalesced reply never resolves another agent's targeted message or newe
         { companyId, threadId: group.id, participantType: "agent", participantId: other.id, role: "member" },
     ]);
     const { appendThreadMessage } = await import("@/lib/control-plane");
+    // Explicit, spaced timestamps: inserts in the same millisecond would make
+    // "older than the source" ambiguous.
+    const base = Date.now() - 60_000;
+    let seq = 0;
     const human = (text: string, targetAgentId: string | null = null) =>
-        appendThreadMessage({ companyId, threadId: group.id, senderType: "human", targetAgentId, text });
+        appendThreadMessage({ companyId, threadId: group.id, senderType: "human", targetAgentId, text, createdAt: new Date(base + 1000 * seq++) });
     const forBee = await human("Bee, please check the invoices", other.id);
     const open = await human("anyone around?");
     const source = await human("Streamer, deploy please", agent.id);
     const later = await human("also after that, restart it");
+    // Same millisecond as the source: may be newer, so it must stay open.
+    const tied = await appendThreadMessage({ companyId, threadId: group.id, senderType: "human", targetAgentId: null, text: "and ping me", createdAt: new Date(base + 2000) });
 
     const send = await import("@/app/api/mcp/messages/send/route");
     const res = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", {
         method: "POST",
         headers: { authorization: "Bearer " + token, "Idempotency-Key": "emp-" + source.id },
-        body: { text: "Deployed.", thread_id: group.id, agentId: agent.id, replyToMessageId: source.id, alsoResolvesMessageIds: [forBee.id, open.id, later.id] },
+        body: { text: "Deployed.", thread_id: group.id, agentId: agent.id, replyToMessageId: source.id, alsoResolvesMessageIds: [forBee.id, open.id, later.id, tied.id] },
     }));
     assert.equal(res.status, 200);
     const json = await res.json();
     assert.deepEqual(json.resolvedMessageIds, [open.id]);
 
-    const rows = await db.select().from(threadMessages).where(inArray(threadMessages.id, [forBee.id, later.id]));
+    const rows = await db.select().from(threadMessages).where(inArray(threadMessages.id, [forBee.id, later.id, tied.id]));
+    assert.equal(rows.length, 3);
     assert.ok(rows.every((row) => row.deliveryState !== "resolved"));
 });
