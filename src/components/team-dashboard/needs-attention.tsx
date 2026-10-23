@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-    IconAlertTriangle, IconArchive, IconCheck, IconChevronRight, IconCircleCheck, IconClock, IconFileText, IconMessageCircle, IconPlugConnectedX, IconRefresh, IconX, IconPlayerPlay,
+    IconAlertTriangle, IconArchive, IconArrowRight, IconAt, IconHourglassLow, IconBan, IconBolt, IconInbox, IconMessageQuestion, IconCheck, IconChevronRight, IconCircleCheck, IconClock, IconFileText, IconMessageCircle, IconPlugConnectedX, IconRefresh, IconX, IconPlayerPlay,
 } from "@tabler/icons-react";
 import { timeAgo, type AttentionEntry, type AttentionKind, type DashboardMember } from "@/lib/team-scene";
 import { approvalAgeDays, isStaleApproval } from "@/lib/approval-status";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useLiveLink } from "./live-link";
 
-const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile: string; verb: string }> = {
+export const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile: string; verb: string }> = {
     approval: { icon: IconFileText, tile: "bg-sky-500/10 text-sky-500 ring-sky-500/25 dark:text-sky-300", verb: "Approve" },
     message: { icon: IconMessageCircle, tile: "bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300", verb: "Delivery" },
     incident: { icon: IconAlertTriangle, tile: "bg-rose-500/10 text-rose-500 ring-rose-500/25 dark:text-rose-300", verb: "Task issue" },
@@ -21,6 +21,12 @@ const KIND_STYLE: Record<AttentionKind, { icon: typeof IconFileText; tile: strin
     late: { icon: IconClock, tile: "bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300", verb: "Running late" },
     not_started: { icon: IconClock, tile: "bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300", verb: "Hasn't started" },
     paused: { icon: IconPlayerPlay, tile: "bg-violet-500/10 text-violet-500 ring-violet-500/25 dark:text-violet-300", verb: "Paused" },
+    decision: { icon: IconMessageQuestion, tile: "bg-sky-500/10 text-sky-500 ring-sky-500/25 dark:text-sky-300", verb: "Decide" },
+    mention: { icon: IconAt, tile: "bg-zinc-500/10 text-zinc-500 ring-zinc-500/25 dark:text-zinc-300", verb: "Mention" },
+    run_failed: { icon: IconBolt, tile: "bg-rose-500/10 text-rose-500 ring-rose-500/25 dark:text-rose-300", verb: "Run failed" },
+    task_blocked: { icon: IconBan, tile: "bg-rose-500/10 text-rose-500 ring-rose-500/25 dark:text-rose-300", verb: "Blocked" },
+    request: { icon: IconInbox, tile: "bg-rose-500/10 text-rose-500 ring-rose-500/25 dark:text-rose-300", verb: "Request" },
+    stalled: { icon: IconHourglassLow, tile: "bg-amber-500/10 text-amber-600 ring-amber-500/25 dark:text-amber-300", verb: "No progress" },
 };
 
 const VISIBLE = 4;
@@ -34,7 +40,6 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
     watchlist?: boolean;
 }) {
     const router = useRouter();
-    const [expanded, setExpanded] = useState(false);
     const titleId = watchlist ? "watchlist-title" : "needs-attention-title";
     const [busyId, setBusyId] = useState<string | null>(null);
     // Action inbox ↔ living office: pointing at an item lights its agent's desk and back.
@@ -109,8 +114,8 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
             <header className="flex items-start gap-2.5">
                 <IconAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" stroke={1.8} />
                 <div className="min-w-0 flex-1">
-                    <h2 id={titleId} className="text-base font-semibold text-foreground">{watchlist ? "Watchlist" : "Action inbox"}</h2>
-                    <p className="text-xs text-muted-foreground">{watchlist ? "Timing and response signals. Work may still be progressing." : "Decisions and issues that need a person to act."}</p>
+                    <h2 id={titleId} className="text-base font-semibold text-foreground">{watchlist ? "FYI" : "Needs you"}</h2>
+                    <p className="text-xs text-muted-foreground">{watchlist ? "Timing and response signals. Nothing is waiting on you." : "The same items as your Inbox, most urgent first."}</p>
                 </div>
                 {entries.length > 0 && (
                     <span className="grid h-6 min-w-6 place-items-center rounded-md bg-amber-400/15 px-1.5 text-xs font-bold tabular-nums text-amber-600 ring-1 ring-inset ring-amber-400/30 dark:text-amber-300">{entries.length}</span>
@@ -124,7 +129,7 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                 </div>
             ) : (
                 <ul className="mt-3 space-y-2">
-                    {entries.slice(0, expanded ? entries.length : VISIBLE).map((entry) => {
+                    {entries.slice(0, VISIBLE).map((entry) => {
                         const style = KIND_STYLE[entry.kind];
                         const busy = busyId !== null;
                         return (
@@ -167,9 +172,9 @@ export function NeedsAttention({ entries, now, onFocusMember, canAct, agents, wa
                 </ul>
             )}
             {entries.length > VISIBLE && (
-                <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} className="relative z-10 mt-3 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
-                    {expanded ? "Show fewer" : `Show all ${entries.length} ${watchlist ? "signals" : "actions"}`}<IconChevronRight className="h-4 w-4" />
-                </button>
+                <Link href={watchlist ? "/inbox?filter=fyi" : "/inbox"} className="relative z-10 mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                    View all {entries.length} in Inbox<IconArrowRight className="h-4 w-4" />
+                </Link>
             )}
         </section>
     );
@@ -231,7 +236,8 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
         case "paused":
             return <button type="button" disabled={disabled} onClick={() => onResume(entry)} className={cn(btn, primary)}><IconPlayerPlay className="h-3.5 w-3.5" />Resume</button>;
         case "agent":
-            if (!entry.canRestartRuntime) return <Link href={entry.href} className={cn(btn, primary)}>Inspect connection</Link>;
+        case "run_failed":
+            if (!entry.canRestartRuntime) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Inspect connection"}</Link>;
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
                     <button type="button" disabled={disabled} onClick={() => onRestart(entry)} className={cn(btn, primary)}><IconRefresh className="h-3.5 w-3.5" />Restart</button>
@@ -239,10 +245,13 @@ function Actions({ entry, busy, agents, onApprove, onReject, onDismiss, onResume
             );
         case "incident":
         case "not_started":
+        case "task_blocked":
+        case "request":
+        case "stalled":
             if (!entry.taskId) return <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Inspect issue"}</Link>;
             return (
                 <span className="relative z-10 flex flex-wrap items-center gap-1.5">
-                    <Link href={entry.href} className={cn(btn, primary)}>Open task</Link>
+                    <Link href={entry.href} className={cn(btn, primary)}>{entry.actionLabel || "Open task"}</Link>
                     {agents.some((agent) => agent.key !== entry.memberKey) && <ReassignMenu entry={entry} disabled={disabled} agents={agents} onReassign={onReassign} />}
                 </span>
             );

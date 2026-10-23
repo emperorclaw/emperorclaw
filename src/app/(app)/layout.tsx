@@ -3,6 +3,7 @@ import { OpenClawChat } from "@/components/openclaw-chat";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { InteractiveTour } from "@/components/interactive-tour";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { CommandPalette } from "@/components/command-palette";
 import { UpdateBanner } from "@/components/update-banner";
 import { getCompanyId } from "@/lib/auth";
 import { getPlatformAdminSession } from "@/lib/platform-admin";
@@ -18,6 +19,9 @@ export default async function AppLayout({
     const platformAdmin = await getPlatformAdminSession();
     const roleCtx = companyId ? await getCurrentUserEffectiveRole().catch(() => null) : null;
     const isCompanyAdmin = Boolean(roleCtx && ["instance_admin", "owner", "admin"].includes(roleCtx.role));
+    // Viewers read only: no New task / Hire shortcuts.
+    const canAct = !roleCtx || roleCtx.role !== "viewer";
+    const isPlatformAdmin = platformAdmin?.isPlatformAdmin === true;
 
     if (!companyId) {
         return <>{children}</>;
@@ -27,7 +31,8 @@ export default async function AppLayout({
         <div className="emperor-app-shell flex h-dvh flex-col overflow-hidden md:flex-row">
             <AutoRefresh intervalMs={15000} />
             <InteractiveTour />
-            <AppSidebar isPlatformAdmin={platformAdmin?.isPlatformAdmin === true} isCompanyAdmin={isCompanyAdmin} appVersion={pkg.version} />
+            <AppSidebar isPlatformAdmin={isPlatformAdmin} isCompanyAdmin={isCompanyAdmin} canAct={canAct} appVersion={pkg.version} />
+            <CommandPalette access={{ isCompanyAdmin, isPlatformAdmin }} canAct={canAct} />
             <main className="emperor-main flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto w-full px-3 py-4 pb-8 sm:px-5 sm:py-5 md:pb-16 lg:px-8">
                 <div className="emperor-page-frame">
                     <UpdateBanner />

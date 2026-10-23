@@ -7,6 +7,7 @@ import type { AgentNow, AgentRuntimeInfo } from "@/lib/agent-activity";
 import { RunTimelineList } from "@/components/run-timeline";
 import { bridgeBadgeCopy, cacheHitPercent, HERMES_MIGRATION_DOC_HREF, isTimedStepKind, liveUsageLine } from "@/lib/live-activity";
 import { formatTokenCount } from "@/lib/run-ledger-copy";
+import { taskHref } from "@/lib/task-story";
 
 const STATE_PILL: Record<AgentNow["state"], { label: string; className: string }> = {
     working: { label: "Working", className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" },
@@ -90,7 +91,7 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
             {now.task && (
                 <div className="mt-3 flex items-center gap-2 text-xs">
                     <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Task</span>
-                    <Link href={`/projects?task=${now.task.id}`} className="line-clamp-2 sm:truncate text-cyan-300 hover:text-cyan-200">
+                    <Link href={taskHref(now.task.id, now.run?.taskId === now.task.id ? now.run.id : null)} className="line-clamp-2 sm:truncate text-cyan-300 hover:text-cyan-200">
                         {now.task.title}
                     </Link>
                 </div>

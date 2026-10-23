@@ -3,10 +3,10 @@ import type { KpiFilter } from "@/lib/team-scene";
 import { cn } from "@/lib/utils";
 
 const KPIS: Array<{ id: KpiFilter; label: string; icon: typeof IconUsers; tone: string; tile: string; dot: string; ring: string }> = [
-    { id: "working", label: "agents working", icon: IconUsers, tone: "text-sky-500 dark:text-sky-300", tile: "bg-sky-500/10 ring-sky-500/30 shadow-[0_0_24px_-6px_rgba(56,189,248,0.55)]", dot: "bg-sky-400", ring: "ring-sky-400/60" },
+    { id: "working", label: "agents working now", icon: IconUsers, tone: "text-sky-500 dark:text-sky-300", tile: "bg-sky-500/10 ring-sky-500/30 shadow-[0_0_24px_-6px_rgba(56,189,248,0.55)]", dot: "bg-sky-400", ring: "ring-sky-400/60" },
     { id: "waiting", label: "agents in review", icon: IconPlayerPause, tone: "text-amber-500 dark:text-amber-300", tile: "bg-amber-500/10 ring-amber-500/30 shadow-[0_0_24px_-6px_rgba(251,191,36,0.5)]", dot: "bg-amber-400", ring: "ring-amber-400/60" },
     { id: "done", label: "agents delivered · 24h", icon: IconCheck, tone: "text-emerald-500 dark:text-emerald-300", tile: "bg-emerald-500/10 ring-emerald-500/30 shadow-[0_0_24px_-6px_rgba(52,211,153,0.5)]", dot: "bg-emerald-400", ring: "ring-emerald-400/60" },
-    { id: "attention", label: "actions required", icon: IconAlertTriangle, tone: "text-rose-500 dark:text-rose-300", tile: "bg-rose-500/10 ring-rose-500/30 shadow-[0_0_24px_-6px_rgba(251,113,133,0.55)]", dot: "bg-rose-400", ring: "ring-rose-400/60" },
+    { id: "attention", label: "need you", icon: IconAlertTriangle, tone: "text-rose-500 dark:text-rose-300", tile: "bg-rose-500/10 ring-rose-500/30 shadow-[0_0_24px_-6px_rgba(251,113,133,0.55)]", dot: "bg-rose-400", ring: "ring-rose-400/60" },
 ];
 
 export function KpiRow({ counts, active, onToggle }: { counts: Record<KpiFilter, number>; active: KpiFilter | null; onToggle: (id: KpiFilter) => void }) {

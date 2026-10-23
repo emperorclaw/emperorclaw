@@ -72,13 +72,16 @@ export function EasySetupDialog({
     onAgentCreated,
     onSwitchToAdvanced,
     localOnly = false,
+    defaultOpen = false,
 }: {
     onAgentCreated?: (agentId: string) => void;
     onSwitchToAdvanced: () => void;
     localOnly?: boolean;
+    /** Open on mount (the command palette's Hire agent: /agents?hire=1). */
+    defaultOpen?: boolean;
 }) {
     const router = useRouter();
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(defaultOpen);
     const [step, setStep] = useState<EasyStep>("count-and-roles");
     const [count, setCount] = useState(1);
     const [specs, setSpecs] = useState<AgentSpecState[]>([makeSpec(0)]);

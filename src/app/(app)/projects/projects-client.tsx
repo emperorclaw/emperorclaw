@@ -6,7 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { IconAlertTriangle, IconArchive, IconBrain, IconCircleCheck, IconChevronRight, IconPencil, IconFilter, IconHistory, IconInbox, IconDots, IconPlus, IconRepeat, IconRotate, IconSearch, IconSend, IconTrash, IconCircleX } from "@tabler/icons-react";
+import Link from "next/link";
+import { IconAlertTriangle, IconArchive, IconArrowUpRight, IconBrain, IconCircleCheck, IconChevronRight, IconPencil, IconFilter, IconHistory, IconInbox, IconDots, IconPlus, IconRepeat, IconRotate, IconSearch, IconSend, IconTrash, IconCircleX } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PageHeader } from "@/components/page-header";
@@ -15,6 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getArtifactClassLabel, getArtifactImportanceLabel } from "@/lib/artifact-taxonomy";
 import { migrateLegacyAgentFilter, normalizeAssigneeFilter } from "@/lib/project-board-filters";
+import { taskHref } from "@/lib/task-story";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -652,6 +654,21 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         setTaskDialogMode("create");
     };
 
+    // `?new=task` (the sidebar "+" and the command palette's New task) opens
+    // the New Task dialog once, then drops the parameter so a refresh does not
+    // reopen it.
+    const newTaskParamHandled = useRef(false);
+    const wantsNewTask = searchParams.get("new") === "task";
+    useEffect(() => {
+        if (!wantsNewTask) { newTaskParamHandled.current = false; return; }
+        if (!filtersHydrated || newTaskParamHandled.current) return;
+        newTaskParamHandled.current = true;
+        setMutationError(null);
+        setTaskForm({ ...emptyTaskForm, projectId: selectedProject?.id || projectItems[0]?.id || "" });
+        setTaskDialogMode("create");
+        router.replace("/projects", { scroll: false });
+    }, [wantsNewTask, filtersHydrated, selectedProject, projectItems, router]);
+
     const openEditTask = (task: any) => {
         const input = taskInput(task);
         setMutationError(null);
@@ -1022,7 +1039,13 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             {selectedTask && (
                 <div className="absolute right-0 top-0 z-50 flex h-full w-full sm:w-[60%] lg:w-[42%] flex-col rounded-xl border-l border-zinc-800 bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-8 duration-300">
                     <div className="mb-8 flex items-center justify-between">
-                        <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-500">TASK-{selectedTask.id.substring(0, 8).toUpperCase()}</div>
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-500">TASK-{selectedTask.id.substring(0, 8).toUpperCase()}</div>
+                            <Link href={taskHref(selectedTask.id)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-400/10 hover:text-cyan-200">
+                                Open full page
+                                <IconArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                            </Link>
+                        </div>
                         <button onClick={() => setSelectedTask(null)} className="cursor-pointer rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><IconChevronRight className="h-5 w-5" /></button>
                     </div>
                     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">

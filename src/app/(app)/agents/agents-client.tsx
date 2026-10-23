@@ -33,6 +33,8 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
     // `?agent=<id>` opens that agent (old /agents/<id> links redirect here).
     const searchParams = useSearchParams();
     const linkedId = searchParams.get("agent");
+    // `?hire=1` (the command palette's Hire agent) opens the hiring dialog.
+    const hireRequested = searchParams.get("hire") === "1";
     const [selectedId, setSelectedId] = useState((linkedId && agents.some((a) => a.id === linkedId) ? linkedId : agents[0]?.id) || "");
     const [mobileView, setMobileView] = useState<"list" | "detail">(linkedId ? "detail" : "list");
     const [advancedDialogOpen, setAdvancedDialogOpen] = useState(false);
@@ -121,7 +123,7 @@ export function AgentsClient({ agents }: { agents: AgentDirectoryItem[] }) {
                             <IconWallet className="h-4 w-4" />
                             Budgets
                         </Link>
-                        <EasySetupDialog onAgentCreated={handleAgentCreated} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
+                        <EasySetupDialog key={hireRequested ? "hire" : "idle"} defaultOpen={hireRequested} onAgentCreated={handleAgentCreated} onSwitchToAdvanced={() => setAdvancedDialogOpen(true)} />
                         <CreateAgentDialog onAgentCreated={handleAgentCreated} open={advancedDialogOpen}
                             onOpenChange={setAdvancedDialogOpen} hideTrigger />
                     </div>

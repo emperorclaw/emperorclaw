@@ -22,6 +22,7 @@ import { KpiRow } from "./kpi-row";
 import { MetricsRow } from "./metrics-row";
 import { MovementFeed } from "./movement-feed";
 import { NeedsAttention } from "./needs-attention";
+import { isPlainKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { SelectedAgent } from "./selected-agent";
 import { WorkBoard, type BoardAssignee } from "./work-board";
 
@@ -81,16 +82,18 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const pendingDecisions = useMemo(() => actions.filter((entry) => entry.kind === "approval").length, [actions]);
     const actionMembers = useMemo(() => new Set(actions.flatMap((entry) => entry.memberKey ? [entry.memberKey] : [])), [actions]);
 
-    const observedData = useMemo(() => freshness === "current" ? data : { ...data, members: data.members.map((member) => ({ ...member, activity: null, runtimeOnline: false })) }, [data, freshness]);
+    const observedData = useMemo(() => freshness === "current" ? data : { ...data, workingNow: [], members: data.members.map((member) => ({ ...member, activity: null, runtimeOnline: false })) }, [data, freshness]);
     const agents = useMemo(() => deriveSceneAgents(observedData, playfulIdle, now), [observedData, playfulIdle, now]);
-    const counts = useMemo(() => kpiCounts(agents, data), [agents, data]);
+    const counts = useMemo(() => kpiCounts(agents, observedData), [agents, observedData]);
+    // "Working now" is one server-side definition (src/lib/attention.ts), shared with the Home badge.
+    const workingNow = useMemo(() => observedData.workingNow ? new Set(observedData.workingNow) : null, [observedData]);
     const byKey = useMemo(() => new Map(agents.map((a) => [a.member.key, a])), [agents]);
     // The company leader sits on the throne, not at a desk. Its scene agent is
     // looked up from the full roster so filters never blank the throne state.
     const leader = data.leader ?? null;
     const leaderAgent = leader?.kind === "agent" ? byKey.get(`agent:${leader.id}`) ?? null : null;
 
-    const isActive = useCallback((agent: SceneAgent) => (kpi === "attention" ? actionMembers.has(agent.member.key) : matchesKpi(kpi, agent.member, agent.status)) && matchesQuery(agent, query) && (!zoneFilter || agent.zone === zoneFilter), [kpi, query, zoneFilter, actionMembers]);
+    const isActive = useCallback((agent: SceneAgent) => (kpi === "attention" ? actionMembers.has(agent.member.key) : kpi === "working" && workingNow ? workingNow.has(agent.member.id) : matchesKpi(kpi, agent.member, agent.status)) && matchesQuery(agent, query) && (!zoneFilter || agent.zone === zoneFilter), [kpi, query, zoneFilter, actionMembers, workingNow]);
 
     // Keep a valid selection across refreshes; fall back to the busiest member.
     const selectedKey = selected && byKey.has(selected) ? selected : defaultSelection(agents);
@@ -107,8 +110,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
     const columns = useMemo(() => filterDashboardBoard(data.board, { kpi, query, zoneFilter, members: data.members }), [data.board, data.members, kpi, query, zoneFilter]);
 
     useEffect(() => {
+        // Ctrl/Cmd+K is the app-wide command palette; "/" filters this page.
         const onKey = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+            if (e.key === "/" && isPlainKey(e) && !isTypingTarget(e.target as HTMLElement | null) && !document.querySelector("[role='dialog']")) {
                 e.preventDefault();
                 searchRef.current?.focus();
                 searchRef.current?.select();
@@ -118,7 +122,7 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
         return () => window.removeEventListener("keydown", onKey);
     }, []);
 
-    const shortcut = useSyncExternalStore(() => () => {}, () => (/mac|iphone|ipad/i.test(navigator.userAgent) ? "⌘K" : "Ctrl K"), () => "⌘K");
+    const shortcut = "/";
 
     const selectMember = (key: string) => {
         selectionTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;

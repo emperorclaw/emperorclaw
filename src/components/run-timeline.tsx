@@ -14,7 +14,9 @@ import {
     IconTool,
     IconUsers,
 } from "@tabler/icons-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { taskHref } from "@/lib/task-story";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import {
     cacheHitPercent,
@@ -182,6 +184,8 @@ export interface ReplyRun {
     inputTokens: number | null;
     outputTokens: number | null;
     model: string | null;
+    /** Set when the run worked on a task: the expanded footer links to the task page. */
+    taskId?: string | null;
 }
 
 /**
@@ -209,8 +213,13 @@ export const ReplyRunFooter = memo(function ReplyRunFooter({ run, tone = "dark" 
                 <IconChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
             {open && (
-                <div className="mt-1.5 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2">
+                <div className="mt-1.5 space-y-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2">
                     <RunTimeline runId={run.runId} />
+                    {run.taskId && (
+                        <Link href={taskHref(run.taskId, run.runId)} className="inline-flex items-center gap-1 text-[11px] text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline">
+                            Open this run on its task
+                        </Link>
+                    )}
                 </div>
             )}
         </div>
