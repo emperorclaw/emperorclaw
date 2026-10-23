@@ -37,7 +37,7 @@ Your agents keep their Hermes profiles, memory and skills. Each Emperor thread s
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
+curl -fsSL https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.1/emperor-hermes.sh -o ~/.local/bin/emperor-hermes
 chmod +x ~/.local/bin/emperor-hermes
 
 emperor-hermes doctor --plan        # does this host fit every agent?
@@ -80,7 +80,7 @@ If you prefer to see each step, do per agent what the installer does:
    ```
 
    Use a wrapper script, not a symlink: Python finds its venv from the path it was started with, so a symlink starts the bare interpreter without the venv's packages.
-3. Unpack the bridge bundle (`emperor-hermes-bridge-0.9.0.tar.gz` from the release) to `~/.hermes/emperor-bridge/releases/0.9.0` and link `~/.hermes/emperor-bridge/current` to it.
+3. Unpack the bridge bundle (`emperor-hermes-bridge-0.9.1.tar.gz` from the release) to `~/.hermes/emperor-bridge/releases/0.9.1` and link `~/.hermes/emperor-bridge/current` to it.
 4. Write `~/.config/emperor-hermes/host.env`:
 
    ```bash

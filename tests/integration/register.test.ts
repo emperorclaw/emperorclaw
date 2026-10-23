@@ -105,7 +105,7 @@ maybe("runtime register: a 0.3 bridge still registers and is reported as legacy"
     assert.ok(json.replyFormatGuide);
     assert.equal(json.runtimeNode.agentId, agent.id);
     assert.equal(json.runtimeNode.bridgeVersion, null);
-    assert.deepEqual(json.bridge, { latest: "0.9.0", minimum: "0.9.0", hermes: "v0.22.4", deprecated: ["0.3"], updateState: "legacy" });
+    assert.deepEqual(json.bridge, { latest: "0.9.1", minimum: "0.9.0", hermes: "v0.22.4", deprecated: ["0.3"], updateState: "legacy" });
     assert.equal(json.duplicateRuntime, null);
     assert.equal(json.sharedHostOk, true);
 });
