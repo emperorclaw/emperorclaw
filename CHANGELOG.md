@@ -41,6 +41,7 @@ See [Migrating Hermes agents to 0.9](src/content/docs/v1.1/hermes-migration-0.9.
 - Run ids include the agent, so two agents answering the same team message no longer share a run.
 - The bridge no longer polls in a tight loop or rewrites its state file on every pass.
 - After a long outage the bridge syncs the oldest pending messages first instead of skipping them.
+- A reply covering several messages no longer marks as answered a message sent in the same millisecond as the one it replies to.
 
 ## [0.8.103] — 2026-10-22
 
