@@ -1,6 +1,6 @@
 {
   "name": "emperor-claw",
-  "version": "0.8.103",
+  "version": "0.9.0",
   "private": true,
   "engines": {
     "node": ">=20"
@@ -24,7 +24,10 @@
     "test": "npm run test:static && npm run test:unit",
     "test:static": "node --test tests/*.test.cjs tests/unit/*.test.cjs",
     "test:unit": "npx tsx --test tests/path-sanitizer.test.ts tests/storage-discovery.test.ts tests/team-rbac.test.ts tests/unit/*.test.ts",
-    "test:bridge": "python3 tests/bridge-safety.test.py && python3 tests/hermes-hiring.test.py && python3 tests/hermes-goals.test.py && python3 tests/hermes-routing.test.py && python3 tests/hermes-run-ledger.test.py",
+    "test:bridge": "python3 tests/contract/hermes/python_suites.py",
+    "test:bridge:plugin": "python3 tests/contract/hermes/python_suites.py --plugin-only",
+    "test:contract": "bash tests/contract/hermes/run.sh",
+    "test:contract:all": "bash tests/contract/hermes/run.sh all",
     "test:integration": "npx tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "test:all": "npm run test && npm run test:integration",
     "db:migrate": "npx tsx src/db/migrate.ts",

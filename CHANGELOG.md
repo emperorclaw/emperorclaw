@@ -9,6 +9,39 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.9.0] — 2026-10-23
+
+Hermes agents now run on a persistent gateway: no more cold start per message, replies survive restarts, and you can watch each run step by step.
+
+### Breaking changes
+- **Hermes bridge 0.9 requires Hermes Agent v0.22.4.** The 0.3 bridge (`emperor_hermes_bridge.py`) is removed; it cannot drive v0.22, and v0.22 rejects its `--source emperor` mode. Do not run `hermes update` on an agent host before migrating.
+- Remote agents are installed and run with `emperor-hermes` (systemd units `emperor-hermes-gateway@` and `emperor-hermes-bridge@`) instead of a hand-started bridge script.
+- Managed Docker agents use a new image that the server recreates after an update; the `:latest` Hermes image is no longer published.
+- Bridge environment variables were renamed: `EMPEROR_CLAW_HERMES_TIMEOUT_SECONDS` → `EMPEROR_CLAW_HERMES_TURN_TIMEOUT_SECONDS` and `EMPEROR_CLAW_HERMES_IDLE_TIMEOUT_SECONDS` → `EMPEROR_CLAW_HERMES_TURN_IDLE_TIMEOUT_SECONDS`.
+- The `approvals.single_query_mode` profile default is gone (it only applied to `hermes chat -q`).
+
+See [Migrating Hermes agents to 0.9](src/content/docs/v1.1/hermes-migration-0.9.md) for the step-by-step upgrade.
+
+### Added
+- Persistent Hermes runtime: one long-lived gateway per agent, one Hermes session per Emperor thread. Bridge overhead per turn dropped from ~9–10 s to ~0.2 s.
+- Two ways to run agents: **remote** (`emperor-hermes install --profile <name>` on any Linux machine) and **managed** (Emperor creates and updates Docker agents itself).
+- Low-memory hosts (e.g. a Raspberry Pi) can opt into one shared gateway for several agents; `emperor-hermes doctor --plan` says whether a host fits.
+- A live run timeline: each run's steps, tool calls and replies stream into the agent's Runs tab and the chat status row.
+- Duplicate runtimes are detected: a second copy of the same agent goes into standby instead of answering twice.
+- Faster first agent: the server downloads the Hermes runtime in the background right after install, and Emperor setup shows the download's progress instead of a silent wait.
+- The installer waits for Docker Desktop to finish starting instead of asking you to run it again, asks for a domain to set up HTTPS (blank keeps it local), and warns when a port it needs is already in use.
+
+### Changed
+- Replies are delivered through a durable outbox and resolved after a crash, so a restart no longer loses or duplicates them.
+- Stopping a turn interrupts the Hermes session directly; compaction runs on a separate maintenance connection and never during a turn.
+- New profile defaults: approvals and clarify questions time out after 60 s, running turns get 30 s to finish on restart, and title generation is off.
+
+### Fixed
+- Retried turns keep their attempt number, so Hermes no longer rejects them as duplicates.
+- Run ids include the agent, so two agents answering the same team message no longer share a run.
+- The bridge no longer polls in a tight loop or rewrites its state file on every pass.
+- After a long outage the bridge syncs the oldest pending messages first instead of skipping them.
+
 ## [0.8.103] — 2026-10-22
 
 ### Added
