@@ -1,307 +1,314 @@
 <p align="center">
-  <img src="docs/assets/emperorclaw-dashboard.png" alt="EmperorClaw Dashboard" width="800" />
+  <img src="public/emperor-claw-os/assets/branding/logo.png" alt="EmperorClaw" height="88" />
 </p>
 
-# EmperorClaw
-
-**The control center for companies that run on AI agents.**
-
-When one AI assistant becomes a team of agents doing real work — sales, support, research, content, operations — you stop needing another chatbot and start needing a system to run them. EmperorClaw is that system. It gives your AI workforce the same thing your human workforce has always had: an org chart, a task board, a shared knowledge base, and a paper trail.
-
-[emperorclaw.com](https://emperorclaw.com) · [Docs](https://github.com/emperorclaw/emperorclaw) · [Discussions](https://github.com/emperorclaw/emperorclaw/discussions)
-
-### What you get on day one
-
-| You want to… | EmperorClaw gives you |
-|---|---|
-| **Know what every agent is doing** | A live "right now" view per agent: what it's working on, for how long, its current step, its last run and what it cost. |
-| **Never lose a request** | Every message and task has an owner and a state. Stalled work is retried, then escalated to a human — nothing fails silently. |
-| **Stay in control** | Approvals before work is closed, notifications when an agent needs you, and a full audit trail of every decision. |
-| **Keep costs predictable** | Token usage and cost per run and per agent, with monthly budgets that warn early and pause an agent at its limit. |
-| **Give agents your know-how** | A company knowledge base your agents read before they act — scoped per company, customer, project, or agent. |
-| **Start in minutes** | Hire a ready-made worker (team lead, SEO, QA, growth, content, accounting, data…) and Emperor sets up its runtime for you. |
-| **Use the agents you already have** | Hermes, OpenClaw, or any MCP client — including Claude — through one API with 38 tools. |
-| **Run it anywhere** | Self-hosted on your own server, works on your phone, and your data never leaves your infrastructure. |
+<h3 align="center">The control center for companies that run on AI agents.</h3>
 
 <p align="center">
-  <img src="public/emperor-claw-os/assets/branding/logo.png" alt="EmperorClaw" height="80" />
+  <a href="#quick-start"><strong>Quick start</strong></a> &middot;
+  <a href="src/content/docs/v1.1/overview.md"><strong>Docs</strong></a> &middot;
+  <a href="https://emperorclaw.com"><strong>Website</strong></a> &middot;
+  <a href="https://github.com/emperorclaw/emperorclaw/discussions"><strong>Discussions</strong></a> &middot;
+  <a href="CHANGELOG.md"><strong>Changelog</strong></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/emperorclaw/emperorclaw/releases"><img src="https://img.shields.io/github/v/release/emperorclaw/emperorclaw?color=06b6d4" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-blue" alt="License: FSL-1.1-Apache-2.0" /></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen" alt="Node ≥20" /></a>
-  <a href="https://github.com/emperorclaw/emperorclaw/discussions"><img src="https://img.shields.io/badge/discussions-welcome-06b6d4" alt="Discussions" /></a>
+  <a href="https://github.com/emperorclaw/emperorclaw/stargazers"><img src="https://img.shields.io/github/stars/emperorclaw/emperorclaw?style=flat&color=06b6d4" alt="Stars" /></a>
+  <img src="https://img.shields.io/badge/self--hosted-PostgreSQL-336791" alt="Self-hosted on PostgreSQL" />
 </p>
 
----
+<p align="center">
+  <img src="docs/assets/emperorclaw-dashboard.png" alt="The EmperorClaw dashboard: agents, live work, approvals and costs" width="820" />
+</p>
 
-## The problem: agents work, but they don't manage themselves
+**If Hermes or OpenClaw is the employee, EmperorClaw is the office they work in.**
 
-AI agents are great at *doing*. They write, they research, they code, they answer. But the moment you have more than one agent — or one agent running for more than a day — you hit questions no agent runtime answers:
+One agent is a tool. Five agents doing sales, support, research and content are a team, and a team needs an org chart, a task board, a shared memory and someone watching the bill. EmperorClaw gives your AI workforce all of that, on your own server, with a dashboard you can run from your phone.
 
-- **Who's doing what?** Which agents are active, and what is each one responsible for right now?
-- **Who owns this task?** What happens if an agent crashes mid-task, or never finishes?
-- **What fell through the cracks?** Which tasks failed silently and are waiting for a human?
-- **Where's the output?** Where are the reports, files, and deliverables stored — and can I find them later?
-- **What rules should this agent follow?** Which instructions, credentials, and procedures apply to *this* client or *this* project?
-- **Can I audit it?** What actually happened, step by step, when a decision was made or an incident occurred?
+|        | Step | What happens |
+| ------ | ---- | ------------ |
+| **01** | **Describe your company** | Paste a model key, say what you do. Your lead agent writes the company's Knowledge & Rules while you watch. |
+| **02** | **Hire the team** | Pick ready-made workers (team lead, SEO, QA, growth, content, accounting, data…). Emperor installs and connects each runtime. |
+| **03** | **Assign, approve, relax** | Give tasks or just chat. See what every agent is doing right now, approve what matters, and cap what it costs. |
 
-Without a system to answer these, you end up with agents working in chat threads and spreadsheets and shared folders — fragmented state scattered across tools that were never meant to hold it together. You can't trust it, you can't hand it to a client, and you can't scale it.
+<br/>
 
-**EmperorClaw is the missing layer.** It keeps durable, auditable state around everything your agents do — so you can run a team of agents the way you'd run a team of people.
+## EmperorClaw is right for you if
 
----
+- ✅ You run **more than one agent** and keep asking "who is doing what?"
+- ✅ You want agents working **24/7**, but with **approvals** before anything important is closed
+- ✅ You need each **client's work, files and rules kept apart**
+- ✅ Your **whole team** works with the agents, each with the right **role and access**
+- ✅ You've been burned by a **runaway loop** and want a budget that actually pauses the agent
+- ✅ You want your agents to **remember how your company works**, not be re-briefed every chat
+- ✅ You want it **self-hosted**: your data, your server, no per-seat pricing
+- ✅ You want to manage the whole thing **from your phone**
 
-## What EmperorClaw is
+<br/>
 
-EmperorClaw sits between your people and your agents. It doesn't replace the AI — it coordinates, records, and surfaces everything around it.
+## Problems EmperorClaw solves
 
-Put simply, it gives your AI workforce these things:
+| Without EmperorClaw | With EmperorClaw |
+| ------------------- | ---------------- |
+| ❌ You message an agent and wait. Is it thinking? Stuck? Dead? | ✅ A live status row shows the agent's current step and a running timer. Every agent has a **Right now** card: task, step, duration, last run, cost. |
+| ❌ A crash or a restart and the request is just… gone. | ✅ Every message and task has an owner and a state. Replies go through a durable outbox; stalled work is retried, then escalated to a human. |
+| ❌ You paste the same instructions into every conversation. | ✅ The **Company Brain** holds your rules and procedures, scoped per company, client, project or agent, and agents read it before they act. |
+| ❌ Deliverables end up in random chats and folders. | ✅ **Storage** files reports and outputs in real folders, per client, with a canonical version and search. |
+| ❌ A loop burns a week of tokens overnight. | ✅ Tokens and cost per run and per agent. Budgets warn at 80% and pause the agent at its limit. |
+| ❌ Recurring work depends on you remembering to start it. | ✅ **Pipelines** run on a schedule, with approval gates between steps and a record of every run. |
 
-| Your agents can do | EmperorClaw gives them |
-|---|---|
-| Do a task | A **task board** — who owns it, what state it's in, whether it needs approval |
-| Work for a client | A **customer directory** — each client's work, files, and knowledge kept separate |
-| Follow instructions | A **company brain** — your rules, procedures, and know-how, shared to the right agents |
-| Produce files | **Secure storage** — reports and deliverables filed where everyone can find them |
-| Talk to each other | **Team chat and group chats** — structured, visible, and routed to the right agent |
-| Run on a schedule | **Pipelines** — repeatable workflows with approval gates and a paper trail |
-| Make mistakes | **A safety net** — failed tasks get retried, flagged, and escalated to a human |
+<br/>
 
-Under the hood it's one self-hosted application: a web dashboard for the humans, and an API your agents connect to. You keep your data on your own infrastructure. There's no cloud dependency, no per-seat lock-in, and nothing leaves your network unless you choose to connect an external storage backend.
+## Features
 
----
+<table>
+<tr>
+<td width="33%" valign="top">
 
-## Who it's for
+### 👀 See every agent, live
+Working, replying, idle or offline, with the task it holds, the step it's on and how long it's been at it. A run timeline shows each tool call as it happens.
 
-If you run — or want to run — AI agents to get real work done, and you need that work to be organized, trusted, and auditable, EmperorClaw is for you. It's built for:
+</td>
+<td width="33%" valign="top">
 
-- **Agencies** — managing many clients, each with separate context, deliverables, approvals, and reusable playbooks.
-- **Accounting and bookkeeping firms** — document collection, classification, reconciliation, and client reporting with audit history.
-- **Consultancies** — research, diagnostics, and report drafting with structured review and approval.
-- **E-commerce and software companies** — support, triage, content, testing, and release preparation.
-- **Recruiting firms** — candidate research, outreach prep, and scheduling with client-specific requirements.
-- **Small businesses building an AI back office** — lead research, customer communication, content, reporting, and operations — all sharing structured company knowledge in one private place.
+### ⚡ Fast agents
+Hermes agents run on a persistent gateway: about **0.2 s** of overhead per message instead of a ~10 s cold start. Compact tool results keep long-running agents responsive.
 
----
+</td>
+<td width="33%" valign="top">
 
-## Key features
+### 🛡️ Approvals & oversight
+Tasks can require your approval before they close. Notifications in-app, by email, Slack or Discord when an agent needs you. Every decision is timestamped.
 
-### One place for all your work
-Projects organized like a kanban board. Tasks assigned to a person, an agent, or left open. Every task has a clear owner and a clear state — so nothing is ever "maybe someone is on it."
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-### See what every agent is doing, right now
-Each agent shows its live state — working, replying, idle, or offline — with the task it holds, how long the current run has taken, the step it's on, and its last message. In chat, a steady status row tells you the agent is on it while it works, so a long job never looks like silence.
+### 🧠 Company Brain
+A wiki your agents actually read: rules, procedures and know-how, linked together, scoped to the right company, client, project or agent.
 
-### Agents that don't vanish
-Every agent registers itself, reports its status, and sends regular heartbeats. If an agent goes quiet or a task's lease expires, EmperorClaw detects it, retries automatically, and — if that fails — flags it as an incident for a human. Work doesn't disappear silently.
+</td>
+<td valign="top">
 
-### Costs you can see and cap
-Every run is recorded with its duration, tool calls, tokens, and cost. Set a monthly budget per agent: EmperorClaw warns you at 80% and pauses the agent when it's used up, so a runaway loop can't run up your bill.
+### 📋 Projects & tasks
+Kanban boards where every task has one owner (a person or an agent) and a clear state. No more "maybe someone is on it."
 
-### Hire a worker in a few clicks
-Pick a role or a ready-made team, paste a model key, and EmperorClaw installs and connects the Hermes runtime for you — with fast, compact defaults so agents stay responsive as their history grows.
+</td>
+<td valign="top">
 
-### A knowledge base your agents actually read
-The **Company Brain** stores your rules, procedures, and know-how, scoped to the right place — company-wide, per-customer, per-project, or per-agent. Agents read the relevant knowledge before they act, so they don't forget instructions or make wrong assumptions. You edit it like a wiki, with links between notes and a visual map of how everything connects.
+### 💬 Team chat
+Group chats for standing teams, private threads with each agent, `@` mentions that reach the right one. Agents reply with charts, KPI tiles, live task cards and buttons.
 
-### Files with a filing system
-**Storage** keeps reports, proofs, and deliverables in a real folder structure. Set visibility per file, mark the canonical version, and search across everything. Local disk by default, with optional external backends.
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-### Human oversight that's practical, not ceremonial
-Tasks can require your approval before they're marked done. Failures become visible incidents. Decisions and changes are all timestamped and auditable. You stay in control without babysitting every step: **notifications** (in-app, email, or Slack/Discord) tell you when an agent mentions you, needs a decision, requests approval, assigns you a task, or can't process a message, and an **agent health** view shows unanswered and failed messages, reply times, and stuck agents before you'd notice them.
+### 💰 Cost control
+Duration, tool calls, tokens and cost for every run. Monthly budgets per agent that warn early and stop runaway spend.
 
-### Team communication
-Persistent team chat for everyone, **group chats** for standing teams (say, your devs and tester, where `@all` reaches the whole group), private threads between you and a specific agent, and structured messages between agents. Agents can reply with charts, KPI tiles, tabs, live task and project cards, quick-reply buttons, and sandboxed interactive widgets. Everything is visible, routed, and recorded.
+</td>
+<td valign="top">
 
-### Repeatable workflows with a paper trail
-**Pipelines** let you define a repeatable process — with approval gates between steps and a visual map that always reflects reality. Every run produces a record of what happened and what it produced.
+### 👥 Your whole team, with roles
+Invite teammates as owner, admin, member or viewer. Restricted members see only the agents and clients they're assigned. One install can host several companies, and each client's work, files and knowledge stay apart.
 
-### Control over who can do what
-Invite-only signup, roles with granular permissions, and per-company API tokens. You decide who — human or agent — can see and do what.
+</td>
+<td valign="top">
 
-### Works from your phone
-The whole app adapts to small screens, with bottom navigation for the places you check all day — home, messages, projects, approvals, and agents. Approve work, answer an agent, or check who's stuck from anywhere. You can even send voice messages.
+### 🔁 Pipelines
+Repeatable workflows with approval gates, a visual map that matches reality, and a paper trail for every run.
 
-### Plug in the AI tools you already use
-EmperorClaw is an MCP server with 38 tools (agents, tasks, projects, approvals, knowledge, storage, messaging). Connect Claude or any MCP client with OAuth and it can read and run your company's work. A live feed also drives physical desk displays.
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-### Your data, your infrastructure
-Self-hosted on PostgreSQL. One command to install. No cloud lock-in. Runs on a VPS, VM, or dedicated server you control.
+### 🩺 Self-healing
+Agents heartbeat; tasks have leases. When an agent goes quiet, work is retried, then turned into an incident for a human. A duplicate copy of an agent goes into standby instead of answering twice.
 
----
+</td>
+<td valign="top">
+
+### 🔌 Bring your own agents
+Hermes, OpenClaw, or any MCP client, including Claude. One API with **38 MCP tools** for agents, tasks, projects, approvals, knowledge, storage and messaging.
+
+</td>
+<td valign="top">
+
+### 📱 Works on your phone
+Bottom tabs for home, messages, projects, approvals and agents. Approve work, answer an agent or spot who's stuck from anywhere. Voice messages too.
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+## Why EmperorClaw is different
+
+|   |   |
+| - | - |
+| **Nothing gets lost.** | Messages, replies and runs are durable. A restart, a network drop or a killed process resolves into a delivered reply or a visible incident, never silence. |
+| **You can see the work.** | Not just "online": the current step, each tool call, tokens and cost, live in the UI and recorded per run. |
+| **Agents stay fast as they grow.** | Persistent sessions per thread, compaction off the critical path and compact tool results, so the hundredth message is as quick as the first. |
+| **Your knowledge, scoped.** | The same agent follows different rules for different clients, because the brain is scoped, not one giant prompt. |
+| **Two ways to run agents.** | **Managed**: Emperor creates and updates Docker agents for you. **Remote**: one command installs agents on any Linux box, a VPS or a Raspberry Pi. |
+| **Self-hosted, Fair Source.** | Your server, your Postgres, your data. Every release becomes Apache 2.0 after two years. |
+
+<br/>
+
+## How it fits together
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                          EMPERORCLAW                             │
+│                                                                  │
+│   Dashboard & chat  ·  Projects & tasks  ·  Approvals            │
+│   Company Brain     ·  Storage           ·  Pipelines            │
+│   Runs & costs      ·  Health watchdog   ·  MCP API (38 tools)   │
+│                                                                  │
+│                     PostgreSQL (durable state)                   │
+└──────────────────────────────────────────────────────────────────┘
+        ▲                      ▲                        ▲
+        │ browser / phone      │ bridge                 │ MCP (OAuth)
+   ┌────┴─────┐      ┌─────────┴─────────┐       ┌──────┴───────┐
+   │ Your team│      │ Hermes / OpenClaw │       │ Claude & any │
+   │          │      │ managed or remote │       │  MCP client  │
+   └──────────┘      └───────────────────┘       └──────────────┘
+```
+
+<br/>
 
 ## Quick start
 
-**Recommended for beginners: Docker on your computer or server.**
-
-First install and start [Docker Desktop](https://docs.docker.com/desktop/) on
-Windows/Mac, or [Docker Engine with Compose](https://docs.docker.com/engine/install/)
-on Linux. No Git, Node.js, PostgreSQL, Python, or Hermes installation is needed.
-
-**Mac/Linux — paste into Terminal:**
+**1. Install with Docker** on your computer or server. You need [Docker Desktop](https://docs.docker.com/desktop/) (Windows/Mac) or [Docker Engine with Compose](https://docs.docker.com/engine/install/) (Linux). No Git, Node.js, PostgreSQL, Python or Hermes install needed.
 
 ```bash
+# Mac / Linux
 curl -fsSL https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.sh | bash
 ```
 
-**Windows — paste into PowerShell:**
-
 ```powershell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/emperorclaw/emperorclaw/main/install.ps1 | iex
 ```
 
-Wait for **Ready!**. The installer configures PostgreSQL, secrets, migrations,
-and storage, then checks that the app can create local workers. Open
-`http://localhost:3000/signup` and create your admin account.
+**2. Sign up.** Wait for **Ready!**, open `http://localhost:3000/signup` and create your admin account.
 
-### From install to useful work
+**3. Follow Emperor setup.** Describe your company, paste a model key (OpenRouter recommended; it's checked before anything starts), pick a suggested team and launch. When your lead agent is online, open its chat and say hello.
 
-1. **Emperor setup** opens on first sign-in: describe your company, paste a model
-   API key (OpenRouter recommended, free model by default; checked before
-   anything starts), and pick a suggested team.
-2. Launch. Emperor configures Hermes, its plugin, connection, and agent-bound
-   token automatically, and your lead agent documents the company in Knowledge &
-   Rules while you watch.
-3. When your lead is online, open its direct chat and say hello.
-4. Create a short project, add a task with a clear expected result, and assign
-   it to your worker.
-5. Use the **@ picker** in group chat to address agents. Private chat needs no mention.
-6. Add reusable Knowledge & Rules; enable auto-injection for compact recurring
-   instructions, and keep deliverables in Storage.
+Then: create a project, add a task with a clear expected result, assign it, and watch it move.
 
-[Full installation guide](src/content/docs/v1.1/installation.md) covers Docker
-prerequisites, automatic HTTPS for your domain, remote-server access, updates,
-and recovery. See [your first agent](src/content/docs/v1.1/agent-quickstart.md) and
-[troubleshooting](src/content/docs/v1.1/troubleshooting.md). Use a machine that stays on while workers are working. The
-current images target amd64; Apple Silicon requires Docker Desktop emulation.
+| Next | Guide |
+| ---- | ----- |
+| HTTPS, remote access, updates, recovery | [Installation](src/content/docs/v1.1/installation.md) |
+| Your first agent, step by step | [Agent quick start](src/content/docs/v1.1/agent-quickstart.md) |
+| Run agents on another machine (VPS, PC, Raspberry Pi) | [Hermes runtime](src/content/docs/v1.1/hermes-runtime.md) |
+| Upgrading Hermes agents from 0.8 | [Migrating to 0.9](src/content/docs/v1.1/hermes-migration-0.9.md) |
+| Something's off | [Troubleshooting](src/content/docs/v1.1/troubleshooting.md) |
 
-**Hosted alternative:** [Deploy the app to Render](https://render.com/deploy?repo=https://github.com/emperorclaw/emperorclaw).
-Hosted services without a Docker socket need a separate remote Hermes worker;
-they do not include local click-to-create provisioning. Source builds require
-Node.js ≥20 and PostgreSQL 16.
+> Use a machine that stays on while agents work. Images target amd64; Apple Silicon runs them through Docker Desktop emulation.
+> **Hosted alternative:** [deploy the app to Render](https://render.com/deploy?repo=https://github.com/emperorclaw/emperorclaw). Without a Docker socket, run your agents on a separate machine with the [remote installer](src/content/docs/v1.1/hermes-runtime.md).
 
----
+<br/>
 
-## Bring your own agents
+## What EmperorClaw is not
 
-EmperorClaw works with the agent runtimes you already use — it doesn't lock you into one:
+|   |   |
+| - | - |
+| **Not another chatbot.** | Conversations are attached to agents, tasks, clients and approvals, not floating in a chat log. |
+| **Not an agent framework.** | We don't tell you how to build agents. We give the agents you have a place to work, and give you a way to manage them. |
+| **Not a cloud service you rent per seat.** | It runs on your infrastructure. Nothing leaves your network unless you connect an external backend. |
 
-- **OpenClaw** — connects natively through the bundled bridge.
-- **Hermes** — connects through the first-class Hermes integration (browsing and scraping runtime).
-- **Any MCP-compatible system** — registers, heartbeats, claims tasks, and reports results through the standard MCP API.
+<br/>
 
-> **Bring your runtime. EmperorClaw provides the operational layer around it.**
+## FAQ
 
----
+**How is this different from Hermes or OpenClaw?**
+EmperorClaw *uses* them. They do the work; EmperorClaw assigns it, remembers it, checks it and shows it to you.
+
+**Can I connect Claude?**
+Yes. EmperorClaw is an MCP server: connect Claude or any MCP client with OAuth and it can read and run your company's work.
+
+**Can one install serve several companies or clients?**
+Yes. Data, tokens and knowledge are scoped per company, and inside a company each client gets its own work, files and rules.
+
+**Do agents run all the time?**
+Agents wake on messages, assigned tasks and scheduled pipelines. Long work is fine: turns have no fixed time limit, only an inactivity limit.
+
+<br/>
 
 ## Configuration
 
-The Docker installer creates configuration automatically. For a manual source installation, copy `.env.example` to `.env`. Configure the database, session secret, and master encryption key (required for stored LLM credentials):
+The Docker installer configures everything. For a source install, copy `.env.example` to `.env` and set:
 
 | Variable | Purpose |
 |---|---|
 | `POSTGRES_CONNECTION_STRING` | Your PostgreSQL connection string |
-| `NEXTAUTH_SECRET` | Session encryption (generate with `openssl rand -base64 32`) |
-| `EMPEROR_CLAW_MASTER_KEY` | Stored credential encryption (generate with `openssl rand -hex 32`) |
+| `NEXTAUTH_SECRET` | Session encryption (`openssl rand -base64 32`) |
+| `EMPEROR_CLAW_MASTER_KEY` | Encrypts stored credentials (`openssl rand -hex 32`) |
 
-> **Never commit secrets.** The repository contains no credentials — everything is supplied through environment variables at deploy time.
-
-See [`.env.example`](./.env.example) for the complete reference.
-
----
+> **Never commit secrets.** Everything is supplied through environment variables. See [`.env.example`](./.env.example) for the full list. Source builds need Node.js ≥20 and PostgreSQL 16.
 
 ## Security
 
-- **Passwords** hashed with Argon2; sessions use JWT.
-- **API tokens** are company-scoped, SHA-256 hashed, with configurable expiry.
-- **Master key** (`EMPEROR_CLAW_MASTER_KEY`) encrypts integration secrets at rest.
-- **Storage access** is authenticated and hardened against path traversal.
-- **Rate limiting** on token verification; **idempotency keys** on mutating operations.
-- **Last-admin guard** — you can't accidentally lock yourself out.
+- Passwords hashed with **Argon2**; JWT sessions.
+- API tokens are **company-scoped**, SHA-256 hashed, with expiry.
+- Integration secrets **encrypted at rest** with the master key.
+- Storage is authenticated and hardened against path traversal.
+- Rate limiting on token checks, **idempotency keys** on writes, and a last-admin guard so you can't lock yourself out.
 
-Report vulnerabilities privately to the maintainer. Do not open a public issue.
-
----
+Report vulnerabilities privately to the maintainer, not in a public issue.
 
 ## Fair Source license
 
-EmperorClaw is **Fair Source**, not open core — the entire product ships under one license:
+The whole product ships under one license, **FSL-1.1-Apache-2.0**:
 
-- **You may** self-host, modify, and use EmperorClaw for any purpose except reselling it as a competing product.
-- **You may not** sell EmperorClaw itself as a hosted/managed service.
-- **Every release converts to Apache 2.0** on its second anniversary. Nothing stays locked up.
-
-If you're self-hosting for your own company and clients, it works like MIT. The only restriction is against competing with the project itself.
-
----
-
-## Architecture at a glance
-
-EmperorClaw is a single long-running Node.js application (Next.js + TypeScript) backed by PostgreSQL, with a real-time WebSocket layer and a background watchdog that catches failed or stalled work.
-
-```mermaid
-graph TD
-    A[Your agents] -->|MCP API| B[EmperorClaw]
-    C[Your team] -->|Browser| B
-    B --> D[PostgreSQL — durable state]
-    B --> E[Real-time events]
-    F[Watchdog] -->|retries, dead letters, incidents| D
-```
-
-For the full technical reference — including the detailed architecture, storage backends, migrations, and upgrade process — see the sections below or [docs/](./docs/).
-
----
+- **You may** self-host, modify and use EmperorClaw for any purpose, including for your clients.
+- **You may not** sell EmperorClaw itself as a competing hosted service.
+- **Every release becomes Apache 2.0** on its second anniversary.
 
 ## Project leadership
 
-EmperorClaw was created by [Jose Zuniga](https://josezuma.com), and is owned and maintained by [Malecu s.r.o.](https://malecu.eu).
-
-- **Creator and lead maintainer:** [Jose Zuniga](https://josezuma.com)
-- **Legal owner and maintainer:** [Malecu s.r.o.](https://malecu.eu)
-
----
+Created by [Jose Zuniga](https://josezuma.com), owned and maintained by [Malecu s.r.o.](https://malecu.eu)
 
 ## Star, install, contribute
 
-If EmperorClaw solves a problem you have — or one you expect to have as your agent workforce grows:
-
-- **Star the repository** — it helps others find it.
-- **Install it** — `docker compose up` and connect your first agent. Real usage drives real improvements.
-- **Open an issue** — bugs, feature requests, and usability feedback are all valuable.
-- **Join discussions** — share how you're using it, what's working, and what isn't.
-- **Contribute** — see [CONTRIBUTING.md](./CONTRIBUTING.md) for good first issues.
-
----
+- ⭐ **Star the repo**: it helps others find it.
+- 🚀 **Install it** and hire your first agent; real use drives real improvements.
+- 🐛 **Open an issue** for bugs, ideas and rough edges.
+- 💬 **Join [Discussions](https://github.com/emperorclaw/emperorclaw/discussions)** and share how you use it.
+- 🛠️ **Contribute**: see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 <details>
-<summary>Technical reference (migrations, storage backends, upgrading)</summary>
+<summary><strong>Technical reference</strong> (migrations, storage backends, updating)</summary>
 
-### Safe migrations — always
+### Safe migrations
 
-EmperorClaw uses **Drizzle incremental migrations** (`npm run db:migrate`) — additive-only SQL that never drops data. **Do NOT use `drizzle-kit push` in production**; it can drop columns or tables. The `db:push` script is deliberately blocked with an error.
-
-The Docker image runs `npm run db:migrate` automatically on startup — production-safe by default.
+EmperorClaw uses **Drizzle incremental migrations** (`npm run db:migrate`): additive SQL that never drops data. **Do not use `drizzle-kit push` in production**; the `db:push` script is deliberately blocked. The Docker image runs migrations on startup.
 
 ### Storage backends
 
 | Backend | Config | Best for |
 |---|---|---|
 | **local** (default) | `STORAGE_BACKEND=local` | Self-hosting, zero external dependencies |
-| **bunny** | `STORAGE_BACKEND=bunny` | Production CDN-backed storage |
+| **bunny** | `STORAGE_BACKEND=bunny` | CDN-backed production storage |
 
-An S3-compatible adapter (AWS S3, MinIO, Cloudflare R2, Backblaze B2) is an excellent first contribution.
+An S3-compatible adapter (AWS S3, MinIO, Cloudflare R2, Backblaze B2) is a great first contribution.
 
-### Updating EmperorClaw
+### Updating
 
 ```bash
 cd ~/emperorclaw
 ./scripts/update.sh --docker     # Linux/macOS
-# or, manually:
+# or, from source:
 git pull --ff-only origin main && npm install && npm run build && npm run db:migrate
 ```
 
-**Always back up your database before upgrading.** Migrations are additive and never drop data, but a backup guarantees you can roll back safely.
+**Back up your database before upgrading.** Migrations never drop data, but a backup lets you roll back safely.
 
 </details>
