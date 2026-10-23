@@ -36,6 +36,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/src/db/migrations ./src/db/migrations
 COPY --from=builder /app/src/db/migrate.ts ./src/db/migrate.ts
 COPY --from=builder /app/src/db/index.ts ./src/db/index.ts
+COPY --from=builder /app/src/db/pg-utc.ts ./src/db/pg-utc.ts
 COPY --from=builder /app/src/db/schema.ts ./src/db/schema.ts
 # src/db/migrate.ts imports ../lib/character/migrate-avatars, which imports the
 # `@/db` alias — so the character module and tsconfig.json (tsx path resolution)
