@@ -28,6 +28,8 @@ if(args.includes('wget')) process.exit(process.env.TEST_READY_FAILURE==='1'?1:0)
 if(args.includes('node')) process.exit(process.env.TEST_SOCKET_FAILURE==='1'?1:0);
 process.exit(0);
 `);
+  // sudo resets PATH to the system one and would reach the runner's real Docker.
+  script('sudo', `process.exit(1);`);
   script('curl', `
 const fs=require('node:fs'),path=require('node:path');const args=process.argv.slice(2);
 const url=args.find(a=>a.startsWith('https://'));const out=args[args.indexOf('-o')+1];

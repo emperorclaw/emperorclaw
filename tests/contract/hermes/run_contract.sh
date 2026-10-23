@@ -22,7 +22,7 @@ RESULTS="${PROBE_RESULTS_DIR:-/results}"
 # The shipped image links it to ~/.local/bin/hermes-venv-python (design D17); the spike base does not.
 HERMES_PY="${HERMES_PYTHON:-}"
 [ -x "$HERMES_PY" ] || HERMES_PY="$HOME/.local/bin/hermes-venv-python"
-[ -x "$HERMES_PY" ] || HERMES_PY="$(ls -d "$HOME"/.hermes/installs/*/environments/*/venv/bin/python 2>/dev/null | head -1)"
+[ -x "$HERMES_PY" ] || HERMES_PY="$(find "$HOME"/.hermes/installs -path '*/environments/*/venv/bin/python' 2>/dev/null | head -1)"
 [ -x "$HERMES_PY" ] || { echo "[harness] Hermes venv python not found" >&2; exit 2; }
 export HERMES_PY
 PROFILE_HOME="$HOME/.hermes/profiles/$PROFILE"
