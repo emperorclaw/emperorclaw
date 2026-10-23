@@ -26,8 +26,8 @@ test("a node without a bridge version is a legacy 0.3.x bridge", () => {
 });
 
 test("versions map to current, update-available and unsupported", () => {
-    assert.equal(bridgeUpdateState({ bridgeVersion: "0.9.1" }), "current");
-    assert.equal(bridgeUpdateState({ bridgeVersion: "v0.9.1" }), "current");
+    assert.equal(bridgeUpdateState({ bridgeVersion: "0.9.2" }), "current");
+    assert.equal(bridgeUpdateState({ bridgeVersion: "v0.9.2" }), "current");
     assert.equal(bridgeUpdateState({ bridgeVersion: "0.3.0" }), "unsupported");
     assert.equal(bridgeUpdateState({ bridgeVersion: "garbage" }), "unsupported");
     // With a newer latest, a supported older bridge has an update available.
