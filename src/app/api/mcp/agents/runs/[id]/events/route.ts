@@ -114,6 +114,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const result = await insertRunEvents(run, input.events, now);
         const { stored, ...response } = result;
 
+        // Realtime: a stored run event invalidates the run's thread and task
+        // (browser sockets refetch their live rows) — best-effort, never fails
+        // the batch. Runs in a private thread resolve their audience here, so
+        // the invalidation reaches only the owner and the agent.
+        if (stored.length > 0) {
+            await broadcastMcpEvent(companyId, {
+                type: "run_updated",
+                runId: run.id,
+                threadId: run.threadId ?? null,
+                taskId: run.taskId ?? null,
+                agentId: run.agentId ?? null,
+            });
+        }
+
         // Live status: the newest stored event sets (or clears) the agent's
         // typing row in the run's thread. Best-effort: never fail the batch.
         if (run.threadId && run.agentId && stored.length > 0) {

@@ -18,6 +18,7 @@ import { requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
 import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
+import { useLivePoll } from "@/lib/use-realtime";
 import type { RunLive } from "@/lib/run-events";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:opacity-50";
@@ -305,10 +306,19 @@ export function AgentDirectChat({
         }, 3000);
     };
 
-    useEffect(() => {
-        let active = true;
-
-        const initialize = async () => {
+    // Adaptive poll (§4.7): 1.5 s while a run is live, 3 s otherwise, a slow
+    // fallback while the realtime socket is up (an invalidation of this thread
+    // refetches at once), and none while the tab is hidden (it resumes at once
+    // when shown again). Restarts, with a fresh initialize, when the thread changes.
+    useLivePoll((run) => loadMessages().catch((error) => {
+        if (run.active) {
+            console.error("Failed to poll direct chat", error);
+        }
+    }), {
+        fastMs: () => chatPollDelayMs("direct", liveRunsRef.current.some((liveRun) => liveRun.status === "running")),
+        topics: thread?.id ? [`thread:${thread.id}`] : [],
+        resetKey: loadMessages,
+        first: async (run) => {
             setIsLoading(true);
             setMessages([]);
             setThread(null);
@@ -325,47 +335,19 @@ export function AgentDirectChat({
             try {
                 await loadMessages();
             } catch (error) {
-                if (active) {
+                if (run.active) {
                     console.error("Failed to initialize direct chat", error);
                 }
             } finally {
-                if (active) {
+                if (run.active) {
                     setIsLoading(false);
                 }
             }
-        };
+        },
+    });
 
-        // Adaptive poll (§4.7): 1.5 s while a run is live, 3 s otherwise, and
-        // none while the tab is hidden (it resumes at once when shown again).
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        const schedule = () => {
-            if (!active) return;
-            if (timer) clearTimeout(timer);
-            if (typeof document !== "undefined" && document.visibilityState === "hidden") { timer = null; return; }
-            const running = liveRunsRef.current.some((run) => run.status === "running");
-            timer = setTimeout(poll, chatPollDelayMs("direct", running));
-        };
-        const poll = () => {
-            timer = null;
-            void loadMessages().catch((error) => {
-                if (active) {
-                    console.error("Failed to poll direct chat", error);
-                }
-            }).finally(schedule);
-        };
-        const onVisibility = () => {
-            if (document.visibilityState === "visible" && active && !timer) poll();
-        };
-
-        void initialize().finally(schedule);
-        document.addEventListener("visibilitychange", onVisibility);
-
-        return () => {
-            active = false;
-            if (timer) clearTimeout(timer);
-            document.removeEventListener("visibilitychange", onVisibility);
-            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        };
+    useEffect(() => () => {
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     }, [loadMessages]);
 
     const lastScrolledMessageRef = useRef<string | undefined>(undefined);

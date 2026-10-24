@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/roles";
 import { attentionAccessFromGuard, buildAttention, parseInboxFilter } from "@/lib/attention";
+import { RealtimeRefresh } from "@/lib/use-realtime";
 import { InboxClient } from "./inbox-client";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +21,15 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     const result = await buildAttention(companyId, access);
 
     return (
-        <InboxClient
-            entries={result.entries}
-            agents={result.agents}
-            generatedAt={result.generatedAt}
-            canAct={access.canAct}
-            filter={parseInboxFilter(params.filter)}
-        />
+        <>
+            <RealtimeRefresh topics={["inbox"]} />
+            <InboxClient
+                entries={result.entries}
+                agents={result.agents}
+                generatedAt={result.generatedAt}
+                canAct={access.canAct}
+                filter={parseInboxFilter(params.filter)}
+            />
+        </>
     );
 }

@@ -19,6 +19,7 @@ import { sceneMessagePreview } from "@/lib/observatory";
 import { loadDashboardLive, pendingApprovalRows } from "@/lib/dashboard-live";
 import { loadOrganization } from "@/lib/organization";
 import { TeamDashboard } from "@/components/team-dashboard/team-dashboard";
+import { RealtimeRefresh } from "@/lib/use-realtime";
 import {
     dashboardActivity, buildFeed, DONE_TODAY_MS, skillNames,
     type SceneCommunication, type ActivityEvent, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type ThroughputSummary,
@@ -386,6 +387,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <SetupWizard initialCompanyName={setup.companyName} initialBusinessType={setup.businessType} profileComplete={setup.profileComplete} hasAgents={agentRows.length > 0} />
             )}
             <TeamDashboard data={data} initialView={view} hasAgents={agentRows.length > 0} canAct={canAct} isOwnerOrAdmin={isOwnerOrAdmin} />
+            <RealtimeRefresh topics={["dashboard"]} intervalMs={5000} />
         </div>
     );
 }

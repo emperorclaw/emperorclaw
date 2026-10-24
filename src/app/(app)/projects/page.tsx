@@ -3,6 +3,7 @@ import { tasks, projects, agents, customers, artifacts, taskEvents, projectMemor
 import { eq, and, isNull } from "drizzle-orm";
 import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { RealtimeRefresh } from "@/lib/use-realtime";
 import ProjectsClient from "./projects-client";
 
 export const dynamic = "force-dynamic";
@@ -35,18 +36,21 @@ export default async function ProjectsPage() {
     const currentMemberId = members.find((member) => member.userId === session?.user?.id)?.id || null;
 
     return (
-        <ProjectsClient
-            initialTasks={allTasks}
-            projects={allProjects}
-            agents={allAgents}
-            customers={allCustomers}
-            artifacts={allArtifacts}
-            taskEvents={allEvents}
-            initialProjectMemory={allProjectMemory}
-            recurringDefinitions={allRecurringTaskDefinitions}
-            members={members}
-            currentMemberId={currentMemberId}
-            companyRole={companyRole}
-        />
+        <>
+            <RealtimeRefresh topics={["projects"]} />
+            <ProjectsClient
+                initialTasks={allTasks}
+                projects={allProjects}
+                agents={allAgents}
+                customers={allCustomers}
+                artifacts={allArtifacts}
+                taskEvents={allEvents}
+                initialProjectMemory={allProjectMemory}
+                recurringDefinitions={allRecurringTaskDefinitions}
+                members={members}
+                currentMemberId={currentMemberId}
+                companyRole={companyRole}
+            />
+        </>
     );
 }

@@ -2,8 +2,12 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
+import { createLivePoller, type LivePoller } from "@/lib/realtime-client";
+import { subscribeRealtimeStatus, subscribeRealtimeTopics } from "@/lib/use-realtime";
 
 const POLL_MS = 20000;
+/** While the realtime socket is up, the poll is only a slow safety net. */
+const SLOW_POLL_MS = 30000;
 
 interface NavBadges {
     unreadMessages: number;
@@ -25,7 +29,8 @@ const INITIAL: NavBadges = { unreadMessages: 0, pendingApprovals: 0, inbox: 0, i
  */
 let snapshot: NavBadges = INITIAL;
 const listeners = new Set<() => void>();
-let interval: ReturnType<typeof setInterval> | null = null;
+let poller: LivePoller | null = null;
+let stopRealtime: (() => void) | null = null;
 let inFlight: Promise<void> | null = null;
 
 function emit(next: NavBadges) {
@@ -73,21 +78,36 @@ export async function refreshNavBadges(): Promise<void> {
 }
 
 function onVisibilityChange() {
-    if (!isHidden()) void refresh();
+    if (isHidden()) poller?.pause();
+    else poller?.pollNow();
+}
+
+/** Poll now through the shared poller (so its timer restarts), or directly when none is running. */
+function pollNow() {
+    if (poller) poller.pollNow();
+    else void refresh();
 }
 
 function subscribe(listener: () => void) {
     listeners.add(listener);
     if (listeners.size === 1) {
-        void refresh();
-        interval = setInterval(() => void refresh(), POLL_MS);
+        // One timer for every consumer: fast while the socket is down, slow
+        // while it is up, an "inbox" invalidation reads the counts at once.
+        const current = createLivePoller({ run: refresh, delayMs: (connected) => (connected ? SLOW_POLL_MS : POLL_MS), isHidden });
+        poller = current;
+        const unsubStatus = subscribeRealtimeStatus((status) => current.setConnected(status === "open"));
+        const unsubTopics = subscribeRealtimeTopics(["inbox"], () => current.invalidate());
+        stopRealtime = () => { unsubStatus(); unsubTopics(); };
+        current.start();
         document.addEventListener("visibilitychange", onVisibilityChange);
     }
     return () => {
         listeners.delete(listener);
         if (listeners.size === 0) {
-            if (interval) clearInterval(interval);
-            interval = null;
+            poller?.stop();
+            poller = null;
+            stopRealtime?.();
+            stopRealtime = null;
             document.removeEventListener("visibilitychange", onVisibilityChange);
         }
     };
@@ -96,13 +116,13 @@ function subscribe(listener: () => void) {
 const getSnapshot = () => snapshot;
 const getServerSnapshot = () => INITIAL;
 
-/** Unread messages and the inbox counts for the navigation badges, polled every 20s and on navigation. */
+/** Unread messages and the inbox counts for the navigation badges. Invalidation-pushed, with a slow fallback poll. */
 export function useNavBadges(): NavBadges {
     const pathname = usePathname();
     const badges = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
     useEffect(() => {
-        void refresh();
+        pollNow();
     }, [pathname]);
 
     return badges;

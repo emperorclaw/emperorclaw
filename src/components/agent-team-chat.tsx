@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { LiveStatusRow } from "@/components/live-status-row";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
 import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningLine, mergeLiveRuns, type ClientLiveRun } from "@/lib/live-activity";
+import { useLivePoll } from "@/lib/use-realtime";
 import type { RunLive } from "@/lib/run-events";
 
 const CHAT_PAGE_SIZE = 25;
@@ -226,87 +227,67 @@ export function AgentTeamChat({
         lastSeenAtRef.current = lastSeenAt;
     }, [lastSeenAt]);
 
-    useEffect(() => {
-        let active = true;
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        const fetchUpdates = async () => {
-            try {
-                const seen = lastSeenAtRef.current;
-                const params = new URLSearchParams(seen ? { since: seen } : {});
-                const eventsSince = eventsSinceParam(liveRunsRef.current);
-                if (eventsSince) params.set("eventsSince", eventsSince);
-                const res = await fetch(withThread(params));
-                if (!res.ok || !active) return;
-                const data = await res.json() as ChatResponse;
-                if (!active) return;
-                if (data.participants) {
-                    setParticipants(data.participants);
-                }
-                const merged = mergeLiveRuns(liveRunsRef.current, data.liveRuns, Date.now());
-                liveRunsRef.current = merged;
-                setLiveRuns(merged);
-                if (data.replyRuns && Object.keys(data.replyRuns).length > 0) {
-                    const incoming = data.replyRuns;
-                    setReplyRuns((prev) => {
-                        const changed = Object.entries(incoming).some(([id, run]) => JSON.stringify(prev[id]) !== JSON.stringify(run));
-                        return changed ? { ...prev, ...incoming } : prev;
-                    });
-                }
-                // A group loads its history client-side; the first page tells
-                // us whether there is older history to page back through.
-                if (!seen && typeof data.hasMore === "boolean") setHasOlderMessages(data.hasMore);
-                const nextMessages = data.messages;
-                if (nextMessages && nextMessages.length > 0) {
-                    setMessages((prev) => {
-                        const existingIds = new Set(prev.map((m) => m.id));
-                        const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
-                        if (newMessages.length === 0) return prev;
-                        if (!isAtBottomRef.current) {
-                            setUnreadCount((count) => count + newMessages.length);
-                        }
-                        return [...prev, ...newMessages];
-                    });
-                    const latest = nextMessages[nextMessages.length - 1];
-                    const latestCreatedAt = messageCursor(latest.createdAt);
-                    if (new Date(latestCreatedAt).getTime() > new Date(lastSeenAtRef.current || 0).getTime()) {
-                        lastSeenAtRef.current = latestCreatedAt;
-                    }
-                    setLastSeenAt((prevLast) => (
-                        new Date(latestCreatedAt).getTime() > new Date(prevLast || 0).getTime() ? latestCreatedAt : prevLast
-                    ));
-                }
-            } catch (err) {
-                console.error("Failed to poll agent chat", err);
+    // Adaptive poll (section 4.7): 2 s while a run is live, 5 s otherwise, a
+    // slow fallback while the realtime socket is up (an invalidation of this
+    // thread refetches at once), and none while the tab is hidden (it resumes
+    // at once when shown). Restarts when the group or thread changes.
+    useLivePoll(async (poll) => {
+        try {
+            const seen = lastSeenAtRef.current;
+            const params = new URLSearchParams(seen ? { since: seen } : {});
+            const eventsSince = eventsSinceParam(liveRunsRef.current);
+            if (eventsSince) params.set("eventsSince", eventsSince);
+            const res = await fetch(withThread(params));
+            if (!res.ok || !poll.active) return;
+            const data = await res.json() as ChatResponse;
+            if (!poll.active) return;
+            if (data.participants) {
+                setParticipants(data.participants);
             }
-        };
-
-        // Adaptive poll (section 4.7): 2 s while a run is live, 5 s otherwise,
-        // and none while the tab is hidden (it resumes at once when shown).
-        const schedule = () => {
-            if (!active) return;
-            if (timer) clearTimeout(timer);
-            if (document.visibilityState === "hidden") { timer = null; return; }
-            const running = liveRunsRef.current.some((run) => run.status === "running");
-            timer = setTimeout(poll, chatPollDelayMs("team", running));
-        };
-        const poll = () => {
-            timer = null;
-            void fetchUpdates().finally(schedule);
-        };
-        const onVisibility = () => {
-            if (document.visibilityState === "visible" && active && !timer) poll();
-        };
-        document.addEventListener("visibilitychange", onVisibility);
+            const merged = mergeLiveRuns(liveRunsRef.current, data.liveRuns, Date.now());
+            liveRunsRef.current = merged;
+            setLiveRuns(merged);
+            if (data.replyRuns && Object.keys(data.replyRuns).length > 0) {
+                const incoming = data.replyRuns;
+                setReplyRuns((prev) => {
+                    const changed = Object.entries(incoming).some(([id, run]) => JSON.stringify(prev[id]) !== JSON.stringify(run));
+                    return changed ? { ...prev, ...incoming } : prev;
+                });
+            }
+            // A group loads its history client-side; the first page tells
+            // us whether there is older history to page back through.
+            if (!seen && typeof data.hasMore === "boolean") setHasOlderMessages(data.hasMore);
+            const nextMessages = data.messages;
+            if (nextMessages && nextMessages.length > 0) {
+                setMessages((prev) => {
+                    const existingIds = new Set(prev.map((m) => m.id));
+                    const newMessages = nextMessages.filter((m) => !existingIds.has(m.id));
+                    if (newMessages.length === 0) return prev;
+                    if (!isAtBottomRef.current) {
+                        setUnreadCount((count) => count + newMessages.length);
+                    }
+                    return [...prev, ...newMessages];
+                });
+                const latest = nextMessages[nextMessages.length - 1];
+                const latestCreatedAt = messageCursor(latest.createdAt);
+                if (new Date(latestCreatedAt).getTime() > new Date(lastSeenAtRef.current || 0).getTime()) {
+                    lastSeenAtRef.current = latestCreatedAt;
+                }
+                setLastSeenAt((prevLast) => (
+                    new Date(latestCreatedAt).getTime() > new Date(prevLast || 0).getTime() ? latestCreatedAt : prevLast
+                ));
+            }
+        } catch (err) {
+            console.error("Failed to poll agent chat", err);
+        }
+    }, {
+        fastMs: () => chatPollDelayMs("team", liveRunsRef.current.some((liveRun) => liveRun.status === "running")),
+        topics: readThreadId ? [`thread:${readThreadId}`] : [],
+        resetKey: withThread,
         // A group starts empty (no server-rendered history): load it now
         // instead of waiting for the first poll.
-        if (groupId && !lastSeenAtRef.current) poll();
-        else schedule();
-        return () => {
-            active = false;
-            if (timer) clearTimeout(timer);
-            document.removeEventListener("visibilitychange", onVisibility);
-        };
-    }, [groupId, withThread]);
+        immediate: () => Boolean(groupId && !lastSeenAtRef.current),
+    });
 
     useEffect(() => {
         if (scrollRef.current) {

@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { agents, messageThreads, tasks } from "@/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { eventThreadIds, mostRestrictiveAudience, type RealtimeAudience } from "@/lib/direct-chat-mode";
+import { eventThreadIds, mostRestrictiveHumanAudience, type RealtimeAudience } from "@/lib/direct-chat-mode";
 import type { RealtimeSubject } from "@/lib/realtime-delivery";
 
 /**
@@ -33,7 +33,7 @@ export async function realtimeAudienceFor(companyId: string, payload: unknown): 
         directAgentId: messageThreads.directAgentId,
     }).from(messageThreads)
         .where(and(inArray(messageThreads.id, threadIds), eq(messageThreads.companyId, companyId)));
-    return mostRestrictiveAudience(threads);
+    return mostRestrictiveHumanAudience(threads);
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

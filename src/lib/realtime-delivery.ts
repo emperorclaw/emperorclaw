@@ -31,7 +31,7 @@ export type RealtimeSocket = {
     allowedAgentIds?: ReadonlySet<string> | null;
 };
 
-export function parseRealtimeNotification(raw: string): { companyId: string; audience: RealtimeAudience | null; subject: RealtimeSubject | null; message: string } | null {
+export function parseRealtimeNotification(raw: string): { companyId: string; audience: RealtimeAudience | null; subject: RealtimeSubject | null; payload: unknown; message: string } | null {
     const data = JSON.parse(raw) as { companyId?: unknown; audience?: RealtimeAudience | null; subject?: RealtimeSubject | null; payload?: unknown };
     if (typeof data.companyId !== "string") return null;
     const subject = data.subject && Array.isArray(data.subject.projectIds) && Array.isArray(data.subject.customerIds)
@@ -41,7 +41,7 @@ export function parseRealtimeNotification(raw: string): { companyId: string; aud
             agentIds: Array.isArray(data.subject.agentIds) ? data.subject.agentIds.filter((id): id is string => typeof id === "string") : [],
         }
         : null;
-    return { companyId: data.companyId, audience: data.audience ?? null, subject, message: JSON.stringify(data.payload) };
+    return { companyId: data.companyId, audience: data.audience ?? null, subject, payload: data.payload, message: JSON.stringify(data.payload) };
 }
 
 /**
@@ -70,4 +70,73 @@ export function socketReceives(
     return socket.companyId === notification.companyId
         && socketMayReceive(notification.audience, socket)
         && socketMayReceiveSubject(notification.subject, socket);
+}
+
+/**
+ * A signed-in person's browser socket. Carries the same expanded allow-sets as
+ * an agent socket, but resolved from the member scope (lib/member-scope.ts) —
+ * projects follow their customer, agents follow the member's allow-list. null
+ * everywhere = unrestricted (admin/owner).
+ */
+export type HumanViewer = {
+    companyId?: string;
+    userId?: string;
+    /** Effective role, for callers that need it; the filter itself only reads the allow-sets. */
+    role?: string;
+    allowedProjectIds?: ReadonlySet<string> | null;
+    allowedCustomerIds?: ReadonlySet<string> | null;
+    allowedAgentIds?: ReadonlySet<string> | null;
+};
+
+/**
+ * Whether a signed-in person's socket gets this notification.
+ *
+ * - A private direct thread (an event carrying an audience) reaches only its
+ *   one human owner and never any other user; an orphaned or mixed-private
+ *   event (owner null) reaches nobody.
+ * - Company-wide events pass the member's scope: a restricted member only gets
+ *   events whose agents, customers and projects are all inside their allow-list
+ *   (same rule as agent sockets, socketMayReceiveSubject).
+ */
+export function humanSocketReceives(
+    event: { companyId: string; audience: RealtimeAudience | null; subject?: RealtimeSubject | null },
+    viewer: HumanViewer,
+): boolean {
+    if (!viewer.companyId || viewer.companyId !== event.companyId) return false;
+    if (event.audience) {
+        return Boolean(event.audience.ownerUserId) && event.audience.ownerUserId === viewer.userId;
+    }
+    return socketMayReceiveSubject(event.subject, viewer);
+}
+
+// ── Browser socket upgrade guards (/api/ws) ─────────────────────────────────
+
+/**
+ * Cross-site WebSocket hijacking guard: the session cookie rides along on any
+ * cross-origin upgrade, so a browser socket is accepted only when its Origin
+ * names this server. Browsers always send Origin on a WebSocket handshake, so
+ * a missing or unparsable one is rejected too. Hosts compare case-insensitively
+ * and include the port.
+ */
+export function originMatchesHost(origin: string | string[] | undefined, allowedHosts: readonly (string | null | undefined)[]): boolean {
+    const raw = Array.isArray(origin) ? origin[0] : origin;
+    if (!raw || raw === "null") return false;
+    let originHost: string;
+    try {
+        const url = new URL(raw);
+        if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+        originHost = url.host.toLowerCase();
+    } catch {
+        return false;
+    }
+    return allowedHosts.some((host) => typeof host === "string" && host.trim().toLowerCase() === originHost);
+}
+
+/**
+ * Per-user socket cap: given one user's sockets oldest first, the ones to close
+ * so at most `max` remain (the oldest go first).
+ */
+export function socketsOverCap<T>(socketsOldestFirst: readonly T[], max: number): T[] {
+    const excess = socketsOldestFirst.length - Math.max(0, max);
+    return excess > 0 ? socketsOldestFirst.slice(0, excess) : [];
 }

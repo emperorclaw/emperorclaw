@@ -80,8 +80,11 @@ export function agentTokenMayUseThread(thread: ThreadPrivacy, boundAgentId: stri
 /**
  * Realtime (mcp_events) audience. Events about a private thread carry the one
  * agent allowed to receive them; events without an audience go company-wide.
+ * `ownerUserId` (present on the human fan-out shape) names the one person who
+ * owns the private thread, so a signed-in person's socket can keep another
+ * user's private thread away. Agent sockets ignore it.
  */
-export type RealtimeAudience = { agentId: string | null };
+export type RealtimeAudience = { agentId: string | null; ownerUserId?: string | null };
 
 export function socketMayReceive(audience: RealtimeAudience | null | undefined, socket: { agentId?: string | null }): boolean {
     if (!audience) return true;
@@ -115,6 +118,24 @@ export function mostRestrictiveAudience(threads: readonly ThreadPrivacy[]): Real
     if (privateAgents.size === 0) return null;
     if (privateAgents.size > 1) return { agentId: null };
     return { agentId: [...privateAgents][0] };
+}
+
+/**
+ * The audience for BOTH fan-outs at once: the agent (MCP sockets) and the
+ * human owner (browser sockets). Mirrors mostRestrictiveAudience for the agent
+ * axis; the owner axis resolves the one person who owns every private thread
+ * the event names. A private thread with no owner (deleted) or two owners
+ * resolves to null = nobody on the human side (fail closed).
+ */
+export function mostRestrictiveHumanAudience(threads: readonly ThreadPrivacy[]): RealtimeAudience | null {
+    const privates = threads.filter(isPrivateDirectThread);
+    if (privates.length === 0) return null;
+    const agents = new Set(privates.map((t) => t.directAgentId ?? null));
+    const owners = new Set(privates.map((t) => t.ownerUserId ?? null));
+    return {
+        agentId: agents.size === 1 ? [...agents][0] : null,
+        ownerUserId: owners.size === 1 ? [...owners][0] : null,
+    };
 }
 
 /**

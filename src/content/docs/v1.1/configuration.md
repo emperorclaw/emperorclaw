@@ -36,6 +36,20 @@ Hermes bridge settings that change behavior with these features:
 | `EMPEROR_CLAW_RICH_REPLIES` | `on` | `off` keeps the agent on plain Markdown (no charts, tabs, widgets). |
 | `EMPEROR_CLAW_CAPABILITY_REFRESH_SECONDS` | `600` | How often the bridge re-checks what the server supports, so a server upgrade is picked up without restarting the bridge. |
 
+## Reverse proxy and WebSockets
+
+The app pushes live updates to the browser over a WebSocket at `/api/ws` (and
+to MCP bridges at `/api/mcp/ws`). A reverse proxy must forward the upgrade
+handshake unchanged: the `Upgrade: websocket` and `Connection: upgrade` headers
+and the `Sec-WebSocket-*` headers must reach the Node server, and the proxy
+must not buffer the connection. Caddy forwards these by default on the same
+server block that proxies HTTP — no extra directive is needed.
+
+The browser socket authenticates with the NextAuth session cookie on connect
+(no token); the MCP socket authenticates with a Bearer token. In development
+the server listens on `:3000` (or the `PORT` value), which is enough to run
+WebSockets directly with no proxy in between.
+
 ## Bridge Configuration File
 
 Located at `~/.openclaw/emperor-control-plane/bridge.config.json`:

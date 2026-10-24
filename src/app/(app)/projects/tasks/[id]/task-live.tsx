@@ -16,6 +16,7 @@ import {
 } from "@/lib/live-activity";
 import { stallLabel, stallSignal, type StallSignal } from "@/lib/stall-signal";
 import type { TaskLiveRun, TaskLiveView } from "@/lib/task-story-reads";
+import { useLivePoll } from "@/lib/use-realtime";
 
 /** Idle poll: a hidden tab does not poll at all; an idle task checks for a new run now and then. */
 const TASK_IDLE_POLL_MS = 15_000;
@@ -93,50 +94,33 @@ export function useTaskLive(taskId: string, initial: TaskLiveView): TaskLiveStat
         liveIdsRef.current = new Set(initial.runs.map((run) => run.live.runId));
     }, [initial]);
 
-    useEffect(() => {
-        let cancelled = false;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const schedule = () => {
-            if (cancelled || document.hidden) return;
-            timer = setTimeout(poll, runningRef.current ? CHAT_POLL_MS.team.active : TASK_IDLE_POLL_MS);
-        };
-        const poll = async () => {
-            try {
-                const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/live`, { cache: "no-store" });
-                if (res.ok) {
-                    const view = (await res.json()) as TaskLiveView;
-                    if (cancelled) return;
-                    const ids = new Set(view.runs.map((run) => run.live.runId));
-                    const ended = [...liveIdsRef.current].some((id) => !ids.has(id));
-                    liveIdsRef.current = ids;
-                    runningRef.current = ids.size > 0;
-                    const serverNow = Date.parse(view.serverNow);
-                    const offsetMs = Number.isFinite(serverNow) ? serverNow - Date.now() : 0;
-                    setState((prev) => ({ source: prev.source, live: applyLive(prev.live, view, offsetMs) }));
-                    if (ended) router.refresh();
-                }
-            } catch {
-                // Offline or server restart: keep the last snapshot and try again.
+    // Fast while a run is live, slow when idle, a slow fallback while the
+    // realtime socket is up (a run event or task change refetches at once),
+    // none while the tab is hidden (polled at once when shown again).
+    useLivePoll(async (poll) => {
+        try {
+            const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/live`, { cache: "no-store" });
+            if (res.ok) {
+                const view = (await res.json()) as TaskLiveView;
+                if (!poll.active) return;
+                const ids = new Set(view.runs.map((run) => run.live.runId));
+                const ended = [...liveIdsRef.current].some((id) => !ids.has(id));
+                liveIdsRef.current = ids;
+                runningRef.current = ids.size > 0;
+                const serverNow = Date.parse(view.serverNow);
+                const offsetMs = Number.isFinite(serverNow) ? serverNow - Date.now() : 0;
+                setState((prev) => ({ source: prev.source, live: applyLive(prev.live, view, offsetMs) }));
+                if (ended) router.refresh();
             }
-            schedule();
-        };
-        const onVisibility = () => {
-            if (document.hidden) {
-                if (timer) clearTimeout(timer);
-                timer = undefined;
-            } else {
-                if (timer) clearTimeout(timer);
-                void poll();
-            }
-        };
-        schedule();
-        document.addEventListener("visibilitychange", onVisibility);
-        return () => {
-            cancelled = true;
-            if (timer) clearTimeout(timer);
-            document.removeEventListener("visibilitychange", onVisibility);
-        };
-    }, [taskId, router]);
+        } catch {
+            // Offline or server restart: keep the last snapshot and try again.
+        }
+    }, {
+        fastMs: () => (runningRef.current ? CHAT_POLL_MS.team.active : TASK_IDLE_POLL_MS),
+        topics: [`task:${taskId}`],
+        resetKey: taskId,
+        immediate: false,
+    });
 
     return current.live;
 }

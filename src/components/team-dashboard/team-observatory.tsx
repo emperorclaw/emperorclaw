@@ -9,6 +9,7 @@ import {
     bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, holdThoughts, leaderMemberKey, orderDesks, plural, rotateSpeakers, urgencyBucket, visibleDesks, MAX_DESKS,
 } from "@/lib/live-office";
 import { chatPollDelayMs } from "@/lib/live-activity";
+import { useLivePoll } from "@/lib/use-realtime";
 import { LivingDesk, Throne } from "./living-desk";
 import { useLiveLink } from "./live-link";
 import { cn } from "@/lib/utils";
@@ -183,23 +184,17 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
     const workingSignature = [...workingKeys].sort().join("|");
     const pollThoughts = showThoughts && fresh && awake && workingKeys.size > 0;
     const [polledThoughts, setPolledThoughts] = useState<SceneThought[]>([]);
-    useEffect(() => {
-        if (!pollThoughts) return;
-        let cancelled = false;
-        let timer = 0;
-        const poll = async () => {
-            try {
-                const response = await fetch("/api/dashboard/thoughts", { cache: "no-store" });
-                if (response.ok) {
-                    const body = await response.json() as { thoughts?: SceneThought[] };
-                    if (!cancelled && Array.isArray(body.thoughts)) setPolledThoughts(body.thoughts);
-                }
-            } catch { /* the next page refresh still carries thoughts */ }
-            if (!cancelled) timer = window.setTimeout(poll, THOUGHT_POLL_MS);
-        };
-        timer = window.setTimeout(poll, THOUGHT_POLL_MS);
-        return () => { cancelled = true; window.clearTimeout(timer); };
-    }, [pollThoughts]);
+    // A dashboard invalidation refetches at once; the timer is a slow fallback
+    // while the realtime socket is up.
+    useLivePoll(async (poll) => {
+        try {
+            const response = await fetch("/api/dashboard/thoughts", { cache: "no-store" });
+            if (response.ok) {
+                const body = await response.json() as { thoughts?: SceneThought[] };
+                if (poll.active && Array.isArray(body.thoughts)) setPolledThoughts(body.thoughts);
+            }
+        } catch { /* the next page refresh still carries thoughts */ }
+    }, { fastMs: THOUGHT_POLL_MS, topics: ["dashboard"], enabled: pollThoughts, immediate: false });
     const [heldThoughts, setHeldThoughts] = useState<ReadonlyMap<string, SceneThought>>(NO_THOUGHTS);
     useEffect(() => {
         setHeldThoughts((prev) => holdThoughts(prev, [...thoughts, ...polledThoughts], workingKeys));

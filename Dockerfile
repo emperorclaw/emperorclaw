@@ -27,7 +27,8 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy standalone build output (Next.js output: "standalone")
+# Copy standalone build output (Next.js output: "standalone"). npm run build also
+# bundles server.ts into it as emperor-server.js (scripts/build-server.mjs).
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
@@ -62,5 +63,8 @@ USER nextjs
 
 EXPOSE 3000
 
-# Run migrations then start server
-CMD ["sh", "-c", "npx tsx src/db/migrate.ts && node server.js"]
+# Run migrations, then start the custom server (server.ts bundled as
+# emperor-server.js): Next in production mode plus the agent (/api/mcp/ws) and
+# browser (/api/ws) WebSockets and the Postgres LISTEN fan-out. Next's stock
+# standalone server.js is still in the image but serves no WebSockets.
+CMD ["sh", "-c", "npx tsx src/db/migrate.ts && node emperor-server.js"]

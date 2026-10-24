@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { createServer, type IncomingMessage } from 'http';
+import type { Duplex } from 'stream';
 import { parse } from 'url';
 import next from 'next';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -7,7 +8,11 @@ import { Pool, PoolClient } from 'pg';
 import { UTC_SESSION_OPTIONS } from "./src/db/pg-utc";
 import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
 import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
-import { parseRealtimeNotification, socketReceives } from './src/lib/realtime-delivery';
+import { humanSocketReceives, originMatchesHost, parseRealtimeNotification, socketReceives, socketsOverCap, type HumanViewer } from './src/lib/realtime-delivery';
+import { eventTopicsFor } from './src/lib/realtime-topics';
+import { CLOSE_SESSION_INVALID, CLOSE_TOO_MANY_SOCKETS } from './src/lib/realtime-client';
+import { getValidatedSessionFromNodeRequest, isBrowserSessionActive } from './src/lib/auth';
+import { resolveHumanRealtimeContext } from './src/lib/realtime-human';
 import { loadAgentScopeContext } from './src/lib/agent-scope';
 
 const dev = process.env.NODE_ENV === 'development';
@@ -49,6 +54,7 @@ function resolveClientIp(req: IncomingMessage): string {
 // allowedProjectIds/allowedCustomerIds: that agent's data scope (null = unrestricted),
 // refreshed periodically so an owner's scope edit reaches open sockets.
 type CompanySocket = WebSocket & {
+  isAlive?: boolean;
   companyId?: string;
   agentId?: string | null;
   allowedProjectIds?: Set<string> | null;
@@ -56,6 +62,72 @@ type CompanySocket = WebSocket & {
   allowedAgentIds?: Set<string> | null;
 };
 const SOCKET_SCOPE_REFRESH_MS = 60_000;
+/** Protocol ping cadence; a socket that missed the previous pong is terminated. */
+const SOCKET_HEARTBEAT_MS = 25_000;
+/** Agents only ever send "ping" frames; anything larger is not a client we serve. */
+const AGENT_MAX_PAYLOAD = 64 * 1024;
+/** Browsers only send "ping". */
+const HUMAN_MAX_PAYLOAD = 1024;
+/** Open browser sockets per user; the oldest is closed when one more connects. */
+const MAX_HUMAN_SOCKETS_PER_USER = 10;
+
+// A signed-in person's browser socket (/api/ws). Carries the same allow-sets as
+// an agent socket but resolved from the member scope, plus the user id so a
+// private direct thread only ever reaches its owner.
+type HumanSocket = WebSocket & HumanViewer & { isHuman?: boolean; isAlive?: boolean; sessionId?: string };
+/** Coalesce invalidation bursts per human socket into one message. */
+const HUMAN_INVALIDATE_COALESCE_MS = 250;
+
+type PendingTopics = { topics: Set<string>; timer: NodeJS.Timeout | null };
+const pendingBySocket = new WeakMap<HumanSocket, PendingTopics>();
+
+function flushHumanInvalidation(sock: HumanSocket) {
+    const pending = pendingBySocket.get(sock);
+    if (!pending || pending.topics.size === 0) return;
+    const topics = [...pending.topics];
+    pending.topics.clear();
+    pending.timer = null;
+    if (sock.readyState === WebSocket.OPEN) {
+        sock.send(JSON.stringify({ type: "invalidate", topics }));
+    }
+}
+
+function enqueueHumanInvalidation(sock: HumanSocket, topics: readonly string[]) {
+    let pending = pendingBySocket.get(sock);
+    if (!pending) {
+        pending = { topics: new Set(), timer: null };
+        pendingBySocket.set(sock, pending);
+    }
+    for (const topic of topics) pending.topics.add(topic);
+    if (!pending.timer) {
+        pending.timer = setTimeout(() => flushHumanInvalidation(sock), HUMAN_INVALIDATE_COALESCE_MS);
+        pending.timer.unref?.();
+    }
+}
+
+/** Refuse an upgrade on the raw socket (which may already be gone). */
+function rejectUpgrade(socket: Duplex, status: number, reason: string) {
+    if (!socket.destroyed) {
+        try {
+            socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`);
+        } catch {
+            // The client already went away.
+        }
+    }
+    socket.destroy();
+}
+
+/** The host names this request may legitimately come from (forwarded host only via a trusted proxy). */
+function upgradeHosts(req: IncomingMessage): string[] {
+    const hosts = [req.headers.host].filter((value): value is string => typeof value === 'string');
+    if (TRUSTED_PROXY_IPS.has(normalizeIp(req.socket?.remoteAddress))) {
+        const forwarded = req.headers['x-forwarded-host'];
+        const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+        const first = raw?.split(',')[0]?.trim();
+        if (first) hosts.push(first);
+    }
+    return hosts;
+}
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -80,10 +152,22 @@ app.prepare().then(() => {
     }
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  // Two servers so each kind of client gets its own frame-size limit.
+  const agentWss = new WebSocketServer({ noServer: true, maxPayload: AGENT_MAX_PAYLOAD });
+  const humanWss = new WebSocketServer({ noServer: true, maxPayload: HUMAN_MAX_PAYLOAD });
+  /** Each user's open browser sockets, oldest first (Set keeps insertion order). */
+  const humanSocketsByUser = new Map<string, Set<HumanSocket>>();
 
   server.on('upgrade', async (request, socket, head) => {
     const { pathname } = parse(request.url || '');
+
+    if (pathname === '/api/mcp/ws' || pathname === '/api/ws') {
+        // Registered before any await: a client that resets mid-handshake must
+        // not surface as an unhandled 'error' event and crash the process.
+        socket.on('error', () => {
+            socket.destroy();
+        });
+    }
 
     if (pathname === '/api/mcp/ws') {
         try {
@@ -100,8 +184,7 @@ app.prepare().then(() => {
                         status: auth.status,
                     },
                 });
-                socket.write(`HTTP/1.1 ${auth.status} ${auth.status === 403 ? 'Forbidden' : 'Unauthorized'}\r\n\r\n`);
-                socket.destroy();
+                rejectUpgrade(socket, auth.status, auth.status === 403 ? 'Forbidden' : 'Unauthorized');
                 return;
             }
 
@@ -111,7 +194,8 @@ app.prepare().then(() => {
             const companyId = auth.companyToken.companyId;
             const agentId = auth.companyToken.agentId ?? null;
             const initialScope = await loadAgentScopeContext(companyId, agentId);
-            wss.handleUpgrade(request, socket, head, (ws) => {
+            if (socket.destroyed) return;
+            agentWss.handleUpgrade(request, socket, head, (ws) => {
                 const companySocket = ws as CompanySocket;
                 companySocket.companyId = companyId;
                 companySocket.agentId = agentId;
@@ -133,7 +217,7 @@ app.prepare().then(() => {
                     }, SOCKET_SCOPE_REFRESH_MS);
                     companySocket.on('close', () => clearInterval(refresh));
                 }
-                wss.emit('connection', companySocket, request);
+                agentWss.emit('connection', companySocket, request);
             });
         } catch(e) {
             console.error("Token verification error during WS upgrade:", e);
@@ -145,8 +229,116 @@ app.prepare().then(() => {
                 route: pathname,
                 method: 'WS',
             });
-            socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
-            socket.destroy();
+            rejectUpgrade(socket, 500, 'Internal Server Error');
+        }
+    } else if (pathname === '/api/ws') {
+        try {
+            // The session cookie rides along on any cross-site upgrade, so a
+            // browser socket must come from a page on this server.
+            if (!originMatchesHost(request.headers.origin, upgradeHosts(request))) {
+                void recordOpsEvent({
+                    level: 'warn',
+                    category: 'auth',
+                    source: 'server.ws-upgrade',
+                    message: 'Browser websocket upgrade from a foreign or missing Origin',
+                    route: pathname,
+                    method: 'WS',
+                    metadata: {
+                        origin: typeof request.headers.origin === 'string' ? request.headers.origin.slice(0, 200) : null,
+                    },
+                });
+                rejectUpgrade(socket, 403, 'Forbidden');
+                return;
+            }
+            // Browser sockets authenticate with the NextAuth session cookie on
+            // upgrade (no token header). Reject when there is no valid session.
+            const session = await getValidatedSessionFromNodeRequest(request);
+            if (!session?.user?.id || !session.sessionId) {
+                rejectUpgrade(socket, 401, 'Unauthorized');
+                return;
+            }
+            const userId = session.user.id;
+            const sessionId = session.sessionId;
+            const initial = await resolveHumanRealtimeContext(userId);
+            if (!initial) {
+                rejectUpgrade(socket, 403, 'Forbidden');
+                return;
+            }
+            if (socket.destroyed) return;
+            humanWss.handleUpgrade(request, socket, head, (ws) => {
+                const humanSocket = ws as HumanSocket;
+                humanSocket.isHuman = true;
+                humanSocket.sessionId = sessionId;
+                humanSocket.companyId = initial.companyId;
+                humanSocket.userId = initial.userId;
+                humanSocket.role = initial.role;
+                humanSocket.allowedAgentIds = initial.allowedAgentIds;
+                humanSocket.allowedCustomerIds = initial.allowedCustomerIds;
+                humanSocket.allowedProjectIds = initial.allowedProjectIds;
+                // Permission changes (sign-out, removal, role or scope edits)
+                // reach an open socket on this refresh, so for up to
+                // SOCKET_SCOPE_REFRESH_MS (60 s) it may still receive
+                // invalidations under the old rights. Invalidations carry only
+                // topic names; the data itself is always re-read through the
+                // permission-checked REST routes.
+                const refresh = setInterval(() => {
+                    Promise.all([
+                        isBrowserSessionActive(sessionId, userId),
+                        resolveHumanRealtimeContext(userId),
+                    ]).then(([sessionActive, ctx]) => {
+                        if (!sessionActive || !ctx) {
+                            // Signed out, session expired, or membership gone.
+                            humanSocket.close(CLOSE_SESSION_INVALID, 'session ended');
+                            return;
+                        }
+                        humanSocket.companyId = ctx.companyId;
+                        humanSocket.role = ctx.role;
+                        humanSocket.allowedAgentIds = ctx.allowedAgentIds;
+                        humanSocket.allowedCustomerIds = ctx.allowedCustomerIds;
+                        humanSocket.allowedProjectIds = ctx.allowedProjectIds;
+                    }).catch(() => {
+                        // Fail closed: if the scope cannot be read, deliver nothing scoped.
+                        humanSocket.allowedAgentIds = new Set();
+                        humanSocket.allowedCustomerIds = new Set();
+                        humanSocket.allowedProjectIds = new Set();
+                    });
+                }, SOCKET_SCOPE_REFRESH_MS);
+
+                let userSockets = humanSocketsByUser.get(userId);
+                if (!userSockets) {
+                    userSockets = new Set();
+                    humanSocketsByUser.set(userId, userSockets);
+                }
+                userSockets.add(humanSocket);
+                for (const oldest of socketsOverCap([...userSockets], MAX_HUMAN_SOCKETS_PER_USER)) {
+                    userSockets.delete(oldest);
+                    oldest.close(CLOSE_TOO_MANY_SOCKETS, 'too many open sockets');
+                }
+
+                humanSocket.on('close', () => {
+                    clearInterval(refresh);
+                    const pending = pendingBySocket.get(humanSocket);
+                    if (pending?.timer) clearTimeout(pending.timer);
+                    pendingBySocket.delete(humanSocket);
+                    const sockets = humanSocketsByUser.get(userId);
+                    if (sockets) {
+                        sockets.delete(humanSocket);
+                        if (sockets.size === 0) humanSocketsByUser.delete(userId);
+                    }
+                });
+                humanWss.emit('connection', humanSocket, request);
+            });
+        } catch (e) {
+            console.error("Session verification error during WS upgrade:", e);
+            void recordOpsError({
+                category: 'auth',
+                source: 'server.ws-upgrade',
+                fallbackMessage: 'Websocket upgrade session verification failed',
+                error: e,
+                route: pathname,
+                method: 'WS',
+            });
+            rejectUpgrade(socket, 500, 'Internal Server Error');
         }
     } else {
         // Let Next.js handle other upgrades (e.g. HMR)
@@ -160,9 +352,13 @@ app.prepare().then(() => {
   });
   
   // Setup Postgres LISTEN/NOTIFY for ws broadcasts
-  const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING, options: UTC_SESSION_OPTIONS });
+  // keepAlive: the LISTEN connection is idle for long stretches; TCP keepalive
+  // lets a silently dropped connection surface as an error instead of hanging.
+  const pool = new Pool({ connectionString: process.env.POSTGRES_CONNECTION_STRING, options: UTC_SESSION_OPTIONS, keepAlive: true });
   let listenerClient: PoolClient | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
+  /** After the first attach, every re-attach means NOTIFYs may have been lost. */
+  let listenerAttachedBefore = false;
 
   const scheduleListenerReconnect = () => {
     if (reconnectTimer) return;
@@ -173,11 +369,11 @@ app.prepare().then(() => {
   };
 
   const attachPubsubListener = async () => {
+    let client: PoolClient | null = null;
     try {
-      const client = await pool.connect();
-      listenerClient = client;
-      console.log('PostgreSQL Pub/Sub linked. Listening for mcp_events...');
-      await client.query('LISTEN mcp_events');
+      client = await pool.connect();
+      const listener = client;
+      listenerClient = listener;
 
       const handleDisconnect = (error?: unknown) => {
         if (error) {
@@ -204,18 +400,23 @@ app.prepare().then(() => {
           });
         }
 
-        if (listenerClient === client) {
+        if (listenerClient === listener) {
           listenerClient = null;
         }
 
-        client.removeAllListeners('notification');
-        client.removeAllListeners('error');
-        client.removeAllListeners('end');
-        client.release();
+        listener.removeAllListeners('notification');
+        listener.removeAllListeners('error');
+        listener.removeAllListeners('end');
+        // A broken LISTEN connection must never go back to the pool.
+        try {
+          listener.release(true);
+        } catch {
+          // Already released.
+        }
         scheduleListenerReconnect();
       };
 
-      client.on('notification', (msg) => {
+      listener.on('notification', (msg) => {
         if (!msg.payload) return;
         try {
           const notification = parseRealtimeNotification(msg.payload);
@@ -223,10 +424,20 @@ app.prepare().then(() => {
 
           // Events about a private direct thread carry an audience (its agent):
           // only sockets bound to that agent receive them, never the company.
-          wss.clients.forEach((client) => {
-            const companySocket = client as CompanySocket;
-            if (companySocket.readyState === WebSocket.OPEN && socketReceives(notification, companySocket)) {
-              companySocket.send(notification.message);
+          // Human sockets get a compact invalidation instead of record contents.
+          const topics = eventTopicsFor(notification.payload, notification.subject);
+          humanWss.clients.forEach((ws) => {
+            const socket = ws as HumanSocket;
+            if (socket.readyState !== WebSocket.OPEN) return;
+            if (humanSocketReceives(notification, socket)) {
+              enqueueHumanInvalidation(socket, topics);
+            }
+          });
+          agentWss.clients.forEach((ws) => {
+            const socket = ws as CompanySocket;
+            if (socket.readyState !== WebSocket.OPEN) return;
+            if (socketReceives(notification, socket)) {
+              socket.send(notification.message);
             }
           });
         } catch (e) {
@@ -243,9 +454,33 @@ app.prepare().then(() => {
         }
       });
 
-      client.once('error', handleDisconnect);
-      client.once('end', () => handleDisconnect());
+      listener.once('error', handleDisconnect);
+      listener.once('end', () => handleDisconnect());
+
+      await listener.query('LISTEN mcp_events');
+      console.log('PostgreSQL Pub/Sub linked. Listening for mcp_events...');
+      if (listenerAttachedBefore) {
+        // NOTIFYs sent while the listener was down are gone: tell every
+        // browser to refetch what it shows.
+        const resync = JSON.stringify({ type: 'resync' });
+        humanWss.clients.forEach((ws) => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(resync);
+        });
+      }
+      listenerAttachedBefore = true;
     } catch (error) {
+      if (client && listenerClient === client) {
+        // Connected but LISTEN failed: drop the connection instead of leaking it.
+        listenerClient = null;
+        client.removeAllListeners('notification');
+        client.removeAllListeners('error');
+        client.removeAllListeners('end');
+        try {
+          client.release(true);
+        } catch {
+          // Already released by the disconnect handler.
+        }
+      }
       console.error('Failed to attach PostgreSQL Pub/Sub listener:', error);
       void recordOpsError({
         category: 'runtime',
@@ -262,13 +497,62 @@ app.prepare().then(() => {
 
   void attachPubsubListener();
 
-  wss.on('connection', (ws) => {
+  // Liveness: every socket answers protocol pings (browsers and ws clients do so
+  // automatically). One that missed the previous round is a zombie (sleeping
+  // laptop, dropped NAT) and is terminated so it stops holding memory.
+  const trackLiveness = (ws: WebSocket & { isAlive?: boolean }) => {
+      ws.isAlive = true;
+      ws.on('pong', () => { ws.isAlive = true; });
+  };
+  const heartbeat = setInterval(() => {
+      for (const wss of [agentWss, humanWss]) {
+          wss.clients.forEach((client) => {
+              const ws = client as WebSocket & { isAlive?: boolean };
+              if (ws.isAlive === false) {
+                  ws.terminate();
+                  return;
+              }
+              ws.isAlive = false;
+              try {
+                  ws.ping();
+              } catch {
+                  ws.terminate();
+              }
+          });
+      }
+  }, SOCKET_HEARTBEAT_MS);
+  heartbeat.unref();
+  server.once('close', () => clearInterval(heartbeat));
+
+  agentWss.on('connection', (ws: CompanySocket) => {
+      trackLiveness(ws);
+      // A socket error (reset, oversized frame) closes the socket; it must not crash the process.
+      ws.on('error', (error) => {
+          console.warn('Agent websocket error:', error.message);
+      });
       // Send an initial connected ping payload
       ws.send(JSON.stringify({ type: 'connected', message: 'WebSocket tunnel established' }));
-      
+
       ws.on('message', (message) => {
+          ws.isAlive = true;
           if (message.toString() === 'ping') {
              ws.send('pong');
+          }
+      });
+  });
+
+  humanWss.on('connection', (ws: HumanSocket) => {
+      trackLiveness(ws);
+      ws.on('error', (error) => {
+          console.warn('Browser websocket error:', error.message);
+      });
+      ws.send(JSON.stringify({ type: 'connected' }));
+
+      ws.on('message', (message) => {
+          ws.isAlive = true;
+          // The browser heartbeat: the reply is its proof the socket is alive.
+          if (message.toString() === 'ping') {
+             ws.send(JSON.stringify({ type: 'pong' }));
           }
       });
   });
@@ -286,6 +570,6 @@ app.prepare().then(() => {
 
   server.listen(port, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
-    console.log(`> WebSocket attached to /api/mcp/ws`);
+    console.log(`> WebSocket attached to /api/mcp/ws and /api/ws`);
   });
 });

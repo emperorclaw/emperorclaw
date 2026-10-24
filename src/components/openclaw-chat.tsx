@@ -7,6 +7,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { MentionTextarea } from "@/components/mention-textarea";
 import { agentAvatarSrc } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
+import { useLivePoll } from "@/lib/use-realtime";
 import { toast } from "sonner";
 
 const CHAT_PAGE_SIZE = 25;
@@ -86,7 +87,8 @@ export function OpenClawChat() {
         return query ? `/api/chat?${query}` : "/api/chat";
     };
 
-    // Fetch history and poll
+    // Fetch history once; the poll below runs the latest pollHistory.
+    const pollHistoryRef = useRef<() => Promise<void>>(async () => {});
     useEffect(() => {
         const initFetch = async () => {
             try {
@@ -171,13 +173,19 @@ export function OpenClawChat() {
             }
         };
 
+        pollHistoryRef.current = pollHistory;
         if (!initialized) {
             initFetch();
         }
-
-        const interval = setInterval(pollHistory, 5000); // Poll every 5 seconds
-        return () => clearInterval(interval);
     }, [isOpen, initialized, lastSeenAt, threadId]);
+
+    // 5 s while the realtime socket is down, a slow fallback while it is up
+    // (an invalidation of the team thread refetches at once), none while hidden.
+    useLivePoll(() => pollHistoryRef.current(), {
+        fastMs: 5000,
+        topics: threadId ? [`thread:${threadId}`] : [],
+        immediate: false,
+    });
 
     useEffect(() => {
         if (scrollRef.current) {

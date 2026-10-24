@@ -183,6 +183,59 @@ export async function getValidatedServerSession() {
     return typedSession;
 }
 
+/** Minimal cookie-header parser for the WebSocket upgrade path (avoids a runtime dependency). */
+function parseCookieHeader(header: string | string[] | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    const raw = Array.isArray(header) ? header.join("; ") : header ?? "";
+    for (const part of raw.split(";")) {
+        const eq = part.indexOf("=");
+        if (eq < 0) continue;
+        const name = part.slice(0, eq).trim();
+        const value = part.slice(eq + 1).trim();
+        // Browsers send cookie values URL-encoded; next-auth expects them decoded
+        // (an encoded callback-url cookie fails its validation and the upgrade is refused).
+        let decoded = value;
+        try { decoded = decodeURIComponent(value); } catch { /* keep the raw value */ }
+        if (name) out[name] = decoded;
+    }
+    return out;
+}
+
+/**
+ * Validate a signed-in person's session from a raw Node request — the WebSocket
+ * upgrade path, which runs before Next handles the request, so the RSC form of
+ * getServerSession cannot be used. Decodes the session cookie through next-auth
+ * (its own cookie name + JWT secret logic) and re-checks the DB-backed session
+ * record, exactly like getValidatedServerSession.
+ */
+export async function getValidatedSessionFromNodeRequest(request: {
+    headers: { host?: string; cookie?: string | string[]; "x-forwarded-proto"?: string | string[]; "x-forwarded-host"?: string | string[]; [key: string]: unknown };
+}): Promise<SessionWithUserId | null> {
+    const { getServerSession } = await import("next-auth/next");
+    const cookies = parseCookieHeader(request.headers.cookie);
+    const session = (await getServerSession(
+        { headers: request.headers as Record<string, unknown>, cookies, method: "GET" } as never,
+        { getHeader() {}, setCookie() {}, setHeader() {} } as never,
+        authOptions,
+    )) as SessionWithUserId | null;
+    if (!session?.user?.id || !session.sessionId) return null;
+
+    const activeSession = await getActiveBrowserSession(session.sessionId);
+    if (!activeSession || activeSession.userId !== session.user.id) return null;
+
+    return session;
+}
+
+/**
+ * Whether a browser session record is still live and belongs to `userId` (not
+ * signed out, not expired). Long-lived realtime sockets re-check this on their
+ * scope refresh, so signing out closes them.
+ */
+export async function isBrowserSessionActive(sessionId: string | null | undefined, userId: string): Promise<boolean> {
+    const activeSession = await getActiveBrowserSession(sessionId);
+    return Boolean(activeSession && activeSession.userId === userId);
+}
+
 export async function getCompanyId() {
     const typedSession = await getValidatedServerSession();
     if (!typedSession || !typedSession.user || !typedSession.user.id) {
