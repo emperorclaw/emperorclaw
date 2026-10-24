@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.11.0] — 2026-10-24
+
+### Added
+- **Timeline.** A new page under Work shows who worked on what: one row per agent and person, a bar for every run coloured by its outcome (Done, Needs you, Failed, Stopped, running), markers for task events, arrows for handoffs between agents, Today / 7 days / 30 days or custom dates, zoom, a mini-map, and totals for runs, busy time, tokens and cost. Click a bar to open its task. On a phone it becomes a per-agent list. Restricted members only see their own scope, and nobody sees another person's private chats. Also from an agent's panel ("See on timeline") and with `g` `t`.
+
+### Changed
+- **Live updates without polling.** Chats, the dashboard, the inbox and its badge, the task page, the projects board and the agent "Right now" card now update the moment something changes, over one WebSocket per tab (`/api/ws`). Polling remains as a slow safety net and returns to its old speed whenever the connection is down. Reverse proxies must forward WebSocket upgrades on `/api/ws` (see Configuration).
+
+### Security
+- The live channel checks the session, the page origin and the member's scope on connect and every minute after, closes on sign-out or removal, only sends "something changed" signals (never content), and keeps private chats private.
+
 ## [0.10.1] — 2026-10-24
 
 ### Added
