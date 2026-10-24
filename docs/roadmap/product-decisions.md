@@ -210,6 +210,7 @@ The Right now card stays per-agent and gains rule 4. The chat live row stays as 
 | 11.4 | **Inbox state + keys** | M | `inbox_item_state` table (read/archived per user). Archive offers a 5 s undo. The sort stays pinned until refresh. Keys j/k/Enter/e/r. |
 | 11.5 | **Global search (FTS)** | D | Generated `tsvector` columns and GIN indexes created `CONCURRENTLY`. `GET /api/search` enforces company scope, restricted members and private direct chats (integration tests for each). The palette gets a "Search for …" row. |
 | 11.6 | **Failure copy per cause** | D | Message and run failures in the inbox show one plain cause plus one fix button: Reconnect runtime, Raise budget, Retry, Reassign. |
+| 11.7 | **Work timeline (Gantt)** | M | Reversed from the do-not-build list: with many agents delegating to each other, one chart showing who worked on what, who sat idle and where a handoff chain broke is actionable. `/timeline` under Work: one row per agent or person, bars = runs coloured by outcome (Done / Needs you / Failed / Stopped), markers for task events, arrows for handoffs, Today / 7 / 30 days, zoom and mini-map, click-through to the task page. Respects restricted members and private chats (integration tests). Brief: `.opencode-tmp/work-timeline.md`. |
 
 ### 0.12: "Runs itself" (R1 and R2)
 
@@ -238,7 +239,6 @@ The Right now card stays per-agent and gains rule 4. The chat live row stays as 
 | **Anchored document comments, diff modal** | Low value for agent-delivered work. Brain versions are enough. |
 | **Workspaces, worktrees, preview URLs** | Fit only coding agents. That's not our audience. |
 | **Conference room / board chat, status cards (beta)** | Our group chats and the dashboard desk already cover this. Their beta flags suggest it's unproven there too. |
-| **Run timeline / Gantt page** | Nice to look at but not actionable. The task story plus the Right now card answer the real questions. |
 | **Separate "Decisions" page** | It splits attention across two queues. One inbox with an Approvals filter is better, and #4254 suggests users struggle when approvals hide. |
 | **Eight liveness labels, watchdog snooze / false-positive** | Too much taxonomy for a phone screen. Start with four outcomes and one stall threshold, then add more only if users ask. |
 | **Sidebar lists of live agents and recent tasks** | Our dashboard desk does this with more context. Lists in the sidebar get noisy past a handful of agents (#689 asks for more indicators just to make sense of it). |
