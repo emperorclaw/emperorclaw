@@ -79,7 +79,7 @@ export const LivingDesk = forwardRef<HTMLLIElement, DeskProps>(function LivingDe
     const needsYou = bucket === "needs_you";
     const offline = bucket === "offline" || bucket === "stale";
     const armsUp = celebrating || activity === "celebrate";
-    const working = bucket === "working" && !armsUp;
+    const working = (bucket === "working" || agent.status === "working") && !armsUp;
     const Icon = armsUp ? IconConfetti : BUCKET_ICON[bucket];
     const vars = {
         "--agent-hue": hue,

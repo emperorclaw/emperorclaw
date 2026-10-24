@@ -6,7 +6,7 @@ import { IconBubbleText, IconLayoutList, IconMessageCircle, IconUsersGroup } fro
 import { assignIdleRoutines, requiresHumanAction, type CompanyLeader, type DashboardTeam, type SceneActivity, type SceneAgent, type SceneCommunication, type SceneLiveEvent, type SceneThought } from "@/lib/team-scene";
 import { visibleCommunications, sceneMessagePreview } from "@/lib/observatory";
 import {
-    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, holdThoughts, leaderMemberKey, orderDesks, plural, rotateSpeakers, urgencyBucket, visibleDesks, MAX_DESKS,
+    bubbleCandidates, deskColumns, deskStateLabel, deskStatusLine, eventsToPlay, ghostKeys, holdThoughts, leaderMemberKey, orderDesks, plural, rotateSpeakers, thoughtKeys, urgencyBucket, visibleDesks, MAX_DESKS,
 } from "@/lib/live-office";
 import { chatPollDelayMs } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
@@ -180,7 +180,7 @@ export function TeamObservatory({ agents, teams, communications, thoughts, liveE
     // thoughts" is on, the room is in view and someone works, live steps are
     // polled between the 15 s page refreshes.
     const [tick, setTick] = useState(0);
-    const workingKeys = useMemo(() => new Set(shown.filter((a) => urgencyBucket(a, actionKeys) === "working" && !ghosts.has(a.member.key)).map((a) => a.member.key)), [shown, actionKeys, ghosts]);
+    const workingKeys = useMemo(() => thoughtKeys(shown, ghosts), [shown, ghosts]);
     const workingSignature = [...workingKeys].sort().join("|");
     const pollThoughts = showThoughts && fresh && awake && workingKeys.size > 0;
     const [polledThoughts, setPolledThoughts] = useState<SceneThought[]>([]);

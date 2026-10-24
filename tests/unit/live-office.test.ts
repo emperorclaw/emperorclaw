@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-    bubbleCandidates, bubbleText, deskColumns, deskStatusLine, eventsToPlay, excludeLeader, formatElapsed, ghostKeys, leaderMemberKey, orderByUrgency, orderDesks, plural, rotateSpeakers, updatedAgo, urgencyBucket, visibleDesks,
+    bubbleCandidates, bubbleText, deskColumns, deskStatusLine, eventsToPlay, excludeLeader, formatElapsed, ghostKeys, leaderMemberKey, orderByUrgency, orderDesks, plural, rotateSpeakers, thoughtKeys, updatedAgo, urgencyBucket, visibleDesks, deskStateLabel,
 } from "../../src/lib/live-office";
 import { dashboardLiveFromRows, pendingApprovalRows } from "../../src/lib/dashboard-live";
 import { deriveSceneAgents, type DashboardMember, type SceneAgent, type SceneLiveEvent } from "../../src/lib/team-scene";
@@ -212,4 +212,16 @@ test("desk columns: five per row beside the inbox at 1280px, eight at most", () 
     assert.equal(deskColumns(534), 5);
     assert.equal(deskColumns(1164), 8);
     assert.equal(deskColumns(3000), 8);
+});
+
+test("a working agent with a pending item still gets thought bubbles and says it is working", () => {
+    const builder = agent("Builder", "working");
+    const architect = agent("Architect", "working");
+    const idle = agent("Idle", "idle");
+    const needsYou = new Set([builder.member.key]);
+    assert.equal(urgencyBucket(builder, needsYou), "needs_you");
+    assert.deepEqual([...thoughtKeys([builder, architect, idle], new Set())].sort(), [architect.member.key, builder.member.key].sort());
+    assert.deepEqual([...thoughtKeys([builder, architect], new Set([architect.member.key]))], [builder.member.key]);
+    assert.equal(deskStateLabel(builder, "needs_you"), "Working · needs you");
+    assert.equal(deskStateLabel(idle, "needs_you"), "Needs you");
 });

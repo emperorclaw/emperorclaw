@@ -138,6 +138,8 @@ export function deskStatusLine(agent: SceneAgent, now: Date): DeskStatus {
 
 /** The small text label that carries the state (never color alone). */
 export function deskStateLabel(agent: SceneAgent, bucket: UrgencyBucket): string {
+    // A pending item puts the desk up front, but the agent is still at work.
+    if (bucket === "needs_you" && agent.status === "working") return "Working · needs you";
     if (bucket === "working") return agent.behavior.kind === "celebrate" ? "Just finished" : agent.behavior.caption === "Task in progress" ? "Working" : agent.behavior.caption;
     if (bucket === "idle" && agent.behavior.kind === "celebrate") return "Just finished";
     return BUCKET_LABEL[bucket];
@@ -146,6 +148,14 @@ export function deskStateLabel(agent: SceneAgent, bucket: UrgencyBucket): string
 /** "1 pending action", "3 pending actions". */
 export function plural(count: number, one: string, many = `${one}s`): string {
     return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * Desks that may show a thought bubble: every agent at work, whatever its
+ * urgency bucket (an agent with a pending item is still working).
+ */
+export function thoughtKeys(agents: readonly SceneAgent[], ghosts: ReadonlySet<string>): Set<string> {
+    return new Set(agents.filter((a) => a.status === "working" && !ghosts.has(a.member.key)).map((a) => a.member.key));
 }
 
 /** Thoughts that may show: fresh, from agents currently working on a visible, non-ghost desk. */
