@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.11.3] — 2026-10-24
+
+### Fixed
+- The dashboard shows thoughts for every working agent. An agent with something waiting for you in the inbox used to lose its thought bubble and look idle while it worked; its desk now reads "Working · needs you".
+
 ## [0.11.2] — 2026-10-24
 
 ### Fixed
