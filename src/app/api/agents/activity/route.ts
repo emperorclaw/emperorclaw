@@ -17,6 +17,6 @@ export async function GET() {
     const companyId = access.ctx.companyId;
 
     const agentIds = getScopedAgentIds(access.ctx.scope);
-    const agents = await loadAgentActivity(companyId, { viewerUserId: access.ctx.userId, agentIds });
+    const agents = await loadAgentActivity(companyId, { viewerUserId: access.ctx.userId, agentIds, scope: access.ctx.scope });
     return NextResponse.json({ ts: new Date().toISOString(), agents });
 }

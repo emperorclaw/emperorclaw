@@ -7,6 +7,8 @@ import { buildRunLive, loadRunEventsTail, type RunCurrent, type RunLiveUsage, ty
 import { taskTitle } from "@/lib/emperor-entities";
 import { deriveLiveState, toPlainText, type LiveState } from "@/lib/live-feed";
 import { TASK_STATES } from "@/lib/task-state";
+import { classifyRunThread, type RunningRun } from "@/lib/agent-visibility";
+import { memberVisibleProjectIds, type MemberScope } from "@/lib/member-scope";
 
 /**
  * "What is each agent doing right now" for the web app: one snapshot per
@@ -46,6 +48,8 @@ export interface AgentNow {
         live?: AgentRunLiveView;
     } | null;
     task: { id: string; title: string } | null;
+    /** Every running run (not just the newest), privacy-resolved for the viewer. */
+    runningRuns: RunningRun[];
     lastRun: {
         id: string;
         status: string;
@@ -189,6 +193,74 @@ export async function loadThreadVisibility(companyId: string, threadIds: readonl
 // The per-run event tail lives in run-events (LATERAL ... LIMIT, served by (run_id, seq)).
 export { loadRunEventsTail } from "@/lib/run-events";
 
+/**
+ * Every running run of the given agents, privacy-resolved for the viewer: a
+ * thread they cannot read loses its id (and reads as "a private chat"), a task
+ * outside their member scope loses its title (and reads as "other work"). Used
+ * by the "Also working on" row and the Right now card.
+ */
+export async function loadRunningRuns(
+    companyId: string,
+    agentIds: readonly string[],
+    viewerUserId: string | null,
+    scope: MemberScope | null,
+): Promise<RunningRun[]> {
+    const ids = [...new Set(agentIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+    if (ids.length === 0) return [];
+
+    const rows = await db.select({
+        id: agentRuns.id,
+        agentId: agentRuns.agentId,
+        startedAt: agentRuns.startedAt,
+        taskId: agentRuns.taskId,
+        threadId: agentRuns.threadId,
+    }).from(agentRuns).where(and(
+        eq(agentRuns.companyId, companyId),
+        inArray(agentRuns.agentId, ids),
+        eq(agentRuns.status, "running"),
+    )).orderBy(desc(agentRuns.startedAt)).limit(Math.min(500, ids.length * 10));
+    if (rows.length === 0) return [];
+
+    const threadIds = [...new Set(rows.map((r) => r.threadId).filter((id): id is string => Boolean(id)))];
+    const taskIds = [...new Set(rows.map((r) => r.taskId).filter((id): id is string => Boolean(id)))];
+
+    const [threadRows, taskRows, visibleProjects] = await Promise.all([
+        threadIds.length > 0
+            ? db.select({ id: messageThreads.id, type: messageThreads.type, ownerUserId: messageThreads.ownerUserId, isPrivate: messageThreads.isPrivate })
+                .from(messageThreads).where(and(eq(messageThreads.companyId, companyId), inArray(messageThreads.id, threadIds)))
+            : Promise.resolve([]),
+        taskIds.length > 0
+            ? db.select({ id: tasks.id, inputJson: tasks.inputJson, taskType: tasks.taskType, projectId: tasks.projectId })
+                .from(tasks).where(and(eq(tasks.companyId, companyId), inArray(tasks.id, taskIds), isNull(tasks.deletedAt)))
+            : Promise.resolve([]),
+        scope ? memberVisibleProjectIds(companyId, scope) : Promise.resolve(null),
+    ]);
+
+    const threadById = new Map(threadRows.map((t) => [t.id, t]));
+    const taskById = new Map(taskRows.map((t) => [t.id, t]));
+
+    return rows.map((row): RunningRun => {
+        const thread = row.threadId ? threadById.get(row.threadId) : undefined;
+        const { kind, visible } = classifyRunThread(thread, viewerUserId);
+        const task = row.taskId ? taskById.get(row.taskId) : undefined;
+        // Another person's private chat: no task, no link, no timing.
+        if (kind === "other-private") {
+            return { runId: row.id, agentId: row.agentId ?? "", threadId: null, threadKind: kind, taskId: null, taskTitle: null, taskHidden: false, startedAt: null };
+        }
+        const taskVisible = task ? (scope ? Boolean(task.projectId && visibleProjects?.has(task.projectId)) : true) : false;
+        return {
+            runId: row.id,
+            agentId: row.agentId ?? "",
+            threadId: visible ? row.threadId : null,
+            threadKind: kind,
+            taskId: task && taskVisible ? row.taskId! : null,
+            taskTitle: task && taskVisible ? taskTitle({ inputJson: task.inputJson, taskType: task.taskType }) : null,
+            taskHidden: Boolean(row.taskId) && !taskVisible,
+            startedAt: row.startedAt.toISOString(),
+        };
+    });
+}
+
 /** Threads the viewer may read: public types, or ones they participate in (SQL predicate on message_threads). */
 function viewerCanSee(viewerUserId: string | null) {
     const isPublic = inArray(messageThreads.type, [...PUBLIC_THREAD_TYPES]);
@@ -205,6 +277,8 @@ export async function loadAgentActivity(companyId: string, options: {
     viewerUserId: string | null;
     /** Restrict to these agents (member scope); undefined = all company agents. */
     agentIds?: readonly string[];
+    /** The viewer's member scope (for task visibility on running runs). */
+    scope?: MemberScope | null;
     now?: Date;
 }): Promise<AgentNow[]> {
     const now = options.now ?? new Date();
@@ -332,6 +406,15 @@ export async function loadAgentActivity(companyId: string, options: {
     const lastMessages = new Map(messageRows.map((m) => [m.agentId!, m]));
     const nodes = new Map(nodeRows.map((n) => [n.agentId!, n]));
 
+    // All running runs (not just the newest), privacy-resolved for the viewer.
+    const runningRuns = await loadRunningRuns(companyId, ids, options.viewerUserId, options.scope ?? null);
+    const runningRunsByAgent = new Map<string, RunningRun[]>();
+    for (const run of runningRuns) {
+        const list = runningRunsByAgent.get(run.agentId) ?? [];
+        list.push(run);
+        runningRunsByAgent.set(run.agentId, list);
+    }
+
     return agentRows.map((a): AgentNow => {
         const l = live.get(a.id);
         const task = taskByAgent.get(a.id);
@@ -368,6 +451,7 @@ export async function loadAgentActivity(companyId: string, options: {
                 ...(liveView ? { live: liveView } : {}),
             }, runVisible(run.threadId)) : null,
             task: task ? { id: task.id, title: taskTitle({ inputJson: { title: task.title }, taskType: task.taskType }) } : null,
+            runningRuns: runningRunsByAgent.get(a.id) ?? [],
             lastRun: last ? {
                 id: last.id,
                 status: last.status,

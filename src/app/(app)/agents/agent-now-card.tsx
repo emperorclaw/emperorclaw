@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { AgentNow, AgentRuntimeInfo } from "@/lib/agent-activity";
+import { runWorkLabel } from "@/lib/agent-visibility";
 import { RunTimelineList } from "@/components/run-timeline";
 import { bridgeBadgeCopy, cacheHitPercent, HERMES_MIGRATION_DOC_HREF, isTimedStepKind, liveUsageLine } from "@/lib/live-activity";
 import { formatTokenCount } from "@/lib/run-ledger-copy";
@@ -14,12 +15,6 @@ const STATE_PILL: Record<AgentNow["state"], { label: string; className: string }
     typing: { label: "Responding", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" },
     idle: { label: "Idle", className: "border-zinc-700 bg-zinc-800/60 text-zinc-300" },
     offline: { label: "Offline", className: "border-zinc-700/60 bg-zinc-800/40 text-zinc-500" },
-};
-
-const TRIGGER_LABEL: Record<string, string> = {
-    message: "replying to a message",
-    task: "on a task",
-    objective: "following up an objective",
 };
 
 function lastRunBadge(status: string): string {
@@ -46,11 +41,11 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
     }
 
     const pill = STATE_PILL[now.state] ?? STATE_PILL.idle;
-    const elapsedMs = now.run ? nowMs - Date.parse(now.run.startedAt) : 0;
     const live = now.run?.live;
     // The step timer counts from when this snapshot was taken (the card poll).
     const activityText = live?.current.summary ?? now.activity;
     const lastRunCache = now.lastRun ? cacheHitPercent(now.lastRun.inputTokens, now.lastRun.cacheReadTokens) : null;
+    const runningRuns = now.runningRuns ?? [];
 
     return (
         <section className="emperor-panel rounded-2xl p-4 sm:p-5">
@@ -60,13 +55,25 @@ export function AgentNowCard({ now }: { now: AgentNow | undefined }) {
                 <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium", pill.className)}>
                     {pill.label}
                 </span>
-                {now.run && (
-                    <>
-                        <span className="font-mono text-xs text-zinc-400 tabular-nums">{formatDuration(elapsedMs)}</span>
-                        {TRIGGER_LABEL[now.run.triggerKind] && <span className="text-xs text-zinc-500">{TRIGGER_LABEL[now.run.triggerKind]}</span>}
-                    </>
-                )}
             </div>
+
+            {runningRuns.length > 0 && (
+                <div className="mt-2 space-y-1">
+                    {runningRuns.map((run) => {
+                        const label = runWorkLabel(run);
+                        return (
+                            <div key={run.runId} className="flex items-center gap-2 text-xs">
+                                <span className="shrink-0 font-mono text-zinc-400 tabular-nums">{run.startedAt ? formatDuration(nowMs - Date.parse(run.startedAt)) : "—"}</span>
+                                {label.href ? (
+                                    <Link href={label.href} className="min-w-0 truncate text-cyan-300 hover:text-cyan-200">{label.text}</Link>
+                                ) : (
+                                    <span className="min-w-0 truncate text-zinc-300">{label.text}</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             <div className="mt-3">
                 {activityText ? (

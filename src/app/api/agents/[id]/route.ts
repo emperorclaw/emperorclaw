@@ -15,6 +15,7 @@ import {
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { isMissingSchemaError } from "@/lib/schema-compat";
 import { userMayUseThread } from "@/lib/direct-chat-mode";
+import { getDirectChatMode } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { encryptSecretPayload } from "@/lib/secrets";
 import { validAvatarUrl } from "@/lib/avatar";
@@ -252,6 +253,7 @@ export async function GET(
 
     return NextResponse.json({
         agent: redactAgent(agent),
+        directChatMode: await getDirectChatMode(companyId),
         latestSnapshot,
         memoryEntries,
         sessions,

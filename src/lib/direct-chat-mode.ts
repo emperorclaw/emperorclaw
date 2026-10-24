@@ -27,6 +27,12 @@ export function operationsThreadTitle(agentName: string | null | undefined): str
     return `${name || "Agent"} · Operations`;
 }
 
+/** UI-only title of an agent's shared thread (the stored title stays operationsThreadTitle). */
+export function workLogThreadTitle(agentName: string | null | undefined): string {
+    const name = agentName?.trim();
+    return `${name || "Agent"} · Work log`;
+}
+
 /** Title of a person's private direct thread with an agent. */
 export const PRIVATE_DIRECT_THREAD_TITLE = "Direct Agent Thread";
 

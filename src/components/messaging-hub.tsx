@@ -27,6 +27,7 @@ import { AgentDirectChat } from "./agent-direct-chat";
 import { AgentTeamChat } from "./agent-team-chat";
 import { GroupDialog, type GroupDialogHuman } from "./group-dialog";
 import { agentAvatarSrc } from "@/lib/avatar";
+import { workLogThreadTitle } from "@/lib/direct-chat-mode";
 import { EVERYONE_MENTION } from "./mention-textarea";
 import { GroupIcon } from "@/components/group-icon";
 
@@ -77,7 +78,7 @@ const GROUP_PREFIX = "group:";
 const DIRECT_THREAD_PREFIX = "thread:";
 
 function secondaryThreadLabel(thread: DirectThreadSummary) {
-    return thread.kind === "private" ? `${thread.agentName} · Private` : `${thread.agentName} · Operations`;
+    return thread.kind === "private" ? `${thread.agentName} · Private` : workLogThreadTitle(thread.agentName);
 }
 
 const ACTIVE_CONVERSATION_KEY = "emperor-messages-active-conversation";
@@ -145,6 +146,12 @@ export function MessagingHub({
             thread.agentName.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }, [secondaryDirectThreads, searchQuery]);
+    // The agent's shared/Operations thread (its Work log) is not listed among
+    // people's chats; it still opens via its deep link and the agent's panel.
+    const visibleSecondaryThreads = useMemo(
+        () => filteredSecondaryThreads.filter((thread) => thread.kind !== "operations"),
+        [filteredSecondaryThreads],
+    );
     const activeSecondaryThread = useMemo(
         () => secondaryDirectThreads.find((thread) => thread.threadId === selectedDirectThreadId) ?? null,
         [secondaryDirectThreads, selectedDirectThreadId],
@@ -278,7 +285,7 @@ export function MessagingHub({
             : activeSecondaryThread
                 ? activeSecondaryThread.kind === "private"
                     ? "Your private conversation from when direct chats were private"
-                    : "Shared with the team: system updates and earlier shared chats"
+                    : "System updates and work this agent started on its own"
             : activeAgent
                 ? activeAgent.role || "Direct agent conversation"
                 : "Everyone can see & reply. @mention an agent to get replies.";
@@ -470,12 +477,12 @@ export function MessagingHub({
                             </button>
                         ))}
 
-                        {filteredSecondaryThreads.length > 0 && (
+                        {visibleSecondaryThreads.length > 0 && (
                             <div className="mt-6 px-3 mb-2 flex items-center text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-600">
                                 Shared agent threads
                             </div>
                         )}
-                        {filteredSecondaryThreads.map((thread) => {
+                        {visibleSecondaryThreads.map((thread) => {
                             const selected = selectedDirectThreadId === thread.threadId;
                             return (
                                 <button

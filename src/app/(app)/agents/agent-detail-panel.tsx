@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { BridgeBadge } from "./agent-now-card";
 import type { AgentRuntimeInfo } from "@/lib/agent-activity";
 import { HERMES_MIGRATION_DOC_HREF } from "@/lib/live-activity";
+import { directThreadLink, workLogThreadTitle } from "@/lib/direct-chat-mode";
 
 /** The 0.9 remote installer (src/content/docs/v1.1/hermes-runtime.md). */
 const HERMES_INSTALLER_URL = "https://github.com/emperorclaw/emperorclaw/releases/download/v0.9.0/emperor-hermes.sh";
@@ -50,6 +51,7 @@ const LLM_PROVIDER_LABELS: Record<string, string> = {
 };
 
 type AgentDetailData = {
+    directChatMode?: string;
     agent: {
         id: string;
         name: string;
@@ -98,6 +100,8 @@ type AgentDetailData = {
         id: string;
         type: string;
         title: string | null;
+        isPrivate?: boolean;
+        ownerUserId?: string | null;
         createdAt: string;
         lastMessage: string | null;
     }>;
@@ -181,7 +185,9 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
         );
     }
 
-    const { agent, sessions, runs, threads } = data;
+    const { agent, sessions, runs, threads, directChatMode } = data;
+    // The agent's shared/Operations thread, shown as the "Work log" in private mode.
+    const workLogThread = directChatMode === "private" ? threads.find((thread) => thread.type === "direct" && !thread.isPrivate && !thread.ownerUserId) : undefined;
     const provider = getProvider(agent.provider || "mcp");
     // A freshly created agent is legitimately offline while its runtime installs
     // and connects (first boot can take a minute or two). Don't show the red
@@ -277,6 +283,12 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     </div>
                 </div>
                 <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+                    {workLogThread && (
+                        <Link href={directThreadLink(workLogThread.id, agent.id)} title={`Open ${workLogThreadTitle(agent.name)}`}
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-zinc-800 px-3 text-xs text-zinc-300 transition-colors hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-100">
+                            Work log
+                        </Link>
+                    )}
                     <Link href={`/timeline?agentId=${encodeURIComponent(agent.id)}`} title="See this agent on the timeline"
                         className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300">
                         <IconHistory className="h-4 w-4" />

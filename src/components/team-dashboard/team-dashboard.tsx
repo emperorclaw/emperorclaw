@@ -14,7 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckb
 import { cn } from "@/lib/utils";
 import { TeamObservatory } from "./team-observatory";
 import { LiveLinkProvider } from "./live-link";
-import { updatedAgo } from "@/lib/live-office";
+import { LivePill } from "@/components/live-pill";
 import { TeamStructure } from "./team-structure";
 import { TeamPulse } from "./team-pulse";
 import { AgentList } from "./agent-list";
@@ -195,9 +195,9 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
                                 <div className="min-w-0">
                                     <h2 id="live-workspace-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
                                         Live workspace
-                                        <FreshnessBadge generatedAt={data.generatedAt} freshness={freshness} />
+                                        <LivePill />
                                     </h2>
-                                    <p className="text-xs text-muted-foreground">{`${agents.length} agents · refreshes every 15s · work and connection shown separately`}</p>
+                                    <p className="text-xs text-muted-foreground">{`${agents.length} agents · work and connection shown separately`}</p>
                                 </div>
                             </div>
                             <div className="flex w-full items-center gap-2 sm:w-auto">
@@ -277,22 +277,4 @@ export function TeamDashboard({ data, initialView, canAct, isOwnerOrAdmin }: {
         </div>
         </LiveLinkProvider>
     );
-}
-
-function subscribeSecond(onChange: () => void) {
-    const timer = window.setInterval(onChange, 1000);
-    return () => window.clearInterval(timer);
-}
-
-/** "Updated 12s ago", ticking every second; only this badge re-renders. */
-function FreshnessBadge({ generatedAt, freshness }: { generatedAt: string; freshness: "current" | "stale" | "offline" }) {
-    const nowMs = useSyncExternalStore(subscribeSecond, () => Math.floor(Date.now() / 1000) * 1000, () => Date.parse(generatedAt));
-    const ago = updatedAgo(generatedAt, nowMs);
-    const current = freshness === "current";
-    return <span className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium tabular-nums ring-1 ring-inset", current ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300")}>
-        <span className={cn("h-1.5 w-1.5 rounded-full", current ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
-        {/* The ticking text is not announced; the state change is. */}
-        <span aria-hidden="true">{current ? ago : freshness === "offline" ? "Offline · saved snapshot" : `Updates delayed · ${ago.replace("Updated ", "")}`}</span>
-        <span role="status" className="sr-only">{current ? "Live" : freshness === "offline" ? "Offline, showing a saved snapshot" : "Updates delayed"}</span>
-    </span>;
 }

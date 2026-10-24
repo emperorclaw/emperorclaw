@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSession } from "next-auth/react";
 import { IconArrowUp, IconPaperclip, IconPlayerStop, IconRobot, IconMicrophone, IconSend, IconSquare, IconTrash, IconUser } from "@tabler/icons-react";
@@ -17,8 +18,9 @@ import { AgentGoalControls } from "@/components/agent-goal-controls";
 import { requestSourceLabel } from "@/lib/request-label";
 import { LiveStatusRow } from "@/components/live-status-row";
 import { LiveRunSteps, ReplyRunFooter, type ReplyRun } from "@/components/run-timeline";
-import { chatPollDelayMs, eventsSinceParam, isTimedStepKind, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
+import { chatPollDelayMs, eventsSinceParam, formatElapsed, isTimedStepKind, lastReasoningLine, mergeLiveRuns, runningRun, type ClientLiveRun } from "@/lib/live-activity";
 import { useLivePoll } from "@/lib/use-realtime";
+import { summarizeAlsoWorking, type RunningRun } from "@/lib/agent-visibility";
 import type { RunLive } from "@/lib/run-events";
 
 const composerIconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:opacity-50";
@@ -133,6 +135,9 @@ export function AgentDirectChat({
     const [liveRuns, setLiveRuns] = useState<ClientLiveRun[]>([]);
     const liveRunsRef = useRef<ClientLiveRun[]>([]);
     const [replyRuns, setReplyRuns] = useState<Record<string, ReplyRun>>({});
+    // The agent's running runs across all of its threads, for the "Also working
+    // on" row and the busy/queued signal.
+    const [runningRuns, setRunningRuns] = useState<RunningRun[]>([]);
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
@@ -345,6 +350,20 @@ export function AgentDirectChat({
             }
         },
     });
+
+    // The agent's running runs elsewhere, for "Also working on" and the busy
+    // queue signal. Refetches on `agents` and this thread's invalidations.
+    useLivePoll(async (poll) => {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+        try {
+            const response = await fetch(`/api/agents/${agentId}/running`, { cache: "no-store" });
+            if (!response.ok || !poll.active) return;
+            const data = await response.json() as { runs?: RunningRun[] };
+            if (poll.active) setRunningRuns(Array.isArray(data.runs) ? data.runs : []);
+        } catch {
+            // Transient failure: keep the last snapshot.
+        }
+    }, { fastMs: 5000, topics: thread?.id ? ["agents", `thread:${thread.id}`] : ["agents"] });
 
     useEffect(() => () => {
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -690,6 +709,15 @@ export function AgentDirectChat({
         .filter((message) => message.senderType === "human" && message.deliveryState === "cancelled")
         .slice(-3).reverse(), [messages]);
 
+    // "Also working on <task/chat> · 23 min →" for the agent's runs in other
+    // threads, plus a "Queued — busy" signal when this chat's last message has
+    // no run yet while the agent is already at (or over) its parallel-turn cap.
+    const alsoWorking = useMemo(() => summarizeAlsoWorking(runningRuns, thread?.id ?? null), [runningRuns, thread?.id]);
+    const busyRunningCount = runningRuns.length;
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageQueued = lastMessage?.senderType === "human" && (lastMessage.deliveryState === "queued" || lastMessage.deliveryState === "seen");
+    const showQueuedBusy = Boolean(lastMessageQueued) && busyRunningCount >= 3;
+
     return (
         <RichMessageActionsContext.Provider value={richActions}>
         <div className={cn("relative bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col", hideHeader && "bg-transparent border-none rounded-none shadow-none")}>
@@ -923,6 +951,25 @@ export function AgentDirectChat({
             )}
 
             {canSend && <div className="space-y-2 border-t border-zinc-800 bg-zinc-950/80 p-2 sm:p-4">
+                {alsoWorking.primary && (
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
+                        <span className="shrink-0">Also working on</span>
+                        {alsoWorking.primary.href ? (
+                            <Link href={alsoWorking.primary.href} className="min-w-0 truncate text-cyan-300 hover:text-cyan-200">
+                                {alsoWorking.primary.text}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}
+                            </Link>
+                        ) : (
+                            <span className="min-w-0 truncate text-zinc-300">{alsoWorking.primary.text}{alsoWorking.primary.startedAt && <> · <WorkElapsed startedAt={alsoWorking.primary.startedAt} /></>}</span>
+                        )}
+                        <span className="shrink-0 text-zinc-500">→</span>
+                        {alsoWorking.more > 0 && <span className="shrink-0 text-zinc-500">+{alsoWorking.more} more</span>}
+                    </div>
+                )}
+                {showQueuedBusy && (
+                    <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">
+                        Queued — {agentName} is busy with {busyRunningCount} things; it will pick this up next.
+                    </p>
+                )}
                 {(hasQueueBacklog || showCancelledHistory) && (
                     <details key={showCancelledHistory ? "history" : "pending"} open={showCancelledHistory ? true : undefined} aria-label="Agent message queue" className="rounded-xl border border-zinc-800 bg-zinc-900/50 text-xs">
                         <summary className="min-h-11 cursor-pointer px-3 py-3 font-medium text-zinc-300">Message queue · {queueItems.length} pending</summary>
@@ -1145,6 +1192,16 @@ function failureLabel(message: DirectMessage): string | null {
 /** Operator messages after index `i`, so a choices block knows its answer. */
 function laterHumanTexts(messages: DirectMessage[], i: number): string[] {
     return messages.slice(i + 1).filter((m) => m.senderType === "human").map((m) => m.text);
+}
+
+/** A run's age, ticking every second ("23m 05s"). */
+function WorkElapsed({ startedAt }: { startedAt: string }) {
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+        return () => window.clearInterval(id);
+    }, []);
+    return <>{formatElapsed(nowMs - Date.parse(startedAt))}</>;
 }
 
 function QueueItem({
