@@ -3,6 +3,7 @@ import { verifyMcpToken } from "@/lib/mcp";
 import { db } from "@/db";
 import { agents, projects, tasks, customers, companies } from "@/db/schema";
 import { and, eq, count, isNull } from "drizzle-orm";
+import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
 
 type JsonRpcId = string | number | null;
 
@@ -121,12 +122,15 @@ export async function POST(req: NextRequest) {
             }
 
             if (method === "projects.upsert") {
-                const projectGoal =
+                const rawGoal =
                     typeof params.goal === "string" && params.goal.trim()
                         ? params.goal.trim()
                         : typeof params.name === "string" && params.name.trim()
                             ? params.name.trim()
                             : "OpenClaw Project";
+                // Same short-name rule as every other create path; the purpose becomes a project note.
+                const prepared = prepareProjectGoal(rawGoal, params.description) ?? { goal: rawGoal, purpose: null, autoSplit: false };
+                const projectGoal = prepared.goal;
 
                 try {
                     const [existingProject] = await db.select({ id: projects.id }).from(projects).where(
@@ -134,11 +138,12 @@ export async function POST(req: NextRequest) {
                     ).limit(1);
 
                     if (!existingProject) {
-                        await db.insert(projects).values({
+                        const [created] = await db.insert(projects).values({
                             companyId,
                             goal: projectGoal,
                             status: "active",
-                        });
+                        }).returning({ id: projects.id });
+                        await saveProjectPurposeNote({ companyId, projectId: created.id, purpose: prepared.purpose });
                     }
                 } catch (projectError) {
                     const message = projectError instanceof Error ? projectError.message : "Project upsert failed";

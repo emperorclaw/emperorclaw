@@ -87,7 +87,7 @@ test("Core workspaces use the standardized Emperor visual system", () => {
   assertContains(projects, "emperor-panel", "projects should use shared Emperor panels");
   assertContains(messages, "emperor-panel", "messages should use shared Emperor panels");
   assertContains(projects, "Track work from to-do to done", "projects should use clear operator copy");
-  assertContains(projects, "Advanced filters and project actions", "projects should hide secondary controls behind progressive disclosure");
+  assertContains(projects, "More filters", "projects should hide secondary controls behind progressive disclosure");
   assertContains(messagingHub, "bg-zinc-950/70", "messages sidebar should match the OLED panel system");
   assertContains(globals, ".emperor-main .text-zinc-400", "app secondary text should be lifted on dark OLED surfaces");
   assertContains(globals, ".emperor-main .text-zinc-500", "app muted text contrast should be lifted on dark OLED surfaces");

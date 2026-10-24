@@ -6,6 +6,7 @@ import { getCompanyId, getValidatedServerSession } from "@/lib/auth";
 import { getMemberScopeForSession, getScopedAgentIds, getScopedCustomerIds } from "@/lib/member-scope";
 import { listScopedResources, resolveResourceScope } from "@/lib/resources";
 import ResourcesClient from "./resources-client";
+import { splitProjectTitle } from "@/lib/project-title";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
                 ...resolveResourceScope(resource),
             }))}
             customers={customerRows}
-            projects={projectRows.map((project) => ({ id: project.id, name: project.goal }))}
+            projects={projectRows.map((project) => ({ id: project.id, name: splitProjectTitle(project.goal).name }))}
             agents={agentRows}
         />
     );

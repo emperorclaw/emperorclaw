@@ -21,6 +21,7 @@ import {
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { RunTimeline } from "@/components/run-timeline";
+import { RichText } from "@/components/rich-text";
 import { formatRunDuration, formatTokenCount } from "@/lib/run-ledger-copy";
 import {
     formatCost,
@@ -133,12 +134,12 @@ function EventRow({ entry, timeZone }: { entry: StoryEventEntry; timeZone: strin
                 {actor && <span className="text-zinc-500"> · {actor}</span>}
             </p>
             {entry.note && (
-                <blockquote className={cn(
-                    "mt-1.5 whitespace-pre-wrap break-words rounded-xl border px-3 py-2 text-sm leading-relaxed",
-                    entry.tone === "problem" ? "border-amber-500/20 bg-amber-500/[0.06] text-amber-100/90" : "border-zinc-800 bg-zinc-900/60 text-zinc-300",
+                <div className={cn(
+                    "mt-1.5 rounded-xl border px-3 py-2",
+                    entry.tone === "problem" ? "border-amber-500/20 bg-amber-500/[0.06]" : "border-zinc-800 bg-zinc-900/60",
                 )}>
-                    {entry.note}
-                </blockquote>
+                    <RichText content={entry.note} collapsedHeight={220} />
+                </div>
             )}
         </Row>
     );
@@ -176,7 +177,9 @@ function ApprovalRow({ entry, timeZone }: { entry: StoryApprovalEntry; timeZone:
                 )}
             </div>
             {entry.note && (
-                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-400">“{entry.note}”</p>
+                <div className="mt-1.5 border-l border-zinc-700 pl-3 text-zinc-400">
+                    <RichText content={entry.note} collapsedHeight={180} />
+                </div>
             )}
         </Row>
     );
@@ -213,7 +216,7 @@ function MessageRow({ entry, timeZone }: { entry: StoryMessageEntry; timeZone: s
             </p>
             {entry.text == null
                 ? <p className="mt-1 text-xs italic text-zinc-500">Private chat. Only its participants can read it.</p>
-                : <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-300">{entry.text}</p>}
+                : <div className="mt-1"><RichText content={entry.text} collapsedHeight={200} /></div>}
         </Row>
     );
 }

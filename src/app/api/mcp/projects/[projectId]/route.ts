@@ -4,13 +4,21 @@ import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { updateProjectForCompany } from "@/lib/projects-crud";
-import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
+import { assertMcpMayReachAgent, mcpAccessErrorResponse, mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
-async function checkAgentScopeOrForbidden(companyId: string, token: { agentId?: string | null }, agentId: unknown, projectId: string): Promise<NextResponse | null> {
+async function checkAgentScopeOrForbidden(companyId: string, token: { agentId?: string | null }, agentId: unknown, projectId: string, leadAgentId?: unknown): Promise<NextResponse | null> {
     const scoped = await mcpRouteAccess(companyId, token, agentId);
     if (scoped.response) return scoped.response;
     if (!mcpMayUseProject(scoped.access, projectId)) {
         return NextResponse.json({ error: "Project is outside this agent's scope" }, { status: 403 });
+    }
+    try {
+        // A scoped agent may only make an agent it can reach the project lead.
+        await assertMcpMayReachAgent(companyId, scoped.access, typeof leadAgentId === "string" ? leadAgentId : null);
+    } catch (error) {
+        const denied = mcpAccessErrorResponse(error);
+        if (denied) return denied;
+        throw error;
     }
     return null;
 }
@@ -37,6 +45,7 @@ export async function PATCH(
         const {
             status: newStatus,
             goal,
+            description,
             customerId,
             leadAgentId,
             requireApprovalForDone,
@@ -56,7 +65,7 @@ export async function PATCH(
             return NextResponse.json({ error: "Project not found or unauthorized." }, { status: 404 });
         }
 
-        const scopeDenied = await checkAgentScopeOrForbidden(companyId, auth.companyToken!, agentId, projectId);
+        const scopeDenied = await checkAgentScopeOrForbidden(companyId, auth.companyToken!, agentId, projectId, leadAgentId);
         if (scopeDenied) return scopeDenied;
 
         let project;
@@ -66,6 +75,7 @@ export async function PATCH(
                 projectId,
                 status: newStatus,
                 goal,
+                description: typeof description === "string" ? description : undefined,
                 customerId,
                 leadAgentId,
                 requireApprovalForDone,

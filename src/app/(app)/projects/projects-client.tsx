@@ -1,23 +1,39 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
-import Link from "next/link";
-import { IconAlertTriangle, IconArchive, IconArrowUpRight, IconBrain, IconCircleCheck, IconChevronRight, IconPencil, IconFilter, IconHistory, IconInbox, IconDots, IconPlus, IconRepeat, IconRotate, IconSearch, IconSend, IconTrash, IconCircleX } from "@tabler/icons-react";
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { IconAlertTriangle, IconLayoutColumns, IconList, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PageHeader } from "@/components/page-header";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { getArtifactClassLabel, getArtifactImportanceLabel } from "@/lib/artifact-taxonomy";
 import { migrateLegacyAgentFilter, normalizeAssigneeFilter } from "@/lib/project-board-filters";
-import { taskHref } from "@/lib/task-story";
+import {
+    blockedReason,
+    cardContextLine,
+    cardSignals,
+    COLUMN_DROP_STATE,
+    formatAge,
+    groupBoardTasks,
+    isRecurringTask,
+    priorityLevel,
+    REVIEW_BUCKET_LABEL,
+    reviewBucketFor,
+    sentenceCase,
+    taskBody,
+    taskTitle,
+    type BoardColumnKey,
+    type ReviewBucket,
+} from "@/lib/project-board-model";
+import { projectTitle } from "@/lib/project-title";
 import { cn } from "@/lib/utils";
+import { BoardLane, LaneList, LaneSwitcher, laneCount, type CardHandlers, type Lane } from "./board/board-lanes";
+import { BlockTaskDialog, ConfirmArchiveTaskDialog, ProjectFormDialog, TaskFormDialog, workTypeLabel } from "./board/board-dialogs";
+import { ProjectHeader } from "./board/project-header";
+import { ProjectNotesPanel } from "./board/project-notes-panel";
+import { TaskCard, type TaskView } from "./board/task-card";
+import { TaskDrawer } from "./board/task-drawer";
 
 type Props = {
     initialTasks: any[];
@@ -34,22 +50,9 @@ type Props = {
     companyRole?: string;
 };
 
-const isRecurring = (task: any) => task?.taskKind === "recurring" || task?.taskKind === "recurrent";
-const isBlocked = (task: any, allTasks: any[]) => (Array.isArray(task?.blockedByTaskIds) ? task.blockedByTaskIds : []).some((id: string) => allTasks.some((candidate) => candidate.id === id && candidate.state !== "done"));
-const reviewBucket = (task: any, blocked: boolean) => (blocked ? "blocked" : task?.humanApprovalRequired ? "approval_needed" : task?.proofRequired ? "waiting_review" : "ready_to_close");
-const taskInput = (task: any) => task?.inputJson && typeof task.inputJson === "object" ? task.inputJson : {};
-const getTaskTitle = (task: any) => {
-    const input = taskInput(task);
-    return typeof input.title === "string" && input.title.trim() ? input.title.trim() : task?.taskType || "Untitled task";
-};
-const getTaskDescription = (task: any) => {
-    const input = taskInput(task);
-    return typeof input.description === "string" && input.description.trim()
-        ? input.description.trim()
-        : typeof input.prompt === "string" && input.prompt.trim()
-            ? input.prompt.trim()
-            : null;
-};
+const ALL_PROJECTS = "All Projects";
+const ALL_CUSTOMERS = "All Customers";
+
 const emptyProjectForm = {
     goal: "",
     customerId: "",
@@ -77,57 +80,6 @@ const emptyTaskForm = {
     proofRequired: false,
     humanApprovalRequired: false,
 };
-const taskStates = ["inbox", "in_progress", "review", "blocked", "done", "failed", "dead_letter"];
-const getBlockedReason = (task: any) => {
-    const input = taskInput(task);
-    return typeof input.blockedReason === "string" ? input.blockedReason : "";
-};
-
-const PRIORITY_OPTIONS = [
-    { value: 0, label: "No priority", cls: "text-zinc-400 border-zinc-600" },
-    { value: 25, label: "Low", cls: "text-slate-300 border-slate-500/40" },
-    { value: 50, label: "Medium", cls: "text-amber-300 border-amber-500/40" },
-    { value: 75, label: "High", cls: "text-orange-300 border-orange-500/40" },
-    { value: 100, label: "Critical", cls: "text-rose-300 border-rose-500/40" },
-];
-const getPriorityInfo = (p: number) => PRIORITY_OPTIONS.reduce((best, opt) => (p >= opt.value ? opt : best), PRIORITY_OPTIONS[0]);
-const COLUMN_DROP_STATE: Record<string, string> = {
-    inbox: "inbox",
-    in_progress: "in_progress",
-    review: "review",
-    blocked: "blocked",
-    done: "done",
-    exceptions: "failed",
-};
-const projectStatuses = ["active", "paused", "completed", "killed"];
-const PROJECT_STATUS_STYLES: Record<string, string> = {
-    active: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
-    paused: "border-amber-500/25 bg-amber-500/10 text-amber-300",
-    completed: "border-cyan-500/25 bg-cyan-500/10 text-cyan-300",
-    killed: "border-red-500/25 bg-red-500/10 text-red-300",
-};
-const workTypeOptions = [
-    { value: "manual_task", label: "Standard task" },
-    { value: "research", label: "Research" },
-    { value: "implementation", label: "Implementation" },
-    { value: "review", label: "Review" },
-    { value: "outreach", label: "Outreach" },
-    { value: "reporting", label: "Reporting" },
-];
-
-function humanizeKey(value: unknown) {
-    if (typeof value !== "string" || !value.trim()) return "";
-    return value
-        .replace(/[_:-]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function getWorkTypeLabel(value: unknown) {
-    const option = workTypeOptions.find((item) => item.value === value);
-    return option?.label || humanizeKey(value) || "Standard task";
-}
 
 function assigneeValue(task: any) {
     if (task?.assignedMemberId) return `human:${task.assignedMemberId}`;
@@ -142,21 +94,49 @@ function parseAssigneeValue(value: string) {
     return { type, id };
 }
 
+/** Patch-response shape: the API returns `{ task }`. */
+async function patchTaskRequest(taskId: string, body: Record<string, unknown>) {
+    const res = await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Task update failed");
+    return data.task;
+}
+
+/** Wall clock that ticks each minute. 0 until mounted, so server and client render the same HTML. */
+function useMinuteClock() {
+    const [now, setNow] = useState(0);
+    useEffect(() => {
+        setNow(Date.now());
+        const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+        return () => window.clearInterval(timer);
+    }, []);
+    return now;
+}
+
+function readStorage(key: string): string | null {
+    try { return window.localStorage.getItem(key); } catch { return null; }
+}
+function writeStorage(key: string, value: string) {
+    try { window.localStorage.setItem(key, value); } catch { /* private mode: preferences just do not persist */ }
+}
+
 export default function ProjectsClient({ initialTasks, projects, agents, customers, recurringDefinitions = [], artifacts = [], taskEvents = [], initialProjectMemory = [], members = [], currentMemberId = null, companyRole = "member" }: Props) {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    // Viewers read the board; they never drag, edit or archive.
+    const canEdit = companyRole !== "viewer";
+    const nowMs = useMinuteClock();
+
     const [tasks, setTasks] = useState<any[]>(initialTasks);
     const [projectItems, setProjectItems] = useState<any[]>(projects);
-    const [selectedTask, setSelectedTask] = useState<any | null>(null);
-    const [projectFilter, setProjectFilter] = useState("All Projects");
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS);
     const [assigneeFilter, setAssigneeFilter] = useState("all");
-    const [customerFilter, setCustomerFilter] = useState("All Customers");
+    const [customerFilter, setCustomerFilter] = useState(ALL_CUSTOMERS);
     const [searchQuery, setSearchQuery] = useState("");
-    const [comment, setComment] = useState("");
     const [events, setEvents] = useState<any[]>(taskEvents);
     const [projectMemoryItems, setProjectMemoryItems] = useState<any[]>(initialProjectMemory);
-    const [isContextOpen, setIsContextOpen] = useState(false);
-    const [newContext, setNewContext] = useState("");
-    const [isSubmittingContext, setIsSubmittingContext] = useState(false);
+    const [isNotesOpen, setIsNotesOpen] = useState(false);
     const [projectDialogMode, setProjectDialogMode] = useState<"create" | "edit" | null>(null);
     const [editingProject, setEditingProject] = useState<any | null>(null);
     const [projectForm, setProjectForm] = useState<any>(emptyProjectForm);
@@ -164,312 +144,264 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     const [taskForm, setTaskForm] = useState<any>(emptyTaskForm);
     const [isMutating, setIsMutating] = useState(false);
     const [mutationError, setMutationError] = useState<string | null>(null);
-    const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
-    const [blockDialog, setBlockDialog] = useState<{ task: any; fromState: string } | null>(null);
-    const [blockReason, setBlockReason] = useState("");
-    const [hideCompletedProjects, setHideCompletedProjects] = useState(true); // default: hide completed; localStorage overrides in useEffect
+    const [archiveProjectArmed, setArchiveProjectArmed] = useState<string | null>(null);
+    const [archivingTaskId, setArchivingTaskId] = useState<string | null>(null);
+    const [blockDialog, setBlockDialog] = useState<{ task: any } | null>(null);
+    const [blockReasonDraft, setBlockReasonDraft] = useState("");
+    const [hideCompletedProjects, setHideCompletedProjects] = useState(true);
     const [completingProject, setCompletingProject] = useState<string | null>(null);
-    const [draggingTask, setDraggingTask] = useState<any | null>(null);
+    const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+    const [showAttentionOnly, setShowAttentionOnly] = useState(searchParams.get("attention") === "1");
+    const [viewMode, setViewMode] = useState<"board" | "list">("board");
+    const [phoneLane, setPhoneLane] = useState<string | null>(null);
+    const [reviewFilter, setReviewFilter] = useState<ReviewBucket | null>(null);
+    const [filtersHydrated, setFiltersHydrated] = useState(false);
     const sensors = useSensors(
         useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
         useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     );
-    const searchParams = useSearchParams();
-    const [showAttentionOnly, setShowAttentionOnly] = useState(searchParams.get("attention") === "1");
-    const [filtersHydrated, setFiltersHydrated] = useState(false);
 
-    // Initial load from localStorage
+    // Saved filters, then deep links on top (a record card in chat wins over the saved filter).
     useEffect(() => {
-        const savedProject = localStorage.getItem("projects-board-project-filter");
+        const savedProject = readStorage("projects-board-project-filter");
         const requestedAssignee = searchParams.get("assignee");
-        const savedAssignee = localStorage.getItem("projects-board-assignee-filter");
-        const savedAgent = localStorage.getItem("projects-board-agent-filter");
-        const savedCustomer = localStorage.getItem("projects-board-customer-filter");
-        const savedSearch = localStorage.getItem("projects-board-search-query");
-        const savedHideCompleted = localStorage.getItem("projects-board-hide-completed");
+        const savedAssignee = readStorage("projects-board-assignee-filter");
+        const savedAgent = readStorage("projects-board-agent-filter");
+        const savedCustomer = readStorage("projects-board-customer-filter");
+        const savedSearch = readStorage("projects-board-search-query");
+        const savedHideCompleted = readStorage("projects-board-hide-completed");
+        const savedView = readStorage("projects-board-view");
 
-        // A deep link (a record card in chat) wins over the saved filter.
         const requestedProject = searchParams.get("project");
         if (requestedProject && projects.some((project) => project.id === requestedProject)) {
             setProjectFilter(requestedProject);
-        } else if (savedProject && (savedProject === "All Projects" || projects.some((project) => project.id === savedProject))) {
+        } else if (savedProject && (savedProject === ALL_PROJECTS || projects.some((project) => project.id === savedProject))) {
             setProjectFilter(savedProject);
         }
-        const validAssignees = {
-            agentIds: agents.map((agent) => agent.id),
-            memberIds: members.map((member) => member.id),
-        };
-        if (requestedAssignee) {
-            setAssigneeFilter(normalizeAssigneeFilter(requestedAssignee, validAssignees));
-        } else if (savedAssignee) {
-            setAssigneeFilter(normalizeAssigneeFilter(savedAssignee, validAssignees));
-        } else {
-            setAssigneeFilter(migrateLegacyAgentFilter(savedAgent, validAssignees.agentIds));
-        }
-        if (savedAgent) localStorage.removeItem("projects-board-agent-filter");
-        if (savedCustomer && (savedCustomer === "All Customers" || customers.some((customer) => customer.id === savedCustomer))) {
-            setCustomerFilter(savedCustomer);
-        }
+        const validAssignees = { agentIds: agents.map((agent) => agent.id), memberIds: members.map((member) => member.id) };
+        if (requestedAssignee) setAssigneeFilter(normalizeAssigneeFilter(requestedAssignee, validAssignees));
+        else if (savedAssignee) setAssigneeFilter(normalizeAssigneeFilter(savedAssignee, validAssignees));
+        else setAssigneeFilter(migrateLegacyAgentFilter(savedAgent, validAssignees.agentIds));
+        if (savedAgent) { try { window.localStorage.removeItem("projects-board-agent-filter"); } catch { /* ignore */ } }
+        if (savedCustomer && (savedCustomer === ALL_CUSTOMERS || customers.some((customer) => customer.id === savedCustomer))) setCustomerFilter(savedCustomer);
         if (savedSearch) setSearchQuery(savedSearch);
-        // Only override the default (true) if user explicitly chose to show all
         if (savedHideCompleted === "0") setHideCompletedProjects(false);
+        if (savedView === "list" || savedView === "board") setViewMode(savedView);
         setFiltersHydrated(true);
     }, [agents, customers, members, projects, searchParams]);
 
-    // `?task=<id>` opens that task's detail once, e.g. from a task card in chat.
+    // `?task=<id>` opens that task once, e.g. from a task card in chat.
     const openedTaskParamRef = useRef<string | null>(null);
     useEffect(() => {
         const requestedTask = searchParams.get("task");
         if (!requestedTask || openedTaskParamRef.current === requestedTask) return;
-        const task = tasks.find((candidate) => candidate.id === requestedTask);
-        if (!task) return;
+        if (!tasks.some((candidate) => candidate.id === requestedTask)) return;
         openedTaskParamRef.current = requestedTask;
-        setSelectedTask(task);
+        setSelectedTaskId(requestedTask);
     }, [searchParams, tasks]);
 
-    // Save to localStorage when filters change
     useEffect(() => {
         if (!filtersHydrated) return;
-        localStorage.setItem("projects-board-project-filter", projectFilter);
-        localStorage.setItem("projects-board-assignee-filter", assigneeFilter);
-        localStorage.setItem("projects-board-customer-filter", customerFilter);
-        localStorage.setItem("projects-board-search-query", searchQuery);
-    }, [filtersHydrated, projectFilter, assigneeFilter, customerFilter, searchQuery]);
+        writeStorage("projects-board-project-filter", projectFilter);
+        writeStorage("projects-board-assignee-filter", assigneeFilter);
+        writeStorage("projects-board-customer-filter", customerFilter);
+        writeStorage("projects-board-search-query", searchQuery);
+        writeStorage("projects-board-hide-completed", hideCompletedProjects ? "1" : "0");
+        writeStorage("projects-board-view", viewMode);
+    }, [filtersHydrated, projectFilter, assigneeFilter, customerFilter, searchQuery, hideCompletedProjects, viewMode]);
 
-    // Persist hide-completed preference
-    useEffect(() => {
-        localStorage.setItem("projects-board-hide-completed", hideCompletedProjects ? "1" : "0");
-    }, [hideCompletedProjects]);
+    // ─── Lookups ────────────────────────────────────────────────────────────
+    const projectById = useMemo(() => new Map(projectItems.map((project) => [project.id, project])), [projectItems]);
+    const customerById = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
+    const agentName = useCallback((id?: string | null) => agents.find((agent) => agent.id === id)?.name || "Unknown agent", [agents]);
+    const memberName = useCallback((id?: string | null) => {
+        const member = members.find((item) => item.id === id);
+        return member?.displayName || member?.email || "Unknown person";
+    }, [members]);
+    const projectLabel = useCallback((projectId?: string | null) => projectTitle(projectById.get(projectId ?? "")), [projectById]);
+    const customerNameOf = useCallback((projectId?: string | null) => {
+        const project = projectById.get(projectId ?? "");
+        return project?.customerId ? customerById.get(project.customerId)?.name ?? null : null;
+    }, [customerById, projectById]);
 
-    // Filtered project list (exclude completed when toggled)
-    const visibleProjects = useMemo(() => {
-        if (!hideCompletedProjects) return projectItems;
-        return projectItems.filter((p) => p.status !== "completed" && p.status !== "killed");
-    }, [projectItems, hideCompletedProjects]);
+    const visibleProjects = useMemo(
+        () => hideCompletedProjects ? projectItems.filter((p) => p.status !== "completed" && p.status !== "killed") : projectItems,
+        [projectItems, hideCompletedProjects],
+    );
+
+    // ─── Filtering ──────────────────────────────────────────────────────────
+    const scopedTasks = useMemo(() => tasks.filter((task) => {
+        if (projectFilter !== ALL_PROJECTS && task.projectId !== projectFilter) return false;
+        if (customerFilter !== ALL_CUSTOMERS && projectById.get(task.projectId)?.customerId !== customerFilter) return false;
+        return true;
+    }), [tasks, projectFilter, customerFilter, projectById]);
 
     const filteredTasks = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
-        return tasks.filter((task) => {
-            if (projectFilter !== "All Projects" && task.projectId !== projectFilter) return false;
+        return scopedTasks.filter((task) => {
             const taskAssignee = assigneeValue(task);
             if (assigneeFilter === "human" && !task.assignedMemberId) return false;
             if (assigneeFilter === "agent" && !task.assignedAgentId) return false;
             if (assigneeFilter === "unassigned" && taskAssignee) return false;
             if (!["all", "human", "agent", "unassigned"].includes(assigneeFilter) && taskAssignee !== assigneeFilter) return false;
-            
-            if (customerFilter !== "All Customers") {
-                const project = projectItems.find((p) => p.id === task.projectId);
-                if (!project || project.customerId !== customerFilter) return false;
-            }
-
             if (!query) return true;
-
-            const project = projectItems.find((item) => item.id === task.projectId);
-            const customer = project ? customers.find((item) => item.id === project.customerId) : null;
-            const agent = task.assignedAgentId ? agents.find((item) => item.id === task.assignedAgentId) : null;
-            const member = task.assignedMemberId ? members.find((item) => item.id === task.assignedMemberId) : null;
-            const input = taskInput(task);
-            return [getTaskTitle(task), input.description, input.goal, task.taskType, task.state, project?.goal, customer?.name, agent?.name, member?.displayName, member?.email, task.templateVersion, task.contractVersion].filter(Boolean).join(" ").toLowerCase().includes(query);
+            const project = projectById.get(task.projectId);
+            const customer = project?.customerId ? customerById.get(project.customerId) : null;
+            const owner = task.assignedMemberId ? memberName(task.assignedMemberId) : task.assignedAgentId ? agentName(task.assignedAgentId) : "";
+            const input = task.inputJson && typeof task.inputJson === "object" ? task.inputJson : {};
+            return [taskTitle(task), input.description, input.goal, task.taskType, task.state, project?.goal, customer?.name, owner, task.templateVersion, task.contractVersion]
+                .filter(Boolean).join(" ").toLowerCase().includes(query);
         });
-    }, [assigneeFilter, customers, tasks, projectFilter, projectItems, searchQuery, agents, members, customerFilter]);
+    }, [scopedTasks, searchQuery, assigneeFilter, projectById, customerById, memberName, agentName]);
 
-    const recurringTasks = filteredTasks.filter(isRecurring);
-    const filteredRecurringDefinitions = recurringDefinitions.filter((definition) => {
-        if (projectFilter !== "All Projects" && definition.projectId !== projectFilter) return false;
-        if (customerFilter !== "All Customers") {
-            const project = projectItems.find((p) => p.id === definition.projectId);
-            if (!project || project.customerId !== customerFilter) return false;
-        }
+    const filteredRecurringDefinitions = useMemo(() => recurringDefinitions.filter((definition) => {
+        if (projectFilter !== ALL_PROJECTS && definition.projectId !== projectFilter) return false;
+        if (customerFilter !== ALL_CUSTOMERS && projectById.get(definition.projectId)?.customerId !== customerFilter) return false;
         return true;
-    });
-    const workflowTasks = filteredTasks.filter((task) => !isRecurring(task) && task.state !== "failed" && task.state !== "dead_letter");
-    const exceptionTasks = filteredTasks.filter((task) => task.state === "failed" || task.state === "dead_letter");
-    const byState = {
-        inbox: workflowTasks.filter((task) => task.state === "queued" || task.state === "inbox"),
-        inProgress: workflowTasks.filter((task) => task.state === "in_progress"),
-        review: workflowTasks.filter((task) => task.state === "review"),
-        blocked: workflowTasks.filter((task) => task.state === "blocked"),
-        done: workflowTasks.filter((task) => task.state === "done"),
-    };
-    
-    // "Needs attention" view computations
-    const now = Date.now();
-    const STALE_INBOX_MS = 60 * 60 * 1000; // 1 hour unclaimed
-    const OVERDUE_REVIEW_MS = 24 * 60 * 60 * 1000; // 24 hours in review
-    const staleInboxTasks = byState.inbox.filter((task) => {
-        const created = task.createdAt ? new Date(task.createdAt).getTime() : 0;
-        return now - created > STALE_INBOX_MS;
-    });
-    const overdueReviewTasks = byState.review.filter((task) => {
-        const updated = task.updatedAt ? new Date(task.updatedAt).getTime() : 0;
-        return now - updated > OVERDUE_REVIEW_MS;
-    });
-    const attentionTasks = [...exceptionTasks, ...staleInboxTasks, ...overdueReviewTasks];
-    const byState_attention = {
-        deadLetter: exceptionTasks.filter((task) => task.state === "dead_letter"),
-        failed: exceptionTasks.filter((task) => task.state === "failed"),
-        staleInbox: staleInboxTasks,
-        overdueReview: overdueReviewTasks,
-    };
-    const reviewCounts = {
-        approval_needed: byState.review.filter((task) => reviewBucket(task, isBlocked(task, filteredTasks)) === "approval_needed").length,
-        waiting_review: byState.review.filter((task) => reviewBucket(task, isBlocked(task, filteredTasks)) === "waiting_review").length,
-        blocked: byState.review.filter((task) => reviewBucket(task, isBlocked(task, filteredTasks)) === "blocked").length,
-        ready_to_close: byState.review.filter((task) => reviewBucket(task, isBlocked(task, filteredTasks)) === "ready_to_close").length,
-    };
+    }), [recurringDefinitions, projectFilter, customerFilter, projectById]);
 
-    const getProjectName = (projectId: string) => projectItems.find((project) => project.id === projectId)?.goal || "Unknown Project";
-    const getCustomerName = (projectId: string) => {
-        const project = projectItems.find((item) => item.id === projectId);
-        return project ? customers.find((item) => item.id === project.customerId)?.name || "Unknown Customer" : "Unknown Customer";
-    };
-    const getAgentName = (agentId?: string | null) => agents.find((agent) => agent.id === agentId)?.name || "Unassigned";
-    const getMemberName = (memberId?: string | null) => {
-        const member = members.find((item) => item.id === memberId);
-        return member?.displayName || member?.email || "Unknown person";
-    };
-    const getAssigneeLabel = (task: any) => task.assignedMemberId
-        ? getMemberName(task.assignedMemberId)
-        : task.assignedAgentId
-            ? getAgentName(task.assignedAgentId)
-            : "Unassigned";
-    const getEventDescription = (event: any) => {
-        if (event.eventType === "task_note" && event.payloadJson?.note) return `Note: ${event.payloadJson.note}`;
-        if (event.eventType === "task_handoff" && event.payloadJson?.handoff) return `Handoff from ${event.payloadJson.handoff.fromRole} to ${event.payloadJson.handoff.toRole}`;
-        if (event.eventType === "task_reassigned") {
-            const assignee = event.payloadJson?.assignee;
-            const label = assignee?.type === "human"
-                ? getMemberName(assignee.id)
-                : assignee?.type === "agent"
-                    ? getAgentName(assignee.id)
-                    : "Unassigned";
-            return `Assignee changed to ${label}`;
-        }
-        return event.eventType.startsWith("task_")
-            ? `Status changed to ${event.eventType.replace("task_", "")}`
-            : `Event: ${event.eventType}`;
-    };
-    const artifactsForTask = (taskId: string) => artifacts.filter((artifact) => artifact.taskId === taskId);
-    const getTaskEvents = (taskId: string) => events.filter((event) => event.taskId === taskId).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const groups = useMemo(() => groupBoardTasks(filteredTasks, nowMs), [filteredTasks, nowMs]);
 
-    const handleSendComment = async () => {
-        if (!selectedTask || !comment.trim()) return;
+    // ─── Card view models ───────────────────────────────────────────────────
+    const filteredToProject = projectFilter !== ALL_PROJECTS;
+    const filteredToCustomer = customerFilter !== ALL_CUSTOMERS;
+    const viewFor = useCallback((task: any): TaskView => {
+        const project = projectLabel(task.projectId);
+        const customer = customerNameOf(task.projectId);
+        const owner = task.assignedMemberId
+            ? { name: memberName(task.assignedMemberId), kind: "human" as const }
+            : task.assignedAgentId ? { name: agentName(task.assignedAgentId), kind: "agent" as const } : null;
+        const fresh = task.state === "inbox" || task.state === "queued";
+        const stamp = fresh ? task.createdAt : task.updatedAt ?? task.createdAt;
+        const stampDate = stamp ? new Date(stamp) : null;
+        return {
+            task,
+            title: taskTitle(task),
+            context: cardContextLine({ customerName: customer, projectName: project.name, filteredToProject, filteredToCustomer }),
+            contextTitle: [customer, project.name, project.description].filter(Boolean).join("\n"),
+            owner,
+            priority: priorityLevel(task.priority),
+            age: nowMs ? formatAge(stamp, nowMs) : "",
+            ageTitle: nowMs && stampDate && !Number.isNaN(stampDate.getTime()) ? `${fresh ? "Created" : "Updated"} ${stampDate.toLocaleString()}` : "",
+            signals: cardSignals(task, { nowMs, waitingOnDependency: groups.waitingOnDependency.has(task.id), currentMemberId }),
+            recurring: isRecurringTask(task),
+        };
+    }, [projectLabel, customerNameOf, memberName, agentName, filteredToProject, filteredToCustomer, nowMs, groups, currentMemberId]);
+
+    const views = useMemo(() => new Map(filteredTasks.map((task) => [task.id, viewFor(task)])), [filteredTasks, viewFor]);
+    const toViews = useCallback((list: any[]) => list.map((task) => views.get(task.id) ?? viewFor(task)), [views, viewFor]);
+
+    // ─── Lanes ──────────────────────────────────────────────────────────────
+    const reviewTasks = reviewFilter
+        ? groups.columns.review.filter((task) => reviewBucketFor(task, groups.waitingOnDependency.has(task.id)) === reviewFilter)
+        : groups.columns.review;
+    const reviewHeader = groups.columns.review.length > 0 ? (
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter review">
+            {(Object.keys(REVIEW_BUCKET_LABEL) as ReviewBucket[]).filter((bucket) => groups.reviewCounts[bucket] > 0).map((bucket) => {
+                const active = reviewFilter === bucket;
+                return (
+                    <button
+                        key={bucket}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setReviewFilter(active ? null : bucket)}
+                        className={cn(
+                            "inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] transition-colors",
+                            active ? "bg-violet-400/15 text-violet-100 ring-1 ring-inset ring-violet-400/30" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200",
+                        )}
+                    >
+                        {REVIEW_BUCKET_LABEL[bucket]}
+                        <span className="tabular-nums text-zinc-500">{groups.reviewCounts[bucket]}</span>
+                    </button>
+                );
+            })}
+        </div>
+    ) : undefined;
+
+    const lanes: Lane[] = showAttentionOnly
+        ? [
+            { key: "dead_letter", title: "Dead-lettered", tone: "problem", icon: "failed", views: toViews(groups.attention.deadLetter), emptyText: "Nothing dead-lettered." },
+            { key: "failed", title: "Failed", tone: "problem", icon: "failed", views: toViews(groups.attention.failed), emptyText: "No failed tasks." },
+            { key: "stale_inbox", title: "Waiting over 1h", tone: "neutral", icon: "stale", views: toViews(groups.attention.staleInbox), emptyText: "Every new task was picked up within the hour." },
+            { key: "overdue_review", title: "In review over 24h", tone: "review", icon: "review", views: toViews(groups.attention.overdueReview), emptyText: "No review is overdue." },
+        ]
+        : [
+            { key: "inbox", title: "Inbox", tone: "neutral", icon: "inbox", views: toViews(groups.columns.inbox), dropId: "inbox", emptyText: "Nothing waiting. New tasks land here." },
+            { key: "in_progress", title: "In progress", tone: "active", icon: "progress", views: toViews(groups.columns.in_progress), dropId: "in_progress", emptyText: "Nobody is working on a task right now." },
+            // Failed work is rare and needs the same thing as blocked work (a person), so it
+            // shares this lane with a failed icon instead of taking a sixth column.
+            { key: "blocked", title: groups.columns.exceptions.length > 0 ? "Blocked or failed" : "Blocked", tone: "problem", icon: "blocked", views: toViews([...groups.columns.exceptions, ...groups.columns.blocked]), dropId: "blocked", emptyText: "Nothing is blocked or failed.", collapseWhenEmpty: true },
+            { key: "review", title: "Review", tone: "review", icon: "review", views: toViews(reviewTasks), dropId: "review", emptyText: reviewFilter ? "Nothing in this group." : "Nothing to review.", header: reviewHeader, count: reviewFilter ? undefined : groups.columns.review.length },
+            { key: "done", title: "Done", tone: "done", icon: "done", views: toViews(groups.columns.done), dropId: "done", emptyText: "Finished tasks show up here." },
+            ...((filteredRecurringDefinitions.length > 0 || groups.recurring.length > 0) ? [{
+                key: "recurring",
+                title: "Recurring",
+                tone: "neutral" as const,
+                icon: "recurring" as const,
+                views: toViews(groups.recurring),
+                definitions: filteredRecurringDefinitions.map((definition) => ({
+                    definition,
+                    projectName: filteredToProject ? "" : projectLabel(definition.projectId).name,
+                    ownerName: definition.createdByAgentId ? agentName(definition.createdByAgentId) : "",
+                })),
+                emptyText: "No recurring work.",
+            }] : []),
+        ];
+
+    // Phones show one lane at a time; default to where the work is.
+    const activePhoneLane = lanes.find((lane) => lane.key === phoneLane)
+        ?? lanes.find((lane) => lane.key === "in_progress" && laneCount(lane) > 0)
+        ?? lanes.find((lane) => laneCount(lane) > 0)
+        ?? lanes[0];
+
+    // ─── Mutations ──────────────────────────────────────────────────────────
+    const replaceTask = (next: any) => setTasks((prev) => prev.map((item) => item.id === next.id ? next : item));
+
+    /** Apply `optimistic` immediately so drags and menu moves feel instant; roll back on failure. */
+    const patchTask = async (task: any, body: Record<string, unknown>, options: { optimistic?: Record<string, unknown>; success?: string } = {}) => {
+        if (options.optimistic) replaceTask({ ...task, ...options.optimistic });
         try {
-            const noteRes = await fetch(`/api/tasks/${selectedTask.id}/notes`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ comment }),
-            });
-            if (noteRes.ok) {
-                const data = await noteRes.json();
-                if (data.event) setEvents((prev) => [...prev, data.event]);
-            }
-            if (selectedTask.assignedAgentId) {
-                await fetch("/api/chat", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        text: `Task Directive for TASK-${selectedTask.id}:\n${comment}`,
-                        targetAgentId: selectedTask.assignedAgentId,
-                    }),
-                });
-            }
-            setComment("");
+            const updated = await patchTaskRequest(task.id, body);
+            if (updated) replaceTask(updated);
+            if (options.success) toast.success(options.success);
+            return true;
         } catch (error) {
-            console.error("Failed to send task context", error);
-            toast.error("Failed to send. Please try again.");
+            if (options.optimistic) replaceTask(task);
+            toast.error(error instanceof Error ? error.message : "Task update failed");
+            return false;
         }
     };
 
-    const handleAddProjectContext = async () => {
-        if (!newContext.trim() || projectFilter === "All Projects") return;
-        setIsSubmittingContext(true);
-        try {
-            const res = await fetch(`/api/projects/${projectFilter}/memory`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: newContext }),
-            });
-            if (res.ok) {
-                const { data } = await res.json();
-                setProjectMemoryItems((prev) => [data, ...prev]);
-                setNewContext("");
-            }
-        } finally {
-            setIsSubmittingContext(false);
-        }
-    };
-
-    const handleSetPriority = async (task: any, priority: number) => {
-        try {
-            const res = await fetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ priority }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
-                if (selectedTask?.id === task.id) setSelectedTask(data.task);
-                toast.success(`Priority set to ${getPriorityInfo(priority).label}`);
-            }
-        } catch { toast.error("Failed to update priority"); }
-    };
-
-    const openBlockDialog = (task: any, fromState: string) => {
-        setBlockReason(getBlockedReason(task));
-        setMutationError(null);
-        setBlockDialog({ task, fromState });
-    };
-
-    const handleSetState = async (task: any, state: string) => {
-        // Blocking needs a reason, collected in an in-app modal (never a native
-        // prompt). The task keeps its current state until the modal is submitted.
+    const setTaskState = (task: any, state: string) => {
+        if (!canEdit || task.state === state) return;
+        // Blocking needs a reason, asked for in a dialog; the task stays put until it is given.
         if (state === "blocked") {
-            openBlockDialog(task, task.state);
+            setBlockReasonDraft(blockedReason(task));
+            setMutationError(null);
+            setBlockDialog({ task });
             return;
         }
-        try {
-            const res = await fetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ state }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
-                if (selectedTask?.id === task.id) setSelectedTask(data.task);
-                toast.success(`Moved to ${humanizeKey(state)}`);
-            } else {
-                const data = await res.json().catch(() => ({}));
-                toast.error(data.error || "Failed to update state");
-            }
-        } catch { toast.error("Failed to update state"); }
+        void patchTask(task, { state }, { optimistic: { state, updatedAt: new Date().toISOString() }, success: `Moved to ${sentenceCase(state).toLowerCase()}` });
+    };
+
+    const setTaskPriority = (task: any, priority: number) => {
+        if (!canEdit) return;
+        const level = priorityLevel(priority);
+        void patchTask(task, { priority }, { optimistic: { priority }, success: level ? `Priority set to ${level.label.toLowerCase()}` : "Priority cleared" });
     };
 
     const submitBlockTask = async () => {
         if (!blockDialog) return;
-        const reason = blockReason.trim();
-        if (!reason) {
-            setMutationError("Give a short reason so the blocker is clear.");
-            return;
-        }
-        const { task } = blockDialog;
+        const reason = blockReasonDraft.trim();
+        if (!reason) { setMutationError("Give a short reason so the blocker is clear."); return; }
         setIsMutating(true);
         setMutationError(null);
         try {
-            const res = await fetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ state: "blocked", blockedReason: reason }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Could not block task");
-            setTasks((prev) => prev.map((t) => t.id === data.task.id ? data.task : t));
-            if (selectedTask?.id === data.task.id) setSelectedTask(data.task);
+            const updated = await patchTaskRequest(blockDialog.task.id, { state: "blocked", blockedReason: reason });
+            replaceTask(updated);
             toast.success("Task blocked");
             setBlockDialog(null);
-            setBlockReason("");
+            setBlockReasonDraft("");
         } catch (error) {
             setMutationError(error instanceof Error ? error.message : "Could not block task");
         } finally {
@@ -477,60 +409,43 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
-    const selectedProject = projectFilter === "All Projects" ? null : projectItems.find((project) => project.id === projectFilter) || null;
-    const customerOptions = [
-        { value: "All Customers", label: "All Customers", description: `${customers.length} customers` },
-        ...customers.map((customer) => ({ value: customer.id, label: customer.name, description: `${projectItems.filter((project) => project.customerId === customer.id).length} projects` })),
-    ];
-    const projectOptions = [
-        { value: "All Projects", label: "All Projects", description: `${visibleProjects.length} active projects` },
-        ...visibleProjects
-            .filter((project) => customerFilter === "All Customers" ? true : project.customerId === customerFilter)
-            .map((project) => {
-                const customerName = customers.find((customer) => customer.id === project.customerId)?.name || "No customer";
-                const isFinished = project.status === "completed" || project.status === "killed";
-                return {
-                    value: project.id,
-                    label: isFinished ? `${project.goal} (${humanizeKey(project.status)})` : project.goal,
-                    description: project.status === "active" ? customerName : `${customerName} — ${humanizeKey(project.status)}`,
-                };
-            }),
-    ];
-    const assigneeOptions = [
-        { value: "all", label: "All assignees", description: `${members.length} people · ${agents.length} agents` },
-        ...(currentMemberId ? [{ value: `human:${currentMemberId}`, label: "Assigned to me", description: "Your tasks" }] : []),
-        { value: "human", label: "All people", description: "Human-assigned work" },
-        { value: "agent", label: "All agents", description: "Agent-assigned work" },
-        { value: "unassigned", label: "Unassigned", description: "Waiting for an assignee" },
-        ...members.map((member) => ({
-            value: `human:${member.id}`,
-            label: member.displayName || member.email,
-            description: member.roleTitle || "Human",
-        })),
-        ...agents.map((agent) => ({
-            value: `agent:${agent.id}`,
-            label: agent.name,
-            description: agent.role || "Agent",
-        })),
-    ];
-    const hasBoardFilters =
-        projectFilter !== "All Projects" ||
-        assigneeFilter !== "all" ||
-        customerFilter !== "All Customers" ||
-        Boolean(searchQuery.trim());
-
-    const clearBoardFilters = () => {
-        setProjectFilter("All Projects");
-        setAssigneeFilter("all");
-        setCustomerFilter("All Customers");
-        setSearchQuery("");
-        if (searchParams.has("assignee")) router.replace("/projects");
+    const sendTaskNote = async (task: any, text: string) => {
+        try {
+            const noteRes = await fetch(`/api/tasks/${task.id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment: text }) });
+            if (!noteRes.ok) throw new Error("Could not save the note");
+            const data = await noteRes.json().catch(() => ({}));
+            if (data.event) setEvents((prev) => [...prev, data.event]);
+            if (task.assignedAgentId) {
+                await fetch("/api/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: `Task Directive for TASK-${task.id}:\n${text}`, targetAgentId: task.assignedAgentId }),
+                });
+            }
+            toast.success(task.assignedAgentId ? `Note saved and sent to ${agentName(task.assignedAgentId)}` : "Note saved");
+            return true;
+        } catch (error) {
+            console.error("Failed to send task note", error);
+            toast.error("Could not save the note. Please try again.");
+            return false;
+        }
     };
+
+    const addProjectNote = async (content: string) => {
+        if (projectFilter === ALL_PROJECTS) return false;
+        const res = await fetch(`/api/projects/${projectFilter}/memory`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) });
+        if (!res.ok) { toast.error("Could not save the note"); return false; }
+        const { data } = await res.json();
+        setProjectMemoryItems((prev) => [data, ...prev]);
+        return true;
+    };
+
+    const selectedProject = projectFilter === ALL_PROJECTS ? null : projectById.get(projectFilter) ?? null;
 
     const openCreateProject = () => {
         setMutationError(null);
         setEditingProject(null);
-        setProjectForm({ ...emptyProjectForm, customerId: customerFilter === "All Customers" ? "" : customerFilter });
+        setProjectForm({ ...emptyProjectForm, customerId: customerFilter === ALL_CUSTOMERS ? "" : customerFilter });
         setProjectDialogMode("create");
     };
 
@@ -558,16 +473,10 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         setMutationError(null);
         try {
             const endpoint = projectDialogMode === "edit" && editingProject ? `/api/projects/${editingProject.id}` : "/api/projects";
-            const res = await fetch(endpoint, {
-                method: projectDialogMode === "edit" ? "PATCH" : "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(projectForm),
-            });
+            const res = await fetch(endpoint, { method: projectDialogMode === "edit" ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...projectForm, goal: projectForm.goal.trim() }) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Project save failed");
-            setProjectItems((prev) => projectDialogMode === "edit"
-                ? prev.map((project) => project.id === data.project.id ? data.project : project)
-                : [data.project, ...prev]);
+            setProjectItems((prev) => projectDialogMode === "edit" ? prev.map((project) => project.id === data.project.id ? data.project : project) : [data.project, ...prev]);
             if (projectDialogMode !== "edit") setProjectFilter(data.project.id);
             setProjectDialogMode(null);
             router.refresh();
@@ -579,12 +488,12 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
     };
 
     const archiveProject = async (project: any) => {
-        if (confirmingArchive !== project.id) {
-            setConfirmingArchive(project.id);
-            setTimeout(() => setConfirmingArchive(null), 4000);
+        if (archiveProjectArmed !== project.id) {
+            setArchiveProjectArmed(project.id);
+            window.setTimeout(() => setArchiveProjectArmed((current) => current === project.id ? null : current), 4000);
             return;
         }
-        setConfirmingArchive(null);
+        setArchiveProjectArmed(null);
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -593,7 +502,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             if (!res.ok) throw new Error(data.error || "Project archive failed");
             setProjectItems((prev) => prev.filter((item) => item.id !== project.id));
             setTasks((prev) => prev.filter((task) => task.projectId !== project.id));
-            if (projectFilter === project.id) setProjectFilter("All Projects");
+            if (projectFilter === project.id) setProjectFilter(ALL_PROJECTS);
             toast.success("Project archived.");
             router.refresh();
         } catch (error) {
@@ -603,80 +512,55 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
-    const completeProject = async (project: any) => {
+    const setProjectStatus = async (project: any, status: "completed" | "active") => {
         setIsMutating(true);
         setMutationError(null);
-        setCompletingProject(project.id);
+        if (status === "completed") setCompletingProject(project.id);
         try {
-            const res = await fetch(`/api/projects/${project.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "completed" }),
-            });
+            const res = await fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to complete project");
-            setProjectItems((prev) => prev.map((p) => p.id === project.id ? { ...p, status: "completed" } : p));
-            toast.success(`Project "${project.name || project.goal}" completed.`);
+            if (!res.ok) throw new Error(data.error || "Project update failed");
+            setProjectItems((prev) => prev.map((p) => p.id === project.id ? { ...p, status } : p));
+            toast.success(`"${projectTitle(project).name}" ${status === "completed" ? "completed" : "reopened"}.`);
             router.refresh();
         } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Failed to complete project");
-            toast.error("Failed to complete project.");
+            setMutationError(error instanceof Error ? error.message : "Project update failed");
+            toast.error("Could not update the project.");
         } finally {
             setIsMutating(false);
             setCompletingProject(null);
         }
     };
 
-    const reopenProject = async (project: any) => {
-        setIsMutating(true);
+    const openCreateTask = useCallback((projectId?: string) => {
         setMutationError(null);
-        try {
-            const res = await fetch(`/api/projects/${project.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "active" }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to reopen project");
-            setProjectItems((prev) => prev.map((p) => p.id === project.id ? { ...p, status: "active" } : p));
-            toast.success(`Project "${project.name || project.goal}" reopened.`);
-            router.refresh();
-        } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Failed to reopen project");
-        } finally {
-            setIsMutating(false);
-        }
-    };
-
-    const openCreateTask = () => {
-        setMutationError(null);
-        setTaskForm({ ...emptyTaskForm, projectId: selectedProject?.id || "" });
+        // With one project in view there is nothing to choose; otherwise the dialog asks.
+        const only = visibleProjects.length === 1 ? visibleProjects[0].id : "";
+        setTaskForm({ ...emptyTaskForm, projectId: projectId || selectedProject?.id || only });
         setTaskDialogMode("create");
-    };
+    }, [selectedProject, visibleProjects]);
 
-    // `?new=task` (the sidebar "+" and the command palette's New task) opens
-    // the New Task dialog once, then drops the parameter so a refresh does not
-    // reopen it.
+    // `?new=task` (the sidebar "+" and the command palette) opens New task once.
     const newTaskParamHandled = useRef(false);
     const wantsNewTask = searchParams.get("new") === "task";
     useEffect(() => {
         if (!wantsNewTask) { newTaskParamHandled.current = false; return; }
-        if (!filtersHydrated || newTaskParamHandled.current) return;
+        if (!filtersHydrated || newTaskParamHandled.current || !canEdit) return;
         newTaskParamHandled.current = true;
-        setMutationError(null);
-        setTaskForm({ ...emptyTaskForm, projectId: selectedProject?.id || projectItems[0]?.id || "" });
-        setTaskDialogMode("create");
+        openCreateTask();
         router.replace("/projects", { scroll: false });
-    }, [wantsNewTask, filtersHydrated, selectedProject, projectItems, router]);
+    }, [wantsNewTask, filtersHydrated, canEdit, openCreateTask, router]);
+
+    const selectedTask = selectedTaskId ? tasks.find((task) => task.id === selectedTaskId) ?? null : null;
 
     const openEditTask = (task: any) => {
-        const input = taskInput(task);
+        const input = task.inputJson && typeof task.inputJson === "object" ? task.inputJson : {};
         setMutationError(null);
         setTaskForm({
             projectId: task.projectId,
-            title: getTaskTitle(task),
+            title: taskTitle(task),
             taskType: task.taskType || "manual_task",
-            description: getTaskDescription(task) || "",
+            description: taskBody(task) || "",
             goal: typeof input.goal === "string" ? input.goal : "",
             priority: task.priority || 0,
             assignee: assigneeValue(task),
@@ -696,9 +580,9 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         setMutationError(null);
         try {
             const inputJson = {
-                title: taskForm.title,
+                title: taskForm.title.trim(),
                 description: taskForm.description,
-                goal: taskForm.goal || taskForm.title,
+                goal: taskForm.goal || taskForm.title.trim(),
                 acceptanceCriteria: String(taskForm.acceptanceCriteria || "").split("\n").map((line) => line.trim()).filter(Boolean),
                 definitionOfDone: taskForm.definitionOfDone,
                 deliverables: String(taskForm.deliverables || "").split("\n").map((line) => line.trim()).filter(Boolean),
@@ -707,17 +591,11 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const res = await fetch(isEdit ? `/api/tasks/${selectedTask.id}` : "/api/tasks", {
                 method: isEdit ? "PATCH" : "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    ...taskForm,
-                    assignee: parseAssigneeValue(taskForm.assignee),
-                    priority: Number(taskForm.priority) || 0,
-                    inputJson,
-                }),
+                body: JSON.stringify({ ...taskForm, assignee: parseAssigneeValue(taskForm.assignee), priority: Number(taskForm.priority) || 0, inputJson }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Task save failed");
             setTasks((prev) => isEdit ? prev.map((task) => task.id === data.task.id ? data.task : task) : [data.task, ...prev]);
-            if (isEdit) setSelectedTask(data.task);
             setTaskDialogMode(null);
             router.refresh();
         } catch (error) {
@@ -727,74 +605,7 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
-    const updateTaskPatch = async (task: any, patch: Record<string, unknown>) => {
-        setIsMutating(true);
-        setMutationError(null);
-        try {
-            const res = await fetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(patch),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Task update failed");
-            setTasks((prev) => prev.map((item) => item.id === data.task.id ? data.task : item));
-            setSelectedTask(data.task);
-            router.refresh();
-        } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Task update failed");
-        } finally {
-            setIsMutating(false);
-        }
-    };
-
-    const moveTaskToState = async (task: any, newState: string) => {
-        if (task.state === newState) return;
-        // Dropping onto the Blocked column opens the same reason modal; the card
-        // stays where it is until the modal is submitted.
-        if (newState === "blocked") {
-            openBlockDialog(task, task.state);
-            return;
-        }
-        setIsMutating(true);
-        setMutationError(null);
-        try {
-            const res = await fetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ state: newState }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Task move failed");
-            setTasks((prev) => prev.map((item) => item.id === data.task.id ? data.task : item));
-            if (selectedTask?.id === data.task.id) setSelectedTask(data.task);
-            toast.success(`Moved to ${humanizeKey(newState)}`);
-        } catch (error) {
-            setMutationError(error instanceof Error ? error.message : "Task move failed");
-        } finally {
-            setIsMutating(false);
-        }
-    };
-
-    const handleDragStart = (event: DragStartEvent) => {
-        setDraggingTask(tasks.find((task) => task.id === event.active.id) || null);
-    };
-
-    const handleDragEnd = (event: DragEndEvent) => {
-        setDraggingTask(null);
-        const { active, over } = event;
-        if (!over) return;
-        const newState = COLUMN_DROP_STATE[String(over.id)];
-        if (!newState) return;
-        const task = tasks.find((item) => item.id === active.id);
-        if (task) void moveTaskToState(task, newState);
-    };
-
     const archiveTask = async (task: any) => {
-        if (confirmingArchive !== task.id) {
-            setConfirmingArchive(task.id);
-            return;
-        }
         setIsMutating(true);
         setMutationError(null);
         try {
@@ -802,8 +613,8 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Task archive failed");
             setTasks((prev) => prev.filter((item) => item.id !== task.id));
-            setConfirmingArchive(null);
-            setSelectedTask(null);
+            setArchivingTaskId(null);
+            if (selectedTaskId === task.id) setSelectedTaskId(null);
             toast.success("Task archived.");
             router.refresh();
         } catch (error) {
@@ -813,628 +624,306 @@ export default function ProjectsClient({ initialTasks, projects, agents, custome
         }
     };
 
-    const blockedCount = filteredTasks.filter((task) => isBlocked(task, filteredTasks)).length;
-    const currentProjectMemory = projectMemoryItems.filter((item) => projectFilter === "All Projects" ? true : item.projectId === projectFilter).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // ─── Drag and drop ──────────────────────────────────────────────────────
+    const handleDragStart = (event: DragStartEvent) => setDraggingTaskId(String(event.active.id));
+    const handleDragEnd = (event: DragEndEvent) => {
+        setDraggingTaskId(null);
+        if (!event.over || !canEdit) return;
+        const newState = COLUMN_DROP_STATE[String(event.over.id) as BoardColumnKey];
+        const task = tasks.find((item) => item.id === event.active.id);
+        if (newState && task) setTaskState(task, newState);
+    };
+    const draggingTask = draggingTaskId ? tasks.find((task) => task.id === draggingTaskId) : null;
+
+    const handlers: CardHandlers = {
+        canEdit,
+        selectedId: selectedTaskId,
+        onOpen: (task) => setSelectedTaskId(task.id),
+        onSetPriority: setTaskPriority,
+        onSetState: setTaskState,
+        onArchive: (task) => { setMutationError(null); setArchivingTaskId(task.id); },
+    };
+
+    // ─── Filter copy ────────────────────────────────────────────────────────
+    const customerOptions = [
+        { value: ALL_CUSTOMERS, label: "All customers", description: `${customers.length} customers` },
+        ...customers.map((customer) => ({ value: customer.id, label: customer.name, description: `${projectItems.filter((project) => project.customerId === customer.id).length} projects` })),
+    ];
+    const projectOptions = [
+        { value: ALL_PROJECTS, label: "All projects", description: `${visibleProjects.length} ${hideCompletedProjects ? "active " : ""}projects` },
+        ...visibleProjects
+            .filter((project) => customerFilter === ALL_CUSTOMERS || project.customerId === customerFilter)
+            .map((project) => {
+                const title = projectTitle(project);
+                const customerName = customerById.get(project.customerId)?.name || "No customer";
+                const finished = project.status === "completed" || project.status === "killed";
+                return {
+                    value: project.id,
+                    label: title.name,
+                    description: finished ? `${customerName} · ${sentenceCase(project.status)}` : customerName,
+                    keywords: title.description,
+                };
+            }),
+    ];
+    const assigneeOptions = [
+        { value: "all", label: "All assignees", description: `${members.length} people · ${agents.length} agents` },
+        ...(currentMemberId ? [{ value: `human:${currentMemberId}`, label: "Assigned to me", description: "Your tasks" }] : []),
+        { value: "human", label: "All people", description: "Human-assigned work" },
+        { value: "agent", label: "All agents", description: "Agent-assigned work" },
+        { value: "unassigned", label: "Unassigned", description: "Waiting for an assignee" },
+        ...members.map((member) => ({ value: `human:${member.id}`, label: member.displayName || member.email, description: member.roleTitle || "Person" })),
+        ...agents.map((agent) => ({ value: `agent:${agent.id}`, label: agent.name, description: agent.role || "Agent" })),
+    ];
+    const assigneeLabel = assigneeOptions.find((option) => option.value === assigneeFilter)?.label;
+    const filterParts = [
+        selectedProject ? projectTitle(selectedProject).name : null,
+        filteredToCustomer && !selectedProject ? customerById.get(customerFilter)?.name ?? null : null,
+        assigneeFilter !== "all" ? assigneeLabel ?? null : null,
+        searchQuery.trim() ? `"${searchQuery.trim()}"` : null,
+    ].filter(Boolean) as string[];
+    const hasBoardFilters = filterParts.length > 0;
+    const totalCount = tasks.length;
+    const shownCount = filteredTasks.length;
+
+    const clearBoardFilters = () => {
+        setProjectFilter(ALL_PROJECTS);
+        setAssigneeFilter("all");
+        setCustomerFilter(ALL_CUSTOMERS);
+        setSearchQuery("");
+        setReviewFilter(null);
+        if (searchParams.has("assignee") || searchParams.has("project")) router.replace("/projects");
+    };
+
+    // Auto-split names (and the name migration) keep the purpose as a tagged project note.
+    const selectedProjectPurpose = selectedProject
+        ? projectMemoryItems
+            .filter((item) => item.projectId === selectedProject.id && Array.isArray(item.tags) && item.tags.includes("project-purpose"))
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.content?.replace(/^\*\*Purpose\*\*\s*/, "") ?? null
+        : null;
+
+    const currentProjectNotes = projectMemoryItems
+        .filter((item) => projectFilter === ALL_PROJECTS || item.projectId === projectFilter)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const nothingMatches = shownCount === 0 && filteredRecurringDefinitions.length === 0;
+    const segmented = "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60";
 
     return (
-        <div className="relative mx-auto flex h-full max-w-[1800px] flex-col space-y-6 animate-in fade-in duration-500">
+        <div className="relative mx-auto flex h-full max-w-[1800px] flex-col gap-4">
             <PageHeader
-                eyebrow="Projects"
-                title="Projects Board"
+                eyebrow="Work"
+                title="Projects board"
                 description="Track work from to-do to done across all your projects."
-                actions={
+                actions={canEdit ? (
                     <>
-                        {companyRole !== "viewer" && <button onClick={openCreateProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800"><IconPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Project</button>}
-                        <button onClick={openCreateTask} disabled={!selectedProject} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900/80 disabled:text-zinc-600"><IconPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Task</button>
-                        <button
-                            onClick={() => setHideCompletedProjects((v) => !v)}
-                            className={cn(
-                                "flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border px-3 sm:px-4 text-xs sm:text-sm font-semibold transition-colors",
-                                hideCompletedProjects
-                                    ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/15"
-                                    : "border-zinc-700 bg-zinc-900/80 text-zinc-100 hover:border-zinc-600 hover:bg-zinc-800"
-                            )}
-                            title={hideCompletedProjects ? "Showing only active projects" : "Showing all projects"}
-                        >
-                            <IconArchive className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            {hideCompletedProjects ? "Active" : "All"}
+                        <button type="button" onClick={openCreateProject} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-800">
+                            <IconPlus className="h-4 w-4" aria-hidden="true" />Project
                         </button>
-                        {projectFilter !== "All Projects" && <button onClick={() => setIsContextOpen(true)} className="flex h-9 sm:h-10 cursor-pointer items-center gap-1.5 sm:gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/15"><IconBrain className="h-3.5 w-3.5 sm:h-4 sm:w-4" />Notes</button>}
+                        <button type="button" onClick={() => openCreateTask()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-3 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 transition-colors hover:bg-cyan-400/25">
+                            <IconPlus className="h-4 w-4" aria-hidden="true" />Task
+                        </button>
                     </>
-                }
+                ) : (
+                    <span className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400">View only</span>
+                )}
             />
-            <div className="emperor-panel rounded-2xl p-3 sm:p-4">
-                <div className="grid gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="relative min-w-[260px] flex-1">
-                        <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks..." className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 py-2 pl-9 pr-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
-                        </div>
-                        <SearchableSelect
-                            value={customerFilter}
-                            options={customerOptions}
-                            placeholder="All Customers"
-                            searchPlaceholder="Search customers..."
-                            className="w-full sm:w-auto"
-                            onChange={(nextCustomerId) => {
-                                setCustomerFilter(nextCustomerId);
-                                if (
-                                    projectFilter !== "All Projects" &&
-                                    nextCustomerId !== "All Customers" &&
-                                    projectItems.find((project) => project.id === projectFilter)?.customerId !== nextCustomerId
-                                ) {
-                                    setProjectFilter("All Projects");
-                                }
-                            }}
-                        />
-                        <SearchableSelect
-                            value={projectFilter}
-                            options={projectOptions}
-                            placeholder="All Projects"
-                            searchPlaceholder="Search projects..."
-                            onChange={setProjectFilter}
-                            className="w-full min-w-[280px] sm:w-auto"
-                        />
-                        {hasBoardFilters && (
-                            <button
-                                type="button"
-                                onClick={clearBoardFilters}
-                                className="h-10 cursor-pointer rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100"
-                            >
-                                Clear filters
-                            </button>
+
+            <div className="emperor-panel rounded-2xl p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <label className="relative min-w-0 flex-[1_1_16rem]">
+                        <span className="sr-only">Search tasks</span>
+                        <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+                        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search tasks" className="h-10 w-full rounded-xl border border-zinc-800 bg-zinc-950/80 pl-9 pr-9 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60" />
+                        {searchQuery && (
+                            <button type="button" onClick={() => setSearchQuery("")} aria-label="Clear search" className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200"><IconX className="h-3.5 w-3.5" aria-hidden="true" /></button>
                         )}
-                    </div>
-                    <details className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 px-3 py-2">
-                        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
-                            Advanced filters and project actions
-                        </summary>
-                        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-3">
-                        <SearchableSelect
-                                value={assigneeFilter}
-                                options={assigneeOptions}
-                                placeholder="All assignees"
-                                searchPlaceholder="Search people and agents..."
-                                onChange={setAssigneeFilter}
-                            />
-                            <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
-                                <IconFilter className="h-4 w-4" />
-                                Filter by assignee
-                            </div>
-                            {selectedProject && (
-                                <span className={cn("rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-wider", PROJECT_STATUS_STYLES[selectedProject.status] || PROJECT_STATUS_STYLES.active)}>
-                                    Project status: {humanizeKey(selectedProject.status)}
-                                </span>
+                    </label>
+                    <SearchableSelect
+                        value={customerFilter}
+                        options={customerOptions}
+                        placeholder="All customers"
+                        searchPlaceholder="Search customers..."
+                        className="hidden min-w-0 flex-[1_1_11rem] sm:block sm:max-w-[15rem]"
+                        onChange={(nextCustomerId) => {
+                            setCustomerFilter(nextCustomerId);
+                            if (projectFilter !== ALL_PROJECTS && nextCustomerId !== ALL_CUSTOMERS && projectById.get(projectFilter)?.customerId !== nextCustomerId) setProjectFilter(ALL_PROJECTS);
+                        }}
+                    />
+                    <SearchableSelect
+                        value={projectFilter}
+                        options={projectOptions}
+                        placeholder="All projects"
+                        searchPlaceholder="Search projects..."
+                        onChange={setProjectFilter}
+                        className="min-w-0 flex-[1_1_13rem] sm:max-w-[18rem]"
+                    />
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            aria-pressed={showAttentionOnly}
+                            onClick={() => setShowAttentionOnly((prev) => !prev)}
+                            title="Failed, dead-lettered, waiting over 1h, or in review over 24h"
+                            className={cn(
+                                "inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm transition-colors",
+                                showAttentionOnly ? "border-rose-400/40 bg-rose-400/10 text-rose-100" : "border-zinc-800 bg-zinc-950/80 text-zinc-300 hover:border-zinc-700 hover:text-zinc-100",
                             )}
-                            {selectedProject && (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <button className="cursor-pointer rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"><IconDots className="h-4 w-4" /></button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-48 border-zinc-800 bg-zinc-950 text-zinc-100">
-                                        <DropdownMenuItem onClick={() => openEditProject(selectedProject)}><IconPencil className="mr-2 h-4 w-4" />Edit project</DropdownMenuItem>
-                                        {selectedProject.status !== "completed" && selectedProject.status !== "killed" && (
-                                            <DropdownMenuItem onClick={() => void completeProject(selectedProject)} disabled={completingProject === selectedProject.id}>
-                                                <IconCircleCheck className="mr-2 h-4 w-4 text-emerald-400" />
-                                                {completingProject === selectedProject.id ? "Completing..." : "Complete project"}
-                                            </DropdownMenuItem>
-                                        )}
-                                        {(selectedProject.status === "completed" || selectedProject.status === "killed") && (
-                                            <DropdownMenuItem onClick={() => void reopenProject(selectedProject)}>
-                                                <IconRotate className="mr-2 h-4 w-4 text-amber-400" />Reopen project
-                                            </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuItem variant="destructive" onClick={() => void archiveProject(selectedProject)}><IconTrash className="mr-2 h-4 w-4" />{confirmingArchive === selectedProject ? "Click again to confirm" : "Archive project"}</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            )}
+                        >
+                            <IconAlertTriangle className="h-4 w-4" aria-hidden="true" />
+                            Needs attention
+                            {groups.attentionCount > 0 && <span className={cn("rounded-full px-1.5 text-xs tabular-nums", showAttentionOnly ? "bg-rose-400/20" : "bg-zinc-800 text-zinc-300")}>{groups.attentionCount}</span>}
+                        </button>
+                        <div role="group" aria-label="Layout" className="hidden h-10 items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-950/80 p-1 md:inline-flex">
+                            <button type="button" aria-pressed={viewMode === "board"} onClick={() => setViewMode("board")} className={cn(segmented, viewMode === "board" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:text-zinc-200")}><IconLayoutColumns className="h-4 w-4" aria-hidden="true" />Board</button>
+                            <button type="button" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={cn(segmented, viewMode === "list" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:text-zinc-200")}><IconList className="h-4 w-4" aria-hidden="true" />List</button>
                         </div>
-                    </details>
+                    </div>
                 </div>
+                <details className="group mt-2">
+                    <summary className="inline-flex cursor-pointer select-none items-center rounded-md px-1 py-1 text-xs font-medium text-zinc-400 hover:text-zinc-200">More filters</summary>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-3">
+                        <SearchableSelect value={customerFilter} options={customerOptions} placeholder="All customers" searchPlaceholder="Search customers..." onChange={setCustomerFilter} className="min-w-[14rem] sm:hidden" />
+                        <SearchableSelect value={assigneeFilter} options={assigneeOptions} placeholder="All assignees" searchPlaceholder="Search people and agents..." onChange={setAssigneeFilter} className="min-w-[14rem]" />
+                        <label className="inline-flex min-h-10 items-center gap-2 text-sm text-zinc-300">
+                            <input type="checkbox" checked={!hideCompletedProjects} onChange={(event) => setHideCompletedProjects(!event.target.checked)} className="h-4 w-4 accent-cyan-500" />
+                            Include finished projects
+                        </label>
+                    </div>
+                </details>
             </div>
-            {mutationError && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{mutationError}</div>}
 
-            <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-                <MetricCard label="To do" value={byState.inbox.length} hint="Queued work" />
-                <MetricCard label="In progress" value={byState.inProgress.length} hint="Active execution" accent="cyan" />
-                <MetricCard label="Needs review" value={byState.review.length} hint="Needs your review" accent="amber" />
-                <MetricCard label="Done" value={byState.done.length} hint="Closed work" accent="emerald" />
-                <MetricCard label="Recurring" value={filteredRecurringDefinitions.length} hint="Recurring task definitions" accent="slate" />
-            </div>
+            {selectedProject && (
+                <ProjectHeader
+                    project={selectedProject}
+                    title={projectTitle({ ...selectedProject, description: selectedProjectPurpose })}
+                    customerName={customerNameOf(selectedProject.id)}
+                    leadName={selectedProject.leadAgentId ? agentName(selectedProject.leadAgentId) : null}
+                    taskCount={scopedTasks.length}
+                    canEdit={canEdit}
+                    archiveArmed={archiveProjectArmed === selectedProject.id}
+                    completing={completingProject === selectedProject.id}
+                    onClear={() => setProjectFilter(ALL_PROJECTS)}
+                    onNotes={() => setIsNotesOpen(true)}
+                    onEdit={() => openEditProject(selectedProject)}
+                    onComplete={() => void setProjectStatus(selectedProject, "completed")}
+                    onReopen={() => void setProjectStatus(selectedProject, "active")}
+                    onArchive={() => void archiveProject(selectedProject)}
+                />
+            )}
 
-            {(blockedCount > 0 || exceptionTasks.length > 0) && (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-sm">
-                    {blockedCount > 0 && <span className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-rose-300"><IconAlertTriangle className="mr-1 inline h-4 w-4" />{blockedCount} blocked tasks</span>}
-                    {exceptionTasks.length > 0 && <span className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-300">{exceptionTasks.length} failed tasks</span>}
+            {hasBoardFilters && (
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm text-zinc-400" role="status">
+                    <span>Showing <span className="tabular-nums text-zinc-200">{shownCount}</span> of <span className="tabular-nums">{totalCount}</span> tasks</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="min-w-0 truncate">Filtered to <span className="text-zinc-200">{filterParts.join(", ")}</span></span>
+                    <button type="button" onClick={clearBoardFilters} className="rounded-md px-1.5 py-0.5 text-sm font-medium text-cyan-300 hover:bg-cyan-400/10 hover:text-cyan-200">Clear</button>
+                </p>
+            )}
+
+            {mutationError && !projectDialogMode && !taskDialogMode && !blockDialog && !archivingTaskId && (
+                <div role="alert" className="flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                    <span className="flex-1">{mutationError}</span>
+                    <button type="button" onClick={() => setMutationError(null)} aria-label="Dismiss" className="text-rose-300 hover:text-rose-100"><IconX className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
             )}
 
-            {/* Needs Attention toggle */}
-            <div className="flex items-center gap-3">
-                <button
-                    type="button"
-                    onClick={() => setShowAttentionOnly((prev) => !prev)}
-                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${showAttentionOnly ? "border-rose-400/40 bg-rose-400/10 text-rose-200" : "border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"}`}
-                >
-                    <IconAlertTriangle className="h-4 w-4" />
-                    {showAttentionOnly ? "Showing: Needs Attention" : "Show Needs Attention"}
-                    {attentionTasks.length > 0 && (
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${showAttentionOnly ? "bg-rose-400/20 text-rose-200" : "bg-zinc-800 text-zinc-400"}`}>{attentionTasks.length}</span>
+            {nothingMatches ? (
+                <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 px-6 py-16 text-center">
+                    {totalCount === 0 ? (
+                        <>
+                            <p className="text-base font-medium text-zinc-200">No tasks yet</p>
+                            <p className="mt-1 max-w-sm text-sm text-zinc-500">Tasks your agents and team create show up here, grouped by where they are.</p>
+                            {canEdit && <button type="button" onClick={() => openCreateTask()} className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-lg bg-cyan-400/15 px-4 text-sm font-semibold text-cyan-50 ring-1 ring-inset ring-cyan-400/30 hover:bg-cyan-400/25"><IconPlus className="h-4 w-4" aria-hidden="true" />Create a task</button>}
+                        </>
+                    ) : (
+                        <>
+                            <p className="text-base font-medium text-zinc-200">{showAttentionOnly ? "Nothing needs attention" : "No tasks match these filters"}</p>
+                            <p className="mt-1 max-w-sm text-sm text-zinc-500">{hasBoardFilters ? `${totalCount} tasks are hidden by: ${filterParts.join(", ")}.` : "Everything is moving."}</p>
+                            {hasBoardFilters && <button type="button" onClick={clearBoardFilters} className="mt-4 inline-flex h-10 items-center rounded-lg border border-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-900">Clear filters</button>}
+                        </>
                     )}
-                </button>
-                {showAttentionOnly && (
-                    <span className="text-xs text-zinc-500">
-                        Dead-lettered · failed · stale inbox (&gt;1h) · overdue review (&gt;24h)
-                    </span>
-                )}
-            </div>
-
-            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                <div className="flex min-h-0 flex-1 overflow-hidden -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8">
-                    <div className="flex-1 overflow-x-auto pb-4">
-                        <div className="flex h-full min-w-max gap-6">
-                            {showAttentionOnly ? (
-                                <>
-                                    <BoardColumn droppableId="dead_letter" title="Dead-lettered" count={byState_attention.deadLetter.length} tone="rose" icon={IconCircleX}>
-                                        {byState_attention.deadLetter.length === 0 ? <EmptyColumnHint>No dead-lettered tasks.</EmptyColumnHint> : byState_attention.deadLetter
-                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                                    </BoardColumn>
-                                    <BoardColumn droppableId="failed" title="Failed" count={byState_attention.failed.length} tone="rose" icon={IconCircleX}>
-                                        {byState_attention.failed.length === 0 ? <EmptyColumnHint>No failed tasks.</EmptyColumnHint> : byState_attention.failed
-                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                                    </BoardColumn>
-                                    <BoardColumn droppableId="stale_inbox" title="Stale inbox (>1h)" count={byState_attention.staleInbox.length} tone="amber" icon={IconInbox}>
-                                        {byState_attention.staleInbox.length === 0 ? <EmptyColumnHint>No stale inbox tasks.</EmptyColumnHint> : byState_attention.staleInbox
-                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                                    </BoardColumn>
-                                    <BoardColumn droppableId="overdue_review" title="Overdue review (>24h)" count={byState_attention.overdueReview.length} tone="amber" icon={IconAlertTriangle}>
-                                        {byState_attention.overdueReview.length === 0 ? <EmptyColumnHint>No overdue reviews.</EmptyColumnHint> : byState_attention.overdueReview
-                                            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-                                            .map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                                    </BoardColumn>
-                                </>
-                            ) : (
-                                <>
-                            <BoardColumn droppableId="inbox" title="Inbox" count={byState.inbox.length} tone="zinc" icon={IconInbox}>
-                                {byState.inbox.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>
-                            <BoardColumn droppableId="in_progress" title="In Progress" count={byState.inProgress.length} tone="cyan" icon={CirclePulseIcon}>
-                                {byState.inProgress.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} active onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>
-                            <BoardColumn droppableId="blocked" title="Blocked" count={byState.blocked.length} tone="rose" icon={IconAlertTriangle}>
-                                {byState.blocked.length === 0 ? <EmptyColumnHint>No blocked tasks.</EmptyColumnHint> : byState.blocked.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>
-                            <BoardColumn droppableId="review" title="Review" count={byState.review.length} tone="amber" icon={IconCircleCheck}>
-                                <div className="mb-3 grid grid-cols-2 gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
-                                    <BucketBadge label="Approval needed" count={reviewCounts.approval_needed} />
-                                    <BucketBadge label="Waiting review" count={reviewCounts.waiting_review} />
-                                    <BucketBadge label="Blocked" count={reviewCounts.blocked} tone="rose" />
-                                    <BucketBadge label="Ready to close" count={reviewCounts.ready_to_close} tone="emerald" />
-                                </div>
-                                {byState.review.slice().sort((a, b) => Number(isBlocked(a, filteredTasks)) - Number(isBlocked(b, filteredTasks))).map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} blocked={isBlocked(task, filteredTasks)} reviewBucket={reviewBucket(task, isBlocked(task, filteredTasks))} review onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>
-                            <BoardColumn droppableId="done" title="Done" count={byState.done.length} tone="emerald" icon={IconCircleCheck}>
-                                {byState.done.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} done onArchive={() => { setSelectedTask(task); setMutationError(null); setConfirmingArchive(task.id); }} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>
-                            <BoardColumn droppableId="exceptions" title="Exceptions" count={exceptionTasks.length} tone="rose" icon={IconCircleX}>
-                                {exceptionTasks.length === 0 ? <EmptyColumnHint>No failed or dead-lettered tasks.</EmptyColumnHint> : exceptionTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>
-                            {(filteredRecurringDefinitions.length > 0 || recurringTasks.length > 0) && <BoardColumn title="Recurring" count={filteredRecurringDefinitions.length + recurringTasks.length} tone="slate" icon={IconRepeat}>
-                                {filteredRecurringDefinitions.map((definition) => <RecurringCard key={definition.id} definition={definition} project={getProjectName(definition.projectId)} customer={getCustomerName(definition.projectId)} agent={getAgentName(definition.createdByAgentId)} />)}
-                                {recurringTasks.map((task) => <TaskCard key={task.id} task={task} project={getProjectName(task.projectId)} customer={getCustomerName(task.projectId)} agent={getAssigneeLabel(task)} recurring blocked={isBlocked(task, filteredTasks)} onClick={() => setSelectedTask(task)} onSetPriority={(p) => handleSetPriority(task, p)} onSetState={(s) => handleSetState(task, s)} />)}
-                            </BoardColumn>}
-                                </>
-                            )}
-                        </div>
-                    </div>
                 </div>
-                <DragOverlay>
-                    {draggingTask ? <TaskCard task={draggingTask} project={getProjectName(draggingTask.projectId)} customer={getCustomerName(draggingTask.projectId)} agent={getAssigneeLabel(draggingTask)} onClick={() => {}} overlay /> : null}
-                </DragOverlay>
-            </DndContext>
+            ) : (
+                <>
+                    {/* Desktop board */}
+                    <div className={cn("min-h-0 flex-1", viewMode === "board" ? "hidden md:flex" : "hidden")}>
+                        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setDraggingTaskId(null)}>
+                            <div className="flex min-h-[28rem] w-full gap-3 overflow-x-auto pb-2">
+                                {lanes.map((lane) => <BoardLane key={lane.key} lane={lane} handlers={handlers} dragging={Boolean(draggingTask)} />)}
+                            </div>
+                            <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
+                                {draggingTask ? <TaskCard view={viewFor(draggingTask)} canEdit={canEdit} onOpen={() => {}} overlay /> : null}
+                            </DragOverlay>
+                        </DndContext>
+                    </div>
+                    {/* Desktop list */}
+                    {viewMode === "list" && (
+                        <div className="hidden md:block">
+                            <LaneList lanes={lanes} handlers={handlers} />
+                        </div>
+                    )}
+                    {/* Phones: one state at a time */}
+                    <div className="space-y-3 md:hidden">
+                        <LaneSwitcher lanes={lanes} active={activePhoneLane.key} onChange={setPhoneLane} />
+                        <LaneList lanes={[activePhoneLane]} handlers={handlers} />
+                    </div>
+                </>
+            )}
 
             {selectedTask && (
-                <div className="absolute right-0 top-0 z-50 flex h-full w-full sm:w-[60%] lg:w-[42%] flex-col rounded-xl border-l border-zinc-800 bg-zinc-900/95 p-4 sm:p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-8 duration-300">
-                    <div className="mb-8 flex items-center justify-between">
-                        <div className="flex min-w-0 items-center gap-3">
-                            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-500">TASK-{selectedTask.id.substring(0, 8).toUpperCase()}</div>
-                            <Link href={taskHref(selectedTask.id)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-400/10 hover:text-cyan-200">
-                                Open full page
-                                <IconArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-                            </Link>
-                        </div>
-                        <button onClick={() => setSelectedTask(null)} className="cursor-pointer rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-800"><IconChevronRight className="h-5 w-5" /></button>
-                    </div>
-                    <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">
-                        <div>
-                            <h2 className="text-xl font-medium text-zinc-100">{getTaskTitle(selectedTask)}</h2>
-                            <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(selectedTask.taskType)}</p>
-                            <p className="mt-2 text-sm text-zinc-500">Project: {getProjectName(selectedTask.projectId)}</p>
-                            <p className="text-sm text-zinc-500">Customer: {getCustomerName(selectedTask.projectId)}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-sm">
-                            <span className="rounded bg-zinc-800 px-2.5 py-1 font-medium text-zinc-300">{humanizeKey(selectedTask.state)}</span>
-                            <span className="rounded bg-zinc-800 px-2.5 py-1 text-zinc-400">Assigned: {getAssigneeLabel(selectedTask)}</span>
-                            {(selectedTask.state === "blocked" || isBlocked(selectedTask, filteredTasks)) && <span className="rounded bg-rose-500/20 px-2.5 py-1 text-rose-400">Blocked</span>}
-                            {isRecurring(selectedTask) && <span className="rounded bg-cyan-500/20 px-2.5 py-1 text-cyan-300">Recurring</span>}
-                        </div>
-                        {selectedTask.state === "blocked" && getBlockedReason(selectedTask) && (
-                            <p className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-sm text-rose-200"><span className="font-medium">Blocker:</span> {getBlockedReason(selectedTask)}</p>
-                        )}
-                        <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-2">
-                            <label className="space-y-1 text-xs text-zinc-500">
-                                <span>State</span>
-                                <select value={selectedTask.state} disabled={isMutating} onChange={(event) => void handleSetState(selectedTask, event.target.value)} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
-                                    {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-xs text-zinc-500">
-                                <span>Assignee</span>
-                                <select value={assigneeValue(selectedTask)} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { assignee: parseAssigneeValue(event.target.value) })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
-                                    <option value="">Unassigned</option>
-                                    <optgroup label="People">
-                                        {members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}
-                                    </optgroup>
-                                    <optgroup label="Agents">
-                                        {agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}
-                                    </optgroup>
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-xs text-zinc-500">
-                                <span>Priority</span>
-                                <select value={selectedTask.priority || 0} disabled={isMutating} onChange={(event) => void updateTaskPatch(selectedTask, { priority: Number(event.target.value) || 0 })} className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-cyan-400">
-                                    {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                </select>
-                            </label>
-                            <div className="flex flex-col justify-end gap-2">
-                                <p className="text-xs text-muted-foreground">Finished? Archive this task to remove it from the board. Its history and files stay saved.</p>
-                                <button onClick={() => openEditTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"><IconPencil className="h-4 w-4" />Edit</button>
-                                <button onClick={() => void archiveTask(selectedTask)} className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/20"><IconTrash className="h-4 w-4" />Archive task</button>
-                            </div>
-                        </div>
-                        {selectedTask.inputJson && Object.keys(selectedTask.inputJson).length > 0 && <Section title="Task Instructions"><div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed text-zinc-300 shadow-inner">{getTaskDescription(selectedTask) || JSON.stringify(selectedTask.inputJson, null, 2)}</div></Section>}
-                        <Section title="Storage & Reports">{artifactsForTask(selectedTask.id).length === 0 ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-400">No files submitted yet.</div> : artifactsForTask(selectedTask.id).map((artifact) => <div key={artifact.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-4"><div className="mb-2 flex items-center justify-between gap-3 text-xs text-zinc-500"><div className="flex min-w-0 items-center gap-2"><span className="font-mono">{artifact.title || artifact.originalFilename || artifact.kind}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 uppercase tracking-wider text-[10px]">{getArtifactClassLabel(artifact.artifactClass || artifact.kind)}</span>{artifact.isCanonical && <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 uppercase tracking-wider text-[10px] text-emerald-300">canonical</span>}</div><span>{artifact.contentType}</span></div><div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-600"><span>{getArtifactImportanceLabel(artifact.importance || "operational")}</span>{artifact.originalFilename && <span className="truncate">{artifact.originalFilename}</span>}</div>{artifact.contentText ? <MarkdownRenderer content={artifact.contentText} className="text-xs" /> : <div className="text-xs text-zinc-500">Stored securely. Use Storage to preview or download.</div>}</div>)}</Section>
-                        <Section title="Timeline">{getTaskEvents(selectedTask.id).length === 0 ? <><TimelineEvent time={new Date(selectedTask.createdAt).toLocaleTimeString()} desc="Task created and entered inbox." /><>{selectedTask.state !== "queued" && selectedTask.state !== "inbox" && <TimelineEvent time={new Date(selectedTask.updatedAt).toLocaleTimeString()} desc={`Status changed to ${selectedTask.state}`} />}</></> : getTaskEvents(selectedTask.id).map((event) => <TimelineEvent key={event.id} time={new Date(event.createdAt).toLocaleTimeString()} desc={getEventDescription(event)} isNote={event.eventType === "task_note" || event.eventType === "task_handoff" || event.eventType === "task_reassigned"} />)}</Section>
-                    </div>
-                    <div className="mt-auto border-t border-zinc-800 pt-6">
-                        <div className="mb-2 text-xs font-medium text-zinc-500">{selectedTask.assignedAgentId ? "Add task note / send to agent" : "Add task note"}</div>
-                        <div className="flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 focus-within:ring-1 focus-within:ring-cyan-500">
-                            <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Agent instructions or private notes..." className="h-20 flex-1 resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none" />
-                            <div className="flex flex-col justify-end border-l border-zinc-800 bg-zinc-950/70 p-2">
-                                <button onClick={handleSendComment} disabled={!comment.trim()} className="cursor-pointer rounded-md bg-cyan-400/10 p-2 text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"><IconSend className="h-4 w-4" /></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <TaskDrawer
+                    task={selectedTask}
+                    view={views.get(selectedTask.id) ?? viewFor(selectedTask)}
+                    project={projectLabel(selectedTask.projectId)}
+                    customerName={customerNameOf(selectedTask.projectId)}
+                    workTypeLabel={workTypeLabel(selectedTask.taskType)}
+                    events={events.filter((event) => event.taskId === selectedTask.id)}
+                    artifacts={artifacts.filter((artifact) => artifact.taskId === selectedTask.id)}
+                    agents={agents}
+                    members={members}
+                    lookups={{ agentName, memberName }}
+                    canEdit={canEdit}
+                    busy={isMutating}
+                    onClose={() => setSelectedTaskId(null)}
+                    onSetState={(state) => setTaskState(selectedTask, state)}
+                    onAssign={(value) => void patchTask(selectedTask, { assignee: parseAssigneeValue(value) }, { success: value ? "Owner changed" : "Owner removed" })}
+                    onSetPriority={(priority) => setTaskPriority(selectedTask, priority)}
+                    onEdit={() => openEditTask(selectedTask)}
+                    onArchive={() => { setMutationError(null); setArchivingTaskId(selectedTask.id); }}
+                    onSendNote={(text) => sendTaskNote(selectedTask, text)}
+                />
             )}
 
-            {isContextOpen && (
-                <div className="absolute right-0 top-0 z-50 flex h-full w-[45%] flex-col rounded-l-2xl border-l border-zinc-800 bg-zinc-900/98 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right-10 duration-300">
-                    <div className="flex items-center justify-between rounded-tl-2xl border-b border-zinc-800 bg-zinc-950/50 p-6">
-                        <div className="flex items-center space-x-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-400/10 text-cyan-500 shadow-inner"><IconBrain className="h-6 w-6" /></div>
-                            <div><h2 className="text-lg font-semibold uppercase tracking-tight text-zinc-100">Project notes</h2><p className="text-xs font-medium text-zinc-500">Notes and context for this project</p></div>
-                        </div>
-                        <button onClick={() => setIsContextOpen(false)} className="cursor-pointer rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800"><IconChevronRight className="h-6 w-6" /></button>
-                    </div>
-                    <div className="custom-scrollbar flex-1 space-y-8 overflow-y-auto p-6">
-                        <div className="space-y-3">
-                            <label className="pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Add a note</label>
-                            <div className="relative">
-                                <textarea value={newContext} onChange={(event) => setNewContext(event.target.value)} placeholder="Enter new goals, findings, or critical context for the agents..." className="h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-200 outline-none shadow-inner focus:ring-1 focus:ring-cyan-400" />
-                                <button onClick={handleAddProjectContext} disabled={!newContext.trim() || isSubmittingContext} className="absolute bottom-3 right-3 flex cursor-pointer items-center space-x-2 rounded-lg bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isSubmittingContext ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <IconPlus className="h-3 w-3" />}<span>Save</span></button>
-                            </div>
-                        </div>
-                        <div className="space-y-4">
-                            <h3 className="flex items-center space-x-2 pl-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500"><IconHistory className="h-3 w-3" /><span>Notes</span></h3>
-                            {currentProjectMemory.length === 0 ? <div className="flex flex-col items-center justify-center space-y-2 rounded-2xl border border-dashed border-zinc-800 p-8 text-center opacity-50"><IconBrain className="mb-2 h-8 w-8 text-zinc-700" /><p className="text-sm text-zinc-500">No notes yet for this project.</p><p className="text-xs text-zinc-600">Add notes to share context across tasks.</p></div> : <div className="space-y-4">{currentProjectMemory.map((memory) => <div key={memory.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 shadow-sm transition-colors hover:border-zinc-700"><div className="flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/20 p-4"><div className="flex items-center space-x-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.45)]" /><span className="font-mono text-[10px] text-zinc-500">{new Date(memory.createdAt).toLocaleString()}</span></div>{memory.createdByAgentId && <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-cyan-400">By {getAgentName(memory.createdByAgentId)}</div>}</div><div className="p-5"><MarkdownRenderer content={memory.content} className="text-sm prose-invert" /></div>{Array.isArray(memory.tags) && memory.tags.length > 0 && <div className="flex flex-wrap gap-2 px-5 pb-4">{memory.tags.map((tag: string) => <span key={tag} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">{tag}</span>)}</div>}</div>)}</div>}
-                        </div>
-                    </div>
-                </div>
+            {isNotesOpen && selectedProject && (
+                <ProjectNotesPanel
+                    projectName={projectTitle(selectedProject).name}
+                    notes={currentProjectNotes}
+                    agentName={agentName}
+                    canEdit={canEdit}
+                    onAdd={addProjectNote}
+                    onClose={() => setIsNotesOpen(false)}
+                />
             )}
 
-            <Dialog open={Boolean(projectDialogMode)} onOpenChange={(open) => !open && setProjectDialogMode(null)}>
-                <DialogContent className="max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>{projectDialogMode === "edit" ? "Edit Project" : "New Project"}</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4">
-                        <label className="space-y-1 text-sm text-zinc-400">
-                            <span>Goal</span>
-                            <textarea value={projectForm.goal} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, goal: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                        </label>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Customer</span>
-                                <select value={projectForm.customerId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, customerId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
-                                    <option value="">No customer</option>
-                                    {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Lead agent</span>
-                                <select value={projectForm.leadAgentId} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, leadAgentId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
-                                    <option value="">No lead</option>
-                                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Status</span>
-                                <select value={projectForm.status} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, status: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
-                                    {projectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Max active agents</span>
-                                <input type="number" min={1} value={projectForm.maxActiveAgents} onChange={(event) => setProjectForm((prev: any) => ({ ...prev, maxActiveAgents: Number(event.target.value) || 1 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                            </label>
-                        </div>
-                        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300 sm:grid-cols-2">
-                            <CheckboxRow label="Require approval for done" checked={projectForm.requireApprovalForDone} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, requireApprovalForDone: checked }))} />
-                            <CheckboxRow label="Require review before done" checked={projectForm.requireReviewBeforeDone} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, requireReviewBeforeDone: checked }))} />
-                            <CheckboxRow label="Require review comments" checked={projectForm.commentRequiredForReview} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, commentRequiredForReview: checked }))} />
-                            <CheckboxRow label="Block while approval pending" checked={projectForm.blockStatusChangesWithPendingApproval} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, blockStatusChangesWithPendingApproval: checked }))} />
-                            <CheckboxRow label="Only lead can change status" checked={projectForm.onlyLeadCanChangeStatus} onChange={(checked) => setProjectForm((prev: any) => ({ ...prev, onlyLeadCanChangeStatus: checked }))} />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setProjectDialogMode(null)} className="cursor-pointer rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-                            <button onClick={() => void submitProject()} disabled={isMutating || !projectForm.goal.trim()} className="cursor-pointer rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save project"}</button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={Boolean(taskDialogMode)} onOpenChange={(open) => !open && setTaskDialogMode(null)}>
-                <DialogContent className="max-h-[90vh] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>{taskDialogMode === "edit" ? "Edit Task" : "New Task"}</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Project</span>
-                                <select value={taskForm.projectId} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, projectId: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 disabled:opacity-60">
-                                    <option value="">Select project</option>
-                                    {projectItems.map((project) => <option key={project.id} value={project.id}>{project.goal}</option>)}
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Work type</span>
-                                <select value={taskForm.taskType} disabled={taskDialogMode === "edit"} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, taskType: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400 disabled:opacity-60">
-                                    {workTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                </select>
-                            </label>
-                        </div>
-                        <label className="space-y-1 text-sm text-zinc-400">
-                            <span>Title</span>
-                            <input value={taskForm.title} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, title: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                        </label>
-                        <label className="space-y-1 text-sm text-zinc-400">
-                            <span>Description</span>
-                            <textarea value={taskForm.description} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, description: event.target.value }))} className="h-24 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                        </label>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>State</span>
-                                <select value={taskForm.state} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, state: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
-                                    {taskStates.map((state) => <option key={state} value={state}>{humanizeKey(state)}</option>)}
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Assignee</span>
-                                <select value={taskForm.assignee} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, assignee: event.target.value }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
-                                    <option value="">Unassigned</option>
-                                    <optgroup label="People">
-                                        {members.map((member) => <option key={member.id} value={`human:${member.id}`}>{member.displayName || member.email}</option>)}
-                                    </optgroup>
-                                    <optgroup label="Agents">
-                                        {agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}
-                                    </optgroup>
-                                </select>
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Priority</span>
-                                <select value={taskForm.priority} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, priority: Number(event.target.value) || 0 }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400">
-                                    {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                </select>
-                            </label>
-                        </div>
-                        <label className="space-y-1 text-sm text-zinc-400">
-                            <span>Acceptance criteria</span>
-                            <textarea value={taskForm.acceptanceCriteria} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, acceptanceCriteria: event.target.value }))} placeholder="One criterion per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                        </label>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Definition of done</span>
-                                <textarea value={taskForm.definitionOfDone} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, definitionOfDone: event.target.value }))} className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                            </label>
-                            <label className="space-y-1 text-sm text-zinc-400">
-                                <span>Deliverables</span>
-                                <textarea value={taskForm.deliverables} onChange={(event) => setTaskForm((prev: any) => ({ ...prev, deliverables: event.target.value }))} placeholder="One deliverable per line" className="h-20 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400" />
-                            </label>
-                        </div>
-                        <div className="flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300">
-                            <CheckboxRow label="Proof required" checked={taskForm.proofRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, proofRequired: checked }))} />
-                            <CheckboxRow label="Human approval required" checked={taskForm.humanApprovalRequired} onChange={(checked) => setTaskForm((prev: any) => ({ ...prev, humanApprovalRequired: checked }))} />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setTaskDialogMode(null)} className="cursor-pointer rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900">Cancel</button>
-                            <button onClick={() => void submitTask()} disabled={isMutating || !taskForm.projectId || !taskForm.title.trim()} className="cursor-pointer rounded-lg bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50">{isMutating ? "Saving..." : "Save task"}</button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-            <Dialog open={!!selectedTask && confirmingArchive === selectedTask.id} onOpenChange={(open) => { if (!open && !isMutating) setConfirmingArchive(null); }}>
-                <DialogContent className="bg-background text-foreground sm:max-w-md" showCloseButton={!isMutating}>
-                    <DialogHeader><DialogTitle>Archive task?</DialogTitle></DialogHeader>
-                    <p className="text-sm text-muted-foreground">“{selectedTask ? getTaskTitle(selectedTask) : "Task"}” will disappear from the board. Its history and files stay saved.</p>
-                    {mutationError && <p role="alert" className="text-sm text-destructive">{mutationError}</p>}
-                    <div className="flex justify-end gap-2">
-                        <button disabled={isMutating} onClick={() => setConfirmingArchive(null)} className="min-h-11 rounded-md border px-4 text-sm">Cancel</button>
-                        <button disabled={isMutating} onClick={() => selectedTask && void archiveTask(selectedTask)} className="min-h-11 rounded-md bg-destructive px-4 text-sm text-white disabled:opacity-50">{isMutating ? "Archiving…" : "Archive task"}</button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-            <Dialog open={Boolean(blockDialog)} onOpenChange={(open) => { if (!open && !isMutating) { setBlockDialog(null); setBlockReason(""); setMutationError(null); } }}>
-                <DialogContent className="bg-background text-foreground sm:max-w-md" showCloseButton={!isMutating}>
-                    <DialogHeader><DialogTitle>Block task</DialogTitle></DialogHeader>
-                    <p className="text-sm text-muted-foreground">“{blockDialog ? getTaskTitle(blockDialog.task) : "Task"}” will be held out of automatic stalled reminders until it is unblocked.</p>
-                    <label className="space-y-1 text-sm text-zinc-400">
-                        <span>Why is it blocked?</span>
-                        <textarea
-                            autoFocus
-                            value={blockReason}
-                            onChange={(event) => setBlockReason(event.target.value)}
-                            placeholder="Name the person or dependency you are waiting on"
-                            rows={3}
-                            className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
-                        />
-                    </label>
-                    {mutationError && <p role="alert" className="text-sm text-destructive">{mutationError}</p>}
-                    <div className="flex justify-end gap-2">
-                        <button disabled={isMutating} onClick={() => { setBlockDialog(null); setBlockReason(""); setMutationError(null); }} className="min-h-11 rounded-md border px-4 text-sm">Cancel</button>
-                        <button disabled={isMutating || !blockReason.trim()} onClick={() => void submitBlockTask()} className="min-h-11 rounded-md bg-rose-500/90 px-4 text-sm font-medium text-white hover:bg-rose-500 disabled:opacity-50">{isMutating ? "Blocking…" : "Block task"}</button>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            <ProjectFormDialog mode={projectDialogMode} form={projectForm} setForm={setProjectForm} customers={customers} agents={agents} busy={isMutating} error={projectDialogMode ? mutationError : null} onClose={() => setProjectDialogMode(null)} onSubmit={() => void submitProject()} />
+            <TaskFormDialog mode={taskDialogMode} form={taskForm} setForm={setTaskForm} projects={taskDialogMode === "edit" ? projectItems : visibleProjects} customers={customers} agents={agents} members={members} busy={isMutating} error={taskDialogMode ? mutationError : null} onClose={() => setTaskDialogMode(null)} onSubmit={() => void submitTask()} />
+            <ConfirmArchiveTaskDialog
+                open={Boolean(archivingTaskId)}
+                title={taskTitle(tasks.find((task) => task.id === archivingTaskId) ?? { id: "" })}
+                busy={isMutating}
+                error={archivingTaskId ? mutationError : null}
+                onCancel={() => setArchivingTaskId(null)}
+                onConfirm={() => { const task = tasks.find((item) => item.id === archivingTaskId); if (task) void archiveTask(task); }}
+            />
+            <BlockTaskDialog
+                open={Boolean(blockDialog)}
+                title={blockDialog ? taskTitle(blockDialog.task) : "Task"}
+                reason={blockReasonDraft}
+                setReason={setBlockReasonDraft}
+                busy={isMutating}
+                error={blockDialog ? mutationError : null}
+                onCancel={() => { setBlockDialog(null); setBlockReasonDraft(""); setMutationError(null); }}
+                onConfirm={() => void submitBlockTask()}
+            />
         </div>
     );
-}
-
-function MetricCard({ label, value, hint, accent = "slate" }: { label: string; value: number; hint: string; accent?: "slate" | "cyan" | "amber" | "emerald" }) {
-    const tone = { slate: "border-zinc-800 bg-zinc-950/50", cyan: "border-cyan-500/20 bg-cyan-500/10", amber: "border-amber-500/20 bg-amber-500/10", emerald: "border-emerald-500/20 bg-emerald-500/10" }[accent];
-    return <div className={cn("rounded-xl border p-4", tone)}><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</div><div className="mt-2 text-2xl font-semibold text-zinc-100">{value}</div><div className="mt-1 text-xs text-zinc-500">{hint}</div></div>;
-}
-
-function BucketBadge({ label, count, tone = "zinc" }: { label: string; count: number; tone?: "zinc" | "rose" | "emerald" }) {
-    const toneClass = { zinc: "border-zinc-800 bg-zinc-950 text-zinc-300", rose: "border-rose-500/20 bg-rose-500/10 text-rose-300", emerald: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" }[tone];
-    return <div className={cn("rounded-lg border px-2 py-1.5", toneClass)}><div className="flex items-center justify-between gap-2"><span>{label}</span><span className="font-mono text-[10px]">{count}</span></div></div>;
-}
-
-function EmptyColumnHint({ children }: { children: ReactNode }) {
-    return <div className="rounded-lg border border-dashed border-zinc-800 p-4 text-center text-xs text-zinc-600">{children}</div>;
-}
-
-function BoardColumn({ title, count, tone, icon: Icon, children, droppableId }: { title: string; count: number; tone: "zinc" | "cyan" | "amber" | "emerald" | "slate" | "rose"; icon: any; children: ReactNode; droppableId?: string }) {
-    const toneClass = { zinc: "border-zinc-800/60 bg-zinc-900/30", cyan: "border-cyan-500/20 bg-cyan-500/5", amber: "border-amber-500/20 bg-amber-500/5", emerald: "border-emerald-500/20 bg-emerald-500/5", slate: "border-zinc-800/60 bg-zinc-900/30", rose: "border-rose-500/20 bg-rose-500/5" }[tone];
-    const { setNodeRef, isOver } = useDroppable({ id: droppableId || `__nodrop-${title}`, disabled: !droppableId });
-    return (
-        <div ref={setNodeRef} className={cn("flex h-full w-80 flex-col rounded-xl border p-3 transition-colors", toneClass, isOver && "border-cyan-400/60 bg-cyan-400/10 ring-1 ring-cyan-400/40")}>
-            <div className="mb-4 flex items-center justify-between px-1"><div className="flex items-center space-x-2"><Icon className="h-4 w-4 text-zinc-500" /><h3 className="text-sm font-medium text-zinc-300">{title}</h3></div><span className="rounded bg-zinc-800/50 px-2 py-0.5 font-mono text-xs text-zinc-500">{count}</span></div>
-            <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-1 pb-2">{children}</div>
-        </div>
-    );
-}
-
-function TaskCard({ task, project, customer, agent, blocked, reviewBucket, recurring, active, review, done, onClick, onArchive, onSetPriority, onSetState, overlay }: { task: any; project: string; customer: string; agent: string; blocked?: boolean; reviewBucket?: string; recurring?: boolean; active?: boolean; review?: boolean; done?: boolean; onClick: () => void; onArchive?: () => void; onSetPriority?: (priority: number) => void; onSetState?: (state: string) => void; overlay?: boolean }) {
-    const draggable = useDraggable({ id: task.id, disabled: overlay });
-    const priorityInfo = getPriorityInfo(task.priority || 0);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-    const border = blocked ? "border-rose-500/50" : recurring ? "border-cyan-500/40" : active ? "border-cyan-500/50" : review ? "border-amber-500/50" : done ? "border-emerald-500/40" : "border-zinc-800";
-    const style = overlay ? undefined : { transform: CSS.Translate.toString(draggable.transform) };
-    
-    const handleContextMenu = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setContextMenu({ x: e.clientX, y: e.clientY });
-    };
-    
-    useEffect(() => {
-        if (!contextMenu) return;
-        const close = () => setContextMenu(null);
-        window.addEventListener("click", close);
-        return () => window.removeEventListener("click", close);
-    }, [contextMenu]);
-    return (
-        <div
-            ref={overlay ? undefined : draggable.setNodeRef}
-            style={style}
-            {...(overlay ? {} : draggable.listeners)}
-            {...(overlay ? {} : draggable.attributes)}
-            role="button"
-            tabIndex={0}
-            onClick={onClick}
-            onContextMenu={handleContextMenu}
-            onKeyDown={(event) => {
-                if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
-                    event.preventDefault();
-                    onClick();
-                }
-            }}
-            className={cn(
-                "w-full cursor-grab rounded-lg border bg-zinc-950 p-4 text-left transition-colors hover:bg-zinc-900/80 active:cursor-grabbing",
-                border,
-                draggable.isDragging && "opacity-40",
-                overlay && "cursor-grabbing shadow-2xl shadow-black/50",
-            )}
-        >
-            <div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">TASK-{task.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{getTaskTitle(task)}</h4><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">{getWorkTypeLabel(task.taskType)}</div></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", task.priority >= 75 ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : task.priority >= 50 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : task.priority >= 25 ? "bg-slate-500/10 text-slate-400 border-slate-500/20" : "bg-zinc-500/10 text-zinc-500 border-zinc-700")}>{priorityInfo.label}</span></div>
-            <div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{task.assignedMemberId ? "Human · " : task.assignedAgentId ? "Agent · " : ""}{agent}</span></div>
-            <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{humanizeKey(task.state)}</span>{blocked && <span className="rounded border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocked</span>}{reviewBucket && <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">{humanizeKey(reviewBucket)}</span>}{recurring && <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">Recurring</span>}</div>
-            {(task.processingStartedAt || task.templateVersion) && <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-600"><span>{task.templateVersion ? `v${task.templateVersion}` : "Standard"}</span>{task.processingStartedAt && <span>Processing since {new Date(task.processingStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>}
-            
-            {done && onArchive && <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onArchive(); }} className="mt-3 min-h-11 w-full rounded-md border border-zinc-700 px-3 text-sm text-zinc-300 hover:bg-zinc-800">Archive task</button>}
-            {/* Right-click context menu */}
-            {contextMenu && (
-                <div
-                    className="fixed z-[100] min-w-[180px] rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
-                    style={{ left: contextMenu.x, top: contextMenu.y }}
-                    role="menu"
-                >
-                    <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Set Priority</div>
-                    {PRIORITY_OPTIONS.filter(p => p.value > 0).map((p) => (
-                        <div
-                            key={p.value}
-                            role="menuitem"
-                            onClick={(e) => { e.stopPropagation(); onSetPriority?.(p.value); setContextMenu(null); }}
-                            className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-zinc-800 ${task.priority >= p.value ? 'text-zinc-100' : 'text-zinc-400'}`}
-                        >
-                            <span className={`h-2 w-2 rounded-full ${task.priority >= p.value ? 'bg-current' : 'border border-current opacity-30'}`} />
-                            {p.label}
-                        </div>
-                    ))}
-                    <div className="my-1 border-t border-zinc-800" />
-                    <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Move to</div>
-                    {["inbox", "in_progress", "review", "blocked", "done"].filter(s => s !== task.state).map((state) => (
-                        <div
-                            key={state}
-                            role="menuitem"
-                            onClick={(e) => { e.stopPropagation(); onSetState?.(state); setContextMenu(null); }}
-                            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                        >
-                            {humanizeKey(state)}
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
-function RecurringCard({ definition, project, customer, agent }: { definition: any; project: string; customer: string; agent: string }) {
-    return <div className="w-full rounded-lg border border-cyan-500/30 bg-zinc-950 p-4 text-left"><div className="mb-3 flex items-start justify-between gap-3"><div className="space-y-2"><div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500/40" /><span className="font-mono text-[10px] text-zinc-500">RECUR-{definition.id.substring(0, 8).toUpperCase()}</span></div><h4 className="text-sm font-medium leading-snug text-zinc-200">{definition.name}</h4></div><span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", definition.active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-500")}>{definition.active ? "ACTIVE" : "PAUSED"}</span></div><div className="mb-3 flex flex-wrap gap-2 text-[10px] font-medium"><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{project}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{customer}</span><span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{agent}</span></div><div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-300">{getWorkTypeLabel(definition.taskType)}</span>{definition.cronExpression && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">{definition.cronExpression}</span>}{definition.nextRunAt && <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-500">Next {new Date(definition.nextRunAt).toLocaleString()}</span>}</div></div>;
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-    return <div className="space-y-3"><h3 className="text-sm font-medium text-zinc-300">{title}</h3>{children}</div>;
-}
-
-function TimelineEvent({ time, desc, isNote }: { time: string; desc: string; isNote?: boolean }) {
-    return <div className="flex items-start space-x-3"><div className={cn("mt-1 h-2 w-2 rounded-full", isNote ? "bg-cyan-500" : "bg-zinc-600")} /><div className="flex-1"><div className="text-[10px] text-zinc-500">{time}</div><div className="text-sm text-zinc-300">{desc}</div></div></div>;
-}
-
-function CheckboxRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-    return (
-        <label className="flex items-center gap-2">
-            <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-cyan-600 focus:ring-cyan-400" />
-            <span>{label}</span>
-        </label>
-    );
-}
-
-function CirclePulseIcon({ className }: { className?: string }) {
-    return <div className={cn("h-4 w-4 rounded-full border border-cyan-400/70", className)} />;
 }

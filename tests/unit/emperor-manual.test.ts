@@ -13,6 +13,7 @@ import { RICH_REPLY_GUIDE } from "../../src/lib/rich-reply-guide";
 const EXPECTED_SECTIONS = [
   "chat-and-mentions",
   "tasks-and-projects",
+  "writing",
   "knowledge",
   "storage",
   "approvals",

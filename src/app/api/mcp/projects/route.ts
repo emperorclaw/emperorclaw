@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { listProjectsForCompany, createProjectForCompany } from "@/lib/projects-crud";
-import { mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
+import { assertMcpMayReachAgent, mcpAccessErrorResponse, mcpMayUseCustomer, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest) {
     const auth = await verifyMcpToken(req);
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
         const {
             customerId,
             goal,
+            description,
             status: projectStatus,
             leadAgentId = null,
             requireApprovalForDone = false,
@@ -64,11 +65,19 @@ export async function POST(req: NextRequest) {
         if (customerId && !mcpMayUseCustomer(scoped.access, customerId)) {
             return NextResponse.json({ error: "Customer is outside this agent's scope" }, { status: 403 });
         }
+        try {
+            await assertMcpMayReachAgent(companyId, scoped.access, leadAgentId);
+        } catch (error) {
+            const denied = mcpAccessErrorResponse(error);
+            if (denied) return denied;
+            throw error;
+        }
 
         const project = await createProjectForCompany({
             companyId,
             customerId,
             goal,
+            description: typeof description === "string" ? description : null,
             status: projectStatus,
             leadAgentId,
             requireApprovalForDone,

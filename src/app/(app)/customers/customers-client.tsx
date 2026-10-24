@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { splitProjectTitle } from "@/lib/project-title";
 
 type CustomerSummary = any;
 
@@ -218,7 +219,7 @@ export default function CustomersClient({ initialData: customerData }: { initial
                                     <div className="grid gap-2 sm:grid-cols-2">
                                         {selectedCustomer.projects.map((project: { id: string; goal: string; status: string; openTasks: number }) => (
                                             <Link key={project.id} href={`/projects?project=${project.id}`} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 hover:border-cyan-400/30">
-                                                <span className="block truncate text-sm text-zinc-100">{project.goal}</span>
+                                                <span className="block truncate text-sm text-zinc-100" title={project.goal}>{splitProjectTitle(project.goal).name}</span>
                                                 <span className="text-xs text-zinc-500">{project.status} · {project.openTasks} open task{project.openTasks === 1 ? "" : "s"}</span>
                                             </Link>
                                         ))}

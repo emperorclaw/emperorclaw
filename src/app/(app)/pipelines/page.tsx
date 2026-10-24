@@ -5,6 +5,7 @@ import { companyMembers, pipelines, pipelineRuns, agents, projects, customers } 
 import { eq, desc, and, isNull, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import PipelinesClient from "./pipelines-client";
+import { splitProjectTitle } from "@/lib/project-title";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function PipelinesPage() {
             initialPipelines={JSON.parse(JSON.stringify(pipelineList))}
             initialRuns={JSON.parse(JSON.stringify(recentRuns))}
             agentsMap={Object.fromEntries(agentList.map(a => [a.id, a.name]))}
-            projectsMap={Object.fromEntries(projectList.map(p => [p.id, p.goal]))}
+            projectsMap={Object.fromEntries(projectList.map(p => [p.id, splitProjectTitle(p.goal).name]))}
             customersMap={Object.fromEntries(customerList.map(c => [c.id, c.name]))}
         />
     );

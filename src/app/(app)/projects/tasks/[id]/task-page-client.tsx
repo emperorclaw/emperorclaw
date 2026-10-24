@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import {
     IconAdjustmentsHorizontal,
     IconArrowLeft,
-    IconChevronDown,
     IconLayoutKanban,
     IconLoader2,
     IconRobot,
@@ -16,6 +15,8 @@ import {
     IconUser,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
+import { RichText } from "@/components/rich-text";
+import { projectTitle } from "@/lib/project-title";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { stallLabel } from "@/lib/stall-signal";
 import { taskStateLabel, type StoryEntry } from "@/lib/task-story";
@@ -243,6 +244,11 @@ export function TaskPageClient({ story, canEdit }: { story: Story; canEdit: bool
     };
 
     const OwnerIcon = task.owner?.type === "human" ? IconUser : IconRobot;
+    // Agents often write a whole brief into the project name; show the short label, keep the rest in the tooltip.
+    const project = projectTitle({ goal: task.projectName });
+    const projectTooltip = project.description ? `${project.name}
+
+${project.description}` : project.name;
 
     return (
         <div className="mx-auto w-full max-w-6xl space-y-6 pb-10">
@@ -253,7 +259,7 @@ export function TaskPageClient({ story, canEdit }: { story: Story; canEdit: bool
                 </Link>
                 <span aria-hidden="true">/</span>
                 {task.customerName && <><span className="truncate">{task.customerName}</span><span aria-hidden="true">/</span></>}
-                <span className="truncate">{task.projectName}</span>
+                <span className="truncate" title={projectTooltip}>{project.name}</span>
             </nav>
 
             <header className="space-y-3">
@@ -289,7 +295,7 @@ export function TaskPageClient({ story, canEdit }: { story: Story; canEdit: bool
                     </div>
                     <div className="min-w-0">
                         <dt className="text-[11px] text-zinc-500">Project</dt>
-                        <dd className="mt-0.5 truncate text-zinc-200" title={task.projectName}>{task.projectName}</dd>
+                        <dd className="mt-0.5 truncate text-zinc-200" title={projectTooltip}>{project.name}</dd>
                     </div>
                     <div className="min-w-0">
                         <dt className="text-[11px] text-zinc-500">Approval</dt>
@@ -301,15 +307,14 @@ export function TaskPageClient({ story, canEdit }: { story: Story; canEdit: bool
                 )}
             </header>
 
-            {task.description && (
-                <details className="group rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4 lg:hidden">
-                    <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-zinc-400 group-open:mb-2">Brief<IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-300">{task.description}</p>
-                </details>
-            )}
-
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
                 <div className="min-w-0 space-y-6">
+                    {task.description && (
+                        <section aria-labelledby="brief-heading" className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3.5 sm:px-5">
+                            <h2 id="brief-heading" className="mb-2 text-xs font-medium text-zinc-400">Brief</h2>
+                            <RichText content={task.description} collapsedHeight={300} />
+                        </section>
+                    )}
                     {live.runs.length > 0 && (
                         <div className="space-y-3" aria-label="Running now">
                             {live.runs.map((run) => <LiveRunBlock key={run.runId} run={run} meta={live.meta[run.runId]} offsetMs={live.offsetMs} nowMs={nowMs} />)}
@@ -332,12 +337,6 @@ export function TaskPageClient({ story, canEdit }: { story: Story; canEdit: bool
 
                 <aside className="hidden min-w-0 lg:block">
                     <div className="sticky top-4 space-y-5">
-                        {task.description && (
-                            <section className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-                                <h2 className="text-xs font-medium text-zinc-400">Brief</h2>
-                                <p className="mt-2 line-clamp-[12] whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-300">{task.description}</p>
-                            </section>
-                        )}
                         {canEdit && (
                             <section className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
                                 <h2 className="mb-3 text-xs font-medium text-zinc-400">Actions</h2>

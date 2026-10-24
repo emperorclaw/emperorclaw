@@ -5,6 +5,7 @@ import { getCompanyId } from "@/lib/auth";
 import { listPendingDecisions } from "@/lib/approvals";
 import { redirect } from "next/navigation";
 import ApprovalsClient, { type ApprovalItem } from "./approvals-client";
+import { splitProjectTitle } from "@/lib/project-title";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export default async function ApprovalsPage() {
                 assignee: task.assignedAgentId ? agentById.get(task.assignedAgentId)?.name ?? null : task.assignedMemberId ? memberById.get(task.assignedMemberId) ?? null : null,
             },
             linkedTasks: linked.map((t) => ({ id: t.id, projectId: t.projectId, title: taskTitle(t) })),
-            projectName: project?.goal ?? null,
+            projectName: project?.goal ? splitProjectTitle(project.goal).name : null,
             customerName: customer?.name ?? null,
         };
     };

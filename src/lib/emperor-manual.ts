@@ -11,6 +11,7 @@
  * `get_emperor_manual` MCP tool instead of each shipping their own copy.
  */
 import { RICH_REPLY_GUIDE } from "@/lib/rich-reply-guide";
+import { AGENT_WRITING_GUIDE } from "@/lib/agent-writing-guide";
 
 export const EMPEROR_MANUAL_VERSION = 1;
 export const EMPEROR_KERNEL_VERSION = 1;
@@ -50,8 +51,8 @@ const KNOWLEDGE = `Knowledge & Rules hold reusable facts, SOPs, policies, templa
   - on_request — discoverable only by explicit search or by opening it directly. Use it for long references, research, drafts, and sensitive material.
 - Every note has a one-line summary (frontmatter \`summary:\` or the body's first sentence) that becomes its index line, so make it say what the note actually contains.`;
 
-const TASKS_AND_PROJECTS = `- Reuse an existing project when the work serves the same outcome. Create one for an ongoing goal or coordinated set of tasks, not every question, message, file, or small fix. The project goal is also its displayed name: 3–8 words, preferably under 80 characters ("Acme Q4 Launch"). Put background, success criteria, constraints, and decisions in project memory and task descriptions.
-- A request that needs real work becomes a task before you start: actionable title, bounded description, acceptance criteria, deliverables, relevant project/customer IDs, and a due date when known. Reuse an existing task if one exists. Quick questions and small talk need none.
+const TASKS_AND_PROJECTS = `- Reuse an existing project when the work serves the same outcome. Create one for an ongoing goal or coordinated set of tasks, not every question, message, file, or small fix. The project goal is its displayed name: 2-6 words, at most 60 characters ("Harbor Dental website relaunch"). Put what it is for in the project description (create_project \`description\`), and background, success criteria, constraints, and decisions in project memory and task descriptions.
+- A request that needs real work becomes a task before you start: a short imperative title, a Markdown description (Goal / Context / Done when / Links, see "Writing tasks, notes and projects"), acceptance criteria, deliverables, relevant project/customer IDs, and a due date when known. Reuse an existing task if one exists. Quick questions and small talk need none.
 - A task has exactly one owner: set its assignee to the responsible agent or person (assignedAgentId for an agent). A chat @mention is not an assignment; reassign by updating the assignee. If you cannot name the owner, ask instead of creating an ownerless task.
 - Keep the state true: in_progress when you start, review while it waits on a person or an approval, done only when the acceptance criteria are met and the evidence (artifact IDs, links, results) is attached. The assignee closes it — never close work assigned to someone else.
 - Add a task note when you make progress or hit a blocker. Emperor also nudges idle in-progress tasks (stall sweep) and sends each agent a daily review of its open tasks: work through it, update states and notes, ask one concrete question for anything blocked, then reply with a short summary.`;
@@ -96,6 +97,7 @@ export const EMPEROR_MANUAL_SECTIONS: readonly EmperorManualSection[] = [
   { id: "overview", title: "Overview and where to write", body: OVERVIEW },
   { id: "chat-and-mentions", title: "Chat, mentions, and privacy", body: CHAT_AND_MENTIONS },
   { id: "tasks-and-projects", title: "Tasks and projects", body: TASKS_AND_PROJECTS },
+  { id: "writing", title: "Writing tasks, notes and projects", body: AGENT_WRITING_GUIDE },
   { id: "approvals", title: "Approvals", body: APPROVALS },
   { id: "team-handoffs", title: "Team work and handoffs", body: TEAM_HANDOFFS },
   { id: "knowledge", title: "Knowledge & Rules and injection modes", body: KNOWLEDGE },

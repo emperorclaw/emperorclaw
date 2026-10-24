@@ -5,7 +5,7 @@ import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { jsonResult, errorResult } from "../result";
 import { requestApprovalForTasks } from "@/lib/approvals";
 import { resolveAgentId } from "@/lib/mcp";
-import { BOUND_AGENT_MISMATCH, mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask } from "@/lib/mcp-access";
+import { BOUND_AGENT_MISMATCH, assertMcpMayAssign, mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask } from "@/lib/mcp-access";
 
 export function registerTaskTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
     // Every task tool runs under the bound agent's data scope (lib/mcp-access.ts).
@@ -90,11 +90,11 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("create_task", {
         title: "Create Task",
-        description: "Create a new task under a project. Every task should have exactly one owner: pass `assignee` to assign the responsible agent or human (or assignedAgentId for agents only). The assignee is accountable for closing it. Use claim_task instead when you want an agent to pick up unassigned work.",
+        description: "Create a new task under a project. Every task should have exactly one owner: pass `assignee` to assign the responsible agent or human (or assignedAgentId for agents only). The assignee is accountable for closing it. Use claim_task instead when you want an agent to pick up unassigned work. Write it for a busy person: inputJson.title is a short imperative outcome (at most 80 characters, no IDs or jargon, e.g. \"Publish the spring menu landing page\"); inputJson.description is Markdown with ## Goal, ## Context, ## Done when (a - [ ] checklist) and ## Links, in the language the people in this company use.",
         inputSchema: {
             projectId: z.string().describe("The project this task belongs to"),
             taskType: z.string().describe("Task type identifier, e.g. 'research', 'write_content', 'review'"),
-            inputJson: z.record(z.string(), z.unknown()).optional().describe("Structured task input/spec"),
+            inputJson: z.record(z.string(), z.unknown()).optional().describe("Task content: { title: short imperative outcome, at most 80 chars; description: Markdown with Goal / Context / Done when (checklist) / Links; acceptanceCriteria?: string[]; deliverables?: string[] }"),
             priority: z.number().int().optional(),
             assignee: z.object({
                 type: z.enum(["agent", "human"]),
@@ -105,6 +105,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
     }, async ({ projectId, taskType, inputJson, priority, assignee, assignedAgentId }) => {
         try {
             await requireProject(projectId);
+            await assertMcpMayAssign(companyId, await access(), { assignee, assignedAgentId });
             const { task } = await createTaskForProject({
                 companyId, projectId, taskType, inputJson, priority, assignee, assignedAgentId,
                 source: "mcp_server", actorType: "agent", actorId: callerAgentId ?? null,
@@ -120,7 +121,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
         description: "Update a task's title, goal, priority, assignee, state, or input. Provide only the fields you want to change. Reassign explicitly with `assignee`; the assignee closes the task. To hold work you cannot progress, set state 'blocked' with a blockedReason naming what you are waiting on; this stops automatic stalled reminders. Unblock by setting state back to 'in_progress' (the reason is cleared and the progress clock restarts).",
         inputSchema: {
             taskId: z.string(),
-            title: z.string().optional(),
+            title: z.string().optional().describe("Short imperative outcome, at most 80 characters, no IDs or jargon"),
             goal: z.string().optional(),
             priority: z.number().int().optional(),
             assignee: z.object({
@@ -135,6 +136,7 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
     }, async ({ taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson }) => {
         try {
             await requireTask(taskId);
+            await assertMcpMayAssign(companyId, await access(), { assignee, assignedAgentId });
             const task = await updateTaskForCompany({ companyId, taskId, title, goal, priority, assignee, assignedAgentId, state, blockedReason, inputJson, actorType: "agent", actorId: callerAgentId ?? null });
             return jsonResult({ message: "Task updated", task });
         } catch (e) {
@@ -144,10 +146,10 @@ export function registerTaskTools(server: McpServer, companyId: string, callerAg
 
     server.registerTool("add_task_note", {
         title: "Add Task Note",
-        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal: it resets the loop guard and the stall sweep, so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes.",
+        description: "Record progress, a handoff, or a blocker on a task. This is the visible progress signal: it resets the loop guard and the stall sweep, so note what you actually did or what is blocking you. Use update_task for state/assignee changes, not notes. Write for a business reader in at most ~8 lines of Markdown: what changed, the evidence (numbers, links, artifact IDs), and the next step. Put technical detail under a final **Details** line.",
         inputSchema: {
             taskId: z.string().describe("The task's UUID"),
-            note: z.string().min(1).describe("What you did, handed off, or what is blocking you"),
+            note: z.string().min(1).describe("Markdown, at most ~8 lines: what changed, evidence (numbers, links), next step or blocker. Plain language; technical detail last under **Details**."),
             kind: z.enum(["progress", "handoff", "blocker"]).optional().describe("The kind of note (default progress)"),
             agentId: z.string().optional().describe("Requesting agent id or name (operator connections only)"),
         },

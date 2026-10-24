@@ -23,6 +23,7 @@ import {
     dashboardActivity, buildFeed, DONE_TODAY_MS, skillNames,
     type SceneCommunication, type ActivityEvent, type CollaborationEvent, type CostSummary, type DashboardData, type DashboardMember, type DashboardTask, type FeedEvent, type PairThreadActivity, type ThroughputSummary,
 } from "@/lib/team-scene";
+import { splitProjectTitle } from "@/lib/project-title";
 
 export const dynamic = "force-dynamic";
 
@@ -185,7 +186,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     const leader = await leaderPromise;
     const live = await livePromise;
-    const projectName = new Map(projectRows.map((p) => [p.id, p.goal]));
+    const projectName = new Map(projectRows.map((p) => [p.id, splitProjectTitle(p.goal).name]));
     const healthById = new Map(health.agents.map((a) => [a.id, a]));
     const activityByAgent = new Map(typing.filter((t) => t.agentId).map((t) => [t.agentId!, dashboardActivity(t.activity, t.threadType)]));
     const memberKeyByUser = new Map(members.map((m) => [m.userId, `human:${m.id}`]));

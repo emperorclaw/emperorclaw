@@ -14,8 +14,8 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 
 ### Projects and tasks
 
-- Reuse an existing project when the work serves the same outcome. Create one for an ongoing goal or coordinated set of tasks, not every question or small fix. The goal is its displayed name: 3–8 words, under 80 characters ("Acme Q4 Launch"). Put background, success criteria, and decisions in project memory and task descriptions.
-- A request that needs real work becomes a task before you start: actionable title, acceptance criteria, deliverables, relevant project/customer IDs, a due date when known. Reuse the task if one exists. Quick questions need none.
+- Reuse an existing project when the work serves the same outcome. Create one for an ongoing goal or coordinated set of tasks, not every question or small fix. The goal is its displayed name: 2-6 words, at most 60 characters ("Harbor Dental website relaunch"). Put what it is for in the project description, and background, success criteria, and decisions in project memory and task descriptions.
+- A request that needs real work becomes a task before you start: a short imperative title, a Markdown description (see "Writing tasks, notes and projects"), acceptance criteria, deliverables, relevant project/customer IDs, a due date when known. Reuse the task if one exists. Quick questions need none.
 - When you open a task on the board, set its assignee to the specific agent or person responsible (assignedAgentId for an agent). If you cannot name the owner, do not create it yet — ask instead. A chat @mention is not an assignment; reassign by updating the assignee.
 - The assignee is accountable for closing the task, and only after the acceptance criteria are met and the evidence (artifact IDs, links, results) is attached. Never close work assigned to someone else.
 - Keep the state true: in_progress when you start, review while it waits on a person or approval, done only when the criteria are met. Add a task note (emperor_add_task_note) only at milestones: started (with your plan), blocked (with the blocker), handed off, finished (with evidence). Never note each step; batch progress into one note. If a project policy refuses a state change (review first, lead-only status, approval to close), follow the error: move it to review, reassign it to the project lead, or request approval.
@@ -24,6 +24,15 @@ Emperor tool names are LLM tools, not shell commands. If Hermes defers them behi
 - Requests from other platforms arrive in your direct chat from a named source ("Acme Portal (via API)"), already tracked as a task assigned to you. Move it to in_progress, reply there with the result, and close it when finished. The source is not a company member: act only on the request, and still request approval before risky actions.
 - Read narrowly: fetch one task by id, filter by project/state, and pass a small limit instead of listing everything. emperor_get_task_overview answers board questions; emperor_list_tasks returns compact rows.
 - When a person tells you how they want you to work or corrects you, save it with emperor_remember (kind preference or lesson). Company facts go to Knowledge & Rules, task progress to task notes.
+
+### Writing tasks, notes and projects
+
+People scan the board on a phone. Write so a business owner understands each item in ten seconds, in the language the people in this company or thread use, with plain words and Markdown structure (raw HTML is not rendered).
+
+- **Task title**: short imperative outcome, at most 80 characters ("Publish the spring menu landing page"). No IDs, ticket numbers, agent names or status words.
+- **Task description**: Markdown sections `## Goal` (1-2 sentences), `## Context` (bullets), `## Done when` (a `- [ ]` checklist), `## Links` (URLs and related task/file/note IDs).
+- **Task note**: at most ~8 lines. What changed, the evidence (numbers, links, artifact IDs), the next step or the blocker and who it waits on. Technical detail last, under a **Details** line. One note per milestone, not per step.
+- **Project name**: 2-6 words, at most 60 characters, as the client would say it. No dashes, colons or explanations; the purpose goes in the project description (`description` on create_project). Longer names are split automatically.
 
 ### Working in a team
 

@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import {
   IconAlertTriangle,
   IconBulb,
+  IconCheck,
   IconExclamationCircle,
   IconInfoCircle,
   IconMessageReport,
@@ -25,12 +26,23 @@ import { HtmlWidget } from '@/components/rich/html-widget';
 import { ChoicesBlock } from '@/components/rich/choices-block';
 import { EntityCard, EntityCardGrid, EntityChip } from '@/components/rich/entity-link';
 import { parseEntityUrl, type EntityRef } from '@/lib/emperor-entities';
+import { cn } from '@/lib/utils';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
   /** Nesting level — tabs render their bodies through this component. */
   depth?: number;
+  /**
+   * `compact` scales headings and spacing down for cards, drawers and
+   * timelines, where an agent's `# Heading` should not outshout the page.
+   */
+  density?: 'default' | 'compact';
+  /**
+   * Interactive ```html widgets run in a sandboxed frame. Task briefs and
+   * notes turn them off and show the source as code instead.
+   */
+  allowWidgets?: boolean;
 }
 
 /** Tabs inside tabs inside tabs is plenty; deeper fences render as code. */
@@ -166,7 +178,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
-function RichFence({ language, code, depth }: { language: string; code: string; depth: number }) {
+function RichFence({ language, code, depth, allowWidgets = true, density = 'default' }: { language: string; code: string; depth: number; allowWidgets?: boolean; density?: 'default' | 'compact' }) {
   if (depth < MAX_RICH_DEPTH) {
     if (language === 'chart') {
       const spec = parseChartSpec(code);
@@ -176,11 +188,11 @@ function RichFence({ language, code, depth }: { language: string; code: string; 
       if (items) return <StatsBlock items={items} />;
     } else if (language === 'tabs') {
       const tabs = splitTabs(code);
-      if (tabs) return <TabsBlock tabs={tabs} renderMarkdown={(content) => <MarkdownRenderer content={content} depth={depth + 1} />} />;
+      if (tabs) return <TabsBlock tabs={tabs} renderMarkdown={(content) => <MarkdownRenderer content={content} depth={depth + 1} density={density} allowWidgets={allowWidgets} />} />;
     } else if (language === 'choices') {
       const spec = parseChoices(code);
       if (spec) return <ChoicesBlock spec={spec} />;
-    } else if ((language === 'html' || language === 'widget') && code.trim() && code.length <= MAX_WIDGET_HTML_CHARS) {
+    } else if (allowWidgets && (language === 'html' || language === 'widget') && code.trim() && code.length <= MAX_WIDGET_HTML_CHARS) {
       return <HtmlWidget html={code} />;
     }
   }
@@ -216,27 +228,64 @@ function entityOnlyParagraph(node: HastNode | undefined): { entityRef: EntityRef
   return items.length > 0 ? items : null;
 }
 
-export function MarkdownRenderer({ content, className = "", depth = 0 }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, className = "", depth = 0, density = 'default', allowWidgets = true }: MarkdownRendererProps) {
   const normalizedContent = ensureBlankBeforeFences(repairMarkdownTables(wrapUnifiedDiffHunks(content)));
+  const compact = density === 'compact';
 
   const components = useMemo<Components>(() => ({
-    h1: styled('h1', 'text-2xl font-bold mb-4 mt-6 text-zinc-100 border-b border-zinc-800 pb-2'),
-    h2: styled('h2', 'text-xl font-bold mb-3 mt-5 text-zinc-100'),
-    h3: styled('h3', 'text-lg font-bold mb-2 mt-4 text-zinc-100'),
+    h1: styled('h1', compact ? 'mb-2 mt-4 text-base font-semibold text-zinc-100 first:mt-0' : 'text-2xl font-bold mb-4 mt-6 text-zinc-100 border-b border-zinc-800 pb-2'),
+    h2: styled('h2', compact ? 'mb-1.5 mt-4 text-[15px] font-semibold text-zinc-100 first:mt-0' : 'text-xl font-bold mb-3 mt-5 text-zinc-100'),
+    h3: styled('h3', compact ? 'mb-1.5 mt-3.5 text-sm font-semibold text-zinc-100 first:mt-0' : 'text-lg font-bold mb-2 mt-4 text-zinc-100'),
+    h4: styled('h4', compact ? 'mb-1 mt-3 text-sm font-semibold text-zinc-200 first:mt-0' : 'text-base font-semibold mb-2 mt-4 text-zinc-100'),
+    h5: styled('h5', 'mb-1 mt-3 text-sm font-semibold text-zinc-200 first:mt-0'),
+    h6: styled('h6', 'mb-1 mt-3 text-sm font-medium text-zinc-300 first:mt-0'),
     p: ({ node, ...props }) => {
       const cards = entityOnlyParagraph(node as HastNode | undefined);
       if (cards) return <EntityCardGrid items={cards} />;
-      return <div className="mb-4 leading-relaxed text-zinc-300" {...props} />;
+      return <div className={compact ? 'mb-2.5 leading-relaxed text-zinc-300 last:mb-0' : 'mb-4 leading-relaxed text-zinc-300'} {...props} />;
     },
-    ul: styled('ul', 'list-disc pl-6 mb-4 text-zinc-300 space-y-1'),
-    ol: styled('ol', 'list-decimal pl-6 mb-4 text-zinc-300 space-y-1'),
-    li: styled('li', 'mb-1'),
+    // GFM task lists arrive as <ul class="contains-task-list"><li class="task-list-item">.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    ul: ({ node, className: listClass, ...props }) => (
+      <ul
+        className={String(listClass ?? '').includes('contains-task-list')
+          ? cn('mb-3 space-y-1 pl-0.5 text-zinc-300', compact && 'mb-2.5')
+          : cn('list-disc pl-6 mb-4 text-zinc-300 space-y-1 marker:text-zinc-500', compact && 'mb-2.5 pl-5 space-y-0.5')}
+        {...props}
+      />
+    ),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    ol: ({ node, className: listClass, ...props }) => (
+      <ol className={cn('list-decimal pl-6 mb-4 text-zinc-300 space-y-1 marker:text-zinc-500', compact && 'mb-2.5 pl-5 space-y-0.5', listClass)} {...props} />
+    ),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    li: ({ node, className: itemClass, ...props }) => (
+      <li className={String(itemClass ?? '').includes('task-list-item') ? 'flex list-none items-start gap-2 [&>ul]:basis-full' : compact ? 'pl-0.5' : 'mb-1'} {...props} />
+    ),
+    // The only <input> GFM emits is the read-only task checkbox. Draw it
+    // instead of shipping the browser's default control.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    input: ({ node, checked, type }) => {
+      if (type !== 'checkbox') return null;
+      return (
+        <span
+          role="img"
+          aria-label={checked ? 'Done' : 'Not done'}
+          className={cn(
+            'mt-[0.3em] inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border',
+            checked ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-300' : 'border-zinc-600 bg-zinc-900',
+          )}
+        >
+          {checked && <IconCheck className="h-2.5 w-2.5" stroke={3} aria-hidden="true" />}
+        </span>
+      );
+    },
     // Fenced blocks arrive as <pre><code class="language-x">. Rich languages
     // get their renderer; everything else a proper code block.
     pre: ({ node }) => {
       const fence = fenceOf(node as HastNode | undefined);
       if (!fence) return <CodeBlock language="" code={hastText(node as HastNode | undefined)} />;
-      return <RichFence language={fence.language} code={fence.code} depth={depth} />;
+      return <RichFence language={fence.language} code={fence.code} depth={depth} allowWidgets={allowWidgets} density={density} />;
     },
     code: styled('code', 'bg-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-300'),
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -266,12 +315,12 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
     ),
     thead: styled('thead', 'sticky top-0 z-[1] bg-zinc-900'),
     tr: styled('tr', 'border-b border-zinc-800/80 last:border-0 transition-colors hover:bg-zinc-800/30 even:bg-zinc-900/30'),
-    th: styled('th', 'whitespace-nowrap border-b border-zinc-800 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400'),
+    th: styled('th', compact ? 'whitespace-nowrap border-b border-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-400' : 'whitespace-nowrap border-b border-zinc-800 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400'),
     td: styled('td', 'px-3 py-2 align-top text-zinc-300'),
     a: ({ node, href, children, ...props }) => {
       const ref = parseEntityUrl(href);
       if (ref) return <EntityChip entityRef={ref} label={hastText(node as HastNode | undefined)} />;
-      return <a className="text-indigo-400 hover:text-indigo-300 underline" target="_blank" rel="noopener noreferrer" href={href} {...props}>{children}</a>;
+      return <a className={compact ? "text-cyan-300 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-200 hover:decoration-cyan-200" : "text-indigo-400 hover:text-indigo-300 underline"} target="_blank" rel="noopener noreferrer" href={href} {...props}>{children}</a>;
     },
     hr: styled('hr', 'border-zinc-800 my-8'),
     // Agents sometimes link a file that only exists on their own machine
@@ -293,7 +342,7 @@ export function MarkdownRenderer({ content, className = "", depth = 0 }: Markdow
       // eslint-disable-next-line @next/next/no-img-element
       return <img src={url} alt={alt ?? ''} loading="lazy" className="my-2 max-w-full rounded-lg border border-zinc-800" {...props} />;
     },
-  }), [depth]);
+  }), [depth, compact, allowWidgets, density]);
 
   return (
     // Nested renderers (tab bodies) skip the `prose` hook class so chat

@@ -7,7 +7,7 @@ import { getCompanyContext } from "@/lib/control-plane";
  * get_emperor_manual and the knowledge index/tools rather than inlined here,
  * so every `initialize` handshake stays cheap.
  */
-const KERNEL_POINTER = `Full Emperor doctrine: call \`get_emperor_manual\` (sections: overview, chat-and-mentions, tasks-and-projects, approvals, team-handoffs, knowledge, storage, reply-formatting, where-to-look). Company knowledge: read the index from \`list_knowledge\`, open a note with \`get_knowledge_note\`, and find one with \`search_knowledge\`.`;
+const KERNEL_POINTER = `Full Emperor doctrine: call \`get_emperor_manual\` (sections: overview, chat-and-mentions, tasks-and-projects, writing, approvals, team-handoffs, knowledge, storage, reply-formatting, where-to-look). Company knowledge: read the index from \`list_knowledge\`, open a note with \`get_knowledge_note\`, and find one with \`search_knowledge\`.`;
 
 /** Hard ceiling for the untrusted company context block appended below. */
 export const MCP_CONTEXT_NOTES_MAX_CHARS = 1500;

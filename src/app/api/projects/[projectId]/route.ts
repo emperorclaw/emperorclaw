@@ -5,6 +5,7 @@ import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberMaySeeProject } from "@/lib/member-scope";
+import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
 
 const validStatuses = new Set(["active", "paused", "killed", "completed"]);
 
@@ -42,10 +43,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
             return NextResponse.json({ error: "Invalid project status" }, { status: 400 });
         }
 
-        const goal = typeof body.goal === "string" ? body.goal.trim() : existing.goal;
-        if (!goal) {
+        const prepared = body.goal === undefined ? null : prepareProjectGoal(body.goal, body.description);
+        if (body.goal !== undefined && !prepared) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
         }
+        const goal = prepared?.goal ?? existing.goal;
         if (!(await validateScopedRelation(companyId, customers, body.customerId))) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
         }
@@ -66,6 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pr
             maxActiveAgents: body.maxActiveAgents === undefined ? existing.maxActiveAgents : Math.max(1, Number(body.maxActiveAgents) || existing.maxActiveAgents),
             updatedAt: new Date(),
         }).where(eq(projects.id, projectId)).returning();
+        await saveProjectPurposeNote({ companyId, projectId, purpose: prepared?.purpose ?? null });
 
         return NextResponse.json({ project });
     } catch (error) {

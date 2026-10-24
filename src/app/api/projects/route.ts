@@ -6,6 +6,7 @@ import { agents, customers, projects } from "@/db/schema";
 import { getCompanyId } from "@/lib/auth";
 import { companyRouteAccess } from "@/lib/company-access";
 import { memberCustomerCondition, memberMaySeeAgent, memberMaySeeCustomer } from "@/lib/member-scope";
+import { prepareProjectGoal, saveProjectPurposeNote } from "@/lib/projects-crud";
 
 async function validateScopedRelation(companyId: string, table: typeof customers | typeof agents, id?: unknown) {
     if (!id) return true;
@@ -38,10 +39,12 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const goal = typeof body.goal === "string" ? body.goal.trim() : "";
-        if (!goal) {
+        // Overlong names become a short name plus a purpose note (lib/project-title.ts).
+        const prepared = prepareProjectGoal(body.goal, body.description);
+        if (!prepared) {
             return NextResponse.json({ error: "goal is required" }, { status: 400 });
         }
+        const goal = prepared.goal;
         if (!(await validateScopedRelation(companyId, customers, body.customerId))
             || (access.ctx.scope && !memberMaySeeCustomer(access.ctx.scope, body.customerId))) {
             return NextResponse.json({ error: "Customer not found" }, { status: 404 });
@@ -65,6 +68,7 @@ export async function POST(req: NextRequest) {
             onlyLeadCanChangeStatus: Boolean(body.onlyLeadCanChangeStatus),
             maxActiveAgents: Math.max(1, Number(body.maxActiveAgents) || 3),
         }).returning();
+        await saveProjectPurposeNote({ companyId, projectId: project.id, purpose: prepared.purpose });
 
         return NextResponse.json({ project }, { status: 201 });
     } catch (error) {

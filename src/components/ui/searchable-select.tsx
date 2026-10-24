@@ -8,6 +8,8 @@ export type SearchableSelectOption = {
     value: string;
     label: string;
     description?: string | null;
+    /** Extra text the search matches but the list does not show (a project's description). */
+    keywords?: string | null;
 };
 
 export function SearchableSelect({
@@ -32,7 +34,7 @@ export function SearchableSelect({
     const filtered = useMemo(() => {
         const normalized = query.trim().toLowerCase();
         if (!normalized) return options;
-        return options.filter((option) => `${option.label} ${option.description || ""}`.toLowerCase().includes(normalized));
+        return options.filter((option) => `${option.label} ${option.description || ""} ${option.keywords || ""}`.toLowerCase().includes(normalized));
     }, [options, query]);
 
     useEffect(() => {
@@ -64,7 +66,7 @@ export function SearchableSelect({
                 onClick={() => setOpen((current) => !current)}
                 className="flex h-10 w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 text-left text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60"
             >
-                <span className={cn("truncate", !selected && "text-zinc-400")}>{selected?.label || placeholder}</span>
+                <span title={selected?.label} className={cn("truncate", !selected && "text-zinc-400")}>{selected?.label || placeholder}</span>
                 <IconChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
             </button>
             {open && (
@@ -100,7 +102,7 @@ export function SearchableSelect({
                                 >
                                     <IconCheck className={cn("mt-0.5 h-4 w-4 shrink-0", option.value === value ? "text-cyan-300" : "text-transparent")} />
                                     <span className="min-w-0">
-                                        <span className="block truncate font-medium">{option.label}</span>
+                                        <span title={option.label} className="block truncate font-medium">{option.label}</span>
                                         {option.description ? <span className="mt-0.5 block truncate text-xs text-zinc-500">{option.description}</span> : null}
                                     </span>
                                 </button>
