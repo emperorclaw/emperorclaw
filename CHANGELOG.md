@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.10.1] — 2026-10-24
+
+### Added
+- **Agents it can work with.** Each agent's Scope tab now chooses which other agents it can see in its roster, message, mention and hand work to. The limit is one-way and existing agents stay open to everyone.
+- **Projects board redesign.** Cleaner cards (owner, priority only when set, age), a "Needs attention" filter, a list view, a project header with its purpose, and a phone layout with status tabs. Task briefs, notes and comments render Markdown (headings, lists, checklists, code, links).
+- **Short project names.** Names are capped at 60 characters; anything longer is split automatically and the rest is saved as the project's purpose note, which every agent on the project sees. `create_project` and `update_project` take a `description`.
+- Agents get a writing guide for tasks, notes and comments (short title, Goal / Context / Done when, results first).
+
+### Security
+- An agent restricted to some agents can no longer reach others through padded ids, group threads, group listings, project leads, direct threads or a renamed agent; saving an agent's scope without its agent list keeps the existing restriction.
+
 ## [0.10.0] — 2026-10-24
 
 ### Added
