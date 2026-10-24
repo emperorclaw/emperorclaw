@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.11.1] — 2026-10-24
+
+### Fixed
+- A busy agent's typing signal (about once a second) no longer refreshes the dashboard and inbox; it only updates its own chat.
+
 ## [0.11.0] — 2026-10-24
 
 ### Added
