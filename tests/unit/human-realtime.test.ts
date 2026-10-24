@@ -79,12 +79,12 @@ test("humanSocketReceives: an empty restricted allow-list fails closed", () => {
 
 // ── Topic mapping ────────────────────────────────────────────────────────────
 
-test("eventTopicsFor: thread messages and presence map to thread + dashboard + inbox", () => {
+test("eventTopicsFor: thread messages map to thread + dashboard + inbox; presence only to its thread", () => {
     const t1 = "11111111-1111-4111-8111-111111111111";
     const topics = eventTopicsFor({ type: "thread_message", threadId: t1 }, null);
     assert.deepEqual(new Set(topics), new Set([`thread:${t1}`, "dashboard", "inbox"]));
     const typing = eventTopicsFor({ type: "participant_status", threadId: t1 }, null);
-    assert.ok(typing.includes(`thread:${t1}`) && typing.includes("dashboard") && typing.includes("inbox"));
+    assert.deepEqual(typing, [`thread:${t1}`]);
 });
 
 test("eventTopicsFor: agent events map to agents + dashboard", () => {

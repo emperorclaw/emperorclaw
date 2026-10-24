@@ -43,9 +43,12 @@ export function eventTopicsFor(payload: unknown, subject: RealtimeSubject | null
     // Broad "something on this surface changed" topics by event type.
     switch (type) {
         case "thread_message":
-        case "participant_status":
             topics.add("dashboard");
             topics.add("inbox");
+            break;
+        // Typing/working presence: a busy agent re-sends it about once a second,
+        // so it only refreshes its own thread (runs and messages refresh the rest).
+        case "participant_status":
             break;
         case "run_updated":
             topics.add("dashboard");
