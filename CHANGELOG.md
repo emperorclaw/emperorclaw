@@ -9,6 +9,17 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.12.0] — 2026-10-24
+
+### Changed
+- **Timeline, redesigned.** Calm by default: rounded bars that merge into "12 runs" clusters when they would overlap, a day-and-hour axis, and Today auto-fitted to the hours with activity. Click a run to focus it (every run of that task lights up across agents with its handoff arrows) and open a detail panel with outcome, time, tools, tokens and cost. Colour by outcome, source (delegated or automation) or project; event markers on demand; idle agents collapsed; cost and success rate in the header. Only agents get rows: what people do (assign, approve, add a note) shows as a marker on the agent it reached.
+- **See what an agent is doing everywhere.** A person's chat with an agent shows what else it is working on ("Also working on Fix contact form · 23 min →") and says when a message is queued because the agent is busy. The agent's "Right now" card lists every piece of work in progress.
+- **Work log.** In private direct-chat mode, the agent's shared thread (where system-assigned work lands) is now its Work log: it leaves the chat list and opens from the agent's panel and the "Also working on" line.
+- The dashboard shows "Live" instead of a refresh countdown while the live connection is up.
+
+### Security
+- Another person's private chat is only ever shown as "a private chat": no task, link or timing.
+
 ## [0.11.3] — 2026-10-24
 
 ### Fixed
