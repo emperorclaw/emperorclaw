@@ -42,6 +42,7 @@ export const GO_CHORDS: Record<string, { href: string; label: string }> = {
     i: { href: "/inbox", label: "Inbox" },
     m: { href: "/messages", label: "Messages" },
     p: { href: "/projects", label: "Projects" },
+    t: { href: "/timeline", label: "Timeline" },
     a: { href: "/agents", label: "Agents" },
 };
 

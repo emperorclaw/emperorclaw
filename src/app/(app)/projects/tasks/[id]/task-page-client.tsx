@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
     IconAdjustmentsHorizontal,
     IconArrowLeft,
+    IconHistory,
     IconLayoutKanban,
     IconLoader2,
     IconRobot,
@@ -206,10 +207,16 @@ function TaskActions({ story, onDone }: { story: Story; onDone?: () => void }) {
                 </div>
             </div>
 
-            <Link href={`/projects?project=${encodeURIComponent(task.projectId)}&task=${encodeURIComponent(task.id)}`} className="inline-flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200">
-                <IconLayoutKanban className="h-3.5 w-3.5" aria-hidden="true" />
-                Open on the board (edit, priority, archive)
-            </Link>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                <Link href={`/projects?project=${encodeURIComponent(task.projectId)}&task=${encodeURIComponent(task.id)}`} className="inline-flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200">
+                    <IconLayoutKanban className="h-3.5 w-3.5" aria-hidden="true" />
+                    Open on the board (edit, priority, archive)
+                </Link>
+                <Link href={`/timeline?projectId=${encodeURIComponent(task.projectId)}`} className="inline-flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200">
+                    <IconHistory className="h-3.5 w-3.5" aria-hidden="true" />
+                    See this project on the timeline
+                </Link>
+            </div>
         </div>
     );
 }

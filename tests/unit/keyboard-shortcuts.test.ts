@@ -36,8 +36,8 @@ test("modifier combinations are never single-key shortcuts", () => {
     assert.equal(isPlainKey({ ctrlKey: false, metaKey: false, altKey: true }), false);
 });
 
-test("g-chords cover home, inbox, messages, projects and agents", () => {
-    assert.deepEqual(Object.fromEntries(Object.entries(GO_CHORDS).map(([k, v]) => [k, v.href])), { h: "/", i: "/inbox", m: "/messages", p: "/projects", a: "/agents" });
+test("g-chords cover home, inbox, messages, projects, timeline and agents", () => {
+    assert.deepEqual(Object.fromEntries(Object.entries(GO_CHORDS).map(([k, v]) => [k, v.href])), { h: "/", i: "/inbox", m: "/messages", p: "/projects", t: "/timeline", a: "/agents" });
 });
 
 test("palette matching: every word, any order, case and accents ignored", () => {

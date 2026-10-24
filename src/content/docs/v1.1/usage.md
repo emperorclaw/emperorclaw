@@ -105,3 +105,28 @@ If a user asks what happened, the answer should be visible in Emperor:
 - threads
 
 That is the standard for a public control plane product.
+
+## 7. Read The Timeline
+
+The Timeline (Work → Timeline) is a Gantt view of who worked on what, when, and
+who handed work to whom. Each agent is one row, and each run is a bar coloured
+by its outcome: green for done, amber for "needs you", red for failed, grey for
+stopped, and a striped bar for a run that is still going. A cancelled run draws
+as an outlined bar. People who acted in the window appear below the agents.
+
+- Markers sit on a row for task events: created, assigned, a status change, a
+  note, an approval requested or decided, and a file saved.
+- Thin arrows between rows are handoffs: an assignment by another actor, or a
+  run one agent triggered with a message to another.
+- Use the presets (Today, 7 days, 30 days) or pick custom dates. Zoom in and
+  out, and pan with the mini-map below the chart.
+- Hover a bar for the task, project, outcome, times, tools, tokens and cost.
+  Click a bar or marker to open the task; a "Chat" bar opens the conversation.
+- Filters narrow to one agent, project or customer. A restricted member only
+  sees work inside their scope, and never another person's private chat.
+- The page refreshes every 30 seconds while today is in the window.
+
+The Timeline is a read of what already happened, built from the run ledger and
+task events — the same sources the task page's story uses, so the two always
+agree.
+

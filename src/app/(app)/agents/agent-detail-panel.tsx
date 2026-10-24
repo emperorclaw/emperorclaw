@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import {
     IconRobot,
     IconPlugConnected,
@@ -11,6 +12,7 @@ import {
     IconAlertTriangle,
     IconPencil,
     IconRefresh,
+    IconHistory,
 } from "@tabler/icons-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentDirectChat } from "@/components/agent-direct-chat";
@@ -275,6 +277,10 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                     </div>
                 </div>
                 <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+                    <Link href={`/timeline?agentId=${encodeURIComponent(agent.id)}`} title="See this agent on the timeline"
+                        className="rounded-full border border-zinc-700 bg-zinc-900/60 p-2 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300">
+                        <IconHistory className="h-4 w-4" />
+                    </Link>
                     {agent.containerId && (
                         <ContainerNameDisplay containerName={agent.containerName ?? null} containerId={agent.containerId} />
                     )}
