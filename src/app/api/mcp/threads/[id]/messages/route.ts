@@ -6,10 +6,10 @@ import { messageThreads } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, getThreadMessages } from "@/lib/control-plane";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
-import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata } from "@/lib/message-routing";
+import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata, unreachableMentionsOf } from "@/lib/message-routing";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
-import { mcpAccessForAgent, mcpMayUseThread } from "@/lib/mcp-access";
+import { mcpAccessForAgent, mcpMayReachAgent, mcpMayUseThread } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const auth = await verifyMcpToken(req);
@@ -128,6 +128,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const effectiveTargetAgentId = isAgentPair && !resolvedTargetAgentId && resolvedSenderId
             ? await pairThreadCounterpart(companyId, thread.id, resolvedSenderId)
             : resolvedTargetAgentId;
+        // The sender's "Agents it can work with" list (one-way): no message or
+        // pair handoff to an agent outside it.
+        if (senderType === "agent" && resolvedSenderId && effectiveTargetAgentId && effectiveTargetAgentId !== resolvedSenderId) {
+            const senderAccess = await mcpAccessForAgent(companyId, resolvedSenderId);
+            if (!mcpMayReachAgent(senderAccess, effectiveTargetAgentId)) {
+                return NextResponse.json({ error: "You can't reach that agent: it is outside your scope" }, { status: 403 });
+            }
+        }
         const shouldMirrorToLegacyChat = !isGroup && (mirrorToLegacyChat || thread.type === "team");
 
         const message = await appendThreadMessage({
@@ -151,7 +159,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         await broadcastMcpEvent(companyId, { type: "thread_message", thread, message });
 
-        return NextResponse.json({ message }, { status: 201 });
+        const unreachable = unreachableMentionsOf(message.metadataJson);
+        return NextResponse.json(unreachable.size > 0
+            ? { message, notice: "Posted, but some mentioned agents are outside your scope; the mention did not notify them.", unreachableAgentIds: [...unreachable] }
+            : { message }, { status: 201 });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         const status = message.startsWith("Agent not found") ? 404 : 500;

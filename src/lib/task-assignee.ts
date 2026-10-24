@@ -1,7 +1,7 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, companyMembers, users } from "@/db/schema";
-import { resolveAgentId } from "@/lib/mcp";
+import { normalizeAgentRef, resolveAgentId } from "@/lib/mcp";
 
 export type TaskAssignee =
   | { type: "agent"; id: string }
@@ -36,12 +36,13 @@ function parseTaskAssignee(input: unknown): TaskAssignee {
   if (
     (candidate.type !== "agent" && candidate.type !== "human") ||
     typeof candidate.id !== "string" ||
-    !candidate.id.trim()
+    !normalizeAgentRef(candidate.id)
   ) {
     throw new Error("Invalid assignee");
   }
 
-  return { type: candidate.type, id: candidate.id.trim() };
+  // Same normalization as the access guard (assertMcpMayReachAgent).
+  return { type: candidate.type, id: normalizeAgentRef(candidate.id) };
 }
 
 export async function resolveTaskAssignee(

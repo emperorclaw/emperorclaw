@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
-import { mcpAgentUpdateDenial } from "@/lib/mcp-access";
+import { resolveAgentId, verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpAgentUpdateDenial, mcpRouteAccess } from "@/lib/mcp-access";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -28,7 +28,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
     try {
         const { id } = await params;
-        const agent = await readAgentBudget(auth.companyToken!.companyId, id);
+        // An agent reads only agents it may work with (always itself).
+        const reach = await mcpRouteAccess(auth.companyToken!.companyId, auth.companyToken!, null);
+        if (reach.response) return reach.response;
+        // Resolve once: the scope check and the read must target the same agent.
+        const agentId = await resolveAgentId(auth.companyToken!.companyId, id).catch(() => null);
+        if (!agentId) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        const allowed = reach.access.allowedAgentIds;
+        if (allowed && !allowed.has(agentId)) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+        }
+        const agent = await readAgentBudget(auth.companyToken!.companyId, agentId);
         if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
         return NextResponse.json({ agent }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {

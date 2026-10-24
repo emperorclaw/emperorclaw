@@ -2,6 +2,7 @@ import { hireHermesAgent } from "@/lib/hire-hermes-agent";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
+import { mcpRouteAccess } from "@/lib/mcp-access";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { listAgentsForCompany, createAgentForCompany } from "@/lib/agents-crud";
 import { normalizeAppearance } from "@/lib/character/model";
@@ -34,7 +35,9 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "100", 10);
 
     try {
-        const rows = await listAgentsForCompany({ companyId, limit });
+        const scoped = await mcpRouteAccess(companyId, auth.companyToken!, searchParams.get("agentId"));
+        if (scoped.response) return scoped.response;
+        const rows = await listAgentsForCompany({ companyId, limit, agentIdFilter: scoped.access.allowedAgentIds });
         return NextResponse.json({ agents: rows });
     } catch (err) {
         console.error("Error fetching agents:", err);

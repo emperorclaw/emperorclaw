@@ -347,7 +347,7 @@ async function routeForAgent(
         const maxTurns = agentLoopMaxTurnsFor(Boolean(info?.isAgentPair));
         const decision = decideDelivery({
             agentId,
-            message: { senderType: m.senderType, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text },
+            message: { senderType: m.senderType, senderId: m.senderId, targetAgentId: m.targetAgentId, text: m.text, metadataJson: m.metadataJson },
             threadType: info?.type ?? null,
             roster,
             agentStreak,

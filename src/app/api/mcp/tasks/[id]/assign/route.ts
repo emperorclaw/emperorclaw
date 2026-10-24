@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse } from "@/lib/mcp";
 import { assignTaskToAgent } from "@/lib/openclaw/tasks";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
-import { mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
+import { assertMcpMayAssign, mcpAccessErrorResponse, mcpMayUseTask, mcpRouteAccess } from "@/lib/mcp-access";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyMcpToken(req);
@@ -34,6 +34,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!(await mcpMayUseTask(companyId, scoped.access, taskId))) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+    // Assigning to another agent: the acting (bound) agent must be able to reach it.
+    const actor = await mcpRouteAccess(companyId, auth.companyToken!, null);
+    if (actor.response) return actor.response;
+    await assertMcpMayAssign(companyId, actor.access, { agentId });
     const result = await assignTaskToAgent({ companyId, taskId, agentId, mode, actorAgentId: auth.companyToken!.agentId ?? null });
     if ("error" in result) {
       return NextResponse.json({ error: result.error }, { status: result.status });
@@ -42,6 +46,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await saveIdempotencyResponse(companyId, endpoint, requestHash!, res);
     return NextResponse.json(res);
   } catch (error) {
+    const denied = mcpAccessErrorResponse(error);
+    if (denied) return denied;
     const message = error instanceof Error ? error.message : "Internal Server Error";
     const status = message.startsWith("Agent not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status });

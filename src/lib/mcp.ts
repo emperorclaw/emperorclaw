@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { db } from "@/db";
 import { companyTokens, companyMembers, idempotencyKeys, auditLog, agents, agentSessions, projects, tasks } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
@@ -324,35 +324,49 @@ export async function saveIdempotencyResponse(
     }
 }
 
+/**
+ * The one normalization every agent reference (id or name) goes through, in
+ * access checks and in the writes they guard alike, so a check can never see
+ * a different agent than the write ends up touching.
+ */
+export function normalizeAgentRef(ref: string): string {
+    return ref.trim();
+}
+
+const AGENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function resolveAgentId(
     companyId: string,
     providedAgentId: string,
     options: { autoCreate?: boolean } = {}
 ): Promise<string> {
-    // 1. Try to fetch existing agent UUID by their string name identifier
-    const [agent] = await db.select().from(agents).where(
-        and(eq(agents.companyId, companyId), eq(agents.name, providedAgentId), isNull(agents.deletedAt))
-    ).limit(1);
+    const ref = normalizeAgentRef(providedAgentId);
+    if (!ref) throw new Error(`Agent not found: ${providedAgentId}`);
 
-    if (agent) return agent.id;
-
-    // 2. If it's literally a valid UUID passed already, just check it exists
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (uuidRegex.test(providedAgentId)) {
-        const [existing] = await db.select().from(agents).where(
-            and(eq(agents.companyId, companyId), eq(agents.id, providedAgentId), isNull(agents.deletedAt))
+    // 1. A UUID is matched by id first: names are self-editable and not
+    //    unique, so an agent named after another agent's id must never win.
+    if (AGENT_UUID_RE.test(ref)) {
+        const [existing] = await db.select({ id: agents.id }).from(agents).where(
+            and(eq(agents.companyId, companyId), eq(agents.id, ref), isNull(agents.deletedAt))
         ).limit(1);
         if (existing) return existing.id;
     }
 
+    // 2. Otherwise by the agent's name
+    const [agent] = await db.select({ id: agents.id }).from(agents).where(
+        and(eq(agents.companyId, companyId), eq(agents.name, ref), isNull(agents.deletedAt))
+    ).limit(1);
+
+    if (agent) return agent.id;
+
     if (!options.autoCreate) {
-        throw new Error(`Agent not found: ${providedAgentId}`);
+        throw new Error(`Agent not found: ${ref}`);
     }
 
     // 3. Explicit fallback: auto-register this new agent string with a fresh UUID
     const [newAgent] = await db.insert(agents).values({
         companyId,
-        name: providedAgentId,
+        name: ref,
         status: "online",
         role: "operator",
     }).returning();

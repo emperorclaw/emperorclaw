@@ -33,7 +33,7 @@ export async function groupMcpRoute<T>(
     } catch (error) {
         if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
         const message = error instanceof Error ? error.message : "Internal Server Error";
-        if (message.startsWith("Access denied")) return NextResponse.json({ error: message }, { status: 403 });
+        if (message.startsWith("Access denied") || message.startsWith("You can't reach")) return NextResponse.json({ error: message }, { status: 403 });
         if (message.startsWith("Agent not found")) return NextResponse.json({ error: message }, { status: 404 });
         console.error("[mcp/groups] route error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { addGroupMembers, removeGroupMember } from "@/lib/groups";
 import { announceGroupChange, groupMcpRoute } from "@/lib/group-mcp-route";
+import { assertMcpMayAddAgents } from "@/lib/mcp-access";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,9 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, { params }: Params) {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    return groupMcpRoute(req, body.agentId, async ({ companyId, requireMember }) => {
+    return groupMcpRoute(req, body.agentId, async ({ companyId, actor, requireMember }) => {
         await requireMember(id);
+        await assertMcpMayAddAgents(companyId, actor.type === "agent" ? actor.id : null, body.agentIds);
         const group = await addGroupMembers(companyId, id, body);
         announceGroupChange(companyId, id, "members");
         return { group };

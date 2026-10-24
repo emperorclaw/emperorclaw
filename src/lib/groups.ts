@@ -193,15 +193,29 @@ export function pairThreadPurpose(members: GroupMember[]): string {
     return "Private agent conversation";
 }
 
-export async function getGroup(companyId: string, groupId: string, actor?: GroupActor): Promise<GroupSummary> {
+/**
+ * Drop agent members the viewer may not see (its "agents it can work with"
+ * list; null = sees all). Humans are unaffected. Applied before summarize so
+ * the coordinator and pair purpose can't name a hidden agent either.
+ */
+function visibleMembers(members: GroupMember[], visibleAgentIds: ReadonlySet<string> | null | undefined): GroupMember[] {
+    if (!visibleAgentIds) return members;
+    return members.filter((m) => m.kind !== "agent" || visibleAgentIds.has(m.id));
+}
+
+export async function getGroup(companyId: string, groupId: string, actor?: GroupActor, options: { visibleAgentIds?: ReadonlySet<string> | null } = {}): Promise<GroupSummary> {
     const thread = await getGroupThread(companyId, groupId);
     if (actor) await assertCanReadGroup(companyId, thread, actor);
     const members = await loadGroupMembers(companyId, [thread.id]);
-    return summarize(thread, members.get(thread.id) ?? []);
+    return summarize(thread, visibleMembers(members.get(thread.id) ?? [], options.visibleAgentIds));
 }
 
-/** Every active group, optionally only those an agent belongs to. */
-export async function listGroups(companyId: string, options: { agentId?: string | null; includePairThreads?: boolean } = {}): Promise<GroupSummary[]> {
+/**
+ * Every active group, optionally only those an agent belongs to.
+ * visibleAgentIds: the viewer's agent allow-list; out-of-scope agent members
+ * are left out of every listed group.
+ */
+export async function listGroups(companyId: string, options: { agentId?: string | null; includePairThreads?: boolean; visibleAgentIds?: ReadonlySet<string> | null } = {}): Promise<GroupSummary[]> {
     let threads = await db.select().from(messageThreads).where(and(
         eq(messageThreads.companyId, companyId),
         eq(messageThreads.type, GROUP_THREAD_TYPE),
@@ -222,7 +236,7 @@ export async function listGroups(companyId: string, options: { agentId?: string 
         threads = threads.filter((t) => ids.has(t.id));
     }
     const members = await loadGroupMembers(companyId, threads.map((t) => t.id));
-    return threads.map((t) => summarize(t, members.get(t.id) ?? []));
+    return threads.map((t) => summarize(t, visibleMembers(members.get(t.id) ?? [], options.visibleAgentIds)));
 }
 
 async function memberCount(groupId: string): Promise<number> {

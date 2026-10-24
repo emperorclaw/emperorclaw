@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { pipelines, pipelineRuns } from "@/db/schema";
 import { verifyMcpToken, checkIdempotency, saveIdempotencyResponse, resolveAgentId } from "@/lib/mcp";
-import { mcpDenyOutOfScope, mcpRecordCondition, mcpRouteAccess } from "@/lib/mcp-access";
+import { mcpDenyOutOfScope, mcpMayReachAgent, mcpRouteAccess } from "@/lib/mcp-access";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { extractRunContextSourceIds, PIPELINE_RUN_STATUSES, PipelineRunStatus } from "@/lib/pipelines";
 
@@ -85,6 +85,12 @@ export async function POST(
                 agentId = await resolveAgentId(companyId, body.agentId);
             } catch {
                 return NextResponse.json({ error: `Agent not found: ${body.agentId}` }, { status: 404 });
+            }
+            // Running a pipeline on another agent is delegation: only within the actor's list.
+            const actor = await mcpRouteAccess(companyId, auth.companyToken!, null);
+            if (actor.response) return actor.response;
+            if (!mcpMayReachAgent(actor.access, agentId)) {
+                return NextResponse.json({ error: "You can't reach that agent: it is outside your scope" }, { status: 403 });
             }
         }
 

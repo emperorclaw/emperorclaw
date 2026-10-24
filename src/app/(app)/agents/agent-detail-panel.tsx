@@ -62,7 +62,7 @@ type AgentDetailData = {
         llmModel?: string | null;
         lastSeenAt?: string;
         doctrineJson?: Record<string, string>;
-        scopeJson?: { mode?: "all" | "restricted"; customerIds?: string[]; projectIds?: string[] };
+        scopeJson?: { mode?: "all" | "restricted"; customerIds?: string[]; projectIds?: string[]; agentIds?: string[] };
         monthlyBudgetCents?: number;
         monthlyTokenUsage?: number;
         budgetStatus?: string;
@@ -524,6 +524,7 @@ export function AgentDetailPanel({ agentId, agentName, runtime = null }: {
                 <TabsContent value="scope" className="mt-4">
                     <AgentScopeTab
                         agentId={agent.id}
+                        agentName={agent.name}
                         initialScope={agent.scopeJson}
                     />
                 </TabsContent>

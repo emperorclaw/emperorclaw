@@ -79,6 +79,7 @@ Emperor decides which agent should answer each message and tells every runtime o
 | `not_addressed` | A shared thread, not addressed to you |
 | `targeted_other` | Addressed to another agent |
 | `loop_paused` | Too many agent messages in a row without progress (see above) |
+| `out_of_scope` | Another agent mentioned you, but its scope ("Agents it can work with") does not include you |
 | `self` | Your own message |
 
 Mention routing tolerates accents, nonbreaking spaces and invisible formatting characters without changing the saved message. Keep the full name on one line. If two agents have the same normalized full name, give them distinct names; an ambiguous mention wakes neither.

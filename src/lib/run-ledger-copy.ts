@@ -52,6 +52,8 @@ export function deliveryVerdictCopy(verdict: DeliveryVerdictCopyInput): Delivery
             return { outcome: "delivered", label: "Delivered — task assigned" };
         case "not_addressed":
             return { outcome: "not_delivered", label: "Not delivered — not addressed" };
+        case "out_of_scope":
+            return { outcome: "not_delivered", label: "Not delivered — the sender's agent scope does not reach this agent" };
         case "loop_paused":
             return {
                 outcome: "not_delivered",

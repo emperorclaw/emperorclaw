@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createGroup, listGroups } from "@/lib/groups";
 import { announceGroupChange, groupMcpRoute } from "@/lib/group-mcp-route";
+import { assertMcpMayAddAgents, mcpAccessForAgent } from "@/lib/mcp-access";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,9 @@ export async function GET(req: NextRequest) {
         // Pair threads are private handoffs: only the "mine" (participant) view
         // of a real agent may include them, never an operator/system token and
         // never the unscoped everything-listing.
-        return { groups: await listGroups(companyId, { agentId, includePairThreads: mine && actor.type === "agent" }) };
+        // A restricted agent sees no out-of-scope agents in any group's members.
+        const visibleAgentIds = actor.type === "agent" ? (await mcpAccessForAgent(companyId, actor.id)).allowedAgentIds : null;
+        return { groups: await listGroups(companyId, { agentId, includePairThreads: mine && actor.type === "agent", visibleAgentIds }) };
     });
 }
 
@@ -21,6 +24,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     return groupMcpRoute(req, body.agentId, async ({ companyId, actor }) => {
+        await assertMcpMayAddAgents(companyId, actor.type === "agent" ? actor.id : null, body.agentIds ?? body.members);
         const group = await createGroup(companyId, actor, body);
         announceGroupChange(companyId, group.id, "created");
         return { group };

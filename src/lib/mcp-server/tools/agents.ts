@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listAgentsForCompany, getAgentForCompany, createAgentForCompany, updateAgentForCompany } from "@/lib/agents-crud";
 import { jsonResult, errorResult } from "../result";
-import { mcpAgentUpdateDenial } from "@/lib/mcp-access";
+import { mcpAccessForAgent, mcpAgentUpdateDenial, mcpMayReachAgent } from "@/lib/mcp-access";
 import { computeCompanyHealth } from "@/lib/agent-health";
 
 export function registerAgentTools(server: McpServer, companyId: string, callerAgentId?: string | null) {
@@ -15,7 +15,9 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
         },
     }, async ({ agentId }) => {
         try {
-            const health = await computeCompanyHealth(companyId, agentId ? { agentIds: [agentId] } : {});
+            const reach = (await mcpAccessForAgent(companyId, callerAgentId ?? null)).allowedAgentIds;
+            if (agentId && reach && !reach.has(agentId)) throw new Error(`Agent ${agentId} not found`);
+            const health = await computeCompanyHealth(companyId, agentId ? { agentIds: [agentId] } : reach ? { agentIds: [...reach] } : {});
             return jsonResult(health);
         } catch (e) {
             return errorResult(e);
@@ -30,7 +32,7 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
         },
     }, async ({ limit }) => {
         try {
-            const agents = await listAgentsForCompany({ companyId, limit });
+            const agents = await listAgentsForCompany({ companyId, limit, agentIdFilter: (await mcpAccessForAgent(companyId, callerAgentId ?? null)).allowedAgentIds });
             return jsonResult({ agents });
         } catch (e) {
             return errorResult(e);
@@ -45,7 +47,7 @@ export function registerAgentTools(server: McpServer, companyId: string, callerA
         },
     }, async ({ agentId }) => {
         try {
-            const agent = await getAgentForCompany(companyId, agentId);
+            const agent = mcpMayReachAgent(await mcpAccessForAgent(companyId, callerAgentId ?? null), agentId) ? await getAgentForCompany(companyId, agentId) : null;
             if (!agent) return errorResult(new Error(`Agent ${agentId} not found`));
             return jsonResult({ agent });
         } catch (e) {

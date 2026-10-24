@@ -53,6 +53,7 @@ type CompanySocket = WebSocket & {
   agentId?: string | null;
   allowedProjectIds?: Set<string> | null;
   allowedCustomerIds?: Set<string> | null;
+  allowedAgentIds?: Set<string> | null;
 };
 const SOCKET_SCOPE_REFRESH_MS = 60_000;
 
@@ -116,15 +117,18 @@ app.prepare().then(() => {
                 companySocket.agentId = agentId;
                 companySocket.allowedProjectIds = initialScope.allowedProjectIds;
                 companySocket.allowedCustomerIds = initialScope.allowedCustomerIds;
+                companySocket.allowedAgentIds = initialScope.allowedAgentIds;
                 if (agentId) {
                     const refresh = setInterval(() => {
                         loadAgentScopeContext(companyId, agentId).then((scope) => {
                             companySocket.allowedProjectIds = scope.allowedProjectIds;
                             companySocket.allowedCustomerIds = scope.allowedCustomerIds;
+                            companySocket.allowedAgentIds = scope.allowedAgentIds;
                         }).catch(() => {
                             // Fail closed: if the scope cannot be read, deliver nothing scoped.
                             companySocket.allowedProjectIds = new Set();
                             companySocket.allowedCustomerIds = new Set();
+                            companySocket.allowedAgentIds = new Set([agentId]);
                         });
                     }, SOCKET_SCOPE_REFRESH_MS);
                     companySocket.on('close', () => clearInterval(refresh));

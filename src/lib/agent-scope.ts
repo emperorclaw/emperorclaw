@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+// Type-only: server.ts loads this module before Next starts, and a runtime
+// import of next/server there crashes the boot (AsyncLocalStorage invariant).
+import type { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { agents, projects } from "@/db/schema";
 import { and, eq, inArray, isNull, sql, type AnyColumn, type SQL } from "drizzle-orm";
@@ -7,13 +9,37 @@ export type AgentScope = {
     mode?: "all" | "restricted";
     customerIds?: string[];
     projectIds?: string[];
+    /**
+     * Agents this agent may see in the roster, message and hand work to.
+     * Independent of `mode` (which governs customers/projects). Absent = all
+     * agents (the default); [] = none but itself. ONE-WAY: it limits only what
+     * this agent reaches; the agents on the other side are unaffected.
+     */
+    agentIds?: string[];
 };
 
 export type AgentScopeContext = {
     scope: AgentScope | null;
     allowedProjectIds: Set<string> | null;
     allowedCustomerIds: Set<string> | null;
+    /** Agents it may reach, always including itself; null = all agents. */
+    allowedAgentIds: Set<string> | null;
 };
+
+/** The agent allow-list stored on an agent (always containing itself), or null for "all agents". */
+export function agentAllowListFrom(scopeJson: unknown, selfId: string): Set<string> | null {
+    const raw = scopeJson && typeof scopeJson === "object" ? (scopeJson as AgentScope).agentIds : undefined;
+    if (!Array.isArray(raw)) return null;
+    const allowed = new Set(raw.filter((id): id is string => typeof id === "string" && id.length > 0));
+    allowed.add(selfId);
+    return allowed;
+}
+
+/** null set = all agents. */
+export function isAgentAllowed(allowedAgentIds: ReadonlySet<string> | null, agentId: string | null | undefined): boolean {
+    if (allowedAgentIds === null) return true;
+    return Boolean(agentId) && allowedAgentIds.has(agentId as string);
+}
 
 /** null = unrestricted (no scoping row, or mode isn't 'restricted'). */
 export async function getAgentScope(companyId: string, agentId: string): Promise<AgentScope | null> {
@@ -74,14 +100,18 @@ export async function getAllowedCustomerIds(companyId: string, scope: AgentScope
 /** One call per request: resolves scope + both expanded allow-sets together. */
 export async function loadAgentScopeContext(companyId: string, resolvedAgentId: string | null): Promise<AgentScopeContext> {
     if (!resolvedAgentId) {
-        return { scope: null, allowedProjectIds: null, allowedCustomerIds: null };
+        return { scope: null, allowedProjectIds: null, allowedCustomerIds: null, allowedAgentIds: null };
     }
-    const scope = await getAgentScope(companyId, resolvedAgentId);
+    const [row] = await db.select({ scopeJson: agents.scopeJson }).from(agents).where(and(
+        eq(agents.id, resolvedAgentId), eq(agents.companyId, companyId), isNull(agents.deletedAt),
+    )).limit(1);
+    const raw = row?.scopeJson as AgentScope | undefined;
+    const scope = raw && raw.mode === "restricted" ? raw : null;
     const [allowedProjectIds, allowedCustomerIds] = await Promise.all([
         getAllowedProjectIds(companyId, scope),
         getAllowedCustomerIds(companyId, scope),
     ]);
-    return { scope, allowedProjectIds, allowedCustomerIds };
+    return { scope, allowedProjectIds, allowedCustomerIds, allowedAgentIds: agentAllowListFrom(raw, resolvedAgentId) };
 }
 
 /** null set = unrestricted (always allowed). Empty set = nothing is allowed. */
@@ -122,6 +152,7 @@ export async function requireProjectInScope(
     token: { agentId?: string | null } | null | undefined,
 ): Promise<NextResponse | null> {
     const { mcpRouteAccess, mcpMayUseProject } = await import("@/lib/mcp-access");
+    const { NextResponse } = await import("next/server");
     const scoped = await mcpRouteAccess(companyId, token, req.nextUrl.searchParams.get("agentId"));
     if (scoped.response) return scoped.response;
     if (!mcpMayUseProject(scoped.access, projectId)) {

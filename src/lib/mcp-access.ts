@@ -3,8 +3,8 @@ import { and, isNull, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, tasks } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { resolveAgentId } from "@/lib/mcp";
-import { isCustomerAllowed, isProjectAllowed, loadAgentScopeContext, scopeCondition } from "@/lib/agent-scope";
+import { normalizeAgentRef, resolveAgentId } from "@/lib/mcp";
+import { isAgentAllowed, isCustomerAllowed, isProjectAllowed, loadAgentScopeContext, scopeCondition } from "@/lib/agent-scope";
 import { canAgentReadResource } from "@/lib/resources";
 
 /**
@@ -28,6 +28,8 @@ export type McpAgentAccess = {
     bound: boolean;
     allowedProjectIds: Set<string> | null;
     allowedCustomerIds: Set<string> | null;
+    /** Agents it may see/message/hand work to (always itself); null = all. */
+    allowedAgentIds: Set<string> | null;
 };
 
 export const UNRESTRICTED_MCP_ACCESS: McpAgentAccess = Object.freeze({
@@ -35,6 +37,7 @@ export const UNRESTRICTED_MCP_ACCESS: McpAgentAccess = Object.freeze({
     bound: false,
     allowedProjectIds: null,
     allowedCustomerIds: null,
+    allowedAgentIds: null,
 }) as McpAgentAccess;
 
 export class McpAccessError extends Error {
@@ -81,8 +84,8 @@ export async function resolveMcpAgentAccess(
             throw new McpAccessError("Access denied: this token's agent no longer exists", 403);
         }
     }
-    const { allowedProjectIds, allowedCustomerIds } = await loadAgentScopeContext(companyId, agentId);
-    return { agentId, bound: Boolean(bound), allowedProjectIds, allowedCustomerIds };
+    const { allowedProjectIds, allowedCustomerIds, allowedAgentIds } = await loadAgentScopeContext(companyId, agentId);
+    return { agentId, bound: Boolean(bound), allowedProjectIds, allowedCustomerIds, allowedAgentIds };
 }
 
 /** Access for a caller whose agent is already known (e.g. an MCP tool session bound to an agent). */
@@ -92,6 +95,45 @@ export async function mcpAccessForAgent(companyId: string, agentId: string | nul
 
 export function isMcpAccessRestricted(access: McpAgentAccess): boolean {
     return access.allowedProjectIds !== null || access.allowedCustomerIds !== null;
+}
+
+/** May the acting agent see / message / hand work to this agent? (One-way: only the actor's list counts.) */
+export function mcpMayReachAgent(access: McpAgentAccess, agentId: string | null | undefined): boolean {
+    return isAgentAllowed(access.allowedAgentIds, agentId);
+}
+
+/** SQL twin of mcpMayReachAgent for agent-id columns (undefined = no filter). */
+export function mcpAgentCondition(access: McpAgentAccess, column: AnyColumn): SQL | undefined {
+    return scopeCondition(access.allowedAgentIds, column);
+}
+
+/** The error an agent gets when it tries to reach an agent outside its list. */
+export class McpUnreachableAgentError extends Error {
+    constructor(name: string) {
+        super(`You can't reach ${name}: that agent is outside your scope`);
+        this.name = "McpUnreachableAgentError";
+    }
+}
+
+/**
+ * Throws McpUnreachableAgentError when the agent is out of reach. The message
+ * names the agent only when it is a name the caller already used.
+ *
+ * The ref is normalized and resolved exactly as the guarded write resolves it
+ * (resolveAgentId). A restricted caller fails CLOSED: a ref this check cannot
+ * resolve is refused here (404) rather than left for the write to interpret.
+ */
+export async function assertMcpMayReachAgent(companyId: string, access: McpAgentAccess, agentRef: string | null | undefined): Promise<void> {
+    if (!access.allowedAgentIds || typeof agentRef !== "string") return;
+    const ref = normalizeAgentRef(agentRef);
+    if (!ref) return; // nothing named; the write rejects or ignores an empty ref
+    let resolved: string;
+    try {
+        resolved = await resolveAgentId(companyId, ref);
+    } catch {
+        throw new McpAccessError(`Agent not found: ${ref}`, 404);
+    }
+    if (!mcpMayReachAgent(access, resolved)) throw new McpUnreachableAgentError(ref);
 }
 
 export function mcpMayUseProject(access: McpAgentAccess, projectId: string | null | undefined): boolean {
@@ -281,6 +323,9 @@ export function mcpAccessErrorResponse(error: unknown): NextResponse | null {
     if (error instanceof McpAccessError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    if (error instanceof McpUnreachableAgentError) {
+        return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return null;
 }
 
@@ -323,4 +368,29 @@ export async function mcpDenyOutOfScope(
 /** Generic "not found" used when a record exists but is outside the caller's scope (never confirms it exists). */
 export function mcpOutOfScope(what = "Resource"): NextResponse {
     return NextResponse.json({ error: `${what} not found` }, { status: 404 });
+}
+
+/** An agent adding agents to a group may only add agents it can work with. */
+export async function assertMcpMayAddAgents(companyId: string, actorAgentId: string | null | undefined, agentRefs: unknown): Promise<void> {
+    if (!actorAgentId || !Array.isArray(agentRefs)) return;
+    const access = await mcpAccessForAgent(companyId, actorAgentId);
+    for (const ref of agentRefs) if (typeof ref === "string") await assertMcpMayReachAgent(companyId, access, ref);
+}
+
+/**
+ * Handing work to an agent (assignedAgentId, an agent `assignee`, a claim or
+ * an assignment): the target must be inside the acting agent's list.
+ */
+export async function assertMcpMayAssign(
+    companyId: string,
+    access: McpAgentAccess,
+    body: { assignedAgentId?: unknown; assignee?: unknown; agentId?: unknown },
+): Promise<void> {
+    if (!access.allowedAgentIds) return;
+    const refs: string[] = [];
+    if (typeof body.assignedAgentId === "string" && body.assignedAgentId) refs.push(body.assignedAgentId);
+    if (typeof body.agentId === "string" && body.agentId) refs.push(body.agentId);
+    const assignee = body.assignee as { type?: unknown; id?: unknown } | null | undefined;
+    if (assignee && assignee.type === "agent" && typeof assignee.id === "string") refs.push(assignee.id);
+    for (const ref of refs) await assertMcpMayReachAgent(companyId, access, ref);
 }

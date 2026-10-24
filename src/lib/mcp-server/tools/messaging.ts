@@ -20,6 +20,7 @@ import {
 } from "@/lib/groups";
 import { resolveAgentId } from "@/lib/mcp";
 import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
+import { assertMcpMayAddAgents, mcpAccessForAgent } from "@/lib/mcp-access";
 
 /**
  * Private agent pair threads are a two-agent handoff. They must not leak into
@@ -117,7 +118,9 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
         inputSchema: { mine: z.boolean().optional() },
     }, async ({ mine }) => {
         try {
-            return jsonResult({ groups: await listGroups(companyId, { agentId: mine ? callerAgentId ?? null : null, includePairThreads: false }) });
+            // A restricted agent never learns about agents outside its list from a member roster.
+            const visibleAgentIds = (await mcpAccessForAgent(companyId, callerAgentId ?? null)).allowedAgentIds;
+            return jsonResult({ groups: await listGroups(companyId, { agentId: mine ? callerAgentId ?? null : null, includePairThreads: false, visibleAgentIds }) });
         } catch (e) {
             return errorResult(e);
         }
@@ -129,7 +132,9 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
         inputSchema: { groupId: z.string(), agentId: z.string().optional().describe("Calling agent's id or name (operator connections only)") },
     }, async ({ groupId, agentId }) => {
         try {
-            return jsonResult({ group: await getGroup(companyId, groupId, await actorFor(agentId)) });
+            const actor = await actorFor(agentId);
+            const visibleAgentIds = actor.type === "agent" ? (await mcpAccessForAgent(companyId, actor.id)).allowedAgentIds : null;
+            return jsonResult({ group: await getGroup(companyId, groupId, actor, { visibleAgentIds }) });
         } catch (e) {
             return errorResult(e);
         }
@@ -148,7 +153,9 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
         },
     }, async ({ title, description, agentIds, humanUserIds, coordinator, agentId }) => {
         try {
-            const group = await createGroup(companyId, await actorFor(agentId), { title, description, agentIds, humanUserIds, coordinator });
+            const actor = await actorFor(agentId);
+            await assertMcpMayAddAgents(companyId, actor.type === "agent" ? actor.id : null, agentIds);
+            const group = await createGroup(companyId, actor, { title, description, agentIds, humanUserIds, coordinator });
             return jsonResult({ group, threadId: group.id });
         } catch (e) {
             return errorResult(e);
@@ -180,6 +187,7 @@ export function registerMessagingTools(server: McpServer, companyId: string, cal
     }, async ({ groupId, agentIds, humanUserIds }) => {
         try {
             await requireMember(groupId);
+            await assertMcpMayAddAgents(companyId, callerAgentId ?? null, agentIds);
             return jsonResult({ group: await addGroupMembers(companyId, groupId, { agentIds, humanUserIds }) });
         } catch (e) {
             return errorResult(e);

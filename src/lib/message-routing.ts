@@ -22,7 +22,8 @@ export type RouteReason =
     | "agent_pair"      // the other agent in a two-agent pair thread
     | "task_assigned"   // a system notice: a task was assigned to this agent
     | "not_addressed"   // shared thread, no mention of this agent
-    | "loop_paused";    // too many agent messages in a row without progress
+    | "loop_paused"     // too many agent messages in a row without progress
+    | "out_of_scope";   // an agent mentioned this agent but its scope does not reach it
 
 export interface RouteDecision {
     addressedToYou: boolean;
@@ -39,6 +40,17 @@ export interface RoutableMessage {
     senderId: string | null;
     targetAgentId: string | null;
     text: string;
+    /** Server-set: agents the sender @mentioned but may not reach (agent scope). */
+    metadataJson?: unknown;
+}
+
+/** Server-only metadata: agents an agent's message mentioned but may not reach. */
+export const UNREACHABLE_MENTIONS_KEY = "unreachableMentions";
+
+/** The agents a stored message's sender could not reach (never routed to them). */
+export function unreachableMentionsOf(metadata: unknown): Set<string> {
+    const raw = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>)[UNREACHABLE_MENTIONS_KEY] : null;
+    return new Set(Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : []);
 }
 
 /** Consecutive agent messages in a shared room (team/group) before agents are paused. */
@@ -52,7 +64,7 @@ export const DEFAULT_AGENT_PAIR_LOOP_MAX_TURNS = 30;
  * message-post route) so a runtime cannot forge a task wake, a stall nudge, or
  * otherwise bypass the loop guard.
  */
-export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey"] as const;
+export const RESERVED_MESSAGE_METADATA_KEYS = ["taskAssigned", "stallNudge", "stallEscalation", "agentWake", "loopGuardResume", "__objectiveStatus", "ack", "idempotencyKey", "unreachableMentions"] as const;
 
 /**
  * A "Resume" marker resets the loop streak. It is a system message with this
@@ -213,14 +225,15 @@ export function mentionedAgentIds(text: string, roster: RosterAgent[], options: 
  * An agent's @all does not count: it never fans out to agents.
  */
 export function agentMessageWakesAgent(
-    message: { senderId: string | null; targetAgentId: string | null; text: string | null },
+    message: { senderId: string | null; targetAgentId: string | null; text: string | null; metadataJson?: unknown },
     roster: RosterAgent[],
     isAgentPair: boolean,
 ): boolean {
     if (isAgentPair) return true;
     if (message.targetAgentId && message.targetAgentId !== message.senderId) return true;
+    const unreachable = unreachableMentionsOf(message.metadataJson);
     for (const id of mentionedAgentIds(message.text || "", roster)) {
-        if (id !== message.senderId) return true;
+        if (id !== message.senderId && !unreachable.has(id)) return true;
     }
     return false;
 }
@@ -295,7 +308,14 @@ export function decideDelivery(input: {
     // writing there is talking to it.
     if (threadType === "direct" && senderType === "human") return { addressedToYou: true, routeReason: "direct" };
 
-    if (mentionedAgentIds(message.text || "", input.roster).has(agentId)) return { addressedToYou: true, routeReason: "mention" };
+    if (mentionedAgentIds(message.text || "", input.roster).has(agentId)) {
+        // The sender's agent scope does not reach this agent: the message is
+        // posted, but the mention never wakes it.
+        if (senderType === "agent" && unreachableMentionsOf(message.metadataJson).has(agentId)) {
+            return { addressedToYou: false, routeReason: "out_of_scope" };
+        }
+        return { addressedToYou: true, routeReason: "mention" };
+    }
     if (threadType === "group" && senderType === "human" && mentionsEveryone(message.text || "")) {
         return { addressedToYou: true, routeReason: "all" };
     }

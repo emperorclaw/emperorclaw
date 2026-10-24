@@ -4,10 +4,10 @@ import { db } from "@/db";
 import { agents, companies, messageThreads, threadMessages, threadParticipants } from "@/db/schema";
 import { appendThreadMessage, currentAgentStreak, ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { resolveAgentId } from "@/lib/mcp";
-import { BOUND_AGENT_MISMATCH, mcpAccessForAgent, mcpMayUseThread } from "@/lib/mcp-access";
+import { BOUND_AGENT_MISMATCH, McpUnreachableAgentError, mcpAccessForAgent, mcpMayReachAgent, mcpMayUseThread } from "@/lib/mcp-access";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { ensureAgentPairThread, GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCounterpart } from "@/lib/groups";
-import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds } from "@/lib/message-routing";
+import { agentLoopHardCap, agentPairLoopHardCap, mentionedAgentIds, unreachableMentionsOf } from "@/lib/message-routing";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -115,6 +115,16 @@ export async function sendThreadMessageFromMcp(input: {
   const resolvedTargetAgentId = input.targetAgentId
     ? await resolveAgentId(input.companyId, input.targetAgentId)
     : null;
+  // The sender's "Agents it can work with" list (one-way): it cannot message
+  // or open a pair thread with an agent outside it.
+  const senderAccess = await mcpAccessForAgent(input.companyId, resolvedSenderId);
+  const refuseUnreachable = async (agentId: string | null) => {
+    if (agentId && agentId !== resolvedSenderId && !mcpMayReachAgent(senderAccess, agentId)) {
+      const [row] = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, agentId)).limit(1);
+      throw new McpUnreachableAgentError(row?.name ?? "that agent");
+    }
+  };
+  await refuseUnreachable(resolvedTargetAgentId);
 
   if (input.threadType === "direct" && !resolvedTargetAgentId && !resolvedSenderId) {
     throw new Error("Direct messages require targetAgentId or agentId");
@@ -218,6 +228,9 @@ export async function sendThreadMessageFromMcp(input: {
     ? await pairThreadCounterpart(input.companyId, responseThread.id, resolvedSenderId)
     : resolvedTargetAgentId;
 
+  // An existing pair thread whose counterpart left the sender's list is closed to it too.
+  await refuseUnreachable(effectiveTargetAgentId);
+
   // Hard backstop for runtimes that ignore the routing verdict: past this many
   // agent messages in a row in a shared thread, agent posts are refused until
   // a person writes. Compliant runtimes stop well before (routeReason "loop_paused").
@@ -248,9 +261,19 @@ export async function sendThreadMessageFromMcp(input: {
 
   await broadcastMcpEvent(input.companyId, { type: "thread_message", thread: responseThread, message });
 
+  // Mentions of agents outside the sender's list were posted but not routed:
+  // tell the agent, so it does not wait for an answer that will never come.
+  const unreachable = unreachableMentionsOf(message.metadataJson);
+  const unreachableNames = unreachable.size > 0
+    ? (await db.select({ id: agents.id, name: agents.name }).from(agents).where(inArray(agents.id, [...unreachable]))).map((a) => a.name)
+    : [];
+
   return {
     ok: true,
     messageId: message.id,
     threadId: targetThreadId,
+    ...(unreachableNames.length > 0
+      ? { notice: `Posted, but you can't reach ${unreachableNames.join(", ")}: ${unreachableNames.length > 1 ? "those agents are" : "that agent is"} outside your scope, so the mention did not notify ${unreachableNames.length > 1 ? "them" : "it"}.`, unreachableAgents: unreachableNames }
+      : {}),
   };
 }

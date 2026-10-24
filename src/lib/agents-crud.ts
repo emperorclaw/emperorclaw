@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { agents, llmPricing } from "@/db/schema";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { inArray, and, desc, eq, isNull } from "drizzle-orm";
 import { writeAgentMemory } from "@/lib/control-plane";
 import { resolveAgentModelConfiguration } from "@/lib/agent-model-config";
 import { logAudit } from "@/lib/mcp";
@@ -22,11 +22,13 @@ export type ListAgentsInput = {
     limit?: number;
 };
 
-export async function listAgentsForCompany(input: ListAgentsInput) {
+export async function listAgentsForCompany(input: ListAgentsInput & { agentIdFilter?: ReadonlySet<string> | null }) {
     const limit = Math.min(input.limit || 100, 500);
+    // An agent scoped to certain agents sees only those (and itself) in the roster.
+    const only = input.agentIdFilter ? [...input.agentIdFilter] : null;
     const rows = await db.select()
         .from(agents)
-        .where(and(eq(agents.companyId, input.companyId), isNull(agents.deletedAt)))
+        .where(and(eq(agents.companyId, input.companyId), isNull(agents.deletedAt), only ? inArray(agents.id, only) : undefined))
         .orderBy(desc(agents.createdAt))
         .limit(limit);
     return rows.map(redactAgent);

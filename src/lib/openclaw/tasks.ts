@@ -11,7 +11,7 @@ import {
   tasks,
 } from "@/db/schema";
 import { createApprovalRequest, getLatestPendingApproval, taskHasPendingApproval } from "@/lib/approvals";
-import { resolveAgentId } from "@/lib/mcp";
+import { normalizeAgentRef, resolveAgentId } from "@/lib/mcp";
 import { validateTaskStateTransition } from "@/lib/project-workflow";
 import { broadcastMcpEvent } from "@/lib/pubsub";
 import { isTerminalTaskState, normalizeTaskState, TASK_STATES, type PersistedTaskState, type TaskState } from "@/lib/task-state";
@@ -286,10 +286,10 @@ export async function updateTaskForCompany(input: UpdateTaskInput) {
     const resolved = await resolveTaskAssignee(input.companyId, input.assignee);
     resolvedAssignedAgentId = resolved.assignedAgentId;
     resolvedAssignedMemberId = resolved.assignedMemberId;
-  } else if (typeof input.assignedAgentId === "string" && input.assignedAgentId.trim()) {
+  } else if (typeof input.assignedAgentId === "string" && normalizeAgentRef(input.assignedAgentId)) {
     const resolved = await resolveTaskAssignee(input.companyId, {
       type: "agent",
-      id: input.assignedAgentId.trim(),
+      id: normalizeAgentRef(input.assignedAgentId),
     });
     resolvedAssignedAgentId = resolved.assignedAgentId;
     resolvedAssignedMemberId = null;

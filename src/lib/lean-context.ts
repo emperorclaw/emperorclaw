@@ -4,6 +4,7 @@
  * bridge can skip re-sending unchanged context (ETag).
  */
 import { createHash } from "node:crypto";
+import { loadAgentScopeContext } from "@/lib/agent-scope";
 import { listAgentsForCompany } from "@/lib/agents-crud";
 import { BRIDGE_KERNEL } from "@/lib/emperor-manual";
 import { normalizeMention } from "@/lib/message-routing";
@@ -50,8 +51,8 @@ function pickAlias(name: string, used: Set<string>, ordinal: number): string {
 }
 
 /** `@alias — role` one line per agent, role trimmed to 60 chars. */
-export async function buildAgentRoster(companyId: string): Promise<{ text: string; entries: RosterEntry[] }> {
-  const agents = await listAgentsForCompany({ companyId, limit: ROSTER_MAX_AGENTS });
+export async function buildAgentRoster(companyId: string, agentIdFilter: ReadonlySet<string> | null = null): Promise<{ text: string; entries: RosterEntry[] }> {
+  const agents = await listAgentsForCompany({ companyId, limit: ROSTER_MAX_AGENTS, agentIdFilter });
   const used = new Set<string>();
   const entries: RosterEntry[] = agents.map((agent, index) => {
     const name = agent.name || "unknown";
@@ -82,7 +83,8 @@ export async function buildLeanContext(input: {
   agentId?: string | null;
 }): Promise<LeanContext> {
   const [roster, knowledge] = await Promise.all([
-    buildAgentRoster(input.companyId),
+    // The prompt roster lists only the agents this agent may work with.
+    loadAgentScopeContext(input.companyId, input.agentId ?? null).then((scope) => buildAgentRoster(input.companyId, scope.allowedAgentIds)),
     buildKnowledgeIndex({ companyId: input.companyId, agentId: input.agentId ?? null }),
   ]);
 

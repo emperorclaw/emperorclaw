@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { messageThreads, tasks } from "@/db/schema";
+import { agents, messageThreads, tasks } from "@/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { eventThreadIds, mostRestrictiveAudience, type RealtimeAudience } from "@/lib/direct-chat-mode";
 import type { RealtimeSubject } from "@/lib/realtime-delivery";
@@ -75,7 +75,20 @@ export async function realtimeSubjectFor(companyId: string, payload: unknown): P
             .where(and(inArray(tasks.id, [...taskIds]), eq(tasks.companyId, companyId)));
         for (const row of rows) add(projectIds, row.projectId);
     }
-    return { projectIds: [...projectIds], customerIds: [...customerIds] };
+    // Presence/status events name the agent they are about. Only real agent
+    // ids count (participant_status may carry a person's id).
+    const candidates = new Set<string>();
+    if (p.type !== "thread_message") {
+        add(candidates, p.agentId);
+        add(candidates, p.agent?.id);
+        add(candidates, p.session?.agentId);
+        add(candidates, p.objective?.agentId);
+        if (p.type === "participant_status") add(candidates, p.participantId);
+    }
+    const agentIds = candidates.size > 0
+        ? (await db.select({ id: agents.id }).from(agents).where(and(inArray(agents.id, [...candidates]), eq(agents.companyId, companyId)))).map((a) => a.id)
+        : [];
+    return { projectIds: [...projectIds], customerIds: [...customerIds], agentIds };
 }
 
 export async function broadcastMcpEvent(companyId: string, payload: any) {

@@ -6,7 +6,7 @@ import { messageThreads, threadParticipants, projects, tasks } from "@/db/schema
 import { ensureDirectThread, ensureTeamThread } from "@/lib/control-plane";
 import { createGroup, GroupError, GROUP_THREAD_TYPE, isAgentPairThread } from "@/lib/groups";
 import { agentTokenMayUseThread } from "@/lib/direct-chat-mode";
-import { mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask, mcpMayUseThread } from "@/lib/mcp-access";
+import { assertMcpMayAddAgents, assertMcpMayReachAgent, mcpAccessErrorResponse, mcpAccessForAgent, mcpMayUseProject, mcpMayUseTask, mcpMayUseThread } from "@/lib/mcp-access";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -98,15 +98,20 @@ export async function POST(req: NextRequest) {
             // receive it. Same path as POST /api/mcp/groups.
             const agentId = await resolveBoundAgentId(companyId, auth.companyToken!, typeof body.agentId === "string" ? body.agentId : null);
             try {
+                const agentIds = body.agentIds ?? body.members;
+                // Same reach rule as POST /api/mcp/groups: an agent only seats agents it may work with.
+                await assertMcpMayAddAgents(companyId, agentId, agentIds);
                 const group = await createGroup(companyId, agentId ? { type: "agent", id: agentId } : { type: "system", id: null }, {
                     title,
                     description: body.description,
-                    agentIds: body.agentIds ?? body.members,
+                    agentIds,
                     humanUserIds: body.humanUserIds,
                 });
                 return NextResponse.json({ thread: { ...group, type: GROUP_THREAD_TYPE }, group }, { status: 201 });
             } catch (error) {
                 if (error instanceof GroupError) return NextResponse.json({ error: error.message }, { status: error.status });
+                const denied = mcpAccessErrorResponse(error);
+                if (denied) return denied;
                 throw error;
             }
         }
@@ -116,6 +121,14 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "agentId is required for direct threads" }, { status: 400 });
             }
 
+            try {
+                // A scoped agent only opens direct threads for agents it may reach.
+                await assertMcpMayReachAgent(companyId, await mcpAccessForAgent(companyId, auth.companyToken!.agentId), agentId);
+            } catch (error) {
+                const denied = mcpAccessErrorResponse(error);
+                if (denied) return denied;
+                throw error;
+            }
             const thread = await ensureDirectThread(companyId, agentId, null);
             return NextResponse.json({ thread }, { status: 201 });
         }

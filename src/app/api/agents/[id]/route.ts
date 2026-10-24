@@ -104,10 +104,33 @@ export async function PATCH(
         }
         const asStringArray = (value: unknown): string[] =>
             Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+        // agentIds: the agents it can work with (one-way). null = all agents
+        // (the default); an array, even empty, = only those plus itself.
+        // Omitted = keep the stored list, so editing customers/projects never
+        // silently lifts an agent restriction.
+        let agentIds: string[] | undefined;
+        if (Array.isArray(body.scopeJson.agentIds)) {
+            agentIds = [...new Set(asStringArray(body.scopeJson.agentIds).filter((agentId) => agentId !== id))];
+        } else if (body.scopeJson.agentIds === undefined) {
+            const [current] = await db.select({ scopeJson: agents.scopeJson }).from(agents)
+                .where(and(eq(agents.id, id), eq(agents.companyId, companyId), isNull(agents.deletedAt))).limit(1);
+            const stored = (current?.scopeJson as { agentIds?: unknown } | null | undefined)?.agentIds;
+            agentIds = Array.isArray(stored) ? asStringArray(stored) : undefined;
+        } else if (body.scopeJson.agentIds !== null) {
+            return NextResponse.json({ error: "scopeJson.agentIds must be a list of agent ids or null" }, { status: 400 });
+        }
+        if (Array.isArray(body.scopeJson.agentIds) && agentIds && agentIds.length > 0) {
+            const known = await db.select({ id: agents.id }).from(agents)
+                .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt), inArray(agents.id, agentIds)));
+            if (known.length !== agentIds.length) {
+                return NextResponse.json({ error: "scopeJson.agentIds contains an unknown agent" }, { status: 400 });
+            }
+        }
         updates.scopeJson = {
             mode,
             customerIds: asStringArray(body.scopeJson.customerIds),
             projectIds: asStringArray(body.scopeJson.projectIds),
+            ...(agentIds ? { agentIds } : {}),
         };
     }
     const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey.trim() : "";

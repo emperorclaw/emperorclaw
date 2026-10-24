@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
         const message = error instanceof Error ? error.message : "Internal Server Error";
         const status = message.startsWith("Agent not found") || message === "Thread not found"
             ? 404
-            : message.startsWith("Access denied")
+            : message.startsWith("Access denied") || message.startsWith("You can't reach")
                 ? 403
                 : message.startsWith("Loop guard")
                     ? 429

@@ -7,7 +7,7 @@ import { getTaskSpecValidationErrors } from "@/lib/openclaw/task-spec";
 import { parseJsonBody, optionalString } from "@/lib/validation";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
 import { loadAgentScopeContext, isProjectAllowed } from "@/lib/agent-scope";
-import { mcpRouteAccess } from "@/lib/mcp-access";
+import { assertMcpMayAssign, mcpAccessErrorResponse, mcpAccessForAgent, mcpRouteAccess } from "@/lib/mcp-access";
 
 const createTaskSchema = z.object({
     projectId: z.string().min(1, "projectId is required"),
@@ -168,6 +168,14 @@ export async function POST(req: NextRequest) {
         // wake-on-assignment skips self-assignment and stall escalation can find
         // the creator.
         actorAgentId = auth.companyToken!.agentId || null;
+    }
+    // Creating work for another agent: it must be one the actor may work with.
+    try {
+        await assertMcpMayAssign(companyId, await mcpAccessForAgent(companyId, actorAgentId), { assignee, assignedAgentId });
+    } catch (error) {
+        const denied = mcpAccessErrorResponse(error);
+        if (denied) return denied;
+        throw error;
     }
 
     const inputPayload = {

@@ -7,7 +7,7 @@ import { broadcastMcpEvent } from "@/lib/pubsub";
 import { updateTaskForCompany } from "@/lib/openclaw/tasks";
 import { getTaskDetailForCompany } from "@/lib/openclaw/task-context";
 import { serializeTaskWithAssignee } from "@/lib/task-assignee";
-import { mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
+import { assertMcpMayAssign, mcpAccessErrorResponse, mcpMayUseProject, mcpRouteAccess } from "@/lib/mcp-access";
 
 /** Resolves the acting agent (token binding first) and checks it against the task's project scope. */
 async function checkTaskScope(
@@ -86,6 +86,16 @@ export async function PATCH(
             }
             const scopeDenied = await checkTaskScope(companyId, auth.companyToken!, body.agentId, existingTask.projectId, 403);
             if (scopeDenied) return scopeDenied;
+            // Reassigning to another agent: only to agents the actor may work with.
+            const reach = await mcpRouteAccess(companyId, auth.companyToken!, body.agentId);
+            if (reach.response) return reach.response;
+            try {
+                await assertMcpMayAssign(companyId, reach.access, { assignee: body.assignee, assignedAgentId: body.assignedAgentId });
+            } catch (error) {
+                const denied = mcpAccessErrorResponse(error);
+                if (denied) return denied;
+                throw error;
+            }
         }
 
         const result = await updateTaskForCompany({

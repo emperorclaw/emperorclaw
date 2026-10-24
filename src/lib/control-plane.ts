@@ -23,7 +23,8 @@ import { and, desc, eq, gte, inArray, isNull, lt, ne, notInArray, or, sql } from
 import { nextCheckinDeadline } from "./lifecycle";
 import { normalizeExecutionState, type ExecutionState } from "./project-workflow";
 import { truncateReasoningForStorage } from "./reasoning-history";
-import { agentMessageWakesAgent, agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, noteProgressResets, type AgentStreakState } from "./message-routing";
+import { agentMessageWakesAgent, agentStreakState, agentLoopMaxTurnsFor, AGENT_LOOP_COOLDOWN_MS, isLoopGuardResume, mentionedAgentIds, noteProgressResets, UNREACHABLE_MENTIONS_KEY, type AgentStreakState } from "./message-routing";
+import { loadAgentScopeContext } from "./agent-scope";
 import { notifyAgentMessage, notify, companyAdminIds } from "./notifications";
 import { isAgentPairThread } from "./groups";
 import { parseObjectiveStatusMarker, OBJECTIVE_STATUS_METADATA_KEY } from "./objective-status-marker";
@@ -808,6 +809,19 @@ async function authorizeObjectiveMarker(input: {
     return matches ? input.marker : null;
 }
 
+/**
+ * Agents an agent's text @mentions that its own agent scope does not reach
+ * (agents.scope_json.agentIds; one-way). Empty for unrestricted agents.
+ */
+export async function unreachableMentionedAgents(companyId: string, senderAgentId: string, text: string): Promise<{ id: string; name: string }[]> {
+    const { allowedAgentIds } = await loadAgentScopeContext(companyId, senderAgentId);
+    if (!allowedAgentIds) return [];
+    const roster = await db.select({ id: agents.id, name: agents.name }).from(agents)
+        .where(and(eq(agents.companyId, companyId), isNull(agents.deletedAt)));
+    const mentioned = mentionedAgentIds(text || "", roster);
+    return roster.filter((a) => mentioned.has(a.id) && !allowedAgentIds.has(a.id));
+}
+
 export async function appendThreadMessage(input: {
     companyId: string;
     threadId: string;
@@ -833,9 +847,17 @@ export async function appendThreadMessage(input: {
     // in server-only metadata and applied after the send. A caller-supplied key
     // is always discarded — only this server-side derivation is trusted.
     const metadata: Record<string, unknown> = { ...(input.metadataJson || {}) };
+    // Server-only: never trust a caller's copy of the unreachable-mention list.
+    delete metadata[UNREACHABLE_MENTIONS_KEY];
     let text = input.text;
     if (input.senderType === "agent") {
         delete metadata[OBJECTIVE_STATUS_METADATA_KEY];
+        // An agent whose scope limits the agents it works with may still post,
+        // but an @mention of an agent outside that list never routes or wakes it.
+        if (input.senderId) {
+            const unreachable = await unreachableMentionedAgents(input.companyId, input.senderId, input.text);
+            if (unreachable.length > 0) metadata[UNREACHABLE_MENTIONS_KEY] = unreachable.map((a) => a.id);
+        }
         const { marker, strippedText } = parseObjectiveStatusMarker(text);
         if (marker) {
             text = strippedText;
