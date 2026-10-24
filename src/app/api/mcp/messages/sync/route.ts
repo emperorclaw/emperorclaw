@@ -9,7 +9,7 @@ import { agentMessageWakesAgent, agentStreaks, agentLoopMaxTurnsFor, AGENT_LOOP_
 import { touchAgentLiveness } from "@/lib/lifecycle";
 import { progressTimestampsForThread } from "@/lib/control-plane";
 import { recordInterestingVerdicts, type VerdictRecord } from "@/lib/run-ledger";
-import { privateThreadsHiddenFromToken } from "@/lib/thread-access";
+import { mcpActingAgentId, privateThreadsHiddenFromToken } from "@/lib/thread-access";
 import { BOUND_AGENT_MISMATCH, mcpAccessForAgent, mcpThreadIdCondition } from "@/lib/mcp-access";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -50,6 +50,10 @@ export async function GET(req: NextRequest) {
         try {
             resolvedAgentId = await resolveAgentId(companyId, agentId);
         } catch {
+            // A company-wide token naming an agent that is not in this company
+            // gets a clean 404 (an unknown id used to crash the scope lookup
+            // below with an uncaught McpAccessError).
+            if (!boundAgentId) return NextResponse.json({ error: `Agent not found: ${agentId}` }, { status: 404 });
             resolvedAgentId = UUID_RE.test(agentId) ? agentId : null;
         }
         if (boundAgentId && resolvedAgentId !== boundAgentId) {
@@ -59,6 +63,10 @@ export async function GET(req: NextRequest) {
     // Polling is a sign of life: a runtime syncing is not down.
     if (resolvedAgentId && UUID_RE.test(resolvedAgentId)) await touchAgentLiveness(companyId, resolvedAgentId);
     const scopeAgentId = resolvedAgentId && UUID_RE.test(resolvedAgentId) ? resolvedAgentId : null;
+    // The agent this sync acts as for private direct threads: the bound agent,
+    // or the agent a company-wide token names (only once it resolves in this
+    // company; an unknown id keeps them all hidden).
+    const privateThreadAgentId = await mcpActingAgentId(companyId, auth.companyToken!, agentId);
     // Project/task threads outside the agent's data scope never reach it.
     const threadScope = mcpThreadIdCondition(companyId, await mcpAccessForAgent(companyId, scopeAgentId), threadMessages.threadId);
 
@@ -99,9 +107,10 @@ export async function GET(req: NextRequest) {
             // Recomputed each iteration so a direct thread created mid-poll (the
             // human's first DM provisions it) is picked up without waiting for
             // the next sync call.
-            // A person's private direct thread reaches only a token bound to its
-            // own agent: never a company-wide token, whatever agentId it names.
-            conditions.push(privateThreadsHiddenFromToken(companyId, auth.companyToken!.agentId ?? null));
+            // A person's private direct thread reaches only a sync acting as its
+            // own agent (bound token, or a company-wide token naming it); a
+            // sync naming no agent gets none of them.
+            conditions.push(privateThreadsHiddenFromToken(companyId, privateThreadAgentId));
             if (threadScope) conditions.push(threadScope);
 
             if (scopeAgentId) {

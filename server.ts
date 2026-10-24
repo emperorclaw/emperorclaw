@@ -6,7 +6,7 @@ import next from 'next';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Pool, PoolClient } from 'pg';
 import { UTC_SESSION_OPTIONS } from "./src/db/pg-utc";
-import { verifyMcpAuthorizationHeader } from './src/lib/mcp';
+import { resolveBoundAgentId, verifyMcpAuthorizationHeader } from './src/lib/mcp';
 import { recordOpsError, recordOpsEvent } from './src/lib/ops-events';
 import { humanSocketReceives, originMatchesHost, parseRealtimeNotification, socketReceives, socketsOverCap, type HumanViewer } from './src/lib/realtime-delivery';
 import { eventTopicsFor } from './src/lib/realtime-topics';
@@ -50,7 +50,8 @@ function resolveClientIp(req: IncomingMessage): string {
   return first ? normalizeIp(first) : peer;
 }
 
-// agentId: the agent the token is bound to (null for a company-wide token).
+// agentId: the agent the socket acts as: the token's bound agent, or the one a
+// company-wide token names with ?agentId= (null: none named).
 // allowedProjectIds/allowedCustomerIds: that agent's data scope (null = unrestricted),
 // refreshed periodically so an owner's scope edit reaches open sockets.
 type CompanySocket = WebSocket & {
@@ -192,7 +193,21 @@ app.prepare().then(() => {
             // projects/customers. Loaded before the upgrade completes so no
             // event is delivered unfiltered.
             const companyId = auth.companyToken.companyId;
-            const agentId = auth.companyToken.agentId ?? null;
+            // The socket's agent: a bound token's own agent (unchanged; the
+            // query is ignored), or the agent a company-wide token names with
+            // ?agentId= (same rule as the REST routes, resolveBoundAgentId). It
+            // decides private-thread delivery (socketMayReceive) and the data
+            // scope. An unknown agent is refused; naming none keeps null.
+            let agentId: string | null = auth.companyToken.agentId ?? null;
+            if (!agentId) {
+                const requestedAgentId = parse(request.url || '', true).query.agentId;
+                try {
+                    agentId = await resolveBoundAgentId(companyId, auth.companyToken, typeof requestedAgentId === 'string' && requestedAgentId.trim() ? requestedAgentId : null);
+                } catch {
+                    rejectUpgrade(socket, 404, 'Not Found');
+                    return;
+                }
+            }
             const initialScope = await loadAgentScopeContext(companyId, agentId);
             if (socket.destroyed) return;
             agentWss.handleUpgrade(request, socket, head, (ws) => {

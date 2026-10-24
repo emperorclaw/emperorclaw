@@ -85,7 +85,7 @@ maybe("realtime: an event about a private thread reaches only its own agent's so
     }
 });
 
-maybe("MCP threads: another agent's or an unbound token cannot read, post into or list a private thread", async () => {
+maybe("MCP threads: another agent, or an unbound token not acting as the thread's agent, cannot read, post into or list a private thread", async () => {
     const s = await seedPrivateChat();
     const messagesRoute = await import("@/app/api/mcp/threads/[id]/messages/route");
     const params = { params: Promise.resolve({ id: s.thread.id }) };
@@ -94,7 +94,9 @@ maybe("MCP threads: another agent's or an unbound token cannot read, post into o
     assert.equal((await messagesRoute.GET(makeRequest(url, { headers: auth(s.tokenY) }), params)).status, 404);
     assert.equal((await messagesRoute.GET(makeRequest(url, { headers: auth(s.tokenUnbound) }), params)).status, 404);
     assert.equal((await messagesRoute.POST(makeRequest(url, { method: "POST", headers: auth(s.tokenY), body: { text: "hi" } }), params)).status, 404);
-    assert.equal((await messagesRoute.POST(makeRequest(url, { method: "POST", headers: auth(s.tokenUnbound), body: { text: "hi", senderId: s.agentX.id } }), params)).status, 404);
+    // An unbound token acts only as the agent it names (here Y, or nobody).
+    assert.equal((await messagesRoute.POST(makeRequest(url, { method: "POST", headers: auth(s.tokenUnbound), body: { text: "hi", senderId: s.agentY.id } }), params)).status, 404);
+    assert.equal((await messagesRoute.POST(makeRequest(url, { method: "POST", headers: auth(s.tokenUnbound), body: { text: "hi" } }), params)).status, 404);
     const own = await messagesRoute.GET(makeRequest(url, { headers: auth(s.tokenX) }), params);
     assert.equal(own.status, 200, "the thread's own agent still reads it");
 
@@ -104,7 +106,8 @@ maybe("MCP threads: another agent's or an unbound token cannot read, post into o
         return ((await res.json()) as { threads: { id: string }[] }).threads.map((t) => t.id);
     };
     assert.ok(!(await list(s.tokenUnbound)).includes(s.thread.id));
-    assert.ok(!(await list(s.tokenUnbound, `&agentId=${s.agentX.id}`)).includes(s.thread.id));
+    assert.ok(!(await list(s.tokenUnbound, `&agentId=${s.agentY.id}`)).includes(s.thread.id));
+    assert.ok((await list(s.tokenUnbound, `&agentId=${s.agentX.id}`)).includes(s.thread.id), "an unbound token acting as X lists it");
     assert.ok((await list(s.tokenX)).includes(s.thread.id));
 });
 
@@ -117,7 +120,7 @@ maybe("MCP send, status, runs, control and sync refuse a private thread to other
     const send = await import("@/app/api/mcp/messages/send/route");
     const viaThread = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.tokenY), body: { text: "hello", thread_id: s.thread.id } }));
     assert.equal(viaThread.status, 404);
-    const viaReply = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.tokenUnbound), body: { text: "hello", agentId: s.agentX.id, replyToMessageId: s.message.id } }));
+    const viaReply = await send.POST(makeRequest("http://localhost/api/mcp/messages/send", { method: "POST", headers: auth(s.tokenUnbound), body: { text: "hello", agentId: s.agentY.id, replyToMessageId: s.message.id } }));
     assert.equal(viaReply.status, 404);
 
     const status = await import("@/app/api/mcp/chat/status/route");
@@ -136,11 +139,12 @@ maybe("MCP send, status, runs, control and sync refuse a private thread to other
         deliveryState: "queued", metadataJson: { runtimeControl: { action: "replace", prompt: "secret plan" } },
     });
     const control = await import("@/app/api/mcp/agents/control/route");
-    const controlFor = async (raw: string) => {
-        const res = await control.GET(makeRequest(`http://localhost/api/mcp/agents/control?agentId=${s.agentX.id}`, { headers: auth(raw) }));
+    const controlFor = async (raw: string, agentId: string = s.agentX.id) => {
+        const res = await control.GET(makeRequest(`http://localhost/api/mcp/agents/control?agentId=${agentId}`, { headers: auth(raw) }));
         return ((await res.json()) as { commands: unknown[] }).commands.length;
     };
-    assert.equal(await controlFor(s.tokenUnbound), 0, "an unbound token cannot read private control prompts");
+    assert.equal(await controlFor(s.tokenUnbound, s.agentY.id), 0, "an unbound token acting as Y cannot read X's private control prompts");
+    assert.equal(await controlFor(s.tokenUnbound), 1, "an unbound token acting as X (a bridge) gets them");
     assert.equal(await controlFor(s.tokenX), 1);
 
     const sync = await import("@/app/api/mcp/messages/sync/route");
@@ -150,7 +154,8 @@ maybe("MCP send, status, runs, control and sync refuse a private thread to other
         return ((await res.json()) as { messages: { id: string }[] }).messages.map((m) => m.id);
     };
     assert.ok((await syncFor(s.tokenX)).includes(s.message.id), "the bound agent still gets its private messages");
-    assert.ok(!(await syncFor(s.tokenUnbound)).includes(s.message.id), "an unbound token naming the agent does not");
+    // Company-token syncs as Y / naming nobody: private-chat-company-token.test.ts.
+    assert.ok((await syncFor(s.tokenUnbound)).includes(s.message.id), "an unbound token acting as the thread's agent (a bridge) gets them");
 });
 
 maybe("orphaned private thread: once the owner is deleted nobody can use it, and leaving archives it", async () => {
@@ -321,12 +326,19 @@ maybe("runs: the trigger message decides the thread, and other tokens cannot poi
     assert.equal(started.status, 200);
     assert.equal(((await started.json()) as { run: { threadId: string } }).run.threadId, s.thread.id);
 
-    // An unbound company token cannot append events to that private-thread run.
+    // An unbound company token naming no agent acts as the run's own agent
+    // (older bridges name it only in the first batch's header): X's run takes it.
     const unboundEvents = await runEvents.POST(makeRequest(`http://localhost/api/mcp/agents/runs/${xRun}/events`, {
         method: "POST", headers: auth(s.tokenUnbound),
         body: { events: [{ id: randomUUID(), seq: 1, kind: "turn.started", ts: new Date().toISOString() }] },
     }), { params: Promise.resolve({ id: xRun }) });
-    assert.equal(unboundEvents.status, 404);
+    assert.equal(unboundEvents.status, 200);
+    // ...but naming another agent than the run's owner is refused.
+    const unboundAsY = await runEvents.POST(makeRequest(`http://localhost/api/mcp/agents/runs/${xRun}/events?agentId=${s.agentY.id}`, {
+        method: "POST", headers: auth(s.tokenUnbound),
+        body: { events: [{ id: randomUUID(), seq: 2, kind: "notice", ts: new Date().toISOString() }] },
+    }), { params: Promise.resolve({ id: xRun }) });
+    assert.equal(unboundAsY.status, 403);
 
     // Y finishing its own run cannot claim a reply in X's private thread.
     const ownRun = randomUUID();

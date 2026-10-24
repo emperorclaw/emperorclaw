@@ -154,8 +154,10 @@ export async function sendThreadMessageFromMcp(input: {
       eq(messageThreads.companyId, input.companyId),
     )).limit(1);
 
-    // A person's private direct thread reads as missing to anyone but its own agent.
-    if (!existingThread || !agentTokenMayUseThread(existingThread, input.callerAgentId)
+    // A person's private direct thread reads as missing to anyone but its own
+    // agent. The sender is the acting agent: a bound token's own agent
+    // (enforced above), or the agent a company-wide token sends as.
+    if (!existingThread || !agentTokenMayUseThread(existingThread, resolvedSenderId)
       || (isPrivateDirectThread(existingThread) && resolvedSenderId && resolvedSenderId !== existingThread.directAgentId)) {
       throw new Error("Thread not found");
     }

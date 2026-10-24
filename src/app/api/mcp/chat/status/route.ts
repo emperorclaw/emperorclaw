@@ -32,9 +32,9 @@ export async function POST(req: NextRequest) {
         if (!agentId) return NextResponse.json({ error: "agentId is required for status updates" }, { status: 400 });
 
         const resolvedAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
-        // A person's private direct thread: only a token bound to its agent.
-        if (!(await mcpTokenMayUseThreadId(companyId, auth.companyToken!.agentId, threadId))
-            || !(await mcpTokenMayUseMessageId(companyId, auth.companyToken!.agentId, typeof messageId === "string" ? messageId : null))) {
+        // A person's private direct thread: only a request acting as its agent.
+        if (!(await mcpTokenMayUseThreadId(companyId, resolvedAgentId, threadId))
+            || !(await mcpTokenMayUseMessageId(companyId, resolvedAgentId, typeof messageId === "string" ? messageId : null))) {
             return NextResponse.json({ error: "Thread not found" }, { status: 404 });
         }
         await touchAgentLiveness(companyId, resolvedAgentId);

@@ -69,8 +69,10 @@ export function userMayUseThread(thread: ThreadPrivacy, userId: string | null | 
 }
 
 /**
- * Whether an MCP token may use a thread: a private direct thread only by a
- * token bound to that thread's own agent. Unbound (company-wide) tokens never.
+ * Whether an MCP request may use a thread: a private direct thread only when
+ * it acts as that thread's own agent. `boundAgentId` is the ACTING agent
+ * (thread-access.ts mcpActingAgentId): the token's binding, or the agent a
+ * company-wide token names. A request acting as no agent never.
  */
 export function agentTokenMayUseThread(thread: ThreadPrivacy, boundAgentId: string | null | undefined): boolean {
     if (!isPrivateDirectThread(thread)) return true;

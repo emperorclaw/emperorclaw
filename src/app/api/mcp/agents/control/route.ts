@@ -12,7 +12,7 @@ async function actor(req: NextRequest) {
     const companyId = auth.companyToken!.companyId;
     const agentId = await resolveBoundAgentId(companyId, auth.companyToken!, new URL(req.url).searchParams.get("agentId"));
     if (!agentId) return { error: NextResponse.json({ error: "agentId is required" }, { status: 400 }) };
-    return { companyId, agentId, boundAgentId: auth.companyToken!.agentId ?? null };
+    return { companyId, agentId };
 }
 export async function GET(req: NextRequest) {
     try {
@@ -21,7 +21,8 @@ export async function GET(req: NextRequest) {
         const { companyId, agentId } = auth;
         const commands = await db.select().from(threadMessages).where(and(
             eq(threadMessages.companyId, companyId!), eq(threadMessages.targetAgentId, agentId!),
-            privateThreadsHiddenFromToken(companyId!, auth.boundAgentId),
+            // The acting agent (bound, or named by a company-wide token) gets its own private threads' commands.
+            privateThreadsHiddenFromToken(companyId!, agentId!),
             eq(threadMessages.senderType, "system"), eq(threadMessages.deliveryState, "queued"),
             sql`${threadMessages.metadataJson}->'runtimeControl'->>'action' IN ('kill', 'replace')`,
         )).orderBy(asc(threadMessages.createdAt), asc(threadMessages.id)).limit(100);

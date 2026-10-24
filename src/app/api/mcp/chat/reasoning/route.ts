@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
         }
 
         const resolvedAgentId = (await resolveBoundAgentId(companyId, auth.companyToken!, agentId))!;
-        if (!(await mcpTokenMayUseMessageId(companyId, auth.companyToken!.agentId, messageId))) {
+        // A message in a private direct thread: only a request acting as its agent.
+        if (!(await mcpTokenMayUseMessageId(companyId, resolvedAgentId, messageId))) {
             return NextResponse.json({ error: "Message not found" }, { status: 404 });
         }
 

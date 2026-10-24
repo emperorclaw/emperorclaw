@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns } from "@/db/schema";
 import { resolveBoundAgentId, verifyMcpToken } from "@/lib/mcp";
-import { mcpTokenMayUseMessageId } from "@/lib/thread-access";
+import { mcpActingAgentId, mcpTokenMayUseMessageId } from "@/lib/thread-access";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { clampRunTimestamp, computeRunDurationMs, finishRunSchema, finishUsageColumns, payloadTooLarge, truncateRunError } from "@/lib/run-ledger";
 
@@ -44,8 +44,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ error: `Invalid request body — ${path}: ${issue?.message ?? "invalid"}` }, { status: 400 });
     }
     const input = parsed.data;
-    // The reply a run names must not be a message in a private thread this token may not use.
-    if (!(await mcpTokenMayUseMessageId(companyId, auth.companyToken!.agentId ?? null, input.replyMessageId))) {
+    // The reply a run names must not be a message in a private thread the
+    // acting agent may not use. Acting agent: the bound agent; for a
+    // company-wide token, the agent it names with ?agentId= (403 when that is
+    // not the run's owner), or, naming nobody, the run's own agent (older
+    // bridges send no agent on the finish). An unknown run acts as nobody.
+    let actingAgentId: string | null = auth.companyToken!.agentId ?? null;
+    if (!actingAgentId) {
+        const named = req.nextUrl.searchParams.get("agentId")?.trim() || null;
+        const [owner] = await db.select({ agentId: agentRuns.agentId }).from(agentRuns)
+            .where(and(eq(agentRuns.id, id), eq(agentRuns.companyId, companyId))).limit(1);
+        if (named) {
+            actingAgentId = await mcpActingAgentId(companyId, auth.companyToken!, named);
+            if (owner && actingAgentId && owner.agentId !== actingAgentId) {
+                return NextResponse.json({ error: "Access denied: this run belongs to a different agent" }, { status: 403 });
+            }
+        } else {
+            actingAgentId = owner?.agentId ?? null;
+        }
+    }
+    if (!(await mcpTokenMayUseMessageId(companyId, actingAgentId, input.replyMessageId))) {
         return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 

@@ -135,10 +135,10 @@ export async function POST(req: NextRequest) {
         const effectiveAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, agentId || null);
 
         // A person's private direct thread (named directly or via the message
-        // being answered) is only for a token bound to that thread's agent.
-        const boundAgentId = auth.companyToken!.agentId ?? null;
-        if (!(await mcpTokenMayUseThreadId(companyId, boundAgentId, thread_id))
-            || !(await mcpTokenMayUseMessageId(companyId, boundAgentId, replyToMessageId))) {
+        // being answered) is only for a request acting as that thread's agent:
+        // the bound agent, or the agent a company-wide token sends as.
+        if (!(await mcpTokenMayUseThreadId(companyId, effectiveAgentId, thread_id))
+            || !(await mcpTokenMayUseMessageId(companyId, effectiveAgentId, replyToMessageId))) {
             return NextResponse.json({ error: "Thread not found" }, { status: 404 });
         }
 

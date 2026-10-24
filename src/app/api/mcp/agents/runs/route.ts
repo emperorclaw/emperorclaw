@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: msg }, { status: msg.startsWith("Access denied") ? 403 : 404 });
     }
 
-    // A run may only point at a private direct thread from that thread's own agent's token.
-    const boundAgentId = auth.companyToken!.agentId ?? null;
-    if (!(await mcpTokenMayStartRun(companyId, boundAgentId, input))) {
+    // A run may only point at a private direct thread when it is that thread's
+    // own agent's run (bound token, or the agent a company-wide token names).
+    if (!(await mcpTokenMayStartRun(companyId, effectiveAgentId, input))) {
         return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 

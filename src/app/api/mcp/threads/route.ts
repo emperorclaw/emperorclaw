@@ -43,12 +43,13 @@ export async function GET(req: NextRequest) {
     if (projectId) conditions.push(eq(messageThreads.projectId, projectId));
     if (taskId) conditions.push(eq(messageThreads.taskId, taskId));
 
-    // Private direct threads are listed only to a token bound to their agent;
+    // Private direct threads are listed only to a request acting as their agent;
     // project/task threads only when that project is in the caller's scope.
     const access = await mcpAccessForAgent(companyId, agentId);
     const threads: (typeof messageThreads.$inferSelect)[] = [];
     for (const thread of await db.select().from(messageThreads).where(and(...conditions))) {
-        if (agentTokenMayUseThread(thread, auth.companyToken!.agentId) && await mcpMayUseThread(companyId, access, thread)) {
+        // `agentId` is the acting agent: the bound one, or the one a company-wide token names.
+        if (agentTokenMayUseThread(thread, agentId) && await mcpMayUseThread(companyId, access, thread)) {
             threads.push(thread);
         }
     }

@@ -9,6 +9,7 @@ import { GROUP_THREAD_TYPE, isAgentGroupMember, isAgentPairThread, pairThreadCou
 import { agentLoopHardCap, agentPairLoopHardCap, stripReservedMetadata, unreachableMentionsOf } from "@/lib/message-routing";
 import { applyStoredObjectiveStatus } from "@/lib/objective-status";
 import { agentTokenMayUseThread, isPrivateDirectThread } from "@/lib/direct-chat-mode";
+import { mcpActingAgentId } from "@/lib/thread-access";
 import { mcpAccessForAgent, mcpMayReachAgent, mcpMayUseThread } from "@/lib/mcp-access";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,9 +31,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
     ).limit(1);
 
-    // A person's private direct thread: only a token bound to its agent. A
-    // project/task thread: only when that project is in the bound agent's scope.
-    if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)
+    // A person's private direct thread: only a request acting as its agent
+    // (bound token, or ?agentId= on a company-wide token). A project/task
+    // thread: only when that project is in the bound agent's scope.
+    const actingAgentId = await mcpActingAgentId(companyId, auth.companyToken!, searchParams.get("agentId"));
+    if (!thread || !agentTokenMayUseThread(thread, actingAgentId)
         || !(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, auth.companyToken!.agentId), thread))) {
         return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
@@ -71,13 +74,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             and(eq(messageThreads.id, threadId), eq(messageThreads.companyId, companyId))
         ).limit(1);
 
-        if (!thread || !agentTokenMayUseThread(thread, auth.companyToken!.agentId)
+        // A bound token is refused another agent's private thread up front, as before.
+        if (!thread || (auth.companyToken!.agentId && !agentTokenMayUseThread(thread, auth.companyToken!.agentId))
             || !(await mcpMayUseThread(companyId, await mcpAccessForAgent(companyId, auth.companyToken!.agentId), thread))) {
             return NextResponse.json({ error: "Thread not found" }, { status: 404 });
         }
 
         const body = await req.json();
         const { text, senderType = "agent", senderId, targetAgentId, metadataJson, mirrorToLegacyChat = false } = body;
+
+        // A person's private direct thread: only a request acting as its agent,
+        // i.e. the bound agent, or the agent sender a company-wide token names.
+        // Checked before anything else about the body so a foreign private
+        // thread reads as missing, never as a validation error.
+        const actingAgentId = await mcpActingAgentId(companyId, auth.companyToken!, senderType === "agent" ? senderId : null);
+        if (!agentTokenMayUseThread(thread, actingAgentId)) {
+            return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+        }
 
         if (!text) {
             return NextResponse.json({ error: "text is required" }, { status: 400 });

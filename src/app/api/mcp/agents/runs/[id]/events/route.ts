@@ -69,10 +69,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // A token bound to an agent may only write that agent's runs. Same resolver
-    // as POST /agents/runs; a company-wide token keeps the previous behaviour.
+    // as POST /agents/runs. A company-wide token acts as the agent it names:
+    // the `run` header's agentId, or ?agentId= on a batch without a header.
+    // This is also the acting agent for private direct threads below.
+    const namedAgentId = input.run?.agentId
+        ?? (auth.companyToken!.agentId ? null : req.nextUrl.searchParams.get("agentId"));
     let boundAgentId: string | null;
     try {
-        boundAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, input.run?.agentId ?? null);
+        boundAgentId = await resolveBoundAgentId(companyId, auth.companyToken!, namedAgentId || null);
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Access denied";
         return NextResponse.json({ error: msg }, { status: msg.startsWith("Access denied") ? 403 : 404 });
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             if (!input.run) return NextResponse.json({ error: "run_not_found" }, { status: 409 });
             if (!boundAgentId) return NextResponse.json({ error: "agentId is required" }, { status: 400 });
             // Same thread checks as POST /agents/runs.
-            if (!(await mcpTokenMayStartRun(companyId, auth.companyToken!.agentId ?? null, input.run))) {
+            if (!(await mcpTokenMayStartRun(companyId, boundAgentId, input.run))) {
                 return NextResponse.json({ error: "Thread not found" }, { status: 404 });
             }
             const started = await insertRunStart(companyId, boundAgentId, input.run);
@@ -101,8 +105,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (boundAgentId && run.agentId !== boundAgentId) {
             return NextResponse.json({ error: "Access denied: this token is bound to a different agent" }, { status: 403 });
         }
-        // A run in a private thread only takes events from its own agent's token.
-        if (!(await mcpTokenMayUseThreadId(companyId, auth.companyToken!.agentId ?? null, run.threadId))) {
+        // A run in a private thread only takes events from a request acting as
+        // its own agent: a bound token, a company-wide token naming it (the
+        // check above already refused one naming another agent), or a
+        // company-wide token naming nobody, which acts as the run's own agent
+        // (older bridges send the agent only in the first batch's `run`
+        // header). The events always land on this run's own thread.
+        const actingAgentId = boundAgentId ?? (auth.companyToken!.agentId ? null : run.agentId ?? null);
+        if (!(await mcpTokenMayUseThreadId(companyId, actingAgentId, run.threadId))) {
             return NextResponse.json({ error: "Run not found" }, { status: 404 });
         }
 
