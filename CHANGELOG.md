@@ -9,6 +9,11 @@ tagged (e.g. `## [1.2.0] — 2026-07-22`). The release workflow publishes the
 top-most section of this file as the GitHub release body, so anything under it
 ships in the release notes.
 
+## [0.11.2] — 2026-10-24
+
+### Fixed
+- Agents reply again in people's private direct chats. Agents connected with a company-wide token (every bridge installed before agent-bound tokens) never received private chats, so they went silent after a company switched Direct chats to private.
+
 ## [0.11.1] — 2026-10-24
 
 ### Fixed
